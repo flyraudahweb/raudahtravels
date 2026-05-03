@@ -9,6 +9,7 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { MapPin, CalendarDays, Star, CheckCircle2, Phone, MessageCircle, Users, Search, ArrowRight, ChevronRight, Check, Globe, ChevronDown, Minus, Plus, Play } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import consultancyImg from "@/assets/images/consultancy.png";
+import { PackageAvailability } from "@/components/PackageAvailability";
 /* ── Custom branded dropdown ────────────────────────────────────────────── */
 interface DropdownOption { value: string; label: string; }
 
@@ -454,10 +455,6 @@ export default function Home() {
                           </span>
                           <span className="w-1 h-1 rounded-full bg-[#DCE3F0]" />
                           <span className="flex items-center gap-1.5">
-                            <Users className="w-4 h-4 text-[#2D3199]" /> {spacesLeft} spaces
-                          </span>
-                          <span className="w-1 h-1 rounded-full bg-[#DCE3F0]" />
-                          <span className="flex items-center gap-1.5">
                             <MapPin className="w-4 h-4 text-[#2D3199]" /> Makkah
                           </span>
                         </div>
@@ -474,6 +471,11 @@ export default function Home() {
                             <p className="text-xs text-[#94A3B8] pl-6">+{pkg.inclusions.length - 3} more inclusions</p>
                           )}
                         </div>
+                        <PackageAvailability
+                          maxCapacity={pkg.maxCapacity}
+                          currentBookings={pkg.currentBookings}
+                          className="mb-5"
+                        />
                         <div className="flex items-center justify-between pt-4 border-t border-[#F1F5F9]">
                           <div>
                             <p className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest">Departure</p>

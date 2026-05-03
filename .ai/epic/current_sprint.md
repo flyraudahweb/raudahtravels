@@ -21,26 +21,16 @@
 - **Admin UI**:
   - `AdminPilgrims.tsx`: Added filters for "Registered By Agent" and "Registered By Staff", plus source badges on the rows.
   - `AdminAgents.tsx`: Replaced basic view with a robust **Agent Detail Dialog** showing wallet balance, commission, and an embedded searchable list of all clients registered by that agent.
+  - **Pagination & Export**: Added client-side pagination (10/page) and an XLSX Excel Export feature to the Registered Clients table in the Agent Detail Dialog.
 - **Agent UI**: `AgentClients.tsx`: Completely replaced the single-form registration with a robust **4-Step Wizard** identical to the Admin flow.
 - **Database Fix**: Applied the `migration_unique_payment_reference.sql` directly to Neon.
-
-## What Changed (Session 3 — Security Hardening)
-
-- **notifications.ts**: Removed unauthenticated `POST /notifications`; added ownership to mark-as-read
-- **packages.ts**: Added `requireAdmin` guard to all mutation endpoints (POST/PUT/DELETE)
-- **documents.ts**: Added auth + ownership check to `GET /documents/:id`
-- **support.ts**: Admin-only ticket mutations; message ownership check; sanitized search input
-- **admin.ts**: Role enum validation + super_admin restriction; canonical price enforcement
-- **payments.ts**: Atomic Paystack verify via `db.transaction()`; `amountPaid` accumulation fix
-- **bookings.ts**: Status enum validation on booking updates
-- **index.ts**: Rate limiting on `POST /contact` (5/min/IP)
-- **agents.ts**: Rate limiting on `POST /agents/public-apply` (3/min/IP)
+- **Deployment Prep**: Initialized Git repository, configured `.gitignore`, committed codebase, and pushed to `https://github.com/flyraudahweb/raudahtravels` to enable automated Render Blueprint deployment.
 
 ## Next Steps
 
 1. **Test New UI Workflows**: Fire up `npm run dev` to verify the Admin filters, Agent detail dialogs, and the Agent Registration Wizard.
 2. **Configure Email Provider**: Set up SMTP or Resend in Admin → Settings for transactional emails (receipts, etc.)
-3. **Render Deployment**: Push to GitHub and deploy via `render.yaml` Blueprint
+3. **Render Deployment**: Complete deployment via Render Blueprint by adding the repository and providing the missing environment variables (`DATABASE_URL`, `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`). Update Clerk Application URL after successful deployment.
 4. **Paystack Integration**: Configure payment keys in Admin → Settings
 
 ## Known Issues & Workarounds

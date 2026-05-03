@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { CalendarDays, Users, Star, Check, Tag, Percent, DollarSign, ArrowRight, Sparkles, TrendingUp } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CountdownBanner } from "@/components/CountdownBanner";
+import { PackageAvailability } from "@/components/PackageAvailability";
 
 function calcEarnings(price: number, commissionRate: number, commissionType: string) {
   if (commissionType === "percentage") return price * commissionRate / 100;
@@ -127,22 +128,14 @@ export default function AgentPackages() {
                       <CalendarDays className="w-3.5 h-3.5 text-[#94A3B8]" />
                       {pkg.durationDays} Days · {new Date(pkg.departureDate).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}
                     </span>
-                    <span className="flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5 text-[#94A3B8]" />
-                      {spotsLeft} spaces
-                    </span>
                   </div>
 
                   {/* Capacity bar */}
-                  <div className="mb-4">
-                    <div className="h-1.5 bg-[#F1F5F9] rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${isAlmostFull ? "bg-amber-500" : "bg-[#2D3199]"}`}
-                        style={{ width: `${fillPct}%` }}
-                      />
-                    </div>
-                    <p className="text-[10px] text-[#94A3B8] mt-1">{fillPct}% booked · {pkg.currentBookings}/{pkg.maxCapacity} spots taken</p>
-                  </div>
+                  <PackageAvailability
+                    maxCapacity={pkg.maxCapacity}
+                    currentBookings={pkg.currentBookings}
+                    className="mb-4"
+                  />
 
                   {/* Inclusions */}
                   {pkg.inclusions.length > 0 && (

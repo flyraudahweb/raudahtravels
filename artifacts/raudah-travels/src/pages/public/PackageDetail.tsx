@@ -6,6 +6,7 @@ import { Footer } from "@/components/layout/Footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CalendarDays, MapPin, Star, Check, AlertCircle, ArrowLeft } from "lucide-react";
+import { PackageAvailability } from "@/components/PackageAvailability";
 
 const PACKAGE_IMAGES = [
   "https://images.pexels.com/photos/28209449/pexels-photo-28209449.jpeg",
@@ -137,11 +138,12 @@ export default function PackageDetail() {
                       <span className="text-muted-foreground">Duration</span>
                       <span className="font-medium">{pkg.durationDays} Days</span>
                     </div>
-                    <div className="flex justify-between items-center py-3 border-b border-border">
-                      <span className="text-muted-foreground">Availability</span>
-                      <span className={`font-medium ${spacesAvailable < 10 ? 'text-red-500' : 'text-green-600'}`}>
-                        {spacesAvailable} spaces left
-                      </span>
+                    <div className="py-3 border-b border-border">
+                      <PackageAvailability 
+                        maxCapacity={pkg.maxCapacity}
+                        currentBookings={pkg.currentBookings}
+                        className="bg-transparent border-none p-0"
+                      />
                     </div>
                   </div>
 

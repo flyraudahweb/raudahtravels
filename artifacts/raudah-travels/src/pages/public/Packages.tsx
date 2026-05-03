@@ -10,6 +10,7 @@ import {
   SlidersHorizontal, X, ChevronRight, Plane, Building2,
 } from "lucide-react";
 import { CountdownBanner } from "@/components/CountdownBanner";
+import { PackageAvailability } from "@/components/PackageAvailability";
 
 const PACKAGE_IMAGES = [
   "https://images.pexels.com/photos/28209449/pexels-photo-28209449.jpeg",
@@ -391,16 +392,11 @@ export default function Packages() {
                           </div>
 
                           {/* Capacity bar */}
-                          <div className="mb-4">
-                            <div className="h-1.5 bg-[#F1F5F9] rounded-full overflow-hidden">
-                              <div className="h-full rounded-full transition-all"
-                                style={{
-                                  width: `${fillPct}%`,
-                                  background: fillPct > 75 ? "#FF3B00" : fillPct > 50 ? "#F59E0B" : "#2D3199"
-                                }} />
-                            </div>
-                            <p className="text-[10px] text-[#94A3B8] mt-1">{fillPct}% booked</p>
-                          </div>
+                          <PackageAvailability
+                            maxCapacity={pkg.maxCapacity}
+                            currentBookings={pkg.currentBookings}
+                            className="mb-4"
+                          />
 
                           {/* Departure + CTA */}
                           <div className="flex items-center justify-between pt-4 border-t border-[#F1F5F9]">

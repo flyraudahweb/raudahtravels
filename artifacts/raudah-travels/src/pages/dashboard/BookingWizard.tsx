@@ -15,6 +15,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { PackageAvailability } from "@/components/PackageAvailability";
 import { useQuery } from "@tanstack/react-query";
 import { useFormFieldConfig } from "@/hooks/useFormFieldConfig";
 
@@ -491,9 +492,14 @@ export default function BookingWizard() {
                   </div>
                   <Badge variant="outline" className="capitalize">{pkg.type}</Badge>
                 </div>
-                <div className="grid grid-cols-2 gap-3 mt-4 text-sm">
+                <div className="grid grid-cols-1 gap-3 mt-4 text-sm">
                   <div className="flex items-center gap-2 text-muted-foreground"><CalendarDays className="w-4 h-4" /> {pkg.durationDays} Days</div>
-                  <div className="flex items-center gap-2 text-muted-foreground"><Users className="w-4 h-4" /> {spacesLeft} spaces left</div>
+                </div>
+                <div className="mt-4">
+                  <PackageAvailability
+                    maxCapacity={pkg.maxCapacity}
+                    currentBookings={pkg.currentBookings}
+                  />
                 </div>
                 <div className="mt-4 pt-4 border-t border-primary/10">
                   <div className="flex justify-between">
