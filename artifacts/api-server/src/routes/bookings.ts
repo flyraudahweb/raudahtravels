@@ -164,6 +164,11 @@ router.post("/bookings", async (req, res) => {
     ...safePilgrimFields,  // only safe pilgrim-detail fields (name, passport, etc.)
   }).returning();
 
+  // Increment package currentBookings
+  await db.update(packagesTable)
+    .set({ currentBookings: sql`${packagesTable.currentBookings} + ${count}` })
+    .where(eq(packagesTable.id, packageId));
+
   return res.status(201).json(toBookingResponse(booking));
 });
 
