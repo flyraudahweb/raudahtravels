@@ -24,3 +24,4 @@
 
 ## 📜 Session History
 - [Session 1: Replit Migration](file:///c:/Users/DEEPMIND/Downloads/Travel-Master-Guide-main/Travel-Master-Guide-main/.ai/logs/session_1_replit_migration.md)
+- [Session 5: Availability UI & Data Integrity](file:///c:/Users/DEEPMIND/Downloads/Travel-Master-Guide-main/Travel-Master-Guide-main/.ai/logs/session_5_availability_ui.md)
