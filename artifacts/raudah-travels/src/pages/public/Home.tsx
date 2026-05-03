@@ -131,15 +131,41 @@ const TESTIMONIALS = [
 ];
 
 function getEmbedUrl(url: string): string {
-  const ytMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s?]+)/);
+  if (!url) return "";
+  
+  // If already an embed URL, try to extract ID to ensure loop works correctly
+  if (url.includes("youtube.com/embed/")) {
+    const id = url.split("youtube.com/embed/")[1]?.split("?")[0];
+    if (id) return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=0&showinfo=0&rel=0&modestbranding=1`;
+    return url;
+  }
+  if (url.includes("player.vimeo.com/video/")) {
+    if (!url.includes("autoplay=1")) {
+      const sep = url.includes("?") ? "&" : "?";
+      return `${url}${sep}autoplay=1&muted=1&loop=1&background=1`;
+    }
+    return url;
+  }
+
+  // YouTube (standard, shorts, youtu.be)
+  const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([^&\s?]+)/);
   if (ytMatch) {
     const id = ytMatch[1];
     return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=0&showinfo=0&rel=0&modestbranding=1`;
   }
-  const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
+
+  // Vimeo
+  const vimeoMatch = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
   if (vimeoMatch) {
     return `https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1&muted=1&loop=1&background=1`;
   }
+
+  // Check for localhost or internal assets accidentally used as video URLs
+  if (url.includes("localhost") || url.includes("/src/assets/")) {
+    console.warn("Invalid Video URL detected: ", url);
+    return ""; // Force fallback to placeholder
+  }
+
   return url;
 }
 
