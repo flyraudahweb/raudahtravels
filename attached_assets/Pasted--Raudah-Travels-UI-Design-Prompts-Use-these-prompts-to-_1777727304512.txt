@@ -1,0 +1,588 @@
+# Raudah Travels — UI Design Prompts
+
+> Use these prompts to rebuild or redesign the UI of every section of the app.
+> Each prompt describes the exact layout, design language, colors, typography, and component patterns used.
+
+---
+
+## Global Design System
+
+### Brand Identity
+
+- **Company:** Raudah Travels & Tours (Hajj & Umrah travel agency, Nigeria)
+- **Domain:** flyraudah.com
+- **Logo:** `/logo.png` (used in header, sidebars, mobile nav)
+- **Tagline:** "Nigeria's Most Trusted Hajj & Umrah Partner"
+- **Brand Feel:** Premium, trustworthy, enterprise-grade — deep royal indigo conveys authority and security
+
+### Color Palette — Primary (Royal Indigo)
+
+| Token                       | Hex         | Usage                                              |
+| --------------------------- | ----------- | -------------------------------------------------- |
+| Primary 500 (main brand)    | `#2D3199` | Buttons, links, active states, brand identity      |
+| Primary 600 (hover/buttons) | `#25297F` | Button hover states, pressed states                |
+| Primary 700 (active/dark)   | `#1C1F66` | Footer, dark sections, sidebar backgrounds         |
+| Primary 400 (lighter UI)    | `#4C56B8` | Lighter interactive elements, secondary buttons    |
+| Primary 300 (cards/icons)   | `#7B83D6` | Icon tints, card accents, progress indicators      |
+| Primary 100 (light bg)      | `#EEF0FF` | Light backgrounds, badge backgrounds, tinted areas |
+
+### Neutral Colors
+
+| Token                | Hex         | Usage                                |
+| -------------------- | ----------- | ------------------------------------ |
+| Main background      | `#FFFFFF` | Page backgrounds                     |
+| Secondary background | `#F8FAFC` | Card backgrounds, secondary areas    |
+| Section background   | `#F1F5F9` | Alternating sections, stat insets    |
+| Border               | `#DCE3F0` | Borders, dividers, card outlines     |
+| Muted text           | `#64748B` | Secondary text, labels, placeholders |
+| Body text            | `#334155` | Primary body text                    |
+| Heading text         | `#0F172A` | Headings, bold labels, page titles   |
+
+### Accent & Status Colors
+
+| Token             | Hex         | Usage                                                      |
+| ----------------- | ----------- | ---------------------------------------------------------- |
+| Success           | `#22C55E` | Confirmed bookings, verified payments, positive status     |
+| Warning           | `#F59E0B` | Pending states, amber alerts                               |
+| Error             | `#EF4444` | Cancelled, rejected, destructive actions                   |
+| Info              | `#0EA5E9` | Informational badges, tips                                 |
+| CTA Accent (warm) | `#FF7A59` | Hot call-to-action buttons, "Book Now", special promotions |
+| CTA Soft bg       | `#FFF4F1` | CTA button backgrounds on light surfaces                   |
+
+### Gradients
+
+```css
+/* Hero background — deep indigo sweep */
+hero-gradient: linear-gradient(135deg, #1C1F66 0%, #2D3199 50%, #4C56B8 100%)
+
+/* Primary CTA buttons — solid brand gradient */
+primary-gradient: linear-gradient(135deg, #2D3199 0%, #4C56B8 100%)
+
+/* Premium gradient — deeper */
+premium-gradient: linear-gradient(135deg, #1C1F66 0%, #2D3199 100%)
+
+/* Accent gradient — blue to cyan (for hero highlights) */
+accent-gradient: linear-gradient(135deg, #2D3199 0%, #0EA5E9 100%)
+
+/* Warm CTA gradient — orange pop */
+cta-gradient: linear-gradient(135deg, #FF7A59 0%, #FF9A7B 100%)
+```
+
+### CSS Variables
+
+```css
+:root {
+  --primary-100: #EEF0FF;
+  --primary-300: #7B83D6;
+  --primary-400: #4C56B8;
+  --primary-500: #2D3199;
+  --primary-600: #25297F;
+  --primary-700: #1C1F66;
+
+  --bg-main: #FFFFFF;
+  --bg-secondary: #F8FAFC;
+  --bg-section: #F1F5F9;
+
+  --text-heading: #0F172A;
+  --text-body: #334155;
+  --text-muted: #64748B;
+
+  --border: #DCE3F0;
+
+  --success: #22C55E;
+  --warning: #F59E0B;
+  --error: #EF4444;
+  --info: #0EA5E9;
+
+  --accent: #FF7A59;
+  --accent-soft: #FFF4F1;
+}
+```
+
+### Typography
+
+| Role         | Font                          | Weight                           |
+| ------------ | ----------------------------- | -------------------------------- |
+| Headings     | **Lato** (Google Fonts) | 700 (Bold), 900 (Black for hero) |
+| Body         | **Lato**                | 400 (Regular), 600 (Semibold)    |
+| Arabic (RTL) | **Amiri** (serif)       | 400, 700                         |
+
+### Border Radius
+
+- Default: `1rem` (16px) — `rounded-2xl`
+- Cards: `rounded-2xl` or `rounded-3xl`
+- Buttons: `rounded-full` (pill) for CTAs, `rounded-xl` for secondary
+- Inputs: `rounded-xl`
+
+### Shadows
+
+```css
+shadow-soft:    0 2px 20px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.04)
+shadow-soft-lg: 0 8px 30px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04)
+shadow-soft-xl: 0 12px 40px rgba(0,0,0,0.1),  0 4px 12px rgba(0,0,0,0.05)
+shadow-brand:   0 4px 14px rgba(45,49,153,0.25)   /* Indigo brand shadow */
+shadow-brand-lg: 0 6px 20px rgba(45,49,153,0.35)
+shadow-brand-glow: 0 0 30px rgba(45,49,153,0.2), 0 0 60px rgba(45,49,153,0.08)
+shadow-cta:     0 4px 14px rgba(255,122,89,0.3)    /* Warm CTA shadow */
+```
+
+### Animation Patterns
+
+- **Framer Motion** for page transitions (fade-in + translateY)
+- Staggered text animations on hero (each word 0.15s delay)
+- Floating blob decorations (12s/10s ease-in-out infinite, indigo/blue tints)
+- Hover: `-translate-y-1` or `-translate-y-2` lift with shadow increase
+- Shimmer animation on premium badges (3s indigo gradient sweep)
+- Pulse ring on WhatsApp float button
+
+---
+
+## 1. Landing Page (`/`)
+
+### Prompt
+
+> Design a premium Islamic travel landing page for "Raudah Travels & Tours" — a Nigerian Hajj & Umrah agency. The design should feel luxurious, trustworthy, and authoritative with a deep royal indigo color scheme (#2D3199 primary) and warm orange CTAs (#FF7A59). The page has these sections:
+
+### 1.1 TopBar
+
+- Thin bar above the header with contact info (phone, email) and social media icons
+- Subtle indigo-tinted background (`#1C1F66` or very dark), white/light text
+
+### 1.2 Header (Sticky, Scroll-Reactive)
+
+- **Transparent state:** Logo (white/inverted), white text nav links, glassmorphic background (`bg-white/10 backdrop-blur-md border-b border-white/20`)
+- **Scrolled state (>50px):** White background (`#FFFFFF`), dark text (`#0F172A`), subtle shadow
+- Nav links: Home, Packages, About, Contact — bold, spaced
+- Right side: Globe icon (language switcher: EN/HA/AR/FR), Login (ghost button), Sign Up (indigo pill button `#2D3199` with `shadow-brand`)
+- Mobile: Hamburger → full-screen white drawer with staggered animated links, language selector as flag grid, Login/Signup buttons
+
+### 1.3 Hero Section
+
+- Full-height section with rich indigo gradient background (`hero-gradient: #1C1F66 → #2D3199 → #4C56B8`)
+- Subtle background image crossfade (3 images, 10s each, 15% opacity overlay)
+- Floating decorative blobs (white/5 opacity, blur-3xl, floating animation)
+- Geometric Islamic pattern overlay (very subtle, indigo-tinted, 20% opacity)
+- **Left column:**
+  - Pill badge: "✨ Nigeria's Most Trusted Hajj & Umrah Partner" (white/15 bg, backdrop-blur, white text)
+  - Large heading: Staggered word-by-word animation, 4xl-6xl, font-black, white text with text-shadow
+  - Subtitle: 18px, white/85 opacity
+  - Two CTA buttons:
+    - "Explore Packages" — warm orange `#FF7A59` bg, white text, pill shape, `shadow-cta`, hover lift
+    - "Become an Agent" — transparent with white border, white text, backdrop-blur
+- **Right column:** Video player (`/vid.mp4`) in rounded-3xl frame with white/10 border and indigo glow behind
+- **Search Widget (bottom):** Overlapping the hero bottom, glassmorphic white bar (`bg-white/95 backdrop-blur-md rounded-3xl`):
+  - 4 fields in a row (stacked on mobile): Country, Package Type, Month, Persons
+  - Each with icon (indigo `#2D3199`), bold label, select/input below
+  - Indigo circular search button on the right (`#2D3199`)
+  - Dividers between fields on desktop (`#DCE3F0`)
+
+### 1.4 Packages Section
+
+- Section title with ornament divider (indigo gradient lines + rotated diamond `#2D3199`)
+- Grid of `PackageCard` components (responsive: 1-2-3 columns)
+- "View All Packages" link button
+
+### 1.5 Package Card Design
+
+- Rounded-3xl, glassmorphic (`bg-white/5 backdrop-blur-xl`)
+- Tier border-top: Premium = indigo (`#2D3199`), Standard = lighter indigo (`#4C56B8`), Budget = silver (`#DCE3F0`)
+- Hover: lift -2, enhanced shadow, optional indigo glow for premium (`shadow-brand-glow`)
+- **Header zone:** Category badge (PREMIUM/STANDARD/VALUE — indigo/lighter indigo/muted), Type badge (Hajj/Umrah), Package name (xl bold `#0F172A`), Price (3xl bold indigo `#2D3199`), Deposit badge if applicable
+- **Details:** Duration, Airlines, Departure cities — each with indigo icon (`#2D3199`)
+- **Inclusions:** 2-column grid with indigo check icons (first 4 shown)
+- **Availability bar:** Color-coded progress bar (success green/amber/red), spots count, SOLD OUT lock icon
+- **Expandable section:** Toggle reveals all inclusions, hotel info (Makkah/Madinah), travel dates
+- **Actions:** "View Details" outline button (indigo border) + "Book Now" warm orange CTA button (`#FF7A59`)
+
+### 1.6 Why Choose Us
+
+- 3-4 feature cards with indigo-tinted icons highlighting trust factors
+- Light indigo backgrounds (`#EEF0FF`)
+
+### 1.7 Testimonials
+
+- Customer review carousel/cards on `#F8FAFC` background
+
+### 1.8 CTA Banner
+
+- Full-width indigo gradient banner (`#2D3199 → #4C56B8`) with warm orange CTA button
+- Strong call-to-action text in white
+
+### 1.9 Footer
+
+- Dark indigo footer (`#1C1F66` background) with white text, quick links, contact details, social media
+
+### 1.10 WhatsApp Float
+
+- Fixed bottom-right floating WhatsApp button (green) with pulse ring animation
+
+---
+
+## 2. Auth Pages (Login, Register, Forgot Password, Reset Password)
+
+### Prompt
+
+> Design clean, modern authentication pages with the Raudah indigo brand. Layout: `AuthLayout` component wrapping all auth pages.
+
+### AuthLayout Structure
+
+- Full-height split layout on desktop
+- **Left panel:** Indigo gradient background (`#1C1F66 → #2D3199`) with Raudah branding, geometric pattern, testimonial
+- **Right panel:** White (`#FFFFFF`), centered form card
+- Mobile: Form only, header with logo
+
+### Login Page
+
+- Email input, Password input (show/hide toggle) — inputs with `#DCE3F0` border
+- "Remember me" checkbox + "Forgot Password" link (indigo text)
+- Indigo gradient "Sign In" button (full width, pill, `#2D3199`)
+- Divider + "Don't have an account? Sign Up" link
+- Loading spinner on submit
+
+### Register Page
+
+- Full name, Email, Phone, Password, Confirm Password
+- Zod validation with inline errors (red `#EF4444`)
+- Password strength indicator
+- Terms acceptance checkbox
+- Indigo "Create Account" button (`#2D3199`, hover `#25297F`)
+
+---
+
+## 3. User Dashboard (`/dashboard`)
+
+### Prompt
+
+> Design a clean, card-based pilgrim dashboard. Sidebar + main content layout with notification bell and avatar in the top bar. Indigo brand accents.
+
+### Layout (DashboardLayout)
+
+- `SidebarProvider` wrapping collapsible sidebar + content area
+- **Sidebar:** Dark indigo background (`#1C1F66`), Raudah logo at top (white), menu items with Lucide icons, avatar + name at bottom, sign-out button. Collapsible to icon-only mode.
+- **Top bar:** Minimal — sidebar trigger (desktop), logo (mobile), notification bell + avatar right-aligned
+- **Mobile:** Bottom navigation bar with 5 key icons
+- **Main content background:** `#F8FAFC`
+
+### Sidebar Menu Items
+
+- Overview (LayoutDashboard), Bookings (CalendarCheck), Packages (Package), Payments (CreditCard), Documents (FileText), Visas (FileCheck), Profile (User), Support (HelpCircle)
+- Active state: White bg with indigo text (`#2D3199`), font-medium
+- Inactive: White/70 text
+- Hover: White/10 bg tint
+
+### 3.1 Dashboard Overview
+
+- **Welcome Banner:** Full-width rounded-2xl card with indigo gradient (`from-[#2D3199] via-[#2D3199]/90 to-[#4C56B8]`), cross-pattern SVG overlay at 10% opacity, greeting + user name (2xl-3xl bold white), active booking count, action buttons:
+  - "Pay Outstanding" — white bg, indigo text, pill, shadow
+  - "Explore" — white/20 bg, white text, backdrop-blur pill
+- **Stats Grid:** 4 cards (2x2 on mobile, 4x1 on desktop), each with:
+  - Colored icon in rounded-lg container:
+    - Active Bookings: indigo tint (`#EEF0FF` bg, `#2D3199` icon)
+    - Total Paid: amber tint
+    - Documents: sky/info tint (`#0EA5E9`)
+    - Total Bookings: success tint (`#22C55E`)
+  - Large value (xl bold `#0F172A`), label (xs `#64748B`), sub-stat (10px muted)
+  - Subtle colored border, hover lift (`-translate-y-1`)
+- **Quick Actions:** 3 cards in a row — icon in circle, label below, gradient tint backgrounds, hover shadow
+  - Browse Packages: indigo tint
+  - My Bookings: amber tint
+  - Make Payment: success tint
+- **Recent Bookings:** Card on white bg with booking list items (status icon, package name, reference, status badge, price)
+
+### 3.2 Dashboard Bookings
+
+- Filter tabs: All, Pending, Confirmed, Completed, Cancelled
+- Table/list of bookings with: Reference, Package name, Status badge, Date, Amount, Action buttons
+- Empty state: Icon + message + "Browse Packages" CTA (indigo button)
+
+### 3.3 Dashboard Payments
+
+- Payment history list with: Amount (bold), Method badge, Status badge, Date, Proof of payment link
+- "Make Payment" button for pending bookings (warm orange CTA `#FF7A59`)
+- Receipt download option
+
+### 3.4 Dashboard Documents
+
+- Grid of uploaded documents categorized by type
+- Upload button per document type (indigo outline)
+- Preview/download for each
+
+### 3.5 Dashboard Visas
+
+- Track visa processing status
+- Visa delivery messages from admin
+- Flight ticket downloads
+
+### 3.6 Booking Wizard (`/dashboard/book/:id`)
+
+- Multi-step form with progress indicator at top (indigo active step, muted inactive)
+- Step 1: Flight date selection (radio cards with indigo active border)
+- Step 2: Pilgrim info (with passport scanner AI widget)
+- Step 3: Emergency contact
+- Step 4: Travel preferences
+- Step 5: Custom dynamic fields
+- Step 6: Review summary + payment method selector
+- Bottom: "Back" (ghost) / "Next" (indigo primary) navigation buttons
+- Final submit: Warm orange CTA "Complete Booking" (`#FF7A59`)
+
+---
+
+## 4. Agent Dashboard (`/agent`)
+
+### Prompt
+
+> Design a B2B agent portal for travel agents who book on behalf of clients. Similar sidebar layout to admin but agent-focused. Wallet balance prominently displayed. Deep indigo brand with warm CTA accents.
+
+### Layout
+
+- Same sidebar pattern as admin (collapsible, dark indigo `#1C1F66`)
+- Header: "Raudah Agent" + "B2B Portal" subtitle
+- Mobile bottom nav
+
+### Sidebar Menu
+
+- Overview, Clients, Packages, Bookings, Commissions, Profile, Support, Rules & Policy
+- Active: white bg, indigo text. Inactive: white/70 text
+
+### 4.1 Agent Overview
+
+- **Welcome card** with agent business name, agent code badge (indigo `#EEF0FF` bg)
+- **Stats cards:**
+  - Wallet Balance: Most prominent card, large number in indigo, indigo bg tint
+  - Total Bookings, Active Clients, Commission Earned
+- **Wallet balance** should be very prominent with "Top Up" indication
+- Recent bookings + recent transactions lists
+
+### 4.2 Agent Clients
+
+- Client directory with: Name, Phone, Passport Number, Passport Expiry
+- "Add Client" dialog with full form
+- Search/filter — indigo focus ring on inputs
+
+### 4.3 Agent Packages
+
+- Same package listing but with **wholesale prices** shown
+- Commission amount displayed per package (success green `#22C55E`)
+- "Book for Client" CTA (warm orange `#FF7A59`) instead of direct booking
+
+### 4.4 Agent Book for Client
+
+- Similar wizard to user booking but:
+  - Client selector dropdown at the top
+  - Wholesale price displayed (indigo badge)
+  - Payment via wallet (balance shown in indigo, deduction preview)
+  - Wallet balance check before submission
+
+### 4.5 Agent Commissions
+
+- Commission breakdown per booking
+- Commission type (percentage/fixed) display
+- Total earned summary with success green (`#22C55E`)
+
+### 4.6 Agent Wallet History
+
+- Transaction ledger: Date, Amount, Type (deposit/deduction/refund), Reference, Description
+- Deposits: success green, Deductions: error red, Refunds: info blue
+- Running balance display
+
+### 4.7 Agent Visas
+
+- Visa status tracking for all client bookings
+
+---
+
+## 5. Admin Dashboard (`/admin`)
+
+### Prompt
+
+> Design a comprehensive admin management console. Clean, data-dense, professional. White cards on `#F8FAFC` background. Indigo brand accents. No over-decoration — let the data breathe.
+
+### Layout (AdminLayout)
+
+- Same `SidebarProvider` + collapsible sidebar pattern
+- Sidebar: Dark indigo bg (`#1C1F66`), "Raudah Admin" + "Management Console" in white, role badge (Super Admin/Administrator/Staff — indigo `#EEF0FF` bg)
+- Permission-filtered menu items (17 items) with Lucide icons
+- Top bar: Sidebar trigger + notification bell + avatar (white bar, no border)
+
+### Admin Card Design Language
+
+```
+.admin-card:       bg-white rounded-2xl shadow-sm
+.admin-stat-inset: bg-[#F1F5F9] rounded-xl shadow-inner
+.admin-section-title: text-4xl font-bold text-[#0F172A] tracking-tight
+.admin-card-title: text-base font-bold text-[#0F172A]
+```
+
+### 5.1 Admin Overview
+
+- **Page header:** "Dashboard" (4xl bold `#0F172A`) + "Verify Payments" action button (indigo `#2D3199`) with pending count badge
+- **Two-column layout** (2:1 ratio on xl screens):
+  - **Left column:**
+    - Overview card (white rounded-2xl): Two large inset stat boxes (`#F1F5F9` bg, shadow-inner):
+      - Total Bookings: 5xl bold number + trend badge (green `#22C55E` up / red `#EF4444` down arrow + percentage)
+      - Total Revenue: 5xl bold formatted price + trend badge
+      - Sub-stats row (4 columns): Pilgrims, Confirmed, Agents, Pending Payments (amber for pending)
+    - Revenue Trend chart: Area chart (Recharts) with indigo gradient fill (`#2D3199` → transparent), 6-month X axis, ₦M Y axis
+  - **Right column:**
+    - Recent Bookings card: List items with initial avatar circle (`#EEF0FF` bg, indigo text), name, reference, status badge
+    - Recent Payments card: List with payment icon (green bg), amount (bold), method, status badge
+    - Quick Access card: Manage Packages, View Pilgrims, Agent Applications — chevron links with indigo icon circles
+
+### 5.2 Admin Packages
+
+- CRUD table with: Name, Type, Category, Price, Capacity/Available, Status, Featured toggle
+- Create/Edit modal with full package form (dates, accommodations, inclusions)
+- Status badges: Active (green `#22C55E`), Draft (gray `#64748B`), Archived (muted)
+
+### 5.3 Admin Payments
+
+- Filterable table: All, Pending, Verified, Rejected
+- Each row: Booking ref, Amount, Method, Status, Date, Proof image link
+- Action buttons: Verify (green `#22C55E`), Reject (red `#EF4444`), View proof (indigo)
+- Bulk actions for pending payments
+
+### 5.4 Admin Pilgrims
+
+- Comprehensive pilgrim database with search
+- Table columns: Name, Reference, Package, Status, Passport, Phone
+- Click to open `AdminPilgrimDetailDialog` — full-screen dialog with all pilgrim info, documents, payments, visa tracking, edit capabilities
+
+### 5.5 Admin ID Tags
+
+- Generate pilgrim identification cards
+- `PilgrimIdCard`: Credit-card sized, indigo header strip, company branding, photo, name, passport, QR code, emergency contact
+- Bulk generate for all confirmed pilgrims
+- Export as PDF / image
+
+### 5.6 Admin Visa Management
+
+- Track visa processing for all bookings
+- Assign visa providers, upload documents, send delivery messages, bulk operations
+
+### 5.7 Admin Agents
+
+- Agent directory with: Business Name, Contact Person, Agent Code, Commission, Wallet Balance, Status
+- `AgentCommissionManager`: Set rate + type (percentage/fixed)
+- `AgentWalletManager`: View balance, initiate OTP-verified top-up (indigo button)
+- `WalletTopUpModal`: Amount input → OTP verification flow
+
+### 5.8 Admin Agent Applications
+
+- Review pending applications — Approve (indigo `#2D3199`) / Reject (red `#EF4444`) actions
+
+### 5.9 Admin Support
+
+- Ticket management with filters, real-time chat, assign tickets, priority/status controls, unread indicators
+
+### 5.10 Admin Staff Management
+
+- Staff list, invite via email, permission checkbox matrix, role assignment
+
+### 5.11 Admin Team Chat
+
+- Internal messaging, real-time, contact list + chat window, read receipts
+
+### 5.12 Admin Settings
+
+- Contact info, payment gateway toggles, branding — stored in `site_settings`
+
+### 5.13 Admin Booking Form Builder
+
+- Drag-sortable fields, custom field types, section grouping, enable/disable toggles
+
+### 5.14 Admin Analytics
+
+- Recharts dashboard — indigo-colored charts, booking trends, revenue, agent performance
+
+### 5.15 Admin Activity Log
+
+- Event stream, filterable by event type/user/date
+
+### 5.16 Admin AI Assistant
+
+- Chat interface powered by Google GenAI
+
+---
+
+## Component Pattern Reference
+
+### Card Pattern
+
+```
+bg-white rounded-2xl shadow-sm p-6, border border-[#DCE3F0]
+Title: text-base/text-lg font-bold text-[#0F172A] mb-5
+```
+
+### Stat Inset Pattern
+
+```
+bg-[#F1F5F9] rounded-xl p-5 shadow-inner
+Label: text-sm font-semibold text-[#64748B] (with Lucide icon)
+Value: text-5xl font-bold text-[#0F172A] tracking-tight
+Trend: inline badge (bg-green-100/text-green-600 for up, bg-red-100/text-red-500 for down)
+Sub: text-xs text-[#64748B] mt-2
+```
+
+### List Item Pattern
+
+```
+flex items-center gap-3 py-3.5 (with divide-y divide-[#DCE3F0]/40)
+Avatar: h-10 w-10 rounded-xl bg-[#EEF0FF], centered initial (text-[#2D3199])
+Content: flex-1 min-w-0, name (sm semibold text-[#0F172A] truncate) + sub (xs text-[#64748B])
+Right: Badge or status indicator
+```
+
+### Badge Variants
+
+```
+confirmed/verified: bg-green-100 text-green-700 (#22C55E tint)
+pending:           bg-amber-100 text-amber-700 (#F59E0B tint)
+cancelled/rejected: bg-red-100 text-red-700 (#EF4444 tint)
+completed:         bg-[#EEF0FF] text-[#2D3199]
+```
+
+### Button Patterns
+
+```
+Primary:     bg-[#2D3199] text-white, hover bg-[#25297F], rounded-full, shadow-brand
+Secondary:   bg-[#EEF0FF] text-[#2D3199], hover bg-[#EEF0FF]/80, rounded-xl
+CTA (warm):  bg-[#FF7A59] text-white, hover bg-[#e06b4d], rounded-full, shadow-cta
+Outline:     border-[#2D3199]/40 text-[#2D3199], hover bg-[#EEF0FF]
+Ghost:       text-[#64748B], hover bg-[#F1F5F9], hover text-[#0F172A]
+Destructive: bg-[#EF4444] text-white
+```
+
+### Empty State Pattern
+
+```
+text-center py-10
+Icon: w-14 h-14 bg-[#EEF0FF] rounded-2xl, centered icon (text-[#7B83D6])
+Title: font-medium text-sm text-[#0F172A]
+Sub: text-xs text-[#64748B] mt-1
+CTA: Button with primary-gradient (#2D3199 → #4C56B8)
+```
+
+### Mobile Bottom Nav
+
+- Fixed bottom, white background, 5 icon buttons
+- Active: indigo icon (`#2D3199`) + text, inactive: gray (`#64748B`)
+- Safe area padding for notched phones
+
+---
+
+## Example UI Usage Summary
+
+| Element            | Color                                                |
+| ------------------ | ---------------------------------------------------- |
+| Navbar             | `#FFFFFF` (scrolled) / transparent glass (initial) |
+| Hero section       | gradient `#1C1F66 → #2D3199 → #4C56B8`           |
+| Primary button     | `#2D3199`, hover `#25297F`                       |
+| CTA button         | `#FF7A59` (warm orange pop)                        |
+| Cards              | white with `#DCE3F0` border                        |
+| Sidebar            | `#1C1F66` (dark indigo)                            |
+| Footer             | `#1C1F66`                                          |
+| Active nav items   | `#2D3199` text on white bg                         |
+| Chart fills        | `#2D3199` with gradient to transparent             |
+| Success indicators | `#22C55E`                                          |
+| Warning indicators | `#F59E0B`                                          |
+| Error indicators   | `#EF4444`                                          |

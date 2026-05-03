@@ -1,0 +1,508 @@
+# Raudah Travels — Master Prompt (Part 2: Database Schema)
+
+---
+
+## 1. Custom Enums
+
+| Enum                 | Values                                                                                                                                                        |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app_role`         | `super_admin`, `admin`, `moderator`, `staff`, `agent`, `user`                                                                                     |
+| `package_type`     | `hajj`, `umrah`                                                                                                                                           |
+| `package_category` | `premium`, `standard`, `budget`                                                                                                                         |
+| `package_status`   | `active`, `draft`, `archived`                                                                                                                           |
+| `booking_status`   | `pending`, `confirmed`, `cancelled`, `completed`                                                                                                      |
+| `payment_method`   | `paystack`, `bank_transfer`, `ussd`, `cash`, `wallet`                                                                                               |
+| `payment_status`   | `pending`, `verified`, `rejected`, `refunded`                                                                                                         |
+| `document_type`    | `passport`, `vaccine_certificate`, `visa`, `flight_ticket`, `hotel_voucher`, `booking_confirmation`, `payment_receipt`, `pre_departure_guide` |
+| `agent_status`     | `active`, `suspended`, `pending`                                                                                                                        |
+| `ticket_status`    | `open`, `in_progress`, `resolved`, `closed`                                                                                                           |
+| `ticket_priority`  | `low`, `medium`, `high`, `urgent`                                                                                                                     |
+
+---
+
+## 2. Tables
+
+### 2.1 `profiles`
+
+User profile data, auto-created on signup via trigger.
+
+| Column                  | Type        | Notes                                           |
+| ----------------------- | ----------- | ----------------------------------------------- |
+| `id`                  | UUID PK     | References `auth.users(id)` ON DELETE CASCADE |
+| `full_name`           | TEXT        |                                                 |
+| `email`               | TEXT        |                                                 |
+| `phone`               | TEXT        |                                                 |
+| `avatar_url`          | TEXT        |                                                 |
+| `language_preference` | TEXT        | Default `'en'`                                |
+| `created_at`          | TIMESTAMPTZ |                                                 |
+| `updated_at`          | TIMESTAMPTZ | Auto-updated via trigger                        |
+
+**RLS:** Users see/edit own; Admins see all.
+
+---
+
+### 2.2 `user_roles`
+
+Maps users to roles. A user can have multiple roles.
+
+| Column      | Type         | Notes                         |
+| ----------- | ------------ | ----------------------------- |
+| `id`      | UUID PK      |                               |
+| `user_id` | UUID         | References `auth.users(id)` |
+| `role`    | `app_role` | Default `'user'`            |
+
+**RLS:** Users see own roles; Admins manage all.
+
+---
+
+### 2.3 `packages`
+
+Hajj/Umrah travel packages.
+
+| Column               | Type                 | Notes                                     |
+| -------------------- | -------------------- | ----------------------------------------- |
+| `id`               | UUID PK              |                                           |
+| `name`             | TEXT                 |                                           |
+| `type`             | `package_type`     | `hajj` or `umrah`                     |
+| `category`         | `package_category` | `premium`, `standard`, `budget`     |
+| `season`           | TEXT                 | e.g.,`ramadan`, `shaban`              |
+| `year`             | INTEGER              |                                           |
+| `price`            | NUMERIC              | Full price in NGN                         |
+| `currency`         | TEXT                 | Default `'NGN'`                         |
+| `agent_discount`   | NUMERIC              | Default `0`                             |
+| `deposit_allowed`  | BOOLEAN              |                                           |
+| `minimum_deposit`  | NUMERIC              | Nullable                                  |
+| `capacity`         | INTEGER              | Total slots                               |
+| `available`        | INTEGER              | Remaining slots (auto-managed by trigger) |
+| `inclusions`       | TEXT[]               | List of included services                 |
+| `airlines`         | TEXT[]               |                                           |
+| `departure_cities` | TEXT[]               |                                           |
+| `duration`         | TEXT                 | e.g.,`"18 days"`                        |
+| `description`      | TEXT                 |                                           |
+| `image_url`        | TEXT                 |                                           |
+| `status`           | `package_status`   | Default `'draft'`                       |
+| `featured`         | BOOLEAN              |                                           |
+| `created_at`       | TIMESTAMPTZ          |                                           |
+| `updated_at`       | TIMESTAMPTZ          |                                           |
+
+**RLS:** Anyone can view active packages; Admins manage all.
+
+---
+
+### 2.4 `package_dates`
+
+Flight date options for each package.
+
+| Column                  | Type                   | Notes             |
+| ----------------------- | ---------------------- | ----------------- |
+| `id`                  | UUID PK                |                   |
+| `package_id`          | UUID FK →`packages` | ON DELETE CASCADE |
+| `outbound`            | DATE                   |                   |
+| `outbound_route`      | TEXT                   |                   |
+| `return_date`         | DATE                   |                   |
+| `return_route`        | TEXT                   |                   |
+| `airline`             | TEXT                   |                   |
+| `islamic_date`        | TEXT                   |                   |
+| `islamic_return_date` | TEXT                   |                   |
+
+---
+
+### 2.5 `package_accommodations`
+
+Hotel info per city (Makkah/Madinah).
+
+| Column                   | Type                   | Notes                               |
+| ------------------------ | ---------------------- | ----------------------------------- |
+| `id`                   | UUID PK                |                                     |
+| `package_id`           | UUID FK →`packages` |                                     |
+| `city`                 | TEXT                   | CHECK:`'makkah'` or `'madinah'` |
+| `hotel`                | TEXT                   |                                     |
+| `distance_from_haram`  | TEXT                   |                                     |
+| `distance_from_masjid` | TEXT                   |                                     |
+| `rating`               | INTEGER                | Default `3`                       |
+| `room_types`           | TEXT[]                 |                                     |
+
+---
+
+### 2.6 `agents`
+
+Registered travel agent accounts.
+
+| Column              | Type                            | Notes                           |
+| ------------------- | ------------------------------- | ------------------------------- |
+| `id`              | UUID PK                         |                                 |
+| `user_id`         | UUID UNIQUE FK →`auth.users` |                                 |
+| `business_name`   | TEXT                            |                                 |
+| `contact_person`  | TEXT                            |                                 |
+| `email`           | TEXT                            |                                 |
+| `phone`           | TEXT                            |                                 |
+| `agent_code`      | TEXT UNIQUE                     | Auto-generated identifier       |
+| `commission_rate` | NUMERIC                         | Default `0`                   |
+| `commission_type` | TEXT                            | `'percentage'` or `'fixed'` |
+| `status`          | `agent_status`                | Default `'pending'`           |
+| `created_at`      | TIMESTAMPTZ                     |                                 |
+| `updated_at`      | TIMESTAMPTZ                     |                                 |
+
+**RLS:** Agents see own record; Admins manage all.
+
+---
+
+### 2.7 `agent_clients`
+
+Clients managed by agents.
+
+| Column              | Type                 | Notes |
+| ------------------- | -------------------- | ----- |
+| `id`              | UUID PK              |       |
+| `agent_id`        | UUID FK →`agents` |       |
+| `full_name`       | TEXT                 |       |
+| `email`           | TEXT                 |       |
+| `phone`           | TEXT                 |       |
+| `passport_number` | TEXT                 |       |
+| `passport_expiry` | DATE                 |       |
+| `date_of_birth`   | DATE                 |       |
+| `gender`          | TEXT                 |       |
+| `notes`           | TEXT                 |       |
+| `created_at`      | TIMESTAMPTZ          |       |
+| `updated_at`      | TIMESTAMPTZ          |       |
+
+**RLS:** Agents manage own clients; Admins manage all.
+
+---
+
+### 2.8 `agent_applications`
+
+Applications from users wanting to become agents.
+
+| Column             | Type                     | Notes                                   |
+| ------------------ | ------------------------ | --------------------------------------- |
+| `id`             | UUID PK                  |                                         |
+| `user_id`        | UUID FK →`auth.users` | Nullable (anonymous apps)               |
+| `business_name`  | TEXT                     |                                         |
+| `contact_person` | TEXT                     |                                         |
+| `email`          | TEXT                     |                                         |
+| `phone`          | TEXT                     |                                         |
+| `message`        | TEXT                     |                                         |
+| `status`         | TEXT                     | `pending`, `approved`, `rejected` |
+| `reviewed_by`    | UUID FK →`auth.users` |                                         |
+| `reviewed_at`    | TIMESTAMPTZ              |                                         |
+| `created_at`     | TIMESTAMPTZ              |                                         |
+
+**Security Trigger:** Rate-limits to 3 per hour per email, prevents duplicate active agents.
+
+---
+
+### 2.9 `bookings`
+
+Core booking records.
+
+| Column                             | Type                         | Notes                                   |
+| ---------------------------------- | ---------------------------- | --------------------------------------- |
+| `id`                             | UUID PK                      |                                         |
+| `reference`                      | TEXT UNIQUE                  | Auto-generated:`RTT-{YEAR}-{6-digit}` |
+| `user_id`                        | UUID FK →`auth.users`     |                                         |
+| `package_id`                     | UUID FK →`packages`       |                                         |
+| `package_date_id`                | UUID FK →`package_dates`  |                                         |
+| `status`                         | `booking_status`           | Default `'pending'`                   |
+| `full_name`                      | TEXT                         |                                         |
+| `passport_number`                | TEXT                         |                                         |
+| `passport_expiry`                | DATE                         |                                         |
+| `date_of_birth`                  | DATE                         |                                         |
+| `gender`                         | TEXT                         |                                         |
+| `nationality`                    | TEXT                         |                                         |
+| `place_of_birth`                 | TEXT                         |                                         |
+| `marital_status`                 | TEXT                         | CHECK: single/married/widowed/divorced  |
+| `occupation`                     | TEXT                         |                                         |
+| `phone`                          | TEXT                         |                                         |
+| `address`                        | TEXT                         |                                         |
+| `fathers_name`                   | TEXT                         |                                         |
+| `mothers_name`                   | TEXT                         |                                         |
+| `mahram_name`                    | TEXT                         |                                         |
+| `mahram_relationship`            | TEXT                         |                                         |
+| `mahram_passport`                | TEXT                         |                                         |
+| `meningitis_vaccine_date`        | DATE                         |                                         |
+| `previous_umrah`                 | BOOLEAN                      |                                         |
+| `previous_umrah_year`            | INTEGER                      |                                         |
+| `emergency_contact_name`         | TEXT                         |                                         |
+| `emergency_contact_phone`        | TEXT                         |                                         |
+| `emergency_contact_relationship` | TEXT                         |                                         |
+| `departure_city`                 | TEXT                         |                                         |
+| `room_preference`                | TEXT                         |                                         |
+| `special_requests`               | TEXT                         |                                         |
+| `agent_id`                       | UUID FK →`agents`         | Nullable (direct bookings)              |
+| `agent_client_id`                | UUID FK →`agent_clients`  | Nullable                                |
+| `custom_data`                    | JSONB                        | Dynamic form field data                 |
+| `visa_delivery_message`          | TEXT                         | Admin message on visa delivery          |
+| `visa_provider_id`               | UUID FK →`visa_providers` |                                         |
+| `ticket_document_url`            | TEXT                         | Flight ticket upload                    |
+| `ticket_delivery_message`        | TEXT                         |                                         |
+| `ticket_uploaded_at`             | TIMESTAMPTZ                  |                                         |
+| `created_at`                     | TIMESTAMPTZ                  |                                         |
+| `updated_at`                     | TIMESTAMPTZ                  |                                         |
+
+**Triggers:** Auto reference generation, inventory management, status change notifications, integrity protection.
+
+---
+
+### 2.10 `payments`
+
+| Column                   | Type                     | Notes                                   |
+| ------------------------ | ------------------------ | --------------------------------------- |
+| `id`                   | UUID PK                  |                                         |
+| `booking_id`           | UUID FK →`bookings`   |                                         |
+| `amount`               | NUMERIC                  |                                         |
+| `method`               | `payment_method`       | paystack/bank_transfer/ussd/cash/wallet |
+| `status`               | `payment_status`       | pending/verified/rejected/refunded      |
+| `paystack_reference`   | TEXT                     |                                         |
+| `proof_of_payment_url` | TEXT                     | For bank transfers                      |
+| `verified_by`          | UUID FK →`auth.users` |                                         |
+| `verified_at`          | TIMESTAMPTZ              |                                         |
+| `notes`                | TEXT                     |                                         |
+| `created_at`           | TIMESTAMPTZ              |                                         |
+
+**Triggers:** Amount verification, enforcement, status change notifications.
+
+---
+
+### 2.11 `documents`
+
+| Column          | Type              | Notes |
+| --------------- | ----------------- | ----- |
+| `id`          | UUID PK           |       |
+| `booking_id`  | UUID FK           |       |
+| `user_id`     | UUID FK           |       |
+| `type`        | `document_type` |       |
+| `file_url`    | TEXT              |       |
+| `file_name`   | TEXT              |       |
+| `uploaded_at` | TIMESTAMPTZ       |       |
+
+---
+
+### 2.12 `notifications`
+
+| Column         | Type        | Notes                      |
+| -------------- | ----------- | -------------------------- |
+| `id`         | UUID PK     |                            |
+| `user_id`    | UUID        |                            |
+| `title`      | TEXT        |                            |
+| `message`    | TEXT        |                            |
+| `type`       | TEXT        | info/success/error         |
+| `read`       | BOOLEAN     |                            |
+| `link`       | TEXT        | Deep link to relevant page |
+| `created_at` | TIMESTAMPTZ |                            |
+
+**Realtime enabled.**
+
+---
+
+### 2.13 `support_tickets`
+
+| Column                 | Type                   | Notes                               |
+| ---------------------- | ---------------------- | ----------------------------------- |
+| `id`                 | UUID PK                |                                     |
+| `user_id`            | UUID FK →`profiles` |                                     |
+| `subject`            | TEXT                   |                                     |
+| `description`        | TEXT                   |                                     |
+| `category`           | TEXT                   |                                     |
+| `status`             | `ticket_status`      |                                     |
+| `priority`           | `ticket_priority`    |                                     |
+| `assigned_to`        | UUID                   | Added via support routing migration |
+| `last_message_at`    | TIMESTAMPTZ            |                                     |
+| `unread_count_admin` | INTEGER                |                                     |
+| `created_at`         | TIMESTAMPTZ            |                                     |
+| `updated_at`         | TIMESTAMPTZ            |                                     |
+
+---
+
+### 2.14 `support_messages`
+
+| Column             | Type                          | Notes |
+| ------------------ | ----------------------------- | ----- |
+| `id`             | UUID PK                       |       |
+| `ticket_id`      | UUID FK →`support_tickets` |       |
+| `sender_id`      | UUID FK →`profiles`        |       |
+| `message`        | TEXT                          |       |
+| `attachment_url` | TEXT                          |       |
+| `created_at`     | TIMESTAMPTZ                   |       |
+
+**Realtime enabled.** Trigger auto-notifies relevant staff based on specialties.
+
+---
+
+### 2.15 `bank_accounts`
+
+| Column             | Type        | Notes |
+| ------------------ | ----------- | ----- |
+| `id`             | UUID PK     |       |
+| `bank_name`      | TEXT        |       |
+| `account_name`   | TEXT        |       |
+| `account_number` | TEXT        |       |
+| `sort_code`      | TEXT        |       |
+| `is_active`      | BOOLEAN     |       |
+| `created_at`     | TIMESTAMPTZ |       |
+
+---
+
+### 2.16 `user_activity`
+
+Activity tracking for analytics.
+
+| Column         | Type        | Notes |
+| -------------- | ----------- | ----- |
+| `id`         | UUID PK     |       |
+| `user_id`    | UUID FK     |       |
+| `event_type` | TEXT        |       |
+| `package_id` | UUID FK     |       |
+| `booking_id` | UUID FK     |       |
+| `metadata`   | JSONB       |       |
+| `created_at` | TIMESTAMPTZ |       |
+
+---
+
+### 2.17 `site_settings`
+
+Key-value config store.
+
+| Column         | Type        | Notes                                           |
+| -------------- | ----------- | ----------------------------------------------- |
+| `id`         | UUID PK     |                                                 |
+| `key`        | TEXT UNIQUE | e.g.,`contact_whatsapp`, `paystack_enabled` |
+| `value`      | JSONB       |                                                 |
+| `updated_at` | TIMESTAMPTZ |                                                 |
+| `updated_by` | UUID FK     |                                                 |
+
+---
+
+### 2.18 `booking_amendment_requests`
+
+| Column                | Type        | Notes                     |
+| --------------------- | ----------- | ------------------------- |
+| `id`                | UUID PK     |                           |
+| `booking_id`        | UUID FK     |                           |
+| `user_id`           | UUID FK     |                           |
+| `requested_changes` | JSONB       |                           |
+| `status`            | TEXT        | pending/approved/rejected |
+| `admin_notes`       | TEXT        |                           |
+| `reviewed_by`       | UUID FK     |                           |
+| `reviewed_at`       | TIMESTAMPTZ |                           |
+| `created_at`        | TIMESTAMPTZ |                           |
+
+---
+
+### 2.19 `staff_permissions`
+
+Granular permissions for staff users.
+
+| Column         | Type        | Notes                             |
+| -------------- | ----------- | --------------------------------- |
+| `id`         | UUID PK     |                                   |
+| `user_id`    | UUID FK     |                                   |
+| `permission` | TEXT        | CHECK constraint for valid values |
+| `granted_by` | UUID FK     |                                   |
+| `created_at` | TIMESTAMPTZ |                                   |
+
+Valid permissions: `overview`, `packages`, `payments`, `pilgrims`, `analytics`, `id_tags`, `agents`, `bank_accounts`, `activity`, `amendments`, `support`, `settings`, `staff_management`, `visa_management`
+
+---
+
+### 2.20 `booking_form_fields`
+
+Dynamic/custom booking form fields managed by admin.
+
+| Column          | Type        | Notes                                       |
+| --------------- | ----------- | ------------------------------------------- |
+| `id`          | UUID PK     |                                             |
+| `label`       | TEXT        |                                             |
+| `field_name`  | TEXT        |                                             |
+| `field_type`  | TEXT        | text/textarea/number/select/file            |
+| `placeholder` | TEXT        |                                             |
+| `required`    | BOOLEAN     |                                             |
+| `applies_to`  | TEXT        | user/agent/both/admin/all                   |
+| `sort_order`  | INTEGER     |                                             |
+| `options`     | JSONB       | For select fields                           |
+| `accept`      | TEXT        | For file fields                             |
+| `is_system`   | BOOLEAN     |                                             |
+| `enabled`     | BOOLEAN     |                                             |
+| `section`     | TEXT        | pilgrim_info/visa_details/travel/additional |
+| `created_at`  | TIMESTAMPTZ |                                             |
+| `updated_at`  | TIMESTAMPTZ |                                             |
+
+---
+
+### 2.21 `agent_wallets`
+
+Prepaid wallet balance for agents.
+
+| Column         | Type                        | Notes      |
+| -------------- | --------------------------- | ---------- |
+| `id`         | UUID PK                     |            |
+| `agent_id`   | UUID UNIQUE FK →`agents` |            |
+| `balance`    | NUMERIC                     | CHECK >= 0 |
+| `created_at` | TIMESTAMPTZ                 |            |
+| `updated_at` | TIMESTAMPTZ                 |            |
+
+**Auto-created** when agent record is inserted (trigger).
+
+---
+
+### 2.22 `wallet_transactions`
+
+Ledger of all wallet operations.
+
+| Column          | Type                 | Notes                                  |
+| --------------- | -------------------- | -------------------------------------- |
+| `id`          | UUID PK              |                                        |
+| `agent_id`    | UUID FK →`agents` |                                        |
+| `amount`      | NUMERIC              |                                        |
+| `type`        | TEXT                 | `deposit`, `deduction`, `refund` |
+| `reference`   | TEXT UNIQUE          | e.g., booking ID                       |
+| `description` | TEXT                 |                                        |
+| `created_at`  | TIMESTAMPTZ          |                                        |
+
+---
+
+### 2.23 `admin_otp_requests`
+
+OTP verification for admin wallet top-ups.
+
+| Column         | Type                     | Notes      |
+| -------------- | ------------------------ | ---------- |
+| `id`         | UUID PK                  |            |
+| `admin_id`   | UUID FK →`auth.users` |            |
+| `agent_id`   | UUID FK →`agents`     |            |
+| `amount`     | NUMERIC                  |            |
+| `otp_hash`   | TEXT                     | Hashed OTP |
+| `expires_at` | TIMESTAMPTZ              |            |
+| `used`       | BOOLEAN                  |            |
+| `created_at` | TIMESTAMPTZ              |            |
+
+---
+
+### 2.24 `staff_support_specialties`
+
+Maps staff members to support ticket categories.
+
+| Column                    | Type                     | Notes |
+| ------------------------- | ------------------------ | ----- |
+| `id`                    | UUID PK                  |       |
+| `user_id`               | UUID FK →`auth.users` |       |
+| `category`              | TEXT                     |       |
+| `created_at`            | TIMESTAMPTZ              |       |
+| UNIQUE(user_id, category) |                          |       |
+
+---
+
+### 2.25 `staff_messages`
+
+Internal team chat between staff members.
+
+| Column          | Type                   | Notes |
+| --------------- | ---------------------- | ----- |
+| `id`          | UUID PK                |       |
+| `sender_id`   | UUID FK →`profiles` |       |
+| `receiver_id` | UUID FK →`profiles` |       |
+| `content`     | TEXT                   |       |
+| `read_at`     | TIMESTAMPTZ            |       |
+| `created_at`  | TIMESTAMPTZ            |       |
+
+**Realtime enabled.**

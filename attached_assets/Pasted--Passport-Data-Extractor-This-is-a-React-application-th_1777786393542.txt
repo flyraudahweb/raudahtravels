@@ -1,0 +1,396 @@
+# Passport Data Extractor
+
+This is a React application that allows users to upload a passport image. It uses the Gemini AI model (`gemini-3-flash-preview`) to:
+1. Validate the image quality (rejecting blurry or cropped images).
+2. Extract key data fields (Name, Document Number, Nationality, etc.).
+3. Detect the bounding box of the person's face and extract it as a profile picture.
+
+## Prerequisites
+
+Ensure you have the following dependencies installed in your Vite + React project:
+
+```bash
+npm install @google/genai lucide-react
+npm install -D tailwindcss @tailwindcss/vite
+```
+
+Make sure Tailwind CSS is properly configured in your `vite.config.ts` and `src/index.css`.
+
+## Environment Setup
+
+You need a Gemini API key. Create a `.env` file in the root of your project and add your key:
+
+```env
+VITE_GEMINI_API_KEY=your_api_key_here
+```
+*(Note: In the provided code, it uses `process.env.GEMINI_API_KEY` which is specific to the AI Studio environment. In a standard Vite app, you should use `import.meta.env.VITE_GEMINI_API_KEY` and update the initialization accordingly).*
+
+## Code
+
+Replace the contents of your `src/App.tsx` with the following code:
+
+```tsx
+import React, { useState, useRef } from 'react';
+import { Upload, User, Loader2, FileImage } from 'lucide-react';
+import { GoogleGenAI, Type } from '@google/genai';
+
+// Initialize Gemini AI. 
+// Note: Adjust this line if you are using import.meta.env.VITE_GEMINI_API_KEY in a standard Vite setup.
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+interface PassportData {
+  isAcceptableQuality: boolean;
+  rejectionReason: string;
+  firstName: string;
+  lastName: string;
+  documentNumber: string;
+  nationality: string;
+  dateOfBirth: string;
+  sex: string;
+  dateOfIssue: string;
+  dateOfExpiry: string;
+  faceBoundingBox: {
+    ymin: number;
+    xmin: number;
+    ymax: number;
+    xmax: number;
+  };
+}
+
+export default function App() {
+  const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [profilePicUrl, setProfilePicUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [formData, setFormData] = useState<Partial<PassportData>>({});
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (!selectedFile) return;
+
+    setFile(selectedFile);
+    setPreviewUrl(URL.createObjectURL(selectedFile));
+    setProfilePicUrl(null);
+    setFormData({});
+    setError(null);
+    setLoading(true);
+
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === 'string') {
+            resolve(reader.result.split(',')[1]);
+          } else {
+            reject(new Error('Failed to read file'));
+          }
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(selectedFile);
+      });
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [
+          {
+            inlineData: {
+              data: base64,
+              mimeType: selectedFile.type,
+            },
+          },
+          {
+            text: "Analyze the provided passport image. First, evaluate the image quality. If the image is blurry, cropped, has severe glare, or is otherwise hard to read, set 'isAcceptableQuality' to false and provide a specific 'rejectionReason' (e.g., 'The image is too blurry to read the details reliably. Please upload a clearer photo.'). If the image is clear and readable, set 'isAcceptableQuality' to true and leave 'rejectionReason' empty. Then, extract the following information: First Name (Given Names), Last Name (Surname), Document Number (Passport Number), Nationality, Date of Birth, Sex, Date of Issue, Date of Expiry. Also, find the bounding box of the person's face photo on the passport. Return the bounding box as an object with ymin, xmin, ymax, xmax properties, where values are normalized between 0 and 1. If the image is rejected, you can return empty strings for the extracted text fields and 0 for bounding box coordinates. Return the result as a JSON object.",
+          },
+        ],
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              isAcceptableQuality: { type: Type.BOOLEAN },
+              rejectionReason: { type: Type.STRING },
+              firstName: { type: Type.STRING },
+              lastName: { type: Type.STRING },
+              documentNumber: { type: Type.STRING },
+              nationality: { type: Type.STRING },
+              dateOfBirth: { type: Type.STRING },
+              sex: { type: Type.STRING },
+              dateOfIssue: { type: Type.STRING },
+              dateOfExpiry: { type: Type.STRING },
+              faceBoundingBox: {
+                type: Type.OBJECT,
+                properties: {
+                  ymin: { type: Type.NUMBER },
+                  xmin: { type: Type.NUMBER },
+                  ymax: { type: Type.NUMBER },
+                  xmax: { type: Type.NUMBER },
+                },
+                required: ['ymin', 'xmin', 'ymax', 'xmax'],
+              },
+            },
+            required: [
+              'isAcceptableQuality',
+              'rejectionReason',
+              'firstName',
+              'lastName',
+              'documentNumber',
+              'nationality',
+              'dateOfBirth',
+              'sex',
+              'dateOfIssue',
+              'dateOfExpiry',
+              'faceBoundingBox',
+            ],
+          },
+        },
+      });
+
+      if (response.text) {
+        const data = JSON.parse(response.text) as PassportData;
+        if (!data.isAcceptableQuality) {
+          setError(data.rejectionReason || 'The image is not clear enough. Please upload a better quality picture.');
+        } else {
+          setFormData(data);
+          await extractProfilePic(selectedFile, data.faceBoundingBox);
+        }
+      } else {
+        throw new Error('No response from AI');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Failed to extract data. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const extractProfilePic = async (
+    imageFile: File,
+    bbox: { ymin: number; xmin: number; ymax: number; xmax: number }
+  ) => {
+    return new Promise<void>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Could not get canvas context'));
+          return;
+        }
+
+        // Calculate pixel coordinates from normalized coordinates
+        const x = bbox.xmin * img.width;
+        const y = bbox.ymin * img.height;
+        const width = (bbox.xmax - bbox.xmin) * img.width;
+        const height = (bbox.ymax - bbox.ymin) * img.height;
+
+        canvas.width = width;
+        canvas.height = height;
+
+        ctx.drawImage(img, x, y, width, height, 0, 0, width, height);
+        setProfilePicUrl(canvas.toDataURL('image/jpeg'));
+        resolve();
+      };
+      img.onerror = reject;
+      img.src = URL.createObjectURL(imageFile);
+    });
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  return (
+    <div className="min-h-screen bg-zinc-50 py-12 px-4 sm:px-6 lg:px-8 font-sans text-zinc-900">
+      <div className="max-w-3xl mx-auto space-y-8">
+        <div className="text-center">
+          <h1 className="text-3xl font-semibold tracking-tight text-zinc-900">
+            Passport Data Extractor
+          </h1>
+          <p className="mt-2 text-sm text-zinc-500">
+            Upload your passport to automatically extract your details and profile picture.
+          </p>
+        </div>
+
+        <div className="bg-white shadow-sm rounded-2xl border border-zinc-200 overflow-hidden">
+          <div className="p-6 sm:p-8">
+            <div className="flex flex-col sm:flex-row gap-8">
+              {/* Left Column: Upload & Profile Pic */}
+              <div className="flex flex-col items-center space-y-6 sm:w-1/3">
+                <div className="relative w-32 h-32 rounded-full overflow-hidden bg-zinc-100 border-4 border-white shadow-md flex items-center justify-center">
+                  {profilePicUrl ? (
+                    <img
+                      src={profilePicUrl}
+                      alt="Profile"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <User className="w-12 h-12 text-zinc-300" />
+                  )}
+                </div>
+
+                <div className="w-full">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={loading}
+                    className="w-full flex items-center justify-center px-4 py-2 border border-zinc-300 shadow-sm text-sm font-medium rounded-xl text-zinc-700 bg-white hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Analyzing...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4 mr-2" />
+                        Upload Passport
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {previewUrl && (
+                  <div className="w-full mt-4 rounded-xl overflow-hidden border border-zinc-200">
+                    <div className="bg-zinc-100 p-2 flex items-center justify-center text-xs text-zinc-500 font-medium border-b border-zinc-200">
+                      <FileImage className="w-3 h-3 mr-1" />
+                      Original Image
+                    </div>
+                    <img src={previewUrl} alt="Passport Preview" className="w-full h-auto" />
+                  </div>
+                )}
+              </div>
+
+              {/* Right Column: Form Data */}
+              <div className="flex-1 space-y-4">
+                {error && (
+                  <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-sm text-red-600">
+                    {error}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                      First Name
+                    </label>
+                    <input
+                      type="text"
+                      name="firstName"
+                      value={formData.firstName || ''}
+                      onChange={handleInputChange}
+                      className="block w-full rounded-xl border-zinc-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border bg-zinc-50"
+                      placeholder="John"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                      Last Name
+                    </label>
+                    <input
+                      type="text"
+                      name="lastName"
+                      value={formData.lastName || ''}
+                      onChange={handleInputChange}
+                      className="block w-full rounded-xl border-zinc-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border bg-zinc-50"
+                      placeholder="Doe"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                      Document Number
+                    </label>
+                    <input
+                      type="text"
+                      name="documentNumber"
+                      value={formData.documentNumber || ''}
+                      onChange={handleInputChange}
+                      className="block w-full rounded-xl border-zinc-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border bg-zinc-50 font-mono"
+                      placeholder="A1234567"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                      Nationality
+                    </label>
+                    <input
+                      type="text"
+                      name="nationality"
+                      value={formData.nationality || ''}
+                      onChange={handleInputChange}
+                      className="block w-full rounded-xl border-zinc-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border bg-zinc-50"
+                      placeholder="USA"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                      Date of Birth
+                    </label>
+                    <input
+                      type="text"
+                      name="dateOfBirth"
+                      value={formData.dateOfBirth || ''}
+                      onChange={handleInputChange}
+                      className="block w-full rounded-xl border-zinc-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border bg-zinc-50"
+                      placeholder="DD/MM/YYYY"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                      Sex
+                    </label>
+                    <input
+                      type="text"
+                      name="sex"
+                      value={formData.sex || ''}
+                      onChange={handleInputChange}
+                      className="block w-full rounded-xl border-zinc-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border bg-zinc-50"
+                      placeholder="M/F"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                      Date of Issue
+                    </label>
+                    <input
+                      type="text"
+                      name="dateOfIssue"
+                      value={formData.dateOfIssue || ''}
+                      onChange={handleInputChange}
+                      className="block w-full rounded-xl border-zinc-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border bg-zinc-50"
+                      placeholder="DD/MM/YYYY"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-xs font-medium text-zinc-500 uppercase tracking-wider">
+                      Date of Expiry
+                    </label>
+                    <input
+                      type="text"
+                      name="dateOfExpiry"
+                      value={formData.dateOfExpiry || ''}
+                      onChange={handleInputChange}
+                      className="block w-full rounded-xl border-zinc-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border bg-zinc-50"
+                      placeholder="DD/MM/YYYY"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+```

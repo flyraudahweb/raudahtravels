@@ -1,0 +1,458 @@
+# Raudah Travels — Master Prompt (Part 3: Features Deep Dive)
+
+---
+
+## 1. Landing Page (`/`)
+
+### Components
+
+- **TopBar** — Contact info, social links
+- **Header** — Logo, navigation, language switcher (EN/AR/HA), login/register CTAs
+- **Hero** — Auto-rotating background slideshow (3 images, crossfade), video panel, search widget (Country/Type/Month/Persons), "Become an Agent" CTA, staggered text animation
+- **PackagesSection** — Fetches active packages from Supabase, renders `PackageCard` grid
+- **WhyChoose** — Trust indicators (NAHCON licensed, 15+ years, 5-star hotels)
+- **Testimonials** — Customer reviews carousel
+- **CTABanner** — Call-to-action with WhatsApp link
+- **Footer** — Company info, quick links, contact details
+- **WhatsAppFloat** — Floating WhatsApp chat button
+
+### Search Widget
+
+The hero search filters packages by:
+
+- Country (Nigeria / Niger)
+- Package Type (Hajj / Umrah)
+- Month (dynamically populated from `package_dates.outbound`)
+- Number of persons
+
+Redirects to `/packages?type=hajj&month=2026-03` etc.
+
+---
+
+## 2. Package System
+
+### Package Listing (`/packages`)
+
+- Fetches from Supabase `packages` table (status = `active`)
+- Joins `package_dates` and `package_accommodations`
+- Filters: Type (Hajj/Umrah), Category (Premium/Standard/Budget), Price range
+- Sort: Featured first, then by price
+- Each card shows: name, type badge, category badge, price, duration, airlines, available slots, inclusions preview
+
+### Package Detail (`/packages/:id`)
+
+- Full package info with all dates, accommodations (Makkah + Madinah hotels), all inclusions
+- "Book Now" CTA → redirects to `/dashboard/book/:id` (requires login)
+- Shows availability count and deposit option if enabled
+
+### Package Data Model
+
+```typescript
+interface TravelPackage {
+  id: string;
+  name: string;
+  type: "hajj" | "umrah";
+  category: "premium" | "standard" | "budget";
+  season?: string;
+  year: number;
+  price: number;          // Full price in NGN
+  currency: string;       // "NGN"
+  agentDiscount: number;  // Flat discount for agents
+  depositAllowed: boolean;
+  minimumDeposit?: number;
+  capacity: number;
+  available: number;      // Auto-decremented on booking
+  inclusions: string[];
+  airlines: string[];
+  departureCities: string[];
+  duration: string;
+  dates: PackageDate[];
+  makkah: PackageAccommodation;
+  madinah: PackageAccommodation;
+  status: "active" | "draft" | "archived";
+  featured: boolean;
+}
+```
+
+---
+
+## 3. Booking System
+
+### User Booking Flow (`/dashboard/book/:id`)
+
+The `BookingWizard` is a multi-step form:
+
+1. **Select Flight Date** — Choose from available `package_dates`
+2. **Pilgrim Info** — Full name, passport, DOB, gender, nationality, etc.
+3. **Emergency Contact** — Name, phone, relationship
+4. **Travel Preferences** — Departure city, room preference, special requests
+5. **Custom Fields** — Dynamic fields from `booking_form_fields` table
+6. **Review & Pay** — Summary + payment method selection
+
+**Passport Scanner:** Uses `PassportScannerWidget` with AI-powered OCR (via `extract-passport-data` edge function) to auto-fill passport fields from uploaded image.
+
+### Agent Booking Flow (`/agent/book/:id`)
+
+`AgentBookForClient` works similarly but:
+
+- Agent selects an existing client from `agent_clients` or creates new
+- Price is calculated as wholesale (package price minus commission)
+- Payment deducted from agent's **wallet** atomically via `process_agent_booking` RPC
+- Booking is auto-confirmed (status = `'confirmed'`) since wallet payment is instant
+
+### Admin Booking (`/admin/book-pilgrim`)
+
+- Admin can book on behalf of any user
+- Can set any status, bypass payment validation
+- Uses `AdminBookPilgrim` page
+
+### Booking Reference
+
+Auto-generated: `RTT-{YEAR}-{6-digit random}` (e.g., `RTT-2026-482937`)
+
+### Inventory Management
+
+Trigger `handle_booking_inventory` automatically:
+
+- INSERT → `available -= 1`
+- UPDATE to cancelled → `available += 1`
+- UPDATE from cancelled → `available -= 1`
+- DELETE (non-cancelled) → `available += 1`
+
+### Booking Integrity Protection
+
+Trigger `protect_booking_integrity` prevents non-admin users from modifying:
+
+- `status`, `package_id`, `agent_id`, `user_id`, `reference`, `agent_client_id`
+
+### Amendment Requests
+
+Users can request changes to their bookings via `booking_amendment_requests`. Admin reviews and approves/rejects with notes.
+
+---
+
+## 4. Payment System
+
+### Payment Methods
+
+| Method                  | Flow                                                                                                                                                 |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Paystack**      | `create-paystack-checkout` edge function → redirect to Paystack → callback `/payment/callback` → `verify-paystack-payment` → auto-verified |
+| **Bank Transfer** | User uploads proof → admin manually verifies                                                                                                        |
+| **USSD**          | Similar to bank transfer flow                                                                                                                        |
+| **Cash**          | Admin records payment manually                                                                                                                       |
+| **Wallet**        | Agent-only, deducted atomically via RPC                                                                                                              |
+
+### Payment Amount Validation
+
+Two trigger functions ensure payment integrity:
+
+- `verify_payment_amount` — Checks amount matches package price (or deposit if allowed), calculates wholesale for agent bookings
+- `enforce_payment_amount` — Server-side price enforcement for non-Paystack methods
+
+### Paystack Integration
+
+1. Frontend calls `create-paystack-checkout` edge function with booking ID
+2. Edge function creates Paystack transaction, returns checkout URL
+3. User completes payment on Paystack
+4. `paystack-webhook` edge function receives confirmation
+5. Payment status updated to `'verified'`
+6. Alternative: `verify-paystack-payment` for manual verification
+
+### Payment Receipt
+
+`PaymentReceipt` component generates downloadable PDF receipts with:
+
+- Company branding
+- Booking reference
+- Payment details
+- QR code
+
+---
+
+## 5. Agent/Wallet System
+
+### Agent Lifecycle
+
+1. **Application:** User submits via `BecomeAgentDialog` on landing page → creates `agent_applications` row
+2. **Review:** Admin reviews in `AdminAgentApplications` → approve/reject
+3. **Approval:** `approve-agent-application` edge function creates `agents` record, assigns `agent` role, auto-creates `agent_wallets` (trigger)
+4. **Direct Creation:** Admin can create agent directly via `create-agent-direct` edge function
+
+### Agent Wallet
+
+- **Balance:** Stored in `agent_wallets.balance` (CHECK >= 0)
+- **Top-up Flow:**
+  1. Admin initiates top-up via `WalletTopUpModal` → calls `admin-topup-wallet` edge function
+  2. OTP sent to admin's email → stored as hash in `admin_otp_requests`
+  3. Admin enters OTP → `verify-topup-otp` verifies and credits wallet
+  4. Transaction logged in `wallet_transactions` (type: `deposit`)
+- **Deduction:** Atomic via `process_agent_booking` RPC:
+  1. Locks wallet row (`FOR UPDATE`)
+  2. Calculates server-side wholesale price
+  3. Checks balance >= price
+  4. Deducts balance, creates booking (confirmed), creates payment (verified), logs transaction
+
+### Commission System
+
+- `commission_rate` — Numeric rate
+- `commission_type` — `'percentage'` or `'fixed'`
+- **Wholesale Price Calculation:**
+  - Fixed: `package_price - commission_rate`
+  - Percentage: `package_price - (package_price × rate / 100)`
+  - Fallback: `package_price - agent_discount`
+
+### Agent Dashboard Features
+
+| Page                      | Features                                                                     |
+| ------------------------- | ---------------------------------------------------------------------------- |
+| **Overview**        | Stats cards (bookings, clients, wallet balance, commission), recent activity |
+| **Clients**         | CRUD client records, passport info management                                |
+| **Packages**        | Browse available packages with wholesale prices shown                        |
+| **Book for Client** | Multi-step wizard, wallet payment, auto-confirm                              |
+| **Bookings**        | View all agent bookings with status filters                                  |
+| **Commissions**     | Commission history and earnings breakdown                                    |
+| **Wallet History**  | Transaction ledger (deposits, deductions, refunds)                           |
+| **Visas**           | Track visa status for all client bookings                                    |
+| **Support**         | Create/manage support tickets                                                |
+| **Rules & Policy**  | Agent terms and guidelines                                                   |
+
+---
+
+## 6. Visa Management System
+
+### Admin Visa Management (`/admin/visa-management`)
+
+- Track visa processing status for all bookings
+- Assign visa providers (`visa_providers` table)
+- Upload visa documents
+- Send visa delivery messages to pilgrims
+- Bulk operations
+
+### Booking Visa Fields
+
+| Field                       | Purpose                           |
+| --------------------------- | --------------------------------- |
+| `visa_provider_id`        | Which provider processed the visa |
+| `visa_delivery_message`   | Custom message sent with visa     |
+| `ticket_document_url`     | Flight ticket upload URL          |
+| `ticket_delivery_message` | Message sent with ticket          |
+| `ticket_uploaded_at`      | Timestamp of ticket upload        |
+
+### User/Agent Visa View
+
+- Users see visa status in `DashboardVisas`
+- Agents see all client visa statuses in `AgentVisas`
+
+---
+
+## 7. Support System
+
+### Ticket Flow
+
+1. User creates ticket in `DashboardSupport` → `support_tickets` row
+2. **Specialty Routing:** Trigger checks `staff_support_specialties` for matching category
+   - If specialists exist → notify them
+   - If assigned_to exists → notify only assignee
+   - Fallback → notify all admins
+3. Messages exchanged via `support_messages` (realtime)
+4. Admin manages in `AdminSupport` with priority/status controls
+5. Unread counter tracked per ticket
+
+### Platinum Support Chat
+
+`PlatinumSupportChat` component provides premium agent support.
+
+---
+
+## 8. ID Tag System (`/admin/id-tags`)
+
+- Generate pilgrim identification cards with:
+  - Photo, name, passport number
+  - Package info, booking reference
+  - QR code (scannable)
+  - Emergency contact
+- Export as PDF/image
+- Bulk generation for all confirmed pilgrims
+
+### PilgrimIdCard Component
+
+Uses `html2canvas` + `jsPDF` for PDF generation with:
+
+- Company branding
+- Pilgrim photo
+- QR code (via `qrcode.react`)
+- Key travel details
+
+---
+
+## 9. Admin Dashboard Features
+
+### Overview (`/admin`)
+
+- KPI cards: Total bookings, revenue, active packages, pending payments
+- Recent bookings table
+- Quick action buttons
+
+### Packages (`/admin/packages`)
+
+- CRUD packages with all fields
+- Manage dates and accommodations
+- Toggle featured/status
+- Capacity management
+
+### Payments (`/admin/payments`)
+
+- View all payments with status filters
+- Verify/reject bank transfer payments
+- View proof of payment images
+- Payment analytics
+
+### Pilgrims (`/admin/pilgrims`)
+
+- Full pilgrim database with search/filter
+- `AdminPilgrimDetailDialog` — Comprehensive detail view/edit
+- Export pilgrim data
+- Booking history per pilgrim
+
+### Analytics (`/admin/analytics`)
+
+- Charts via Recharts
+- Booking trends, revenue, package performance
+- Agent performance metrics
+
+### Agents (`/admin/agents`)
+
+- Manage agent accounts (activate/suspend)
+- `AgentCommissionManager` — Set commission rates
+- `AgentWalletManager` — View/top-up wallets
+- View agent bookings and clients
+
+### Staff Management (`/admin/staff`)
+
+- Invite new staff via email (`invite-staff` edge function)
+- Assign/revoke granular permissions
+- Role management (staff/admin/super_admin)
+
+### Team Chat (`/admin/chat`)
+
+- Internal messaging between staff members
+- Real-time via Supabase Realtime on `staff_messages`
+- Read receipts
+
+### Settings (`/admin/settings`)
+
+- Contact info (WhatsApp, phone, email, address)
+- Payment gateway config (enable/disable Paystack)
+- Company branding
+- Site-wide configuration via `site_settings` table
+
+### Booking Form Builder (`/admin/booking-form`)
+
+- Manage dynamic booking form fields
+- Add custom fields with types (text/textarea/number/select/file)
+- Control visibility (user/agent/both/admin)
+- Organize by section (pilgrim_info/visa_details/travel/additional)
+- Drag-sort ordering
+
+### AI Assistant (`/admin/ai-assistant`)
+
+- Chat interface powered by Google GenAI (`@google/genai`)
+- Answers admin queries about the platform
+
+### Activity Log (`/admin/activity`)
+
+- View all `user_activity` events
+- Filter by event type, user, date
+
+### Bank Accounts (`/admin/bank-accounts`)
+
+- Manage company bank accounts for transfers
+- Activate/deactivate accounts
+
+### Amendment Requests (`/admin/amendments`)
+
+- Review user-submitted booking change requests
+- Approve/reject with admin notes
+
+---
+
+## 10. Internationalization (i18n)
+
+### Supported Languages
+
+| Code   | Language | Direction |
+| ------ | -------- | --------- |
+| `en` | English  | LTR       |
+| `ar` | Arabic   | RTL       |
+| `ha` | Hausa    | LTR       |
+
+### Implementation
+
+- `i18next` + `react-i18next`
+- Locale JSON files in `src/i18n/locales/`
+- User preference stored in `profiles.language_preference`
+- Language switcher in header
+
+---
+
+## 11. PWA Support
+
+- Configured via `vite-plugin-pwa`
+- Install page at `/install` with platform-specific instructions
+- Offline banner component (`OfflineBanner`)
+- Service worker for caching
+
+---
+
+## 12. Key Database Functions
+
+| Function                                | Purpose                                     |
+| --------------------------------------- | ------------------------------------------- |
+| `has_role(user_id, role)`             | Hierarchical role check (used in RLS)       |
+| `has_permission(user_id, permission)` | Permission check (admins auto-pass)         |
+| `handle_new_user()`                   | Auth trigger: creates profile + user role   |
+| `update_updated_at_column()`          | Generic timestamp updater                   |
+| `generate_booking_reference()`        | Creates RTT-YYYY-NNNNNN references          |
+| `notify_booking_status_change()`      | Creates notifications on status change      |
+| `notify_payment_status_change()`      | Creates notifications on payment change     |
+| `handle_booking_inventory()`          | Manages package availability counts         |
+| `protect_booking_integrity()`         | Prevents unauthorized field changes         |
+| `verify_payment_amount()`             | Validates payment amounts                   |
+| `enforce_payment_amount()`            | Server-side price enforcement               |
+| `check_agent_application_security()`  | Rate-limits and dedup applications          |
+| `handle_new_support_message()`        | Routes notifications based on specialties   |
+| `handle_new_support_ticket()`         | Notifies relevant staff on new tickets      |
+| `handle_new_agent_wallet()`           | Auto-creates wallet for new agents          |
+| `process_agent_booking(...)`          | Atomic wallet deduction + booking + payment |
+
+---
+
+## 13. Key Design Patterns
+
+### Lazy Loading
+
+All routes use `lazyWithRetry()` — a wrapper around React.lazy that auto-retries on chunk load failures (stale deployment).
+
+### Query Configuration
+
+```typescript
+{
+  retry: 2 (skip 4xx errors),
+  staleTime: 30s,
+  gcTime: 5min,
+  refetchOnWindowFocus: false
+}
+```
+
+### Error Handling
+
+- Global `ErrorBoundary` wraps the app
+- `OfflineBanner` detects network status
+- Supabase client configured with `persistSession: true` for offline resilience
+
+### Mobile Support
+
+- Responsive layouts for all dashboards
+- `MobileBottomNav` / `AdminMobileBottomNav` / `AgentMobileBottomNav` for mobile navigation
+- `use-mobile` hook for responsive breakpoint detection

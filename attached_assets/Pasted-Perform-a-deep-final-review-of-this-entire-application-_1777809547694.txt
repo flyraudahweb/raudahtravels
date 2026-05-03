@@ -1,0 +1,138 @@
+Perform a deep final review of this entire application with full end-to-end testing across all routes, roles, and major business flows.
+
+Main objective:
+Validate that the full app works correctly from start to finish for all user types, with no broken flows, state issues, payment issues, authorization bugs, or route failures.
+
+Test all routes/pages:
+- public routes
+- auth routes
+- dashboard routes
+- admin pages
+- agent pages
+- user pages
+- payment pages
+- booking pages
+- wallet/top-up pages
+- passport/document upload pages
+
+Audit for:
+- broken links/routes
+- missing pages
+- API failures
+- console errors
+- hydration/rendering issues
+- state inconsistencies
+- loading issues
+- permission bugs
+- broken forms
+- validation issues
+
+Role-based testing:
+
+1. USER FLOW TESTING
+Create and test full user flow:
+
+- register new user
+- login
+- complete profile
+- upload passport/documents
+- create booking
+- proceed through booking workflow
+- make payment using app payment flow
+- verify booking confirmation
+- verify transaction history updates
+- verify wallet/account updates
+
+Test user edge cases:
+- page refresh during booking/payment
+- duplicate clicks
+- incomplete submissions
+- invalid inputs
+- expired sessions
+
+2. AGENT FLOW TESTING
+Create and test full agent workflow:
+
+- create/login as agent
+- top up wallet using in-app top-up method
+- verify wallet funding flow
+- create client/customer
+- create booking on behalf of client
+- complete booking using agent balance/top-up
+- verify commissions/earnings logic
+- verify booking history and client records
+
+Test edge cases:
+- insufficient wallet balance
+- duplicate booking attempts
+- repeated payment actions
+- multiple tab actions
+
+3. ADMIN FLOW TESTING
+Test admin workflow:
+
+- admin login
+- dashboard access
+- booking management
+- user management
+- agent management
+- approvals/rejections
+- transaction monitoring
+- payment records
+- refunds/cancellations if applicable
+
+Verify:
+- admin permissions work correctly
+- no unauthorized access gaps
+- admin actions persist correctly
+
+4. PAYMENT + TRANSACTION VALIDATION
+Test all money-related flows:
+
+- wallet top-up
+- booking payment
+- transaction history
+- failed payments
+- retries
+- duplicate prevention
+
+Verify:
+- balances update correctly
+- no duplicate credits/debits
+- no stale balances
+- payment states consistent
+
+5. ROUTE + ACCESS CONTROL REVIEW
+Check all routes for:
+- authentication protection
+- role protection
+- unauthorized access prevention
+- broken navigation
+- redirect correctness
+
+6. FILE/DOCUMENT FLOW TESTING
+Test:
+- passport upload
+- OCR/extraction flow if implemented
+- file validation
+- file persistence
+
+7. FINAL QA REPORT
+After testing:
+- list all issues found
+- severity (critical/high/medium/low)
+- routes/files affected
+- fixes implemented directly
+- final production readiness report
+
+Important:
+Actually simulate realistic business flows, not just unit tests.
+
+Trace flows end-to-end:
+UI → frontend state → API → database → business logic → final user state.
+
+Prioritize:
+- booking integrity
+- payment correctness
+- role permissions
+- production readiness

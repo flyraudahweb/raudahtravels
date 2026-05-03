@@ -1,0 +1,32 @@
+# Render Blueprint — Raudah Travels & Tours
+# Single Web Service (Option B: API serves frontend static files)
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: raudah-travels
+    runtime: node
+    plan: free # Change to "starter" ($7/mo) for always-on
+    buildCommand: chmod +x render-build.sh && ./render-build.sh
+    startCommand: node --enable-source-maps artifacts/api-server/dist/index.mjs
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        sync: false # Set manually in Render dashboard
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: VITE_CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true # Render auto-generates a random value
+      - key: APP_URL
+        fromService:
+          type: web
+          name: raudah-travels
+          property: host

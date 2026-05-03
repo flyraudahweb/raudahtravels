@@ -1,0 +1,49 @@
+uploads = []
+
+[[generated]]
+id = "Ydlr1HLJ6cPMtfvnbSyTl"
+uri = "file://artifacts/raudah-travels/src/assets/images/hero-kaaba.png"
+type = "image"
+title = "Mecca Kaaba majestic luxury view"
+
+[[generated]]
+id = "JnbHnvI90pIffz6AhhhQf"
+uri = "file://artifacts/raudah-travels/src/assets/images/medina-mosque.png"
+type = "image"
+title = "Medina Prophet Mosque beautiful"
+
+[[generated]]
+id = "Wm9g67jthV3L6a8-dD8fk"
+uri = "file://artifacts/raudah-travels/src/assets/images/consultancy.png"
+type = "image"
+title = "Premium travel consultancy interior"
+
+[[outputs]]
+id = "C4guA5zVncIfZMi_3NunE"
+uri = "file://project.md"
+type = "text"
+title = "project.md — Full Project Reference"
+
+[[outputs]]
+id = "UEr650bRMK_FSFxRPvNGQ"
+uri = "file://deployment.md"
+type = "text"
+title = "deployment.md — Deployment Guide"
+
+[[outputs]]
+id = "kfCPntP-4ilvOqEU3cVbi"
+uri = "file://DEPLOYMENT.md"
+type = "text"
+title = "Deployment & Services Guide"
+
+[[outputs]]
+id = "UMTQJCwcSiHpSfULJEchj"
+uri = "file://docs/GMAIL_SMTP_SETUP.md"
+type = "text"
+title = "Gmail SMTP Setup Guide"
+
+[[outputs]]
+id = "8YFqpeqVuW3GJ16GnEtjq"
+uri = "file://docs/GOOGLE_OAUTH_SETUP.md"
+type = "text"
+title = "Google OAuth (Sign-In) Setup Guide"

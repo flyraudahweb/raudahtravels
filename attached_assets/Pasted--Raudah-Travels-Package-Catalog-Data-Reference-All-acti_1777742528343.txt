@@ -1,0 +1,382 @@
+# Raudah Travels — Package Catalog (Data Reference)
+
+> All active packages currently offered. This data is seeded into both the Supabase `packages` table and the static fallback in `src/data/packages.ts`.
+> Currency: **NGN (₦)** — Nigerian Naira.
+
+---
+
+## Summary
+
+| # | Package                                   | Type  | Category | Season  | Price (₦) | Agent Discount | Capacity | Available | Featured |
+| - | ----------------------------------------- | ----- | -------- | ------- | ---------- | -------------- | -------- | --------- | -------- |
+| 1 | Hajj 2026 - The Ultimate Journey          | Hajj  | Premium  | —      | 7,800,000  | 500,000        | 200      | 155       | ✅       |
+| 2 | Ramadan Umrah 2026 - Premium (Abuja)      | Umrah | Premium  | Ramadan | 5,500,000  | 400,000        | 80       | 52        | ✅       |
+| 3 | Ramadan Umrah 2026 - Premium (Kano)       | Umrah | Premium  | Ramadan | 5,500,000  | 400,000        | 60       | 42        | ✅       |
+| 4 | Ramadan Umrah 2026 - Standard (Kano)      | Umrah | Standard | Ramadan | 4,500,000  | 350,000        | 120      | 73        | ✅       |
+| 5 | Sha'ban Umrah 2026 - Standard (EgyptAir)  | Umrah | Standard | Sha'ban | 3,700,000  | 300,000        | 80       | 51        | ❌       |
+| 6 | Sha'ban Umrah 2026 - Standard (Fly Adeal) | Umrah | Standard | Sha'ban | 3,700,000  | 300,000        | 80       | 51        | ❌       |
+| 7 | Sha'ban Umrah 2026 - Budget               | Umrah | Budget   | Sha'ban | 3,000,000  | 250,000        | 60       | 38        | ❌       |
+
+---
+
+## 1. Hajj 2026 — The Ultimate Journey
+
+| Field                      | Value                              |
+| -------------------------- | ---------------------------------- |
+| **ID**               | `PKG-HAJJ-2026-001`              |
+| **Type**             | Hajj                               |
+| **Category**         | Premium                            |
+| **Year**             | 2026                               |
+| **Price**            | ₦7,800,000                        |
+| **Agent Discount**   | ₦500,000 (wholesale: ₦7,300,000) |
+| **Deposit**          | ✅ Allowed — Minimum ₦2,000,000  |
+| **Capacity**         | 200 total / 155 available          |
+| **Duration**         | 42 days                            |
+| **Airlines**         | EgyptAir, Saudi Airlines           |
+| **Departure Cities** | Abuja, Kano, Lagos                 |
+| **Status**           | Active                             |
+| **Featured**         | ✅                                 |
+
+### Inclusions
+
+- Visa processing
+- Return flight ticket
+- Ground transportation in Saudi Arabia
+- Accommodation in Makkah and Madinah
+- Breakfast daily
+- Ziyarat tours
+- Pre-departure training
+- Hajj guidebook
+- Travel bag and essentials
+
+### Travel Dates
+
+| ID            | Outbound   | Route                   | Return     | Route                   |
+| ------------- | ---------- | ----------------------- | ---------- | ----------------------- |
+| HAJJ-2026-001 | 2026-06-01 | Nigeria → Saudi Arabia | 2026-07-12 | Saudi Arabia → Nigeria |
+
+### Accommodation
+
+| City              | Hotel               | Distance         | Rating   | Room Types           |
+| ----------------- | ------------------- | ---------------- | -------- | -------------------- |
+| **Makkah**  | Premium Hotel (TBD) | 500m from Haram  | ⭐⭐⭐⭐ | Double, Triple, Quad |
+| **Madinah** | Premium Hotel (TBD) | 400m from Masjid | ⭐⭐⭐⭐ | Double, Triple, Quad |
+
+---
+
+## 2. Ramadan Umrah 2026 — Premium (Abuja)
+
+| Field                      | Value                              |
+| -------------------------- | ---------------------------------- |
+| **ID**               | `PKG-UMRAH-RAM-PREM-ABJ-001`     |
+| **Type**             | Umrah                              |
+| **Category**         | Premium                            |
+| **Season**           | Ramadan                            |
+| **Year**             | 2026                               |
+| **Price**            | ₦5,500,000                        |
+| **Agent Discount**   | ₦400,000 (wholesale: ₦5,100,000) |
+| **Deposit**          | ❌ Full payment required           |
+| **Capacity**         | 80 total / 52 available            |
+| **Duration**         | 18 days                            |
+| **Airlines**         | EgyptAir                           |
+| **Departure Cities** | Abuja                              |
+| **Status**           | Active                             |
+| **Featured**         | ✅                                 |
+
+### Inclusions
+
+- Visa processing
+- Return flight ticket (EgyptAir)
+- Ground transportation
+- Premium hotel accommodation
+- Breakfast daily
+- Ziyarat tours
+- Travel insurance
+
+### Travel Dates
+
+| ID               | Outbound   | Route           | Return     | Route           | Airline  |
+| ---------------- | ---------- | --------------- | ---------- | --------------- | -------- |
+| RAM-PREM-ABJ-001 | 2026-03-03 | Abuja → Madina | 2026-03-20 | Jeddah → Abuja | EgyptAir |
+
+### Accommodation
+
+| City              | Hotel           | Distance         | Rating   | Room Types     |
+| ----------------- | --------------- | ---------------- | -------- | -------------- |
+| **Makkah**  | Poinciana Hotel | 300m from Haram  | ⭐⭐⭐⭐ | Double, Triple |
+| **Madinah** | Shaza Regency   | 250m from Masjid | ⭐⭐⭐⭐ | Double, Triple |
+
+---
+
+## 3. Ramadan Umrah 2026 — Premium (Kano)
+
+| Field                      | Value                              |
+| -------------------------- | ---------------------------------- |
+| **ID**               | `PKG-UMRAH-RAM-PREM-KNO-001`     |
+| **Type**             | Umrah                              |
+| **Category**         | Premium                            |
+| **Season**           | Ramadan                            |
+| **Year**             | 2026                               |
+| **Price**            | ₦5,500,000                        |
+| **Agent Discount**   | ₦400,000 (wholesale: ₦5,100,000) |
+| **Deposit**          | ❌ Full payment required           |
+| **Capacity**         | 60 total / 42 available            |
+| **Duration**         | 15 days                            |
+| **Airlines**         | Saudi Airlines                     |
+| **Departure Cities** | Kano                               |
+| **Status**           | Active                             |
+| **Featured**         | ✅                                 |
+
+### Inclusions
+
+- Visa processing
+- Return flight ticket (Saudi Airlines)
+- Ground transportation
+- Premium hotel accommodation
+- Breakfast daily
+- Ziyarat tours
+- Travel insurance
+
+### Travel Dates
+
+| ID               | Outbound   | Route          | Return     | Route          | Airline        |
+| ---------------- | ---------- | -------------- | ---------- | -------------- | -------------- |
+| RAM-PREM-KNO-001 | 2026-03-06 | Kano → Jeddah | 2026-03-20 | Jeddah → Kano | Saudi Airlines |
+
+### Accommodation
+
+| City              | Hotel           | Distance         | Rating   | Room Types     |
+| ----------------- | --------------- | ---------------- | -------- | -------------- |
+| **Makkah**  | Poinciana Hotel | 300m from Haram  | ⭐⭐⭐⭐ | Double, Triple |
+| **Madinah** | Shaza Regency   | 250m from Masjid | ⭐⭐⭐⭐ | Double, Triple |
+
+---
+
+## 4. Ramadan Umrah 2026 — Standard (Kano)
+
+| Field                      | Value                              |
+| -------------------------- | ---------------------------------- |
+| **ID**               | `PKG-UMRAH-RAM-STD-KNO-001`      |
+| **Type**             | Umrah                              |
+| **Category**         | Standard                           |
+| **Season**           | Ramadan                            |
+| **Year**             | 2026                               |
+| **Price**            | ₦4,500,000                        |
+| **Agent Discount**   | ₦350,000 (wholesale: ₦4,150,000) |
+| **Deposit**          | ❌ Full payment required           |
+| **Capacity**         | 120 total / 73 available           |
+| **Duration**         | 14–16 days                        |
+| **Airlines**         | MaxAir                             |
+| **Departure Cities** | Kano                               |
+| **Status**           | Active                             |
+| **Featured**         | ✅                                 |
+
+### Inclusions
+
+- Visa processing
+- Return flight ticket
+- Ground transportation
+- Standard hotel accommodation
+- Breakfast daily
+- Ziyarat tours
+
+### Travel Dates (9 departure options)
+
+| ID          | Outbound   | Route          | Return     | Route          | Airline |
+| ----------- | ---------- | -------------- | ---------- | -------------- | ------- |
+| RAM-STD-001 | 2026-02-18 | Kano → Jeddah | 2026-03-04 | Jeddah → Kano | MaxAir  |
+| RAM-STD-002 | 2026-02-23 | Kano → Jeddah | 2026-03-09 | Jeddah → Kano | MaxAir  |
+| RAM-STD-003 | 2026-02-25 | Kano → Jeddah | 2026-03-11 | Jeddah → Kano | MaxAir  |
+| RAM-STD-004 | 2026-03-01 | Kano → Jeddah | 2026-03-15 | Jeddah → Kano | MaxAir  |
+| RAM-STD-005 | 2026-03-02 | Kano → Jeddah | 2026-03-16 | Jeddah → Kano | MaxAir  |
+| RAM-STD-006 | 2026-03-05 | Kano → Jeddah | 2026-03-19 | Jeddah → Kano | MaxAir  |
+| RAM-STD-007 | 2026-03-06 | Kano → Jeddah | 2026-03-20 | Jeddah → Kano | MaxAir  |
+| RAM-STD-008 | 2026-03-08 | Kano → Jeddah | 2026-03-22 | Jeddah → Kano | MaxAir  |
+| RAM-STD-009 | 2026-03-11 | Kano → Jeddah | 2026-03-25 | Jeddah → Kano | MaxAir  |
+
+### Accommodation
+
+| City              | Hotel          | Distance         | Rating | Room Types   |
+| ----------------- | -------------- | ---------------- | ------ | ------------ |
+| **Makkah**  | Standard Hotel | 800m from Haram  | ⭐⭐⭐ | Triple, Quad |
+| **Madinah** | Standard Hotel | 600m from Masjid | ⭐⭐⭐ | Triple, Quad |
+
+---
+
+## 5. Sha'ban Umrah 2026 — Standard (EgyptAir)
+
+| Field                      | Value                              |
+| -------------------------- | ---------------------------------- |
+| **ID**               | `PKG-UMRAH-SHAB-STD-EGA-001`     |
+| **Type**             | Umrah                              |
+| **Category**         | Standard                           |
+| **Season**           | Sha'ban                            |
+| **Year**             | 2026                               |
+| **Price**            | ₦3,700,000                        |
+| **Agent Discount**   | ₦300,000 (wholesale: ₦3,400,000) |
+| **Deposit**          | ❌ Full payment required           |
+| **Capacity**         | 80 total / 51 available            |
+| **Duration**         | 17 days                            |
+| **Airlines**         | EgyptAir                           |
+| **Departure Cities** | Kano                               |
+| **Status**           | Active                             |
+| **Featured**         | ❌                                 |
+
+### Inclusions
+
+- Visa processing
+- Return flight ticket (EgyptAir)
+- Ground transportation
+- Standard hotel accommodation
+- Breakfast daily
+- Basic ziyarat tour
+
+### Travel Dates
+
+| ID               | Outbound   | Route          | Return     | Route          | Airline  |
+| ---------------- | ---------- | -------------- | ---------- | -------------- | -------- |
+| SHAB-STD-EGA-001 | 2026-02-15 | Kano → Madina | 2026-03-03 | Jeddah → Kano | EgyptAir |
+
+### Accommodation
+
+| City              | Hotel          | Distance         | Rating | Room Types   |
+| ----------------- | -------------- | ---------------- | ------ | ------------ |
+| **Makkah**  | Standard Hotel | 800m from Haram  | ⭐⭐⭐ | Triple, Quad |
+| **Madinah** | Standard Hotel | 700m from Masjid | ⭐⭐⭐ | Triple, Quad |
+
+---
+
+## 6. Sha'ban Umrah 2026 — Standard (Fly Adeal)
+
+| Field                      | Value                              |
+| -------------------------- | ---------------------------------- |
+| **ID**               | `PKG-UMRAH-SHAB-STD-FDA-001`     |
+| **Type**             | Umrah                              |
+| **Category**         | Standard                           |
+| **Season**           | Sha'ban                            |
+| **Year**             | 2026                               |
+| **Price**            | ₦3,700,000                        |
+| **Agent Discount**   | ₦300,000 (wholesale: ₦3,400,000) |
+| **Deposit**          | ❌ Full payment required           |
+| **Capacity**         | 80 total / 51 available            |
+| **Duration**         | 16 days                            |
+| **Airlines**         | Fly Adeal                          |
+| **Departure Cities** | Kano                               |
+| **Status**           | Active                             |
+| **Featured**         | ❌                                 |
+
+### Inclusions
+
+- Visa processing
+- Return flight ticket (Fly Adeal)
+- Ground transportation
+- Standard hotel accommodation
+- Breakfast daily
+- Basic ziyarat tour
+
+### Travel Dates
+
+| ID               | Outbound   | Route          | Return     | Route          | Airline   |
+| ---------------- | ---------- | -------------- | ---------- | -------------- | --------- |
+| SHAB-STD-FDA-001 | 2026-02-16 | Kano → Jeddah | 2026-03-03 | Jeddah → Kano | Fly Adeal |
+
+### Accommodation
+
+| City              | Hotel          | Distance         | Rating | Room Types   |
+| ----------------- | -------------- | ---------------- | ------ | ------------ |
+| **Makkah**  | Standard Hotel | 800m from Haram  | ⭐⭐⭐ | Triple, Quad |
+| **Madinah** | Standard Hotel | 700m from Masjid | ⭐⭐⭐ | Triple, Quad |
+
+---
+
+## 7. Sha'ban Umrah 2026 — Budget
+
+| Field                      | Value                              |
+| -------------------------- | ---------------------------------- |
+| **ID**               | `PKG-UMRAH-SHAB-BUDGET-001`      |
+| **Type**             | Umrah                              |
+| **Category**         | Budget                             |
+| **Season**           | Sha'ban                            |
+| **Year**             | 2026                               |
+| **Price**            | ₦3,000,000                        |
+| **Agent Discount**   | ₦250,000 (wholesale: ₦2,750,000) |
+| **Deposit**          | ❌ Full payment required           |
+| **Capacity**         | 60 total / 38 available            |
+| **Duration**         | 14 days                            |
+| **Airlines**         | Fly Adeal                          |
+| **Departure Cities** | Kano                               |
+| **Status**           | Active                             |
+| **Featured**         | ❌                                 |
+
+### Inclusions
+
+- Visa processing
+- Return flight ticket (Fly Adeal)
+- Ground transportation
+- Budget hotel accommodation
+- Breakfast daily
+
+### Travel Dates
+
+| ID              | Outbound   | Route          | Return     | Route          | Airline   |
+| --------------- | ---------- | -------------- | ---------- | -------------- | --------- |
+| SHAB-BUDGET-001 | 2026-02-03 | Kano → Jeddah | 2026-02-16 | Jeddah → Kano | Fly Adeal |
+
+### Accommodation
+
+| City              | Hotel        | Distance          | Rating | Room Types |
+| ----------------- | ------------ | ----------------- | ------ | ---------- |
+| **Makkah**  | Budget Hotel | 1200m from Haram  | ⭐⭐   | Quad       |
+| **Madinah** | Budget Hotel | 1000m from Masjid | ⭐⭐   | Quad       |
+
+---
+
+## Pricing Quick Reference
+
+### Retail Prices (User/Public)
+
+| Package          | Price       |
+| ---------------- | ----------- |
+| Hajj Premium     | ₦7,800,000 |
+| Ramadan Premium  | ₦5,500,000 |
+| Ramadan Standard | ₦4,500,000 |
+| Sha'ban Standard | ₦3,700,000 |
+| Sha'ban Budget   | ₦3,000,000 |
+
+### Wholesale Prices (Agent = Price − Discount)
+
+| Package          | Retail      | Discount  | Wholesale             |
+| ---------------- | ----------- | --------- | --------------------- |
+| Hajj Premium     | ₦7,800,000 | ₦500,000 | **₦7,300,000** |
+| Ramadan Premium  | ₦5,500,000 | ₦400,000 | **₦5,100,000** |
+| Ramadan Standard | ₦4,500,000 | ₦350,000 | **₦4,150,000** |
+| Sha'ban Standard | ₦3,700,000 | ₦300,000 | **₦3,400,000** |
+| Sha'ban Budget   | ₦3,000,000 | ₦250,000 | **₦2,750,000** |
+
+### Total Capacity
+
+| Metric                          | Count         |
+| ------------------------------- | ------------- |
+| Total seats across all packages | **680** |
+| Currently available             | **462** |
+| Currently booked                | **218** |
+| Overall fill rate               | **32%** |
+
+---
+
+## Airlines Used
+
+| Airline        | Packages                                                           |
+| -------------- | ------------------------------------------------------------------ |
+| EgyptAir       | Hajj Premium, Ramadan Premium (Abuja), Sha'ban Standard (EgyptAir) |
+| Saudi Airlines | Hajj Premium, Ramadan Premium (Kano)                               |
+| MaxAir         | Ramadan Standard (Kano)                                            |
+| Fly Adeal      | Sha'ban Budget, Sha'ban Standard (Fly Adeal)                       |
+
+## Departure Cities
+
+| City            | Packages                           |
+| --------------- | ---------------------------------- |
+| **Kano**  | 6 packages                         |
+| **Abuja** | 2 packages (Hajj, Ramadan Premium) |
+| **Lagos** | 1 package (Hajj only)              |

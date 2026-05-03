@@ -1,0 +1,796 @@
+# 06 — Admin Dashboard Master Documentation
+
+> **Last updated:** 2026-05-02
+> **Source of truth for:** All 17 sidebar modules + sub-pages
+> **Sidebar component:** `src/components/admin/AdminSidebar.tsx`
+
+---
+
+## Table of Contents
+
+1. [Sidebar Architecture &amp; RBAC](#1-sidebar-architecture--rbac)
+2. [Overview Dashboard](#2-overview-dashboard)
+3. [Package Management](#3-package-management)
+4. [Payment Management](#4-payment-management)
+5. [Pilgrim Management](#5-pilgrim-management)
+6. [Analytics](#6-analytics)
+7. [ID Tags Generator](#7-id-tags-generator)
+8. [Visa Management](#8-visa-management)
+9. [Agent Management](#9-agent-management)
+10. [Agent Applications](#10-agent-applications)
+11. [Bank Accounts](#11-bank-accounts)
+12. [Activity Log](#12-activity-log)
+13. [Amendment Requests](#13-amendment-requests)
+14. [Support Tickets](#14-support-tickets)
+15. [Staff Management](#15-staff-management)
+16. [Team Chat](#16-team-chat)
+17. [Booking Form Builder](#17-booking-form-builder)
+18. [Settings](#18-settings)
+19. [AI Business Assistant](#19-ai-business-assistant)
+20. [Admin Book Pilgrim (Direct Registration)](#20-admin-book-pilgrim)
+
+---
+
+## 1. Sidebar Architecture & RBAC
+
+**File:** `src/components/admin/AdminSidebar.tsx`
+**Permission system:** `hasPermission()` from `AuthContext`
+
+### Menu Items & Permission Keys
+
+| #  | Title              | Route                         | Icon            | Permission Key       |
+| -- | ------------------ | ----------------------------- | --------------- | -------------------- |
+| 1  | Overview           | `/admin`                    | LayoutDashboard | `overview`         |
+| 2  | Packages           | `/admin/packages`           | Package         | `packages`         |
+| 3  | Payments           | `/admin/payments`           | CreditCard      | `payments`         |
+| 4  | Pilgrims           | `/admin/pilgrims`           | Users           | `pilgrims`         |
+| 5  | Analytics          | `/admin/analytics`          | BarChart3       | `analytics`        |
+| 6  | ID Tags            | `/admin/id-tags`            | Barcode         | `id_tags`          |
+| 7  | Visa Management    | `/admin/visa-management`    | ShieldCheck     | `visa_management`  |
+| 8  | Agents             | `/admin/agents`             | Users           | `agents`           |
+| 9  | Agent Applications | `/admin/agent-applications` | UserPlus        | `agents`           |
+| 10 | Bank Accounts      | `/admin/bank-accounts`      | Building2       | `bank_accounts`    |
+| 11 | Activity           | `/admin/activity`           | History         | `activity`         |
+| 12 | Amendments         | `/admin/amendments`         | Pencil          | `amendments`       |
+| 13 | Support Tickets    | `/admin/support`            | Headset         | `support`          |
+| 14 | Staff Management   | `/admin/staff`              | ShieldCheck     | `staff_management` |
+| 15 | Team Chat          | `/admin/chat`               | MessageCircle   | `overview`         |
+| 16 | Booking Form       | `/admin/booking-form`       | FormInput       | `settings`         |
+| 17 | Settings           | `/admin/settings`           | Settings        | `settings`         |
+
+### Role Hierarchy
+
+| Role            | Badge           | Access                                              |
+| --------------- | --------------- | --------------------------------------------------- |
+| `super_admin` | "Super Admin"   | All modules — bypasses permission checks           |
+| `admin`       | "Administrator" | All modules via granted permissions                 |
+| Staff           | "Staff"         | Only modules matching `staff_permissions` entries |
+
+### Sidebar UI Features
+
+- **Collapsible:** Icon-only mode via `useSidebar()` state
+- **Tooltips:** Shown on hover in collapsed mode
+- **Logo:** `/logo.png` with brightness invert for dark sidebar
+- **Footer:** Avatar, name, role badge, sign-out button
+
+---
+
+## 2. Overview Dashboard
+
+**File:** `src/pages/admin/AdminDashboard.tsx`
+**Permission:** `overview`
+
+### Purpose
+
+The main landing page after admin login. Shows a high-level business snapshot with real-time KPI cards and quick-access grids.
+
+### Data Queries (TanStack Query)
+
+| Query Key                | Table        | Fields                              |
+| ------------------------ | ------------ | ----------------------------------- |
+| `admin-stats-bookings` | `bookings` | `id, status, created_at`          |
+| `admin-stats-payments` | `payments` | `amount, status`                  |
+| `admin-stats-packages` | `packages` | `id, status, available, capacity` |
+| `admin-stats-agents`   | `agents`   | `id, status`                      |
+
+### KPI Cards (4-column grid)
+
+1. **Total Bookings** — Count of all bookings
+2. **Verified Revenue** — Sum of `payments.amount` where `status = 'verified'`
+3. **Active Packages** — Count of packages with `status = 'active'`
+4. **Active Agents** — Count of agents with `status = 'approved'`
+
+### Quick Actions Grid
+
+- Navigate to Packages, Payments, Pilgrims, Analytics, Agents, Settings
+
+---
+
+## 3. Package Management
+
+**File:** `src/pages/admin/AdminPackages.tsx`
+**Permission:** `packages`
+
+### Purpose
+
+Full CRUD management for Hajj/Umrah travel packages including pricing, accommodations, dates, galleries, and capacity tracking.
+
+### Features
+
+- **Package list** with search and status filter (`active`, `draft`, `archived`)
+- **Create/Edit modal** with multi-section form:
+  - Basic info: name, type (hajj/umrah), category (economy/standard/premium/vip), price, currency
+  - Capacity: total slots, available slots
+  - Dates: multiple outbound/return date pairs with airline info (`package_dates` table)
+  - Accommodations: Makkah/Madinah hotel details with star ratings (`package_accommodations`)
+  - Gallery: image uploads to Supabase Storage
+  - Departure cities: multi-select array
+  - Features: rich text or list of included amenities
+  - Agent discount: percentage for wholesale pricing
+- **Status toggle** — activate/archive packages
+- **Capacity bar** — visual progress of booked vs. available slots
+
+### Database Tables
+
+- `packages` — Core package data
+- `package_dates` — Travel date ranges per package
+- `package_accommodations` — Hotel info per package
+- `package_gallery` — Image URLs per package
+
+---
+
+## 4. Payment Management
+
+**File:** `src/pages/admin/AdminPayments.tsx`
+**Permission:** `payments`
+
+### Purpose
+
+Review, verify, and manage all payment transactions across the platform. Central hub for financial reconciliation.
+
+### Features
+
+- **Payment table** with columns: Pilgrim, Amount, Method, Status, Date, Receipt
+- **Status filters:** `pending`, `verified`, `rejected`, `all`
+- **Manual verification:** Admin marks bank transfers as verified with `verified_by` and `verified_at` timestamps
+- **Receipt view:** Uploaded proof-of-payment images from pilgrims
+- **Bulk actions:** Export to CSV
+
+### Payment Methods Supported
+
+| Method            | Flow                                                   |
+| ----------------- | ------------------------------------------------------ |
+| `bank_transfer` | Pilgrim uploads receipt → Admin verifies manually     |
+| `cash`          | Admin creates via Direct Registration → auto-verified |
+| `paystack`      | Online payment → webhook auto-verifies                |
+
+### Verification Workflow
+
+```
+Payment created (status: pending)
+  → Admin reviews receipt image
+  → Admin clicks "Verify" → updates: status='verified', verified_by=admin_id, verified_at=now()
+  → Booking auto-updates to 'confirmed' if payment covers full amount
+```
+
+---
+
+## 5. Pilgrim Management
+
+**File:** `src/pages/admin/AdminPilgrims.tsx` (734 lines)
+**Permission:** `pilgrims`
+
+### Purpose
+
+Master registry of all pilgrims/bookings. The most data-dense page in the admin panel with advanced filtering, bulk operations, and document management.
+
+### Features
+
+#### Search & Filters (7 filters)
+
+| Filter       | Options                                            |
+| ------------ | -------------------------------------------------- |
+| Search       | Name, reference, passport number (debounced 400ms) |
+| Status       | pending, confirmed, cancelled, completed           |
+| Package Type | umrah, hajj, visa_only, flight_only                |
+| Payment      | verified, pending/none                             |
+| Gender       | male, female                                       |
+| Visa         | approved, pending, rejected                        |
+| Agent        | All, Direct (no agent), or specific agent          |
+
+#### Table Columns
+
+Checkbox, Avatar, Pilgrim Name, Reference, Package (name + type badge), Passport, Gender, Phone, Departure City, Booking Status, Payment Status, Visa Status, Date, Actions
+
+#### Pilgrim Avatar Component
+
+Smart avatar resolution with fallback chain:
+
+1. `profile_photo_url` from booking record (cropped face)
+2. Passport document from `documents` table → signed URL from `passport-photos` bucket
+3. Fallback to initials
+
+#### Bulk Operations
+
+- **Select all/individual** via checkboxes (persists across pages)
+- **Export Selected CSV** — `downloadCSV()` helper
+- **Export All CSV** — Full dataset export
+- **Print List** — Opens print-optimized HTML in new window with branded header
+- **Download Documents** — Bulk ZIP download via `downloadMultipleDocuments()` utility
+
+#### Detail Dialog (`AdminPilgrimDetailDialog`)
+
+- Full booking details in modal overlay
+- Edit button → opens `EditBookingModal` (admin mode)
+
+#### Pagination
+
+- Server-side: 15 items/page via `.range(from, to)` with `{ count: 'exact' }`
+- Smart page number display with ellipsis
+- `placeholderData` keeps old data visible during page transitions
+
+---
+
+## 6. Analytics
+
+**File:** `src/pages/admin/AdminAnalytics.tsx`
+**Permission:** `analytics`
+
+### Purpose
+
+Visual business intelligence dashboard with Recharts-powered charts.
+
+### Charts (4 visualizations)
+
+| Chart            | Type                   | Library                                 | Data Source                        |
+| ---------------- | ---------------------- | --------------------------------------- | ---------------------------------- |
+| Revenue by Month | Bar Chart              | Recharts `BarChart`                   | `payments` (verified only)       |
+| Booking Status   | Donut/Pie              | Recharts `PieChart`                   | `bookings` grouped by status     |
+| Package Capacity | Horizontal Stacked Bar | Recharts `BarChart` (vertical layout) | `packages` (booked vs available) |
+| Type Breakdown   | (computed)             | —                                      | Count of hajj vs umrah packages    |
+
+### KPI Summary Cards
+
+- Total Revenue (verified payments)
+- Pending Revenue
+- Total Bookings count
+- Active Packages count
+
+---
+
+## 7. ID Tags Generator
+
+**File:** `src/pages/admin/AdminIdTags.tsx`
+**Permission:** `id_tags`
+
+### Purpose
+
+Generate printable pilgrim ID cards (badges) with photo, QR code, and travel details. Uses client-side PDF generation.
+
+### Technical Stack
+
+- **PDF generation:** `jsPDF` + `html2canvas`
+- **QR codes:** Embedded in ID card layout
+- **Photo source:** Signed URLs from Supabase Storage
+
+### Workflow
+
+1. Select pilgrims (confirmed bookings only)
+2. Preview ID card layout with photo, name, passport, package, departure
+3. Generate PDF — single or bulk
+4. Print or download
+
+---
+
+## 8. Visa Management
+
+**File:** `src/pages/admin/AdminVisaManagement.tsx` (688 lines)
+**Permission:** `visa_management`
+
+### Purpose
+
+Dual-purpose dashboard: (1) Track visa application statuses for all pilgrims, and (2) Manage authorized visa processing providers.
+
+### Tab 1: Visa Tracking
+
+- **Table:** Pilgrim name, passport, package, visa status, expiry date
+- **Status updates:** pending → approved/rejected with date tracking
+- **Bulk status update** for multiple pilgrims
+- **Filters:** Status (pending/approved/rejected), package type
+
+### Tab 2: Visa Providers
+
+- CRUD for authorized visa processing companies
+- Fields: provider name, contact, specialization, status (active/inactive)
+
+### Visa Status Flow
+
+```
+Booking created → visa_status: 'pending'
+  → Admin submits to provider
+  → Provider processes → Admin updates to 'approved' + sets visa_expiry_date
+  → OR → Admin updates to 'rejected' with reason
+```
+
+---
+
+## 9. Agent Management
+
+**File:** `src/pages/admin/AdminAgents.tsx`
+**Permission:** `agents`
+
+### Purpose
+
+View and manage all registered travel agents, their wallets, commissions, and booking performance.
+
+### Features
+
+- **Agent directory** with search and status filter
+- **Wallet management:** View balance, top-up history, adjustment logs
+- **Commission configuration:** Per-agent rate (percentage or fixed ₦ amount)
+- **Booking stats:** Count of bookings per agent
+- **Agent tier info:** Based on wholesale pricing model
+
+### Commission Types
+
+| Type           | Example  | Calculation                     |
+| -------------- | -------- | ------------------------------- |
+| `percentage` | 5%       | `package_price × rate / 100` |
+| `fixed`      | ₦60,000 | Flat amount per booking         |
+
+---
+
+## 10. Agent Applications
+
+**File:** `src/pages/admin/AdminAgentApplications.tsx` (1000 lines)
+**Permission:** `agents`
+
+### Purpose
+
+Review partnership applications and directly create agent accounts. The complete agent lifecycle management hub.
+
+### Tabs
+
+| Tab           | Content                           |
+| ------------- | --------------------------------- |
+| Pending       | Applications awaiting review      |
+| Applications  | All approved applications history |
+| Active Agents | Verified agents with full CRUD    |
+| Rejected      | Declined applications             |
+| Logs          | Complete application history      |
+
+### Workflows
+
+#### Application Approval Flow
+
+```
+Agent submits application (public form)
+  → Row created in agent_applications (status: pending)
+  → Admin reviews → clicks "Approve"
+  → ApproveDialog opens: set temp password + commission rate/type
+  → Edge Function: approve-agent-application
+    → Creates auth user, profile, agent record
+    → Returns agent_code
+  → Agent receives credentials → logs in → changes password
+```
+
+#### Direct Agent Creation (no application)
+
+```
+Admin clicks "Create Agent"
+  → CreateAgentDialog: full_name, business_name, email, phone, temp_password, commission
+  → Edge Function: create-agent-direct
+    → Creates auth user + profile + agent record
+  → Success dialog shows credentials to copy/share
+```
+
+#### Edit Agent
+
+- Modify: business_name, contact_person, email, phone, commission_rate, commission_type, status
+- Commission type toggle: "% Rate" vs "₦ Fixed"
+- Warning shown if percentage > 100% (likely meant to be fixed)
+
+#### Delete Agent
+
+- Removes agent record only (does NOT delete auth user)
+
+### Stat Cards (4)
+
+- Pending count, Approved count, Rejected count, Total applications
+
+---
+
+## 11. Bank Accounts
+
+**File:** `src/pages/admin/AdminBankAccounts.tsx`
+**Permission:** `bank_accounts`
+
+### Purpose
+
+Manage company bank accounts displayed to pilgrims for manual bank transfer payments.
+
+### Features
+
+- **CRUD operations** for bank accounts
+- **Fields:** Bank name, account name, account number, sort code
+- **Active toggle:** Only active accounts shown to pilgrims on payment page
+- **Display order** management
+
+### Workflow
+
+Pilgrims see active bank accounts → make transfer → upload receipt → Admin verifies in Payments page
+
+---
+
+## 12. Activity Log
+
+**File:** `src/pages/admin/AdminActivity.tsx` (374 lines)
+**Permission:** `activity`
+
+### Purpose
+
+Real-time audit trail of all user interactions across the platform. Tracks engagement funnel from browsing to payment.
+
+### Event Types Tracked
+
+| Event               | Icon         | Color   | Description                    |
+| ------------------- | ------------ | ------- | ------------------------------ |
+| `package_view`    | Eye          | Blue    | User viewed a package page     |
+| `booking_start`   | ShoppingCart | Amber   | User began booking flow        |
+| `payment_attempt` | CreditCard   | Purple  | Payment initiated              |
+| `payment_success` | CheckCircle  | Emerald | Payment completed successfully |
+| `payment_failed`  | XCircle      | Red     | Payment failed                 |
+
+### Features
+
+- **Timeline view** with relative timestamps (`formatDistanceToNow`)
+- **Search** across activity descriptions
+- **Filter** by event type
+- **Pagination** with server-side offset
+- **User attribution** — links to profile where available
+
+---
+
+## 13. Amendment Requests
+
+**File:** `src/pages/admin/AdminAmendmentRequests.tsx` (394 lines)
+**Permission:** `amendments`
+
+### Purpose
+
+Review and approve/reject pilgrim requests to modify their booking details after submission.
+
+### Amendable Fields
+
+| Field Key                          | Display Label                  |
+| ---------------------------------- | ------------------------------ |
+| `phone`                          | Phone Number                   |
+| `address`                        | Home Address                   |
+| `emergency_contact_name`         | Emergency Contact Name         |
+| `emergency_contact_phone`        | Emergency Contact Phone        |
+| `emergency_contact_relationship` | Emergency Contact Relationship |
+| `special_requests`               | Special Requests               |
+| `package_id`                     | Package                        |
+| `package_date_id`                | Travel Date                    |
+| `documents`                      | Document Updates               |
+
+### Status Config
+
+| Status       | Color   | Icon        |
+| ------------ | ------- | ----------- |
+| `pending`  | Amber   | Clock       |
+| `approved` | Emerald | CheckCircle |
+| `rejected` | Red     | XCircle     |
+
+### Workflow
+
+```
+Pilgrim submits amendment request (from user dashboard)
+  → Row in booking_amendment_requests (status: pending)
+  → Admin expands request → sees old vs. new values
+  → Admin adds review notes
+  → Approve: applies changes to booking record
+  → Reject: adds rejection reason, no changes applied
+```
+
+---
+
+## 14. Support Tickets
+
+**File:** `src/pages/admin/AdminSupport.tsx` (736 lines)
+**Permission:** `support`
+
+### Purpose
+
+Customer support ticket queue with real-time messaging, auto-assignment, and category-based routing.
+
+### Features
+
+- **Ticket list** with status filters (open, in_progress, resolved, closed)
+- **Real-time messages** via Supabase Realtime subscriptions
+- **Auto-assignment** based on staff specialties (`staff_support_specialties` table)
+- **Category routing:** general, payment, visa, booking, technical, documents, flights, agent_commissions, booking_assistance
+- **Priority levels:** low, medium, high, urgent
+- **Internal notes** — staff-only messages not visible to user
+
+### Ticket Lifecycle
+
+```
+User creates ticket (category + description)
+  → Auto-assigned to specialist staff OR enters queue
+  → Staff picks up → status: in_progress
+  → Threaded conversation (real-time)
+  → Staff resolves → status: resolved
+  → Auto-close after X days OR manual close
+```
+
+---
+
+## 15. Staff Management
+
+**File:** `src/pages/admin/AdminStaffManagement.tsx`
+**Permission:** `staff_management`
+
+### Purpose
+
+Manage admin team members — invite new staff, assign granular permissions, and set support specialties.
+
+### Features
+
+- **Staff directory** with role badges and permission counts
+- **Invite new staff** via email (Supabase auth or Resend branded email)
+- **Permission matrix:** Toggle individual permissions per staff member
+- **Support specialties:** Assign ticket categories each staff member can handle
+- **Role management:** Promote/demote between staff and admin roles
+
+### Permission Keys (assignable)
+
+`overview`, `packages`, `payments`, `pilgrims`, `analytics`, `id_tags`, `visa_management`, `agents`, `bank_accounts`, `activity`, `amendments`, `support`, `staff_management`, `settings`
+
+---
+
+## 16. Team Chat
+
+**File:** `src/pages/admin/AdminTeamChat.tsx` (615 lines)
+**Permission:** `overview`
+
+### Purpose
+
+Internal team communication with permission-gated channels and direct messaging.
+
+### Layout
+
+- **Left sidebar (320px):** Channel list + Staff directory + Broadcast button
+- **Right panel:** Chat messages with input area
+
+### Channels (permission-gated)
+
+| Channel                | Access Rule                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------- |
+| General                | All staff                                                                             |
+| Platinum Agent Support | super_admin, support, agents                                                          |
+| Payments               | super_admin, payments                                                                 |
+| Visa Processing        | super_admin, visa specialty                                                           |
+| Registration           | super_admin, pilgrims, agents, booking specialty                                      |
+| Packages & Logistics   | super_admin, packages                                                                 |
+| Customer Support       | super_admin, support, general/technical/documents specialty                           |
+| Leadership Hub         | super_admin, overview, settings, staff_management, bank_accounts, analytics, activity |
+
+### Features
+
+- **Direct Messages (DM)** between any two staff members
+- **Unread badges** per DM contact (real-time)
+- **Broadcast** — Multi-recipient message (individual DMs)
+- **Real-time** via Supabase Realtime `postgres_changes` on `staff_messages`
+- **Read receipts** — `read_at` timestamp, auto-marked when chat opened
+- **Time grouping** — 5-minute intervals between message clusters
+- **Sender attribution** in channels (name above message)
+
+### Database: `staff_messages`
+
+| Column          | Type      | Purpose                          |
+| --------------- | --------- | -------------------------------- |
+| `sender_id`   | UUID      | Who sent it                      |
+| `receiver_id` | UUID      | DM recipient (null for channels) |
+| `channel`     | text      | Channel name (null for DMs)      |
+| `content`     | text      | Message body                     |
+| `read_at`     | timestamp | Read receipt                     |
+
+---
+
+## 17. Booking Form Builder
+
+**File:** `src/pages/admin/AdminBookingForm.tsx` (506 lines)
+**Permission:** `settings`
+
+### Purpose
+
+Dynamic form configuration tool. Admins can toggle system fields and create custom fields that appear on the pilgrim booking form.
+
+### System Fields (toggleable)
+
+Pre-built fields that can be shown/hidden per booking context:
+
+- Personal: full_name, date_of_birth, gender, nationality, etc.
+- Travel: departure_city, room_preference, special_requests
+- Emergency: contact name, phone, relationship
+- Medical: meningitis vaccine date, previous umrah info
+
+### Custom Fields
+
+Admin-created fields with configurable properties:
+
+- **Types:** text, textarea, select (dropdown), file_upload, date, number, checkbox
+- **Properties:** label, placeholder, required flag, options (for select), visibility (admin/user/both)
+- **Section grouping** — organized into logical sections
+- **Drag-and-drop ordering**
+
+### Database: `booking_form_fields`
+
+Stores custom field definitions with JSON config for options and validation rules.
+
+---
+
+## 18. Settings
+
+**File:** `src/pages/admin/AdminSettings.tsx` (580 lines)
+**Permission:** `settings`
+
+### Purpose
+
+Central configuration hub for site-wide settings. All settings stored in `site_settings` table as key-value pairs (JSON values).
+
+### Settings Modules
+
+#### Contact Information
+
+| Field    | Default             | Purpose                     |
+| -------- | ------------------- | --------------------------- |
+| Phone    | +234 803 537 8973   | Shown in footer & CTA       |
+| Email    | flyraudah@gmail.com | Contact email               |
+| Address  | Kano, Nigeria       | Office location             |
+| WhatsApp | 2348035378973       | WhatsApp link (digits only) |
+
+#### Email Provider Toggle
+
+| Provider         | Description                                    |
+| ---------------- | ---------------------------------------------- |
+| Supabase Default | Built-in, no setup needed                      |
+| Resend (Branded) | Custom templates via `team@flyraudah.com.ng` |
+
+#### Payment Gateway
+
+- **Paystack toggle** — Enable/disable online payments globally
+- When disabled: only manual bank transfer shown to pilgrims
+- Setting key: `paystack_enabled`
+
+#### Social Links
+
+- Facebook, Instagram, Twitter/X, WhatsApp URLs
+- Displayed in website footer
+
+#### Passport Photo Requirements
+
+| Setting         | Default                              |
+| --------------- | ------------------------------------ |
+| Max file size   | 5 MB                                 |
+| Max dimensions  | 3000×3000 px                        |
+| Allowed formats | JPEG, PNG (toggleable: PDF, HEIC)    |
+| Background rule | "White or off-white background"      |
+| Face rule       | "Centered, front-facing, no glasses" |
+| Show to pilgrim | true                                 |
+
+#### Security Panel
+
+- Last login timestamp with relative time display
+- Login notification info (Resend email alerts)
+
+---
+
+## 19. AI Business Assistant
+
+**File:** `src/pages/admin/AdminAiAssistant.tsx` (259 lines)
+**Route:** `/admin/ai` (not in sidebar — accessed via Overview quick link)
+
+### Purpose
+
+AI-powered business intelligence chatbot with access to live Supabase data. Provides insights, answers questions, and offers business advice.
+
+### Technical Architecture
+
+- **Backend:** Supabase Edge Function `admin-ai-chat`
+- **Streaming:** Server-Sent Events (SSE) with real-time token rendering
+- **Auth:** Bearer token via `VITE_SUPABASE_PUBLISHABLE_KEY`
+- **Languages:** English + Hausa toggle
+
+### Quick Prompts (pre-built)
+
+1. "What are today's sales and revenue?"
+2. "Show this month's revenue and compare with performance."
+3. "Who are the top-performing agents?"
+4. "Show user growth statistics and insights."
+5. "Give me business growth advice for my Hajj/Umrah travel agency."
+6. "What pending payments and bookings need my attention?"
+
+### UI Features
+
+- Chat bubble interface (user = right/primary, assistant = left/muted)
+- Typing indicator with animated bouncing dots
+- Auto-scroll to latest message
+- Enter to send, Shift+Enter for newline
+
+---
+
+## 20. Admin Book Pilgrim
+
+**File:** `src/pages/admin/AdminBookPilgrim.tsx` (464 lines)
+**Route:** `/admin/book-pilgrim` (accessed via Pilgrims page "Register Pilgrim" button)
+
+### Purpose
+
+Multi-step wizard for admin/staff to register pilgrims directly (walk-in or phone booking). Bypasses the public booking flow.
+
+### Steps (4 + confirmation)
+
+| Step | Title              | Fields                                                                                    |
+| ---- | ------------------ | ----------------------------------------------------------------------------------------- |
+| 1    | Select Package     | Package dropdown + travel date                                                            |
+| 2    | Pilgrim Info       | Full name, phone, gender, nationality, DOB, passport number/expiry, passport photo upload |
+| 3    | Visa & Travel      | Departure city, room preference, special requests, vaccine cert, custom fields            |
+| 4    | Payment & Finalize | Payment method (cash/bank_transfer), mark as verified checkbox, summary                   |
+| 5    | Confirmation       | Success screen with reference number                                                      |
+
+### Key Behaviors
+
+- **Upsert pattern:** Uses `pendingBookingId`/`pendingPaymentId` for crash recovery
+- **Auto-verify:** When "Mark as Verified" checked → payment status = verified, booking status = confirmed
+- **Document uploads:** Passport photo + vaccine cert to `passport-photos` storage bucket
+- **Custom fields:** Dynamic fields from Booking Form Builder (`useBookingFormFields('admin')`)
+- **Form validation:** Zod schemas for pilgrim data and travel data
+
+### Payment Options
+
+| Method        | Description                                     |
+| ------------- | ----------------------------------------------- |
+| Cash          | Paid in office — typically auto-verified       |
+| Bank Transfer | Direct deposit — can be auto-verified by admin |
+
+---
+
+## Cross-Cutting Patterns
+
+### State Management
+
+- **TanStack Query** for all server state (queries + mutations)
+- **Cache invalidation** on mutations via `queryClient.invalidateQueries()`
+- **Optimistic updates** where applicable (e.g., status toggles)
+
+### Realtime Subscriptions
+
+- Team Chat: `postgres_changes` on `staff_messages`
+- Support Tickets: `postgres_changes` on support message tables
+
+### Export Utilities
+
+- **CSV export:** `downloadCSV()` from `AdminPilgrimDetailDialog`
+- **PDF generation:** `jsPDF` + `html2canvas` for ID tags
+- **Bulk document download:** `downloadMultipleDocuments()` → ZIP file
+- **Print view:** Dynamic HTML in new window with `window.print()`
+
+### Design System Tokens
+
+All admin pages use the Royal Indigo design system:
+
+- `admin-section-title` class for page headings
+- `admin-card` class for card containers
+- `glass-panel-light` for data tables
+- `gold-gradient` for primary CTA buttons
+- `shadow-gold` / `shadow-gold-lg` for button shadows
+
+### Adding a New Admin Module
+
+1. Create page component in `src/pages/admin/`
+2. Add route in router config
+3. Add entry to `ALL_MENU_ITEMS` in `AdminSidebar.tsx` with unique permission key
+4. Register permission key in Staff Management module
+5. Update this documentation file

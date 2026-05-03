@@ -1,0 +1,185 @@
+Chat completions
+Large language models (LLMs) are AI systems that generate text and engage in conversational interactions. They follow instructions and respond naturally to prompts: inputs like questions, instructions, or task examples. The model processes the prompt and produces a relevant text output as its response.
+
+chat_completions_graph
+The use cases around text generation such as chat completions are endless and can be applied to a wide range of applications. From:
+
+Chatbots
+Classification
+Data extraction
+Text summarization
+Code generation
+Question answering
+And much more!
+
+Chat completion
+Copy section link
+Chat completion
+The Chat Completion API accepts a list of chat messages as input and generates a response. This response is in the form of a new chat message with the role "assistant" as output, the "content" of each response can either be a string or a list of chunks with different kinds of chunk types for different features. Visit our API spec for more details.
+
+
+Non-Streaming
+
+
+Streaming
+For non-streaming chat completions requests, you will provid a list of messages and the model will return a single full completion response. This response will contain the full completion until the model decides to stop or the maximum number of tokens is reached, important to know that the longer the output and full completion, the higher the latency.
+
+Note that the response content of the model can have interleaved events instead of a single string, such as citations and tool calls.
+The content can be either a string, the most standard usage of llms:
+
+{'content': '...'}
+...or a list of different types of contents:
+
+{'content': [{'type': 'text', 'text': '...'}, {'type': '...', '...': [...]}, ...]}.
+
+python
+
+typescript
+
+curl
+
+Output
+
+V2
+
+V1
+
+Synchronous
+
+Asynchronous
+
+import os
+from mistralai.client import Mistral
+
+api_key = os.environ["MISTRAL_API_KEY"]
+model = "mistral-large-latest"
+
+client = Mistral(api_key=api_key)
+
+chat_response = client.chat.complete(
+    model = model,
+    messages = [
+        {
+            "role": "user",
+            "content": "How far is the moon from earth?",
+        },
+    ]
+)
+Chat messages
+Copy section link
+Chat messages
+Chat messages are a collection of prompts or messages, with each message having a specific role assigned to it, such as "system," "user," "assistant," or "tool."
+
+A system message is an optional message that sets the behavior and context for an AI assistant in a conversation, such as modifying its personality or providing specific instructions. A system message can include task instructions, personality traits, contextual information, creativity constraints, and other relevant guidelines to help the AI better understand and respond to the user's input. See the prompting capabilities section for explanations on prompting capabilities in general.
+A user message is a message sent from the perspective of the human in a conversation with an AI assistant. It typically provides a request, question, or comment that the AI assistant should respond to. User prompts allow the human to initiate and guide the conversation, and they can be used to request information, ask for help, provide feedback, or engage in other types of interaction with the AI.
+An assistant message is a message sent by the AI assistant back to the user. It is usually meant to reply to a previous user message by following its instructions, but you can also find it at the beginning of a conversation, for example to greet the user.
+A tool message only appears in the context of function calling, it is used at the final response formulation step when the model has to format the tool call's output for the user. To learn more about function calling, see the guide.
+tip
+When to use user prompt vs. system message then user message?
+
+You can either combine your system message and user message into a single user message or separate them into two distinct messages.
+We recommend you experiment with both ways to determine which one works better for your specific use case.
+Multi-turn
+Copy section link
+Multi-turn
+Chat completions can be used for multi-turn conversations. This means that you can send multiple messages back and forth between the user and the assistant. This is useful for applications like chatbots, where the user can have a conversation with the assistant.
+
+Interesting to note that you ma have different events interleaved between these interactions, such as tool calls for function calling, or even handoffs when handling agents.
+
+tip
+if you are interested on a simplified way to handle multi-turn conversations, you may want to check out our Agents and Conversations APIs. Managing multi-turn conversations can be complex, and our APIs are designed to simplify this process while providing you with built-in tools and connectors.
+
+
+python
+
+typescript
+
+curl
+
+Output
+
+V2
+
+V1
+
+import os
+from mistralai.client import Mistral
+
+api_key = os.environ["MISTRAL_API_KEY"]
+model = "mistral-medium-latest"
+
+client = Mistral(api_key=api_key)
+
+chat_response = client.chat.complete(
+    model=model,
+    messages=[
+        {
+            "role": "user",
+            "content": "What is the capital of France?",
+        },
+        {
+            "role": "assistant",
+            "content": "The Capital of France is **Paris**.",
+        },
+        {
+            "role": "user",
+            "content": "Translate that to French.",
+        },
+    ],
+)
+Other useful features
+Copy section link
+Other useful features
+Our chat completions service also has other features that can be used to customize your requests.
+
+The prefix flag enables prepending content to the assistant's response content. When used in a message, it allows the addition of an assistant's message at the end of the list, which will be prepended to the assistant's response.
+The safe_prompt flag is used to force chat completion to be moderated against sensitive content (see Guardrailing).
+A stop sequence allows forcing the model to stop generating after one or more chosen tokens or strings. The output will not contain the stop sequence.
+You can find short examples on how to use them below.
+
+
+Prefix
+
+
+Safe Prompt
+
+Stop
+
+Close
+The prefix flag is usefull to enforce the model to start with a specific string sequence, for example to enforce a specific format or to avoid hallucinations. The model will reply always starting with the exact same string as a prefix, only then it will continue with the rest of the response.
+
+
+python
+
+typescript
+
+curl
+
+Output
+
+V2
+
+V1
+
+import os
+from mistralai.client import Mistral
+
+api_key = os.environ["MISTRAL_API_KEY"]
+model = "mistral-medium-latest"
+
+client = Mistral(api_key=api_key)
+
+chat_response = client.chat.complete(
+    model=model,
+    messages=[
+        {
+            "role": "user",
+            "content": "What is the capital of France?",
+        },
+        {
+            "role": "assistant",
+            "content": "The Capital of France is",
+            "prefix": True,
+        },
+    ],
+)

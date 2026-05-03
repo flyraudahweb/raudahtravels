@@ -1,0 +1,2585 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: Raudah Travels & Tours API
+servers:
+  - url: /api
+    description: Base API path
+
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: User profile and auth operations
+  - name: packages
+    description: Travel package operations
+  - name: bookings
+    description: Booking operations
+  - name: payments
+    description: Payment operations
+  - name: documents
+    description: Document operations
+  - name: notifications
+    description: Notification operations
+  - name: support
+    description: Support ticket operations
+  - name: agents
+    description: Agent operations
+  - name: admin
+    description: Admin operations
+  - name: dashboard
+    description: Dashboard summary operations
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  # --- Auth / Profile ---
+  /auth/profile:
+    get:
+      operationId: getProfile
+      tags: [auth]
+      summary: Get current user profile
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "404":
+          description: Profile not found
+    put:
+      operationId: updateProfile
+      tags: [auth]
+      summary: Update current user profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileBody"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+
+  /auth/profile/sync:
+    post:
+      operationId: syncProfile
+      tags: [auth]
+      summary: Sync Clerk user to DB profile (upsert on login)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncProfileBody"
+      responses:
+        "200":
+          description: Profile synced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+
+  # --- Packages ---
+  /packages:
+    get:
+      operationId: listPackages
+      tags: [packages]
+      summary: List travel packages
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [hajj, umrah]
+        - name: available
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: number
+        - name: offset
+          in: query
+          schema:
+            type: number
+      responses:
+        "200":
+          description: List of packages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackageListResponse"
+    post:
+      operationId: createPackage
+      tags: [packages]
+      summary: Create a package (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePackageBody"
+      responses:
+        "201":
+          description: Created package
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TravelPackage"
+
+  /packages/{id}:
+    get:
+      operationId: getPackage
+      tags: [packages]
+      summary: Get a package by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Package details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TravelPackage"
+    put:
+      operationId: updatePackage
+      tags: [packages]
+      summary: Update a package (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePackageBody"
+      responses:
+        "200":
+          description: Updated package
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TravelPackage"
+    delete:
+      operationId: deletePackage
+      tags: [packages]
+      summary: Delete a package (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
+  /packages/stats:
+    get:
+      operationId: getPackageStats
+      tags: [packages]
+      summary: Get package availability stats (wow)
+      responses:
+        "200":
+          description: Package stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackageStats"
+
+  # --- Bookings ---
+  /bookings:
+    get:
+      operationId: listBookings
+      tags: [bookings]
+      summary: List bookings (filtered by user role)
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, confirmed, cancelled, completed]
+        - name: userId
+          in: query
+          schema:
+            type: string
+        - name: packageId
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: number
+        - name: offset
+          in: query
+          schema:
+            type: number
+      responses:
+        "200":
+          description: List of bookings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookingListResponse"
+    post:
+      operationId: createBooking
+      tags: [bookings]
+      summary: Create a booking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBookingBody"
+      responses:
+        "201":
+          description: Created booking
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+
+  /bookings/{id}:
+    get:
+      operationId: getBooking
+      tags: [bookings]
+      summary: Get booking by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Booking details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+    put:
+      operationId: updateBooking
+      tags: [bookings]
+      summary: Update booking status or details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBookingBody"
+      responses:
+        "200":
+          description: Updated booking
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+
+  # --- Payments ---
+  /payments:
+    get:
+      operationId: listPayments
+      tags: [payments]
+      summary: List payments
+      parameters:
+        - name: bookingId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, verified, rejected]
+        - name: limit
+          in: query
+          schema:
+            type: number
+        - name: offset
+          in: query
+          schema:
+            type: number
+      responses:
+        "200":
+          description: List of payments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentListResponse"
+    post:
+      operationId: createPayment
+      tags: [payments]
+      summary: Create a payment record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePaymentBody"
+      responses:
+        "201":
+          description: Payment created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+
+  /payments/{id}:
+    get:
+      operationId: getPayment
+      tags: [payments]
+      summary: Get payment by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Payment details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+
+  /payments/{id}/verify:
+    put:
+      operationId: verifyPayment
+      tags: [payments]
+      summary: Verify or reject a payment (admin)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyPaymentBody"
+      responses:
+        "200":
+          description: Payment updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Payment"
+
+  # --- Documents ---
+  /documents:
+    get:
+      operationId: listDocuments
+      tags: [documents]
+      summary: List documents
+      parameters:
+        - name: userId
+          in: query
+          schema:
+            type: string
+        - name: bookingId
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [passport, visa, ticket, voucher]
+      responses:
+        "200":
+          description: List of documents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentListResponse"
+    post:
+      operationId: createDocument
+      tags: [documents]
+      summary: Upload a document
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDocumentBody"
+      responses:
+        "201":
+          description: Document created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+
+  /documents/{id}:
+    get:
+      operationId: getDocument
+      tags: [documents]
+      summary: Get document by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+
+  # --- Notifications ---
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [notifications]
+      summary: List notifications for current user
+      parameters:
+        - name: unreadOnly
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Notifications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationListResponse"
+    post:
+      operationId: createNotification
+      tags: [notifications]
+      summary: Create notification (admin/system)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateNotificationBody"
+      responses:
+        "201":
+          description: Notification created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+
+  /notifications/{id}/read:
+    put:
+      operationId: markNotificationRead
+      tags: [notifications]
+      summary: Mark notification as read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Notification marked read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+
+  /notifications/read-all:
+    put:
+      operationId: markAllNotificationsRead
+      tags: [notifications]
+      summary: Mark all notifications as read
+      responses:
+        "200":
+          description: All read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated:
+                    type: number
+                required: [updated]
+
+  # --- Support ---
+  /support/tickets:
+    get:
+      operationId: listSupportTickets
+      tags: [support]
+      summary: List support tickets
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, in_progress, resolved]
+        - name: limit
+          in: query
+          schema:
+            type: number
+        - name: offset
+          in: query
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Support tickets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportTicketListResponse"
+    post:
+      operationId: createSupportTicket
+      tags: [support]
+      summary: Create support ticket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSupportTicketBody"
+      responses:
+        "201":
+          description: Ticket created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportTicket"
+
+  /support/tickets/{id}:
+    get:
+      operationId: getSupportTicket
+      tags: [support]
+      summary: Get support ticket with messages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ticket with messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportTicketDetail"
+    put:
+      operationId: updateSupportTicket
+      tags: [support]
+      summary: Update ticket status (admin)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSupportTicketBody"
+      responses:
+        "200":
+          description: Updated ticket
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportTicket"
+
+  /support/tickets/{id}/messages:
+    post:
+      operationId: sendSupportMessage
+      tags: [support]
+      summary: Send a message in a ticket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSupportMessageBody"
+      responses:
+        "201":
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportMessage"
+
+  # --- Public agent application (no auth) ---
+  /agents/public-apply:
+    post:
+      operationId: publicApplyAsAgent
+      tags: [agents]
+      summary: Submit public agent application (no auth required)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublicAgentApplicationBody"
+      responses:
+        "201":
+          description: Application submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicApplyResponse"
+
+  # --- Agent wallet ---
+  /agents/wallet:
+    get:
+      operationId: getAgentWallet
+      tags: [agents]
+      summary: Get agent wallet balance and transactions
+      responses:
+        "200":
+          description: Wallet info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentWalletResponse"
+
+  /agents/package-discounts:
+    get:
+      operationId: getAgentPackageDiscounts
+      tags: [agents]
+      summary: Get package discounts assigned to current agent
+      responses:
+        "200":
+          description: Package discounts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentDiscountsResponse"
+
+  # --- Admin: Agent applications ---
+  /admin/agent-applications:
+    get:
+      operationId: listAgentApplications
+      tags: [admin]
+      summary: List all public agent applications
+      responses:
+        "200":
+          description: List of applications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentApplicationListResponse"
+
+  /admin/agent-applications/{id}/approve:
+    put:
+      operationId: approveAgentApplication
+      tags: [admin]
+      summary: Approve application - creates Clerk account and agent record
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproveApplicationBody"
+      responses:
+        "200":
+          description: Application approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApproveApplicationResponse"
+
+  /admin/agent-applications/{id}/reject:
+    put:
+      operationId: rejectAgentApplication
+      tags: [admin]
+      summary: Reject agent application
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RejectApplicationBody"
+      responses:
+        "200":
+          description: Application rejected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                required: [success]
+
+  # --- Admin: Direct agent creation ---
+  /admin/agents/create:
+    post:
+      operationId: createAgentDirect
+      tags: [admin]
+      summary: Create agent account directly (no application needed)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentDirectBody"
+      responses:
+        "201":
+          description: Agent created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAgentDirectResponse"
+
+  # --- Admin: Agent commission ---
+  /admin/agents/{id}/commission:
+    put:
+      operationId: updateAgentCommission
+      tags: [admin]
+      summary: Update agent commission rate and type
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCommissionBody"
+      responses:
+        "200":
+          description: Commission updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProfile"
+
+  # --- Admin: Wallet top-up with OTP ---
+  /admin/agents/{id}/wallet/topup/initiate:
+    post:
+      operationId: initiateWalletTopup
+      tags: [admin]
+      summary: Initiate wallet top-up - generates and sends OTP to admin email
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WalletTopupInitiateBody"
+      responses:
+        "200":
+          description: OTP sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletTopupInitiateResponse"
+
+  /admin/agents/{id}/wallet/topup/confirm:
+    post:
+      operationId: confirmWalletTopup
+      tags: [admin]
+      summary: Confirm wallet top-up with OTP
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WalletTopupConfirmBody"
+      responses:
+        "200":
+          description: Wallet credited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalletTopupConfirmResponse"
+
+  # --- Admin: Per-package discounts ---
+  /admin/agents/{id}/package-discounts:
+    get:
+      operationId: getAgentPackageDiscountsAdmin
+      tags: [admin]
+      summary: Get per-package discounts for an agent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Package discounts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPackageDiscountsResponse"
+
+  /admin/agents/{id}/package-discounts/{packageId}:
+    put:
+      operationId: setAgentPackageDiscount
+      tags: [admin]
+      summary: Set per-package discount for an agent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: packageId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetPackageDiscountBody"
+      responses:
+        "200":
+          description: Discount set
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackageDiscount"
+    delete:
+      operationId: deleteAgentPackageDiscount
+      tags: [admin]
+      summary: Remove per-package discount for an agent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: packageId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Discount removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                required: [success]
+
+  # --- Agents ---
+  /agents/profile:
+    get:
+      operationId: getAgentProfile
+      tags: [agents]
+      summary: Get agent profile for current user
+      responses:
+        "200":
+          description: Agent profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProfile"
+    put:
+      operationId: updateAgentProfile
+      tags: [agents]
+      summary: Update agent profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentProfileBody"
+      responses:
+        "200":
+          description: Updated agent profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProfile"
+
+  /agents:
+    get:
+      operationId: listAgents
+      tags: [agents]
+      summary: List all agents (admin)
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, approved, rejected]
+        - name: limit
+          in: query
+          schema:
+            type: number
+        - name: offset
+          in: query
+          schema:
+            type: number
+      responses:
+        "200":
+          description: List of agents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentListResponse"
+
+  /agents/apply:
+    post:
+      operationId: applyAsAgent
+      tags: [agents]
+      summary: Submit agent application
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentApplicationBody"
+      responses:
+        "201":
+          description: Application submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProfile"
+
+  /agents/{id}/approve:
+    put:
+      operationId: approveAgent
+      tags: [agents]
+      summary: Approve or reject agent application (admin)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproveAgentBody"
+      responses:
+        "200":
+          description: Agent updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProfile"
+
+  /agents/commissions:
+    get:
+      operationId: listCommissions
+      tags: [agents]
+      summary: List commissions for current agent
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, paid]
+        - name: limit
+          in: query
+          schema:
+            type: number
+      responses:
+        "200":
+          description: List of commissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommissionListResponse"
+
+  # --- Dashboard (wow endpoints) ---
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get pilgrim dashboard summary
+      responses:
+        "200":
+          description: Dashboard summary for current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/admin-overview:
+    get:
+      operationId: getAdminOverview
+      tags: [dashboard]
+      summary: Get admin overview stats
+      responses:
+        "200":
+          description: Admin overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOverview"
+
+  /dashboard/agent-overview:
+    get:
+      operationId: getAgentOverview
+      tags: [dashboard]
+      summary: Get agent dashboard overview
+      responses:
+        "200":
+          description: Agent overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentOverview"
+
+  /dashboard/activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Get recent activity feed (admin)
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Recent activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityFeedResponse"
+
+  # --- Admin: Pilgrims ---
+  /admin/pilgrims:
+    get:
+      operationId: listPilgrims
+      tags: [admin]
+      summary: List all pilgrims (admin)
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: number
+        - name: offset
+          in: query
+          schema:
+            type: number
+      responses:
+        "200":
+          description: List of pilgrims
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PilgrimListResponse"
+
+  /admin/pilgrims/{id}:
+    get:
+      operationId: getPilgrim
+      tags: [admin]
+      summary: Get pilgrim detail (admin)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Pilgrim with bookings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PilgrimDetail"
+
+  /admin/staff:
+    get:
+      operationId: listStaff
+      tags: [admin]
+      summary: List staff members (admin)
+      responses:
+        "200":
+          description: List of staff
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffListResponse"
+    post:
+      operationId: inviteStaff
+      tags: [admin]
+      summary: Invite / create a new staff member
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteStaffBody"
+      responses:
+        "201":
+          description: Staff created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffMember"
+
+  /admin/staff/my-permissions:
+    get:
+      operationId: getMyPermissions
+      tags: [admin]
+      summary: Get current user permissions and specialties
+      responses:
+        "200":
+          description: My permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyPermissionsResponse"
+
+  /admin/staff/{id}:
+    delete:
+      operationId: deleteStaff
+      tags: [admin]
+      summary: Remove a staff member
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                required: [success]
+
+  /admin/staff/{id}/specialties:
+    put:
+      operationId: updateStaffSpecialties
+      tags: [admin]
+      summary: Set support ticket specialties for a staff member
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStaffSpecialtiesBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                required: [success]
+
+  /admin/analytics:
+    get:
+      operationId: getAnalytics
+      tags: [admin]
+      summary: Get booking and revenue analytics
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [week, month, quarter, year]
+      responses:
+        "200":
+          description: Analytics data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsData"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required: [status]
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        clerkUserId:
+          type: string
+        email:
+          type: string
+        fullName:
+          type: string
+        phone:
+          type: string
+        avatarUrl:
+          type: string
+          nullable: true
+        role:
+          type: string
+          enum: [user, agent, staff, admin, super_admin]
+        ninNumber:
+          type: string
+          nullable: true
+        passportNumber:
+          type: string
+          nullable: true
+        dateOfBirth:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+      required: [id, clerkUserId, email, fullName, role, createdAt]
+
+    UpdateProfileBody:
+      type: object
+      properties:
+        fullName:
+          type: string
+        phone:
+          type: string
+        avatarUrl:
+          type: string
+        ninNumber:
+          type: string
+        passportNumber:
+          type: string
+        dateOfBirth:
+          type: string
+        address:
+          type: string
+
+    SyncProfileBody:
+      type: object
+      properties:
+        clerkUserId:
+          type: string
+        email:
+          type: string
+        fullName:
+          type: string
+        avatarUrl:
+          type: string
+      required: [clerkUserId, email, fullName]
+
+    TravelPackage:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [hajj, umrah]
+        category:
+          type: string
+          enum: [premium, standard, budget]
+        season:
+          type: string
+          nullable: true
+        description:
+          type: string
+        price:
+          type: number
+        agentDiscount:
+          type: number
+        depositAmount:
+          type: number
+        durationDays:
+          type: number
+        departureDate:
+          type: string
+        returnDate:
+          type: string
+        departureCities:
+          type: array
+          items:
+            type: string
+        airlines:
+          type: array
+          items:
+            type: string
+        maxCapacity:
+          type: number
+        currentBookings:
+          type: number
+        inclusions:
+          type: array
+          items:
+            type: string
+        imageUrl:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+        isFeatured:
+          type: boolean
+        starRating:
+          type: number
+        status:
+          type: string
+          enum: [active, draft, archived]
+        countdownEnabled:
+          type: boolean
+        countdownExpiry:
+          type: string
+          nullable: true
+        countdownAction:
+          type: string
+          enum: [disable, both]
+        isRegistrationClosed:
+          type: boolean
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - type
+        - category
+        - description
+        - price
+        - agentDiscount
+        - depositAmount
+        - durationDays
+        - departureDate
+        - returnDate
+        - departureCities
+        - airlines
+        - maxCapacity
+        - currentBookings
+        - inclusions
+        - isActive
+        - isFeatured
+        - starRating
+        - status
+        - countdownEnabled
+        - countdownAction
+        - isRegistrationClosed
+        - createdAt
+
+    CreatePackageBody:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [hajj, umrah]
+        description:
+          type: string
+        price:
+          type: number
+        depositAmount:
+          type: number
+        durationDays:
+          type: number
+        departureDate:
+          type: string
+        returnDate:
+          type: string
+        maxCapacity:
+          type: number
+        inclusions:
+          type: array
+          items:
+            type: string
+        imageUrl:
+          type: string
+        isActive:
+          type: boolean
+        starRating:
+          type: number
+        status:
+          type: string
+          enum: [active, draft, archived]
+        countdownEnabled:
+          type: boolean
+        countdownExpiry:
+          type: string
+          nullable: true
+        countdownAction:
+          type: string
+          enum: [disable, both]
+      required:
+        - name
+        - type
+        - description
+        - price
+        - depositAmount
+        - durationDays
+        - departureDate
+        - returnDate
+        - maxCapacity
+        - inclusions
+        - isActive
+        - starRating
+
+    PackageListResponse:
+      type: object
+      properties:
+        packages:
+          type: array
+          items:
+            $ref: "#/components/schemas/TravelPackage"
+        total:
+          type: number
+      required: [packages, total]
+
+    PackageStats:
+      type: object
+      properties:
+        totalPackages:
+          type: number
+        hajjCount:
+          type: number
+        umrahCount:
+          type: number
+        availablePackages:
+          type: number
+        soldOutPackages:
+          type: number
+      required: [totalPackages, hajjCount, umrahCount, availablePackages, soldOutPackages]
+
+    Booking:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        packageId:
+          type: string
+        agentId:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pending, confirmed, cancelled, completed]
+        totalPrice:
+          type: number
+        amountPaid:
+          type: number
+        pilgrimCount:
+          type: number
+        pilgrimDetails:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        package:
+          $ref: "#/components/schemas/TravelPackage"
+          nullable: true
+        user:
+          $ref: "#/components/schemas/UserProfile"
+          nullable: true
+      required: [id, userId, packageId, status, totalPrice, amountPaid, pilgrimCount, createdAt, updatedAt]
+
+    CreateBookingBody:
+      type: object
+      properties:
+        packageId:
+          type: string
+        pilgrimCount:
+          type: number
+        pilgrimDetails:
+          type: string
+        notes:
+          type: string
+        agentId:
+          type: string
+        fullName:
+          type: string
+          nullable: true
+        passportNumber:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+      required: [packageId, pilgrimCount]
+
+    UpdateBookingBody:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [pending, confirmed, cancelled, completed]
+        notes:
+          type: string
+        amountPaid:
+          type: number
+
+    BookingListResponse:
+      type: object
+      properties:
+        bookings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Booking"
+        total:
+          type: number
+      required: [bookings, total]
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: string
+        bookingId:
+          type: string
+        userId:
+          type: string
+        amount:
+          type: number
+        method:
+          type: string
+          enum: [bank_transfer, cash, paystack, ussd]
+        status:
+          type: string
+          enum: [pending, verified, rejected]
+        reference:
+          type: string
+          nullable: true
+        proofUrl:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+        booking:
+          $ref: "#/components/schemas/Booking"
+          nullable: true
+      required: [id, bookingId, userId, amount, method, status, createdAt]
+
+    CreatePaymentBody:
+      type: object
+      properties:
+        bookingId:
+          type: string
+        amount:
+          type: number
+        method:
+          type: string
+          enum: [bank_transfer, cash, paystack, ussd]
+        reference:
+          type: string
+        proofUrl:
+          type: string
+        notes:
+          type: string
+      required: [bookingId, amount, method]
+
+    VerifyPaymentBody:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [verified, rejected]
+        notes:
+          type: string
+      required: [status]
+
+    PaymentListResponse:
+      type: object
+      properties:
+        payments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Payment"
+        total:
+          type: number
+      required: [payments, total]
+
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        bookingId:
+          type: string
+          nullable: true
+        type:
+          type: string
+          enum: [passport, visa, ticket, voucher]
+        url:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        fileName:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+      required: [id, userId, type, url, status, createdAt]
+
+    CreateDocumentBody:
+      type: object
+      properties:
+        bookingId:
+          type: string
+        type:
+          type: string
+          enum: [passport, visa, ticket, voucher]
+        url:
+          type: string
+        fileName:
+          type: string
+      required: [type, url]
+
+    DocumentListResponse:
+      type: object
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/Document"
+        total:
+          type: number
+      required: [documents, total]
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        title:
+          type: string
+        message:
+          type: string
+        isRead:
+          type: boolean
+        type:
+          type: string
+          enum: [booking, payment, document, support, system]
+        createdAt:
+          type: string
+      required: [id, userId, title, message, isRead, type, createdAt]
+
+    CreateNotificationBody:
+      type: object
+      properties:
+        userId:
+          type: string
+        title:
+          type: string
+        message:
+          type: string
+        type:
+          type: string
+          enum: [booking, payment, document, support, system]
+      required: [userId, title, message, type]
+
+    NotificationListResponse:
+      type: object
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: "#/components/schemas/Notification"
+        unreadCount:
+          type: number
+      required: [notifications, unreadCount]
+
+    SupportTicket:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        subject:
+          type: string
+        status:
+          type: string
+          enum: [open, in_progress, resolved]
+        priority:
+          type: string
+          enum: [low, medium, high]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserProfile"
+          nullable: true
+      required: [id, userId, subject, status, priority, createdAt, updatedAt]
+
+    SupportTicketDetail:
+      allOf:
+        - $ref: "#/components/schemas/SupportTicket"
+        - type: object
+          properties:
+            messages:
+              type: array
+              items:
+                $ref: "#/components/schemas/SupportMessage"
+          required: [messages]
+
+    CreateSupportTicketBody:
+      type: object
+      properties:
+        subject:
+          type: string
+        message:
+          type: string
+        priority:
+          type: string
+          enum: [low, medium, high]
+        category:
+          type: string
+      required: [subject, message]
+
+    UpdateSupportTicketBody:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [open, in_progress, resolved]
+        priority:
+          type: string
+          enum: [low, medium, high]
+
+    SupportMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        ticketId:
+          type: string
+        senderId:
+          type: string
+        message:
+          type: string
+        isAdmin:
+          type: boolean
+        createdAt:
+          type: string
+        sender:
+          $ref: "#/components/schemas/UserProfile"
+          nullable: true
+      required: [id, ticketId, senderId, message, isAdmin, createdAt]
+
+    CreateSupportMessageBody:
+      type: object
+      properties:
+        message:
+          type: string
+      required: [message]
+
+    SupportTicketListResponse:
+      type: object
+      properties:
+        tickets:
+          type: array
+          items:
+            $ref: "#/components/schemas/SupportTicket"
+        total:
+          type: number
+      required: [tickets, total]
+
+    AgentProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        businessName:
+          type: string
+        contactPerson:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        agentCode:
+          type: string
+          nullable: true
+        commissionRate:
+          type: number
+        commissionType:
+          type: string
+          enum: [percentage, fixed]
+        walletBalance:
+          type: number
+        isVerified:
+          type: boolean
+        status:
+          type: string
+          enum: [pending, active, suspended]
+        bio:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserProfile"
+          nullable: true
+      required: [id, userId, businessName, commissionRate, commissionType, walletBalance, isVerified, status, createdAt]
+
+    UpdateAgentProfileBody:
+      type: object
+      properties:
+        businessName:
+          type: string
+        contactPerson:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        bio:
+          type: string
+
+    AgentApplicationBody:
+      type: object
+      properties:
+        businessName:
+          type: string
+        contactPerson:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        bio:
+          type: string
+      required: [businessName]
+
+    ApproveAgentBody:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [approved, rejected]
+        commissionRate:
+          type: number
+      required: [status]
+
+    AgentListResponse:
+      type: object
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentProfile"
+        total:
+          type: number
+      required: [agents, total]
+
+    Commission:
+      type: object
+      properties:
+        id:
+          type: string
+        agentId:
+          type: string
+        bookingId:
+          type: string
+        amount:
+          type: number
+        status:
+          type: string
+          enum: [pending, paid]
+        createdAt:
+          type: string
+        booking:
+          $ref: "#/components/schemas/Booking"
+          nullable: true
+      required: [id, agentId, bookingId, amount, status, createdAt]
+
+    CommissionListResponse:
+      type: object
+      properties:
+        commissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Commission"
+        totalEarned:
+          type: number
+        pendingAmount:
+          type: number
+      required: [commissions, totalEarned, pendingAmount]
+
+    DashboardSummary:
+      type: object
+      properties:
+        totalBookings:
+          type: number
+        confirmedBookings:
+          type: number
+        pendingBookings:
+          type: number
+        totalAmountPaid:
+          type: number
+        totalAmountDue:
+          type: number
+        upcomingDepartures:
+          type: array
+          items:
+            $ref: "#/components/schemas/Booking"
+        recentPayments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Payment"
+        unreadNotifications:
+          type: number
+      required:
+        - totalBookings
+        - confirmedBookings
+        - pendingBookings
+        - totalAmountPaid
+        - totalAmountDue
+        - upcomingDepartures
+        - recentPayments
+        - unreadNotifications
+
+    AdminOverview:
+      type: object
+      properties:
+        totalRevenue:
+          type: number
+        totalPilgrims:
+          type: number
+        activePackages:
+          type: number
+        pendingPayments:
+          type: number
+        totalAgents:
+          type: number
+        pendingAgentApplications:
+          type: number
+        openSupportTickets:
+          type: number
+        revenueByMonth:
+          type: array
+          items:
+            type: object
+            properties:
+              month:
+                type: string
+              revenue:
+                type: number
+            required: [month, revenue]
+        bookingsByStatus:
+          type: object
+          properties:
+            pending:
+              type: number
+            confirmed:
+              type: number
+            cancelled:
+              type: number
+            completed:
+              type: number
+          required: [pending, confirmed, cancelled, completed]
+      required:
+        - totalRevenue
+        - totalPilgrims
+        - activePackages
+        - pendingPayments
+        - totalAgents
+        - pendingAgentApplications
+        - openSupportTickets
+        - revenueByMonth
+        - bookingsByStatus
+
+    AgentOverview:
+      type: object
+      properties:
+        walletBalance:
+          type: number
+        totalCommissionsEarned:
+          type: number
+        pendingCommissions:
+          type: number
+        totalClients:
+          type: number
+        activeBookings:
+          type: number
+        recentBookings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Booking"
+      required:
+        - walletBalance
+        - totalCommissionsEarned
+        - pendingCommissions
+        - totalClients
+        - activeBookings
+        - recentBookings
+
+    ActivityItem:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [booking_created, payment_received, agent_approved, document_uploaded, ticket_opened]
+        description:
+          type: string
+        userId:
+          type: string
+          nullable: true
+        userName:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+      required: [id, type, description, createdAt]
+
+    ActivityFeedResponse:
+      type: object
+      properties:
+        activities:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityItem"
+      required: [activities]
+
+    PilgrimListResponse:
+      type: object
+      properties:
+        pilgrims:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserProfile"
+        total:
+          type: number
+      required: [pilgrims, total]
+
+    PilgrimDetail:
+      allOf:
+        - $ref: "#/components/schemas/UserProfile"
+        - type: object
+          properties:
+            bookings:
+              type: array
+              items:
+                $ref: "#/components/schemas/Booking"
+            documents:
+              type: array
+              items:
+                $ref: "#/components/schemas/Document"
+            payments:
+              type: array
+              items:
+                $ref: "#/components/schemas/Payment"
+          required: [bookings, documents, payments]
+
+    StaffMember:
+      allOf:
+        - $ref: "#/components/schemas/UserProfile"
+        - type: object
+          properties:
+            permissions:
+              type: array
+              items:
+                type: string
+            specialties:
+              type: array
+              items:
+                type: string
+          required: [permissions, specialties]
+
+    InviteStaffBody:
+      type: object
+      properties:
+        fullName:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [staff, admin]
+        password:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+        specialties:
+          type: array
+          items:
+            type: string
+      required: [fullName, email, role, password]
+
+    UpdateStaffSpecialtiesBody:
+      type: object
+      properties:
+        specialties:
+          type: array
+          items:
+            type: string
+      required: [specialties]
+
+    MyPermissionsResponse:
+      type: object
+      properties:
+        permissions:
+          type: array
+          items:
+            type: string
+        specialties:
+          type: array
+          items:
+            type: string
+        role:
+          type: string
+      required: [permissions, specialties, role]
+
+    StaffListResponse:
+      type: object
+      properties:
+        staff:
+          type: array
+          items:
+            $ref: "#/components/schemas/StaffMember"
+        total:
+          type: number
+      required: [staff, total]
+
+    PublicAgentApplicationBody:
+      type: object
+      properties:
+        businessName:
+          type: string
+        contactPerson:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        bio:
+          type: string
+          nullable: true
+        experienceYears:
+          type: number
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+      required: [businessName, contactPerson, email, phone]
+
+    PublicApplyResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+      required: [id, status, message]
+
+    AgentApplication:
+      type: object
+      properties:
+        id:
+          type: string
+        businessName:
+          type: string
+        contactPerson:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        bio:
+          type: string
+          nullable: true
+        experienceYears:
+          type: number
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        status:
+          type: string
+        rejectionReason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, businessName, contactPerson, email, phone, status, createdAt, updatedAt]
+
+    AgentApplicationListResponse:
+      type: object
+      properties:
+        applications:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentApplication"
+        total:
+          type: number
+      required: [applications, total]
+
+    ApproveApplicationBody:
+      type: object
+      properties:
+        commissionRate:
+          type: number
+        commissionType:
+          type: string
+          enum: [percentage, fixed]
+        tempPassword:
+          type: string
+
+    ApproveApplicationResponse:
+      type: object
+      properties:
+        agent:
+          $ref: "#/components/schemas/AgentProfile"
+        tempPassword:
+          type: string
+        message:
+          type: string
+      required: [agent, tempPassword, message]
+
+    RejectApplicationBody:
+      type: object
+      properties:
+        reason:
+          type: string
+
+    CreateAgentDirectBody:
+      type: object
+      properties:
+        fullName:
+          type: string
+        businessName:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        tempPassword:
+          type: string
+        commissionRate:
+          type: number
+        commissionType:
+          type: string
+          enum: [percentage, fixed]
+      required: [fullName, businessName, email, phone, tempPassword]
+
+    CreateAgentDirectResponse:
+      type: object
+      properties:
+        agent:
+          $ref: "#/components/schemas/AgentProfile"
+        message:
+          type: string
+        tempPassword:
+          type: string
+          nullable: true
+      required: [agent, message]
+
+    UpdateCommissionBody:
+      type: object
+      properties:
+        commissionRate:
+          type: number
+        commissionType:
+          type: string
+          enum: [percentage, fixed]
+      required: [commissionRate, commissionType]
+
+    WalletTopupInitiateBody:
+      type: object
+      properties:
+        amount:
+          type: number
+      required: [amount]
+
+    WalletTopupInitiateResponse:
+      type: object
+      properties:
+        requestId:
+          type: string
+        message:
+          type: string
+        devOtp:
+          type: string
+          nullable: true
+      required: [requestId, message]
+
+    WalletTopupConfirmBody:
+      type: object
+      properties:
+        requestId:
+          type: string
+        otp:
+          type: string
+      required: [requestId, otp]
+
+    WalletTopupConfirmResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        newBalance:
+          type: number
+        message:
+          type: string
+      required: [success, newBalance, message]
+
+    PackageDiscount:
+      type: object
+      properties:
+        id:
+          type: string
+        agentId:
+          type: string
+        packageId:
+          type: string
+        discountType:
+          type: string
+          enum: [percentage, fixed]
+        discountValue:
+          type: number
+        package:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            price:
+              type: number
+          required: [id, name, price]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, agentId, packageId, discountType, discountValue, createdAt, updatedAt]
+
+    SetPackageDiscountBody:
+      type: object
+      properties:
+        discountType:
+          type: string
+          enum: [percentage, fixed]
+        discountValue:
+          type: number
+      required: [discountType, discountValue]
+
+    AdminPackageDiscountsResponse:
+      type: object
+      properties:
+        discounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/PackageDiscount"
+      required: [discounts]
+
+    AgentWalletTransaction:
+      type: object
+      properties:
+        id:
+          type: string
+        agentId:
+          type: string
+        amount:
+          type: number
+        type:
+          type: string
+        reference:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+      required: [id, agentId, amount, type, createdAt]
+
+    AgentWalletResponse:
+      type: object
+      properties:
+        balance:
+          type: number
+        transactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentWalletTransaction"
+      required: [balance, transactions]
+
+    AgentDiscountsResponse:
+      type: object
+      properties:
+        discounts:
+          type: array
+          items:
+            $ref: "#/components/schemas/PackageDiscount"
+        commissionRate:
+          type: number
+        commissionType:
+          type: string
+      required: [discounts, commissionRate, commissionType]
+
+    AnalyticsData:
+      type: object
+      properties:
+        period:
+          type: string
+        totalRevenue:
+          type: number
+        totalBookings:
+          type: number
+        newPilgrims:
+          type: number
+        revenueByPeriod:
+          type: array
+          items:
+            type: object
+            properties:
+              label:
+                type: string
+              revenue:
+                type: number
+              bookings:
+                type: number
+            required: [label, revenue, bookings]
+        packageBreakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              bookings:
+                type: number
+              revenue:
+                type: number
+            required: [name, bookings, revenue]
+      required: [period, totalRevenue, totalBookings, newPilgrims, revenueByPeriod, packageBreakdown]

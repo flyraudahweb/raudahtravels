@@ -1,0 +1,266 @@
+# Raudah Travels & Tours — Master Prompt (Part 1: Overview & Architecture)
+
+> **Generated:** 2026-05-02
+> **Domain:** [flyraudah.com](https://flyraudah.com)
+> **Repository:** `raudahtravels`
+
+---
+
+## 1. What Is This App?
+
+**Raudah Travels & Tours** is a full-stack **Hajj & Umrah travel booking platform** built for the Nigerian market. It serves three user types through dedicated dashboards:
+
+| Role                     | Portal           | Base Route     |
+| ------------------------ | ---------------- | -------------- |
+| **Pilgrim (User)** | User Dashboard   | `/dashboard` |
+| **Travel Agent**   | Agent B2B Portal | `/agent`     |
+| **Admin / Staff**  | Admin Console    | `/admin`     |
+
+Additionally there is a **public-facing landing page** at `/` with SEO-optimised marketing content, package browsing, and a "Become an Agent" application flow.
+
+---
+
+## 2. Technology Stack
+
+### Frontend
+
+| Layer      | Technology                                                                    |
+| ---------- | ----------------------------------------------------------------------------- |
+| Framework  | **React 18** + **TypeScript**                                     |
+| Build Tool | **Vite 5** (SWC plugin)                                                 |
+| Routing    | **React Router DOM v6** (nested layouts)                                |
+| State/Data | **TanStack React Query v5** (server state) + React Context (auth)       |
+| UI Library | **shadcn/ui** (Radix primitives) + **Tailwind CSS 3**             |
+| Forms      | **React Hook Form** + **Zod** validation                          |
+| Animations | **Framer Motion**                                                       |
+| Charts     | **Recharts**                                                            |
+| i18n       | **i18next** + **react-i18next** (English, Arabic, Hausa)          |
+| SEO        | **react-helmet-async**                                                  |
+| PDF/Export | **jsPDF**, **html2canvas**, **JSZip**, **file-saver** |
+| QR Codes   | **qrcode.react**                                                        |
+| PWA        | **vite-plugin-pwa**                                                     |
+| Icons      | **Lucide React**                                                        |
+
+### Backend (Supabase)
+
+| Layer          | Technology                                                                |
+| -------------- | ------------------------------------------------------------------------- |
+| Database       | **PostgreSQL** (Supabase-hosted)                                    |
+| Auth           | **Supabase Auth** (email/password, magic link, password reset)      |
+| API            | **Supabase Client JS** (auto-generated types) + **PostgREST** |
+| Edge Functions | **Deno** (Supabase Edge Functions)                                  |
+| Storage        | **Supabase Storage** (avatars, payment-proofs, documents)           |
+| Realtime       | **Supabase Realtime** (notifications, support messages, staff chat) |
+| Payments       | **Paystack** (online gateway) + Bank Transfer + USSD + Cash         |
+
+### Deployment
+
+| Layer   | Technology                                                |
+| ------- | --------------------------------------------------------- |
+| Hosting | **Vercel** (SPA with `vercel.json` rewrite rules) |
+| CI/CD   | Git push → Vercel auto-deploy                            |
+
+---
+
+## 3. Project Structure
+
+```
+raudahtravels/
+├── public/                    # Static assets (logo, video, favicons)
+├── src/
+│   ├── App.tsx                # Root component with all routes
+│   ├── main.tsx               # Entry point
+│   ├── index.css              # Global styles + Tailwind directives
+│   ├── assets/                # Hero background images
+│   ├── components/
+│   │   ├── admin/             # Admin layout, sidebar, pilgrim detail, wallet manager
+│   │   ├── agent/             # Agent layout, sidebar, client dialog, support chat
+│   │   ├── auth/              # AuthLayout, ProtectedRoute
+│   │   ├── bookings/          # Booking wizard, edit modal, passport scanner
+│   │   ├── dashboard/         # User dashboard layout, sidebar, bottom nav
+│   │   ├── landing/           # Hero, Header, Footer, CTABanner, Testimonials, etc.
+│   │   ├── notifications/     # NotificationBell (realtime)
+│   │   ├── packages/          # PackageCard
+│   │   ├── receipts/          # PaymentReceipt
+│   │   └── ui/                # shadcn/ui components
+│   ├── contexts/
+│   │   └── AuthContext.tsx     # Global auth state, role/permission checks
+│   ├── data/
+│   │   ├── packages.ts        # Static fallback package data + TypeScript interfaces
+│   │   └── proposalTemplates.ts
+│   ├── hooks/                 # Custom hooks (mobile, toast, agent profile, etc.)
+│   ├── i18n/                  # i18next config + locale JSON (en, ar, ha)
+│   ├── integrations/supabase/ # Auto-generated client + TypeScript types
+│   ├── lib/                   # Utilities (lazyWithRetry, cn helper)
+│   ├── pages/
+│   │   ├── Index.tsx           # Landing page
+│   │   ├── Packages.tsx        # Package listing
+│   │   ├── PackageDetail.tsx   # Single package view
+│   │   ├── Login/Register/etc. # Auth pages
+│   │   ├── admin/              # 20 admin pages
+│   │   ├── agent/              # 9 agent pages
+│   │   └── dashboard/          # 9 user dashboard pages
+│   ├── test/                  # Vitest test files
+│   └── utils/                 # Document export, image crop, passport extraction
+├── supabase/
+│   ├── config.toml            # Local dev config
+│   ├── functions/             # 15 Edge Functions
+│   ├── migrations/            # 9 SQL migration files
+│   └── templates/             # Email templates
+├── package.json
+├── vite.config.ts
+├── tailwind.config.ts
+├── tsconfig.json
+└── vercel.json
+```
+
+---
+
+## 4. Authentication & Authorization
+
+### Role Hierarchy
+
+```
+super_admin → admin → moderator → staff → agent → user
+```
+
+- **`super_admin`** and **`admin`**: Full access to all admin features and permissions.
+- **`staff`**: Access only to admin pages where they have explicit `staff_permissions` entries.
+- **`agent`**: Access to the Agent B2B portal only.
+- **`user`**: Access to the User Dashboard only.
+
+### How It Works
+
+1. **Registration:** User signs up → Supabase Auth trigger creates a `profiles` row and a `user_roles` row with role `'user'`.
+2. **Login:** `AuthContext.signIn()` fetches `profiles`, `user_roles`, and `staff_permissions` in parallel, then redirects based on highest role.
+3. **Route Protection:** `<ProtectedRoute requiredRole="staff">` checks `hasRole()` (hierarchical). `<ProtectedRoute requiredPermission="payments">` checks `hasPermission()`.
+4. **Database RLS:** Every table has Row Level Security. The `has_role()` and `has_permission()` SQL functions mirror the frontend logic server-side.
+
+### Staff Permissions (Granular)
+
+```
+overview, packages, payments, pilgrims, analytics, id_tags,
+visa_management, agents, bank_accounts, activity, amendments,
+support, settings, staff_management
+```
+
+---
+
+## 5. Routing Map
+
+### Public Routes
+
+| Route                 | Page               | Description                                      |
+| --------------------- | ------------------ | ------------------------------------------------ |
+| `/`                 | Index              | Landing page (Hero, Packages, Testimonials, CTA) |
+| `/packages`         | Packages           | Browse/filter all active packages                |
+| `/packages/:id`     | PackageDetail      | Single package with booking CTA                  |
+| `/login`            | Login              | Email/password sign-in                           |
+| `/register`         | Register           | Sign-up with name, email, phone                  |
+| `/forgot-password`  | ForgotPassword     | Password reset request                           |
+| `/reset-password`   | ResetPassword      | Set new password (from email link)               |
+| `/install`          | Install            | PWA install instructions                         |
+| `/proposal`         | Proposal           | Downloadable proposal/brochure                   |
+| `/about`            | AboutUs            | Company info                                     |
+| `/services`         | Services           | Services overview                                |
+| `/faq`              | FAQ                | Frequently asked questions                       |
+| `/terms`            | TermsAndConditions | Legal terms                                      |
+| `/privacy`          | PrivacyPolicy      | Privacy policy                                   |
+| `/payment/callback` | PaymentCallback    | Paystack redirect handler                        |
+
+### User Dashboard (`/dashboard/*`) — requires `user` role
+
+| Route                    | Page               |
+| ------------------------ | ------------------ |
+| `/dashboard`           | DashboardOverview  |
+| `/dashboard/bookings`  | DashboardBookings  |
+| `/dashboard/packages`  | DashboardPackages  |
+| `/dashboard/payments`  | DashboardPayments  |
+| `/dashboard/documents` | DashboardDocuments |
+| `/dashboard/visas`     | DashboardVisas     |
+| `/dashboard/profile`   | DashboardProfile   |
+| `/dashboard/support`   | DashboardSupport   |
+| `/dashboard/book/:id`  | BookingWizard      |
+
+### Agent Portal (`/agent/*`) — requires `agent` role
+
+| Route                   | Page                      |
+| ----------------------- | ------------------------- |
+| `/agent`              | AgentOverview             |
+| `/agent/clients`      | AgentClients              |
+| `/agent/packages`     | AgentPackages             |
+| `/agent/book/:id`     | AgentBookForClient        |
+| `/agent/bookings`     | AgentBookings             |
+| `/agent/commissions`  | AgentCommissions          |
+| `/agent/transactions` | AgentWalletHistory        |
+| `/agent/visas`        | AgentVisas                |
+| `/agent/profile`      | DashboardProfile (shared) |
+| `/agent/support`      | DashboardSupport (shared) |
+| `/agent/rules`        | AgentRules                |
+
+### Admin Console (`/admin/*`) — requires `staff` role + permission checks
+
+| Route                         | Permission       | Page                   |
+| ----------------------------- | ---------------- | ---------------------- |
+| `/admin`                    | overview         | AdminOverview          |
+| `/admin/packages`           | packages         | AdminPackages          |
+| `/admin/payments`           | payments         | AdminPayments          |
+| `/admin/pilgrims`           | pilgrims         | AdminPilgrims          |
+| `/admin/book-pilgrim`       | pilgrims         | AdminBookPilgrim       |
+| `/admin/register-pilgrim`   | pilgrims         | AdminRegisterPilgrim   |
+| `/admin/analytics`          | analytics        | AdminAnalytics         |
+| `/admin/id-tags`            | id_tags          | AdminIdTags            |
+| `/admin/visa-management`    | visa_management  | AdminVisaManagement    |
+| `/admin/agents`             | agents           | AdminAgents            |
+| `/admin/agent-applications` | agents           | AdminAgentApplications |
+| `/admin/bank-accounts`      | bank_accounts    | AdminBankAccounts      |
+| `/admin/activity`           | activity         | AdminActivity          |
+| `/admin/amendments`         | amendments       | AdminAmendmentRequests |
+| `/admin/support`            | support          | AdminSupport           |
+| `/admin/staff`              | staff_management | AdminStaffManagement   |
+| `/admin/settings`           | settings         | AdminSettings          |
+| `/admin/booking-form`       | settings         | AdminBookingForm       |
+| `/admin/chat`               | (any staff)      | AdminTeamChat          |
+| `/admin/ai-assistant`       | (any staff)      | AdminAiAssistant       |
+
+---
+
+## 6. Edge Functions (Supabase)
+
+| Function                      | Purpose                                        |
+| ----------------------------- | ---------------------------------------------- |
+| `admin-ai-chat`             | AI assistant for admin queries                 |
+| `admin-topup-wallet`        | Initiate OTP-verified wallet top-up for agents |
+| `approve-agent-application` | Process agent application approval             |
+| `create-agent-direct`       | Admin creates agent account directly           |
+| `create-paystack-checkout`  | Generate Paystack payment URL                  |
+| `extract-passport-data`     | OCR/AI passport data extraction                |
+| `generate-proposal`         | Generate PDF proposals                         |
+| `invite-staff`              | Send staff invitation emails                   |
+| `paystack-webhook`          | Handle Paystack payment webhooks               |
+| `seed-demo-data`            | Seed test/demo data                            |
+| `send-login-notification`   | Email notification on login                    |
+| `send-payment-receipt`      | Email payment receipts                         |
+| `verify-paystack-payment`   | Verify Paystack transaction status             |
+| `verify-topup-otp`          | Verify OTP for wallet top-up completion        |
+
+---
+
+## 7. Storage Buckets
+
+| Bucket             | Public | Purpose                             |
+| ------------------ | ------ | ----------------------------------- |
+| `avatars`        | Yes    | User profile photos                 |
+| `payment-proofs` | No     | Bank transfer proof uploads         |
+| `documents`      | No     | Passports, visas, tickets, vouchers |
+
+---
+
+## 8. Realtime Subscriptions
+
+The following tables are added to `supabase_realtime` publication:
+
+- `notifications` — Live notification bell updates
+- `support_messages` — Real-time support chat
+- `support_tickets` — Ticket status updates
+- `staff_messages` — Internal team chat

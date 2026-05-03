@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Raudah Travels & Tours"
+version = "1.0.0"
+id = "artifacts/raudah-travels"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25408
+
+[services.development]
+run = "pnpm --filter @workspace/raudah-travels run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/raudah-travels", "run", "build" ]
+publicDir = "artifacts/raudah-travels/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25408"
+BASE_PATH = "/"
