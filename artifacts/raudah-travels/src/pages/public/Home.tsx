@@ -8,7 +8,7 @@ import { useListPackages, getListPackagesQueryKey } from "@workspace/api-client-
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { MapPin, CalendarDays, Star, CheckCircle2, Phone, MessageCircle, Users, Search, ArrowRight, ChevronRight, Check, Globe, ChevronDown, Minus, Plus, Play } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-
+import consultancyImg from "@/assets/images/consultancy.png";
 /* ── Custom branded dropdown ────────────────────────────────────────────── */
 interface DropdownOption { value: string; label: string; }
 
@@ -533,7 +533,7 @@ export default function Home() {
               </div>
               <div className="relative">
                 <div className="aspect-[4/5] rounded-3xl overflow-hidden border-4 border-[#EEF0FF] shadow-brand-glow relative z-10">
-                  <img src="/src/assets/images/consultancy.png" alt="Raudah Travel Consultancy" className="w-full h-full object-cover" />
+                  <img src={consultancyImg} alt="Raudah Travel Consultancy" className="w-full h-full object-cover" />
                 </div>
                 <div className="absolute -bottom-8 -left-8 w-64 h-64 bg-[#2D3199]/10 rounded-full blur-3xl -z-10" />
               </div>
