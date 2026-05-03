@@ -377,13 +377,13 @@ export default function Home() {
                   </div>
 
                   {/* Search CTA */}
-                  <div className="flex items-center px-3 py-3">
+                  <div className="w-full md:w-auto flex items-center px-4 pb-5 md:p-3">
                     <Link
                       href={`/packages${searchForm.packageType ? `?type=${searchForm.packageType}` : ""}`}
-                      className="flex items-center gap-2 px-6 py-3.5 bg-[#FF3B00] hover:bg-[#D63200] text-white text-sm font-black rounded-xl transition-all hover:-translate-y-0.5 shadow-[0_4px_20px_rgba(255,59,0,0.40)] whitespace-nowrap"
+                      className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-[#FF3B00] hover:bg-[#D63200] text-white text-sm font-black rounded-xl transition-all hover:-translate-y-0.5 shadow-[0_4px_20px_rgba(255,59,0,0.40)] whitespace-nowrap"
                     >
                       <Search className="w-4 h-4" />
-                      <span className="hidden sm:inline">Search</span>
+                      <span>Search</span>
                     </Link>
                   </div>
                 </div>
@@ -576,7 +576,7 @@ export default function Home() {
             {(() => {
               const defaultLandingStats = [
                 { val: "4.9 / 5", label: "Average Rating" },
-                { val: "2,400+", label: "Happy Pilgrims" },
+                { val: "30,000+", label: "Happy Pilgrims" },
                 { val: "8 yrs", label: "Trusted Since 2016" },
                 { val: "100%", label: "Visa Success Rate" },
               ];

@@ -10,7 +10,7 @@ const STORY_IMG = "https://images.pexels.com/photos/26436662/pexels-photo-264366
 
 const DEFAULT_STATS = [
   { val: "15+",    label: "Years of Service" },
-  { val: "5,000+", label: "Pilgrims Served" },
+  { val: "30,000+", label: "Pilgrims Served" },
   { val: "100%",   label: "Visa Success Rate" },
   { val: "4.9/5",  label: "Pilgrim Rating" },
 ];
@@ -221,7 +221,7 @@ export default function About() {
             {[1,2,3,4,5].map(i => <Star key={i} className="w-5 h-5 fill-[#FF3B00] text-[#FF3B00]" />)}
           </div>
           <h2 className="text-3xl md:text-4xl font-black text-white mb-4">
-            Trusted by 5,000+ Nigerian Pilgrims
+            Trusted by 30,000+ Nigerian Pilgrims
           </h2>
           <p className="text-white/60 text-lg leading-relaxed mb-10">
             "Raudah Travels made our Hajj journey completely stress-free. Every detail was handled

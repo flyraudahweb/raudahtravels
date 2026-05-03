@@ -192,7 +192,7 @@ export default function BecomeAgent() {
             {[
               { icon: TrendingUp, label: "Up to 15%", sub: "Commission Rate" },
               { icon: Globe, label: "100%", sub: "Visa Success" },
-              { icon: Users, label: "2,400+", sub: "Happy Pilgrims" },
+              { icon: Users, label: "30,000+", sub: "Happy Pilgrims" },
             ].map(({ icon: Icon, label, sub }) => (
               <div key={sub} className="text-center">
                 <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center mx-auto mb-2">
