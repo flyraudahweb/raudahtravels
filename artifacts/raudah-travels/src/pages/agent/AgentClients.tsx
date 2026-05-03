@@ -16,6 +16,60 @@ import {
 } from "lucide-react";
 import PassportScanner from "@/components/PassportScanner";
 
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function FileUploadBox({ label, accept, value, onChange, previewType = "image" }: {
+  label: string; accept: string; value: string; onChange: (v: string) => void; previewType?: "image" | "file";
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const b64 = await readFileAsBase64(file);
+    onChange(b64);
+    e.target.value = "";
+  };
+  const isImage = value && value.startsWith("data:image");
+  return (
+    <div>
+      <label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">{label}</label>
+      <div className="mt-1">
+        {value ? (
+          <div className="rounded-xl border-2 border-[#2D3199] overflow-hidden bg-[#EEF0FF]">
+            {isImage && previewType === "image" ? (
+              <img src={value} alt="preview" className="w-full h-28 object-cover" />
+            ) : (
+              <div className="flex items-center gap-3 p-3">
+                <FileText className="w-6 h-6 text-[#2D3199]" />
+                <p className="text-xs font-bold text-[#2D3199]">File uploaded</p>
+              </div>
+            )}
+            <div className="flex gap-2 px-3 py-2 border-t border-[#C7CCF5]">
+              <button type="button" onClick={() => inputRef.current?.click()} className="text-[10px] font-bold text-[#2D3199]"><Upload className="w-3 h-3 inline mr-1" />Change</button>
+              <span className="text-[#C7CCF5]">·</span>
+              <button type="button" onClick={() => { onChange(""); if (inputRef.current) inputRef.current.value = ""; }} className="text-[10px] font-bold text-red-500"><X className="w-3 h-3 inline mr-1" />Remove</button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" onClick={() => inputRef.current?.click()}
+            className="w-full rounded-xl border-2 border-dashed border-[#DCE3F0] hover:border-[#2D3199]/40 bg-[#F8FAFC] hover:bg-[#EEF0FF] transition-all p-4 flex flex-col items-center gap-1.5 text-center">
+            <Upload className="w-5 h-5 text-[#94A3B8]" />
+            <span className="text-xs font-semibold text-[#64748B]">Click to upload</span>
+          </button>
+        )}
+        <input ref={inputRef} type="file" accept={accept} onChange={handleFile} className="hidden" />
+      </div>
+    </div>
+  );
+}
+
 const CIVILITY = ["Mr", "Mrs", "Miss", "Dr", "Prof", "Alhaji", "Alhaja", "Mal.", "Hajiya"];
 const GENDERS  = ["male", "female"];
 const ROOMS    = ["Single", "Double", "Triple", "Quad"];
@@ -34,7 +88,8 @@ const REG_STEPS = [
   { id: 1, label: "Package",  icon: Package },
   { id: 2, label: "Passport", icon: BookOpen },
   { id: 3, label: "Personal", icon: User },
-  { id: 4, label: "Payment",  icon: CreditCard },
+  { id: 4, label: "Contact",  icon: Phone },
+  { id: 5, label: "Payment",  icon: CreditCard },
 ];
 
 const STATUS_CFG: Record<string, { label: string; pill: string; dot: string }> = {
@@ -67,6 +122,7 @@ interface Package { id: string; name: string; type: string; price: number; maxCa
 const BLANK_FORM = {
   packageId: "", civility: "", firstName: "", lastName: "",
   passportNumber: "", passportIssueDate: "", passportExpiry: "", passportIssuingAuthority: "",
+  passportCopyUrl: "", profilePhotoUrl: "",
   dateOfBirth: "", placeOfBirth: "", gender: "", phone: "", email: "", nationality: "Nigerian",
   ethnicGroup: "", maritalStatus: "", levelOfStudy: "", occupation: "",
   country: "Nigeria", city: "", address: "",
@@ -619,16 +675,18 @@ export default function AgentClients() {
                     onExtracted={data => {
                       setForm(f => ({
                         ...f,
-                        firstName:        data.firstName        || f.firstName,
-                        lastName:         data.lastName         || f.lastName,
-                        passportNumber:   data.passportNumber   || f.passportNumber,
+                        firstName:         data.firstName        || f.firstName,
+                        lastName:          data.lastName         || f.lastName,
+                        passportNumber:    data.passportNumber   || f.passportNumber,
                         passportIssueDate: data.passportIssueDate || f.passportIssueDate,
-                        passportExpiry:   data.passportExpiry   || f.passportExpiry,
-                        dateOfBirth:      data.dateOfBirth      || f.dateOfBirth,
-                        gender:           data.gender           || f.gender,
-                        nationality:      data.nationality      || f.nationality,
+                        passportExpiry:    data.passportExpiry   || f.passportExpiry,
+                        dateOfBirth:       data.dateOfBirth      || f.dateOfBirth,
+                        gender:            data.gender           || f.gender,
+                        nationality:       data.nationality      || f.nationality,
+                        passportCopyUrl:   data.passportImageDataUrl || f.passportCopyUrl,
                       }));
                     }}
+                    onProfilePhoto={dataUrl => setForm(f => ({ ...f, profilePhotoUrl: dataUrl }))}
                   />
                 </div>
 
@@ -656,6 +714,22 @@ export default function AgentClients() {
                     {passportWarnLevel === "expired" ? "Passport has expired — cannot register." : "Passport expiring within 6 months — may cause visa issues."}
                   </div>
                 )}
+                <div className="grid grid-cols-2 gap-4 pt-1">
+                  <FileUploadBox
+                    label="Passport Copy"
+                    accept="image/*,.pdf"
+                    value={form.passportCopyUrl}
+                    onChange={v => set("passportCopyUrl", v)}
+                    previewType="image"
+                  />
+                  <FileUploadBox
+                    label="Profile Photo"
+                    accept="image/*"
+                    value={form.profilePhotoUrl}
+                    onChange={v => set("profilePhotoUrl", v)}
+                    previewType="image"
+                  />
+                </div>
               </div>
             )}
 
@@ -725,7 +799,7 @@ export default function AgentClients() {
 
                 {/* Other Info */}
                 <div className="space-y-4">
-                  <h3 className="text-sm font-black border-b border-[#E2E8F0] pb-2 text-[#1C1F66]">Other & Preferences</h3>
+                  <h3 className="text-sm font-black border-b border-[#E2E8F0] pb-2 text-[#1C1F66]">Other &amp; Preferences</h3>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Nationality</Label>
@@ -735,26 +809,109 @@ export default function AgentClients() {
                       </Select>
                     </div>
                     <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Place of Birth</Label>
+                      <Input value={form.placeOfBirth} onChange={e => set("placeOfBirth", e.target.value)} placeholder="City / State" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                    </div>
+                    <div className="space-y-1.5">
                       <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Marital Status</Label>
                       <Select value={form.maritalStatus} onValueChange={v => set("maritalStatus", v)}>
                         <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue placeholder="—" /></SelectTrigger>
                         <SelectContent>{MARITAL_STATUS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-1.5 col-span-2">
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Level of Study</Label>
+                      <Select value={form.levelOfStudy} onValueChange={v => set("levelOfStudy", v)}>
+                        <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue placeholder="—" /></SelectTrigger>
+                        <SelectContent>{LEVEL_OF_STUDY.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Ethnic Group</Label>
+                      <Input value={form.ethnicGroup} onChange={e => set("ethnicGroup", e.target.value)} placeholder="e.g. Hausa" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                    </div>
+                    <div className="space-y-1.5">
                       <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Room Preference</Label>
                       <Select value={form.roomPreference} onValueChange={v => set("roomPreference", v)}>
                         <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue /></SelectTrigger>
                         <SelectContent>{ROOMS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Partner / Mahram</Label>
+                      <Input value={form.partner} onChange={e => set("partner", e.target.value)} placeholder="Partner name" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Under Cover</Label>
+                      <Input value={form.underCover} onChange={e => set("underCover", e.target.value)} placeholder="e.g. RAUDAH FUNTUA" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                    </div>
+                    <div className="space-y-1.5 col-span-2">
+                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Observation</Label>
+                      <Textarea value={form.observation} onChange={e => set("observation", e.target.value)} placeholder="Any notes…" className="rounded-xl border-[#E2E8F0] bg-white resize-none" rows={2} />
+                    </div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* ── STEP 4: PAYMENT ── */}
+            {/* ── STEP 4: CONTACT ── */}
             {regStep === 4 && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
+                <div className="space-y-4">
+                  <h3 className="text-sm font-black border-b border-[#E2E8F0] pb-2 text-[#1C1F66]">Contact &amp; Address</h3>
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Phone <span className="text-red-500">*</span></Label>
+                    <div className="flex gap-2">
+                      <Select value={phoneCode} onValueChange={setPhoneCode}>
+                        <SelectTrigger className="w-[100px] rounded-xl border-[#E2E8F0] h-12 bg-white shrink-0">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PHONE_CODES.map(p => (
+                            <SelectItem key={p.code} value={p.code}>{p.flag} {p.code}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="800 000 0000" className="rounded-xl border-[#E2E8F0] h-12 bg-white flex-1" />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Email</Label>
+                    <Input type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="client@example.com" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Occupation</Label>
+                      <Input value={form.occupation} onChange={e => set("occupation", e.target.value)} placeholder="e.g. Teacher" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">City</Label>
+                      <Input value={form.city} onChange={e => set("city", e.target.value)} placeholder="City" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                    </div>
+                    <div className="space-y-1.5 col-span-2">
+                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Address</Label>
+                      <Input value={form.address} onChange={e => set("address", e.target.value)} placeholder="Full residential address" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Departure City</Label>
+                      <Select value={form.departureCity} onValueChange={v => set("departureCity", v)}>
+                        <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue placeholder="Select…" /></SelectTrigger>
+                        <SelectContent>
+                          {["Lagos", "Abuja", "Kano", "Port Harcourt", "Ibadan", "Enugu"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Special Requests</Label>
+                      <Input value={form.specialRequests} onChange={e => set("specialRequests", e.target.value)} placeholder="Any notes…" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── STEP 5: PAYMENT ── */}
+            {regStep === 5 && (
               <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div className="bg-[#EEF0FF] p-4 rounded-xl border border-[#2D3199]/20 flex items-start gap-3">
                   <CreditCard className="w-5 h-5 text-[#2D3199] shrink-0 mt-0.5" />
@@ -811,10 +968,11 @@ export default function AgentClients() {
                 </Button>
               )}
 
-              {regStep < 4 ? (
+              {regStep < 5 ? (
                 <Button type="button" onClick={() => {
                   if (regStep === 1 && !form.packageId) { toast({ title: "Select a package", variant: "destructive" }); return; }
                   if (regStep === 3 && (!form.firstName.trim() || !form.lastName.trim())) { toast({ title: "First or Last name is required", variant: "destructive" }); return; }
+                  if (regStep === 4 && !form.phone.trim()) { toast({ title: "Phone number is required", variant: "destructive" }); return; }
                   setRegStep(s => s + 1);
                 }} className="w-full sm:w-auto bg-[#2D3199] hover:bg-[#1C1F66] text-white rounded-xl font-black h-12 px-8 shadow-md">
                   Next Step <ChevronRight className="w-4 h-4 ml-2" />
