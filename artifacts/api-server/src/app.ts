@@ -95,10 +95,25 @@ app.use("/api", router);
 // --- Production: Serve frontend static files (Option B — single service) ---
 if (process.env.NODE_ENV === "production") {
   const frontendDir = path.resolve("artifacts/raudah-travels/dist/public");
+
+  // Permissive CSP for the SPA shell — must allow YouTube & Vimeo iframes
+  const frontendCSP = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://clerk.raudahtravels.com https://*.clerk.accounts.dev https://challenges.cloudflare.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com data:",
+    "img-src 'self' data: blob: https: http:",
+    "media-src 'self' https: blob:",
+    "frame-src 'self' https://www.youtube.com https://youtube.com https://player.vimeo.com https://challenges.cloudflare.com https://*.clerk.accounts.dev",
+    "connect-src 'self' https: wss:",
+    "worker-src 'self' blob:",
+  ].join("; ");
+
   app.use(express.static(frontendDir));
 
-  // SPA fallback — serve index.html for all non-API routes
+  // SPA fallback — serve index.html with correct CSP headers
   app.get(/(.*)/, (_req, res) => {
+    res.setHeader("Content-Security-Policy", frontendCSP);
     res.sendFile(path.join(frontendDir, "index.html"));
   });
 }
