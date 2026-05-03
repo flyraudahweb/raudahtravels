@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { PackageAvailability } from "@/components/PackageAvailability";
 import { useQuery } from "@tanstack/react-query";
 import { useFormFieldConfig } from "@/hooks/useFormFieldConfig";
+import PassportScanner from "@/components/PassportScanner";
 
 const STEPS = ["Package", "Passport", "Personal Info", "Contact", "Payment & Review"];
 
@@ -527,6 +528,28 @@ export default function BookingWizard() {
             <div className="space-y-4">
               <h2 className="text-lg font-semibold">Passport Details</h2>
               <PassportExpiryAlert expiry={passportForm.passportExpiry} />
+              {/* AI Passport Scanner — auto-fills all fields below */}
+              <PassportScanner
+                onExtracted={(data) => {
+                  setPassportForm(f => ({
+                    ...f,
+                    passportNumber:    data.passportNumber    || f.passportNumber,
+                    passportIssueDate: data.passportIssueDate || f.passportIssueDate,
+                    passportExpiry:    data.passportExpiry    || f.passportExpiry,
+                  }));
+                  if (data.firstName || data.lastName) {
+                    setPersonalForm(f => ({
+                      ...f,
+                      firstName:   data.firstName   || f.firstName,
+                      lastName:    data.lastName    || f.lastName,
+                      dateOfBirth: data.dateOfBirth || f.dateOfBirth,
+                      gender:      data.gender      || f.gender,
+                      nationality: data.nationality || f.nationality,
+                    }));
+                  }
+                }}
+                onProfilePhoto={(dataUrl) => setPersonalForm(f => ({ ...f, profilePhotoUrl: dataUrl }))}
+              />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {show("passportNumber") && (
                   <div className="sm:col-span-2">

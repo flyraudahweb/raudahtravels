@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { paymentsTable, profilesTable, bookingsTable, visaApplicationsTable, siteSettingsTable, userActivityTable, packagesTable } from "@workspace/db";
 import { createNotification } from "../utils/notify.js";
 import { getAuth } from "@clerk/express";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, desc } from "drizzle-orm";
 import { randomUUID, createHmac } from "crypto";
 import { sendPaymentReceipt } from "../utils/email";
 import { logger } from "../lib/logger";
@@ -87,23 +87,63 @@ router.get("/payments", async (req, res) => {
   const profile = await getProfileByClerkId(clerkUserId);
   if (!profile) return res.status(404).json({ error: "Profile not found" });
 
-  const { bookingId, status, limit = "20", offset = "0" } = req.query as Record<string, string>;
-  const conditions = [];
-
+  const { bookingId, status, limit = "50", offset = "0" } = req.query as Record<string, string>;
   const isAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
+
+  const conditions: any[] = [];
   if (!isAdmin) conditions.push(eq(paymentsTable.userId, profile.id));
   if (bookingId) conditions.push(eq(paymentsTable.bookingId, bookingId));
   if (status) conditions.push(eq(paymentsTable.status, status as any));
 
-  const payments = await db.query.paymentsTable.findMany({
-    where: conditions.length ? and(...conditions) : undefined,
-    limit: parseInt(limit),
-    offset: parseInt(offset),
-  });
+  const where = conditions.length ? and(...conditions) : undefined;
 
-  const total = await db.select({ count: sql<number>`count(*)` }).from(paymentsTable)
-    .where(conditions.length ? and(...conditions) : undefined);
-  return res.json({ payments: payments.map(toPaymentResponse), total: Number(total[0].count) });
+  const rows = await db.select({
+    payment: paymentsTable,
+    booking: {
+      id: bookingsTable.id,
+      reference: bookingsTable.reference,
+    },
+    user: {
+      id: profilesTable.id,
+      fullName: profilesTable.fullName,
+      email: profilesTable.email,
+    },
+    packageName: packagesTable.name,
+  })
+    .from(paymentsTable)
+    .leftJoin(bookingsTable, eq(paymentsTable.bookingId, bookingsTable.id))
+    .leftJoin(profilesTable, eq(paymentsTable.userId, profilesTable.id))
+    .leftJoin(packagesTable, eq(bookingsTable.packageId, packagesTable.id))
+    .where(where)
+    .orderBy(desc(paymentsTable.createdAt))
+    .limit(parseInt(limit))
+    .offset(parseInt(offset));
+
+  const [{ count }] = await db.select({ count: sql<number>`count(*)` })
+    .from(paymentsTable)
+    .leftJoin(bookingsTable, eq(paymentsTable.bookingId, bookingsTable.id))
+    .where(where);
+
+  const payments = rows.map(r => ({
+    id: r.payment.id,
+    bookingId: r.payment.bookingId,
+    userId: r.payment.userId,
+    amount: Number(r.payment.amount),
+    method: r.payment.method,
+    status: r.payment.status,
+    reference: r.payment.reference,
+    proofUrl: r.payment.proofUrl,
+    notes: r.payment.notes,
+    createdAt: r.payment.createdAt,
+    booking: r.booking ? {
+      id: r.booking.id,
+      reference: r.booking.reference,
+      user: r.user ? { id: r.user.id, fullName: r.user.fullName, email: r.user.email } : null,
+      package: r.packageName ? { name: r.packageName } : null,
+    } : null,
+  }));
+
+  return res.json({ payments, total: Number(count) });
 });
 
 router.post("/payments", async (req, res) => {
