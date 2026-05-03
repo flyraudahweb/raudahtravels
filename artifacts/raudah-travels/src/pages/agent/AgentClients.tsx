@@ -214,6 +214,8 @@ export default function AgentClients() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Only submit when user is on the final payment step
+    if (regStep !== 5) return;
     if (!form.packageId) { toast({ title: "Select a package", variant: "destructive" }); return; }
     if (!form.firstName.trim() && !form.lastName.trim()) { toast({ title: "Enter a name", variant: "destructive" }); return; }
     const warn = passportWarn(form.passportExpiry);
