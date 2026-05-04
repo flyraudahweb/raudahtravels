@@ -128,7 +128,7 @@ const BLANK_FORM = {
   country: "Nigeria", city: "", address: "",
   roomPreference: "Double", departureCity: "", specialRequests: "",
   partner: "", underCover: "", observation: "",
-  amountPaid: "", markVerified: true,
+  amountPaid: "", markVerified: true, paymentMethod: "cash"
 };
 
 function passportWarn(expiry: string) {
@@ -212,10 +212,8 @@ export default function AgentClients() {
     onError: (err: Error) => toast({ title: "Registration failed", description: err.message, variant: "destructive" }),
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = () => {
     // Only submit when user is on the final payment step
-    if (regStep !== 5) return;
     if (!form.packageId) { toast({ title: "Select a package", variant: "destructive" }); return; }
     if (!form.firstName.trim() && !form.lastName.trim()) { toast({ title: "Enter a name", variant: "destructive" }); return; }
     const warn = passportWarn(form.passportExpiry);
@@ -249,6 +247,7 @@ export default function AgentClients() {
       underCover: form.underCover || undefined,
       observation: form.observation || undefined,
       amountPaid: form.amountPaid ? Number(form.amountPaid) : undefined,
+      paymentMethod: form.paymentMethod,
       markVerified: form.markVerified,
     });
   };
@@ -616,7 +615,7 @@ export default function AgentClients() {
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="p-6 space-y-6 flex-1 overflow-y-auto">
+          <div className="p-6 space-y-6 flex-1 overflow-y-auto">
             
             {/* ── STEP 1: PACKAGE ── */}
             {regStep === 1 && (
@@ -918,14 +917,45 @@ export default function AgentClients() {
                 <div className="bg-[#EEF0FF] p-4 rounded-xl border border-[#2D3199]/20 flex items-start gap-3">
                   <CreditCard className="w-5 h-5 text-[#2D3199] shrink-0 mt-0.5" />
                   <div>
-                    <h4 className="text-sm font-black text-[#1C1F66]">Initial Payment</h4>
+                    <h4 className="text-sm font-black text-[#1C1F66]">Payment & Finalize</h4>
                     <p className="text-xs text-[#2D3199]/80 mt-1">
-                      Enter the amount paid by the client. The minimum required for confirmation may vary by package.
+                      Choose the payment method and enter the amount paid by the client. The minimum required for confirmation may vary by package.
                     </p>
                   </div>
                 </div>
 
                 <div className="space-y-4">
+                  {selectedPkg && (
+                    <div className="bg-[#F0F2FF] rounded-2xl p-4 mb-2">
+                      <p className="text-xs font-bold text-[#64748B] uppercase tracking-wider mb-2">Booking Summary</p>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-black text-[#0F172A]">{selectedPkg.name}</p>
+                          <p className="text-sm text-[#64748B]">
+                            {form.civility && `${form.civility} `}{form.firstName} {form.lastName}
+                          </p>
+                        </div>
+                        <p className="font-black text-[#2D3199] text-xl">₦{Number(selectedPkg.price).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Payment Method</Label>
+                    <div className="grid grid-cols-2 gap-3 mt-1">
+                      <div onClick={() => setForm(f => ({ ...f, paymentMethod: "cash" }))}
+                        className={`cursor-pointer rounded-xl border-2 p-3 text-sm font-semibold text-center transition-all ${form.paymentMethod === "cash" ? "border-[#2D3199] bg-[#EEF0FF] text-[#2D3199]" : "border-[#DCE3F0] text-[#64748B] hover:border-[#2D3199]/30"}`}>
+                        💵 Cash
+                        <span className="block text-[10px] mt-0.5 font-normal opacity-70">Paid in Office</span>
+                      </div>
+                      <div onClick={() => setForm(f => ({ ...f, paymentMethod: "bank_transfer" }))}
+                        className={`cursor-pointer rounded-xl border-2 p-3 text-sm font-semibold text-center transition-all ${form.paymentMethod === "bank_transfer" ? "border-[#2D3199] bg-[#EEF0FF] text-[#2D3199]" : "border-[#DCE3F0] text-[#64748B] hover:border-[#2D3199]/30"}`}>
+                        🏦 Bank Transfer
+                        <span className="block text-[10px] mt-0.5 font-normal opacity-70">Transfer & confirm</span>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="space-y-1.5">
                     <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide">Amount Paid (₦) <span className="text-red-500">*</span></Label>
                     <div className="relative">
@@ -980,12 +1010,12 @@ export default function AgentClients() {
                   Next Step <ChevronRight className="w-4 h-4 ml-2" />
                 </Button>
               ) : (
-                <Button type="submit" disabled={registerMutation.isPending || passportWarnLevel === "expired"} className="w-full sm:w-auto bg-[#FF3B00] hover:bg-[#D63200] text-white rounded-xl font-black h-12 px-8 shadow-lg shadow-[#FF3B00]/20 gap-2">
+                <Button type="button" onClick={handleSubmit} disabled={registerMutation.isPending || passportWarnLevel === "expired"} className="w-full sm:w-auto bg-[#FF3B00] hover:bg-[#D63200] text-white rounded-xl font-black h-12 px-8 shadow-lg shadow-[#FF3B00]/20 gap-2">
                   {registerMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</> : <><CheckCircle2 className="w-4 h-4" /> Complete Registration</>}
                 </Button>
               )}
             </div>
-          </form>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
