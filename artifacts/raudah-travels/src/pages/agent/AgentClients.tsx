@@ -128,7 +128,7 @@ const BLANK_FORM = {
   country: "Nigeria", city: "", address: "",
   roomPreference: "Double", departureCity: "", specialRequests: "",
   partner: "", underCover: "", observation: "",
-  amountPaid: "", markVerified: true, paymentMethod: "cash"
+  amountPaid: "", paymentMethod: "cash", paymentReference: "", paymentProofUrl: ""
 };
 
 function passportWarn(expiry: string) {
@@ -183,6 +183,13 @@ export default function AgentClients() {
       paystackScriptLoaded.current = true;
     }
   }, []);
+
+  const { data: bankAccountsData } = useQuery<{ accounts: any[] }>({
+    queryKey: ["public-bank-accounts"],
+    queryFn: () => fetch("/api/bank-accounts").then(r => r.json()),
+    staleTime: 60000,
+  });
+  const bankAccounts = bankAccountsData?.accounts || [];
 
   const { data: pkgData } = useQuery<{ packages: Package[] }>({
     queryKey: ["packages-active"],
@@ -302,7 +309,8 @@ export default function AgentClients() {
       observation: form.observation || undefined,
       amountPaid: form.amountPaid ? Number(form.amountPaid) : undefined,
       paymentMethod: form.paymentMethod,
-      markVerified: form.markVerified,
+      paymentReference: form.paymentReference || undefined,
+      paymentProofUrl: form.paymentProofUrl || undefined,
     });
   };
 
@@ -1035,6 +1043,45 @@ export default function AgentClients() {
                             <span>Balance Remaining:</span> 
                             <span>₦{Math.max(0, selectedPkg.price - Number(form.amountPaid)).toLocaleString()}</span>
                           </div>
+                        </div>
+                      )}
+
+                      {form.paymentMethod === "bank_transfer" && (
+                        <div className="mt-4 p-4 rounded-xl border border-[#DCE3F0] bg-white space-y-4">
+                          <div>
+                            <p className="text-xs font-bold text-[#64748B] uppercase tracking-wider mb-2">Transfer To</p>
+                            {bankAccounts.length > 0 ? (
+                              <div className="space-y-3">
+                                {bankAccounts.map(b => (
+                                  <div key={b.id} className="bg-[#F8FAFC] p-3 rounded-lg border border-[#E2E8F0]">
+                                    <p className="font-bold text-[#0F172A] text-sm">{b.bankName}</p>
+                                    <p className="font-mono text-[#2D3199] font-black">{b.accountNumber} {b.sortCode ? `· ${b.sortCode}` : ""}</p>
+                                    <p className="text-xs text-[#64748B]">{b.accountName}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="bg-[#F8FAFC] p-3 rounded-lg border border-[#E2E8F0]">
+                                <p className="font-bold text-[#0F172A] text-sm">GTBank</p>
+                                <p className="font-mono text-[#2D3199] font-black">0123456789</p>
+                                <p className="text-xs text-[#64748B]">Raudah Travels & Tours Ltd</p>
+                              </div>
+                            )}
+                          </div>
+                          
+                          <div className="space-y-1.5">
+                            <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Transaction Reference (Optional)</Label>
+                            <Input value={form.paymentReference} onChange={e => set("paymentReference", e.target.value)} placeholder="e.g. FT234567890" className="rounded-xl border-[#E2E8F0] h-11 bg-white" />
+                          </div>
+
+                          <FileUploadBox
+                            label="Proof of Payment (Optional)"
+                            accept="image/*,application/pdf"
+                            previewType="file"
+                            value={form.paymentProofUrl}
+                            onChange={v => set("paymentProofUrl", v)}
+                            hint="Upload the receipt or screenshot"
+                          />
                         </div>
                       )}
 

@@ -403,7 +403,7 @@ router.post("/agent/register-client", async (req, res) => {
     partner, underCover, observation,
     emergencyContactName, emergencyContactPhone, emergencyContactRelationship,
     fathersName, mothersName, mahramName, mahramRelationship, mahramPassport,
-    paymentMethod, amountPaid, markVerified,
+    paymentMethod, amountPaid, paymentReference, paymentProofUrl,
   } = req.body;
 
   if (!packageId) return res.status(400).json({ error: "packageId is required" });
@@ -495,7 +495,8 @@ router.post("/agent/register-client", async (req, res) => {
       amount: String(clampedPaid),
       method: paymentMethod || "cash",
       status: "pending",
-      reference: `INIT-${booking.reference}`,
+      reference: paymentReference || `INIT-${booking.reference}`,
+      proofUrl: paymentProofUrl || null,
       notes: "Initial payment during agent registration",
     });
   }
