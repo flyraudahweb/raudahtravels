@@ -4,6 +4,7 @@ import {
   agentsTable, commissionsTable, profilesTable, bookingsTable,
   visaApplicationsTable, packagesTable, agentWalletsTable,
   walletTransactionsTable, agentApplicationsTable, agentPackageDiscountsTable,
+  paymentsTable,
 } from "@workspace/db";
 import { getAuth } from "@clerk/express";
 import { eq, and, sql, desc } from "drizzle-orm";
@@ -497,6 +498,19 @@ router.post("/agent/register-client", async (req, res) => {
       pilgrimName: resolvedFullName || undefined,
       passportNumber: (passportNumber as string | undefined) || undefined,
       status: "pending",
+    });
+  }
+
+  if (clampedPaid > 0) {
+    await db.insert(paymentsTable).values({
+      id: randomUUID(),
+      bookingId: booking.id,
+      userId: walkInUser.id,
+      amount: String(clampedPaid),
+      method: paymentMethod || "cash",
+      status: markVerified ? "verified" : "pending",
+      reference: `INIT-${booking.reference}`,
+      notes: "Initial payment during agent registration",
     });
   }
 

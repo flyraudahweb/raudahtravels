@@ -1469,6 +1469,20 @@ router.post("/admin/book-pilgrim", async (req, res) => {
     }
   }
 
+  const initialAmountPaid = Number(booking.amountPaid);
+  if (initialAmountPaid > 0) {
+    await db.insert(paymentsTable).values({
+      id: randomUUID(),
+      bookingId: booking.id,
+      userId: booking.userId,
+      amount: String(initialAmountPaid),
+      method: paymentMethod || "cash",
+      status: markVerified ? "verified" : "pending",
+      reference: `INIT-${booking.reference}`,
+      notes: "Initial payment during registration",
+    });
+  }
+
   // Log staff action
   try {
     const { userId: clerkUserId } = getAuth(req);
