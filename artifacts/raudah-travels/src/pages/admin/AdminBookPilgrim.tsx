@@ -281,13 +281,21 @@ export default function AdminBookPilgrim() {
   const [travel, setTravel]       = useState({
     departureCity: "", roomPreference: "Double", specialRequests: "",
   });
-  const [payment, setPayment] = useState({ method: "cash", markVerified: true, amountPaid: "" });
+  const [payment, setPayment] = useState({ method: "cash", markVerified: true, amountPaid: "", paymentReference: "", paymentProofUrl: "" });
   const [pkgTab, setPkgTab]     = useState<"all" | "hajj" | "umrah">("all");
   const [pkgSearch, setPkgSearch] = useState("");
   const [phoneCode, setPhoneCode] = useState("+234");
   const paystackScriptLoaded = useRef(false);
 
   const { data: pkgData } = useQuery({ queryKey: ["packages-for-booking"], queryFn: fetchPackages });
+  
+  const { data: bankAccountsData } = useQuery<{ accounts: any[] }>({
+    queryKey: ["public-bank-accounts"],
+    queryFn: () => fetch("/api/bank-accounts").then(r => r.json()),
+    staleTime: 60000,
+  });
+  const bankAccounts = bankAccountsData?.accounts || [];
+
   const { data: appConfig } = useQuery<{ paystackPublicKey: string; paystackEnabled: boolean }>({
     queryKey: ["app-config"],
     queryFn: () => fetch("/api/config").then(r => r.json()),
@@ -391,6 +399,8 @@ export default function AdminBookPilgrim() {
       fullName: `${pilgrim.firstName} ${pilgrim.lastName}`.trim(),
       ...travel,
       paymentMethod: payment.method,
+      paymentReference: payment.paymentReference || undefined,
+      paymentProofUrl: payment.paymentProofUrl || undefined,
       markVerified: payment.markVerified,
       amountPaid: payment.amountPaid ? Number(payment.amountPaid) : undefined,
       totalPrice: selectedPkg?.price,
@@ -879,6 +889,45 @@ export default function AdminBookPilgrim() {
             </div>
             {payment.method !== "online" && (
               <>
+                {payment.method === "bank_transfer" && (
+                  <div className="mt-4 p-4 rounded-xl border border-[#DCE3F0] bg-white space-y-4">
+                    <div>
+                      <p className="text-xs font-bold text-[#64748B] uppercase tracking-wider mb-2">Transfer To</p>
+                      {bankAccounts.length > 0 ? (
+                        <div className="space-y-3">
+                          {bankAccounts.map(b => (
+                            <div key={b.id} className="bg-[#F8FAFC] p-3 rounded-lg border border-[#E2E8F0]">
+                              <p className="font-bold text-[#0F172A] text-sm">{b.bankName}</p>
+                              <p className="font-mono text-[#2D3199] font-black">{b.accountNumber} {b.sortCode ? `· ${b.sortCode}` : ""}</p>
+                              <p className="text-xs text-[#64748B]">{b.accountName}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="bg-[#F8FAFC] p-3 rounded-lg border border-[#E2E8F0]">
+                          <p className="font-bold text-[#0F172A] text-sm">GTBank</p>
+                          <p className="font-mono text-[#2D3199] font-black">0123456789</p>
+                          <p className="text-xs text-[#64748B]">Raudah Travels & Tours Ltd</p>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Transaction Reference (Optional)</Label>
+                      <Input value={payment.paymentReference} onChange={e => setPayment(p => ({ ...p, paymentReference: e.target.value }))} placeholder="e.g. FT234567890" className="rounded-xl border-[#E2E8F0] h-11 bg-white" />
+                    </div>
+
+                    <FileUploadBox
+                      label="Proof of Payment (Optional)"
+                      accept="image/*,application/pdf"
+                      previewType="file"
+                      value={payment.paymentProofUrl}
+                      onChange={v => setPayment(p => ({ ...p, paymentProofUrl: v }))}
+                      hint="Upload the receipt or screenshot"
+                    />
+                  </div>
+                )}
+
                 <div>
                   <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Amount Paid (₦)</Label>
                   <Input type="number" value={payment.amountPaid}

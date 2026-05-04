@@ -1328,13 +1328,12 @@ router.post("/admin/chat/messages", async (req, res) => {
 
 // ── Admin Direct Booking ──────────────────────────────────────────────────────
 
-/** Convert empty-string / whitespace-only values to undefined so Drizzle stores NULL */
 const nullify = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v);
 
 router.post("/admin/book-pilgrim", async (req, res) => {
   const {
     packageId, packageDateId, agentId, paymentMethod, markVerified,
-    totalPrice, amountPaid,
+    totalPrice, amountPaid, paymentReference, paymentProofUrl,
     // name / civility
     civility, firstName, lastName, fullName,
     // passport
@@ -1478,7 +1477,8 @@ router.post("/admin/book-pilgrim", async (req, res) => {
       amount: String(initialAmountPaid),
       method: paymentMethod || "cash",
       status: markVerified ? "verified" : "pending",
-      reference: `INIT-${booking.reference}`,
+      reference: paymentReference || `INIT-${booking.reference}`,
+      proofUrl: paymentProofUrl || null,
       notes: "Initial payment during registration",
     });
   }

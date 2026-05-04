@@ -220,8 +220,11 @@ export default function BookingWizard() {
   });
 
   // Step 4: Payment
-  const [payForm, setPayForm] = useState<{ method: PayMethod; reference: string; pilgrimCount: number }>({
-    method: "bank_transfer", reference: "", pilgrimCount: 1,
+  const [payForm, setPayForm] = useState<{ method: PayMethod; reference: string; pilgrimCount: number; paymentProofUrl: string }>({
+    method: "bank_transfer",
+    reference: "",
+    pilgrimCount: 1,
+    paymentProofUrl: "",
   });
 
   const [done, setDone]           = useState(false);
@@ -285,7 +288,7 @@ export default function BookingWizard() {
         await handlePaystackPayment(createdBookingIdRef.current);
       } else {
         createPayment.mutate(
-          { data: { bookingId: createdBookingIdRef.current, amount: fullAmount, method: payForm.method, reference: payForm.reference } },
+          { data: { bookingId: createdBookingIdRef.current, amount: fullAmount, method: payForm.method, reference: payForm.reference, proofUrl: payForm.paymentProofUrl } },
           {
             onSuccess: () => { setDoneMethod(payForm.method); setDone(true); setProcessing(false); },
             onError: () => { setDoneMethod(payForm.method); setDone(true); setProcessing(false); },
@@ -314,7 +317,7 @@ export default function BookingWizard() {
             await handlePaystackPayment(booking.id);
           } else {
             createPayment.mutate(
-              { data: { bookingId: booking.id, amount: fullAmount, method: payForm.method, reference: payForm.reference } },
+              { data: { bookingId: booking.id, amount: fullAmount, method: payForm.method, reference: payForm.reference, proofUrl: payForm.paymentProofUrl } },
               {
                 onSuccess: () => { setDoneMethod(payForm.method); setDone(true); setProcessing(false); },
                 onError: () => { setDoneMethod(payForm.method); setDone(true); setProcessing(false); },
@@ -889,15 +892,43 @@ export default function BookingWizard() {
               </div>
 
               {payForm.method === "bank_transfer" && (
-                <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-sm">
-                  <p className="font-semibold text-primary mb-2">Transfer to:</p>
-                  <p>GTBank — Raudah Travels & Tours Ltd — 0123456789</p>
+                <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-sm space-y-4">
+                  <div>
+                    <p className="font-semibold text-primary mb-2">Transfer to:</p>
+                    {bankAccounts.length > 0 ? (
+                      <div className="space-y-2">
+                        {bankAccounts.map(b => (
+                          <div key={b.id} className="bg-white p-3 rounded border border-primary/10">
+                            <p className="font-bold text-foreground">{b.bankName}</p>
+                            <p className="font-mono text-primary font-bold">{b.accountNumber} {b.sortCode ? `· ${b.sortCode}` : ""}</p>
+                            <p className="text-xs text-muted-foreground">{b.accountName}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="bg-white p-3 rounded border border-primary/10">
+                        <p className="font-bold text-foreground">GTBank</p>
+                        <p className="font-mono text-primary font-bold">0123456789</p>
+                        <p className="text-xs text-muted-foreground">Raudah Travels & Tours Ltd</p>
+                      </div>
+                    )}
+                  </div>
                   <p className="text-muted-foreground mt-1">Amount: ₦{fullAmount.toLocaleString()}</p>
                   <div className="mt-3">
                     <Label htmlFor="payRef">Transaction Reference (optional)</Label>
                     <Input id="payRef" value={payForm.reference}
                       onChange={e => setPayForm(f => ({ ...f, reference: e.target.value }))}
                       placeholder="e.g. FT234567890" />
+                  </div>
+                  <div className="mt-3">
+                    <FileUploadBox
+                      label="Proof of Payment (Optional)"
+                      accept="image/*,application/pdf"
+                      previewType="file"
+                      value={payForm.paymentProofUrl}
+                      onChange={v => setPayForm(f => ({ ...f, paymentProofUrl: v }))}
+                      hint="Upload your transfer receipt"
+                    />
                   </div>
                 </div>
               )}
