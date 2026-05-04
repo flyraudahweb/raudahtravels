@@ -166,6 +166,24 @@ export default function AgentClients() {
     staleTime: 15000,
   });
 
+  const { data: appConfig } = useQuery<{ paystackPublicKey: string; paystackEnabled: boolean }>({
+    queryKey: ["app-config"],
+    queryFn: () => fetch("/api/config").then(r => r.json()),
+    staleTime: 30000,
+  });
+  const paystackEnabled = appConfig?.paystackEnabled ?? true;
+
+  const paystackScriptLoaded = useRef(false);
+  useEffect(() => {
+    if (!paystackScriptLoaded.current) {
+      const script = document.createElement("script");
+      script.src = "https://js.paystack.co/v1/inline.js";
+      script.async = true;
+      document.body.appendChild(script);
+      paystackScriptLoaded.current = true;
+    }
+  }, []);
+
   const { data: pkgData } = useQuery<{ packages: Package[] }>({
     queryKey: ["packages-active"],
     queryFn: () => fetch("/api/packages?status=active&limit=50", { credentials: "include" }).then(r => r.json()),
@@ -201,13 +219,49 @@ export default function AgentClients() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || "Failed"); return d; }),
-    onSuccess: (data) => {
-      toast({ title: `✓ ${data.fullName || "Client"} registered`, description: `Ref: ${data.reference}` });
-      setSessionCount(c => c + 1);
-      qc.invalidateQueries({ queryKey: ["agent-clients"] });
-      const keepPkg = form.packageId;
-      setForm({ ...BLANK_FORM, packageId: keepPkg });
-      setRegStep(1);
+    onSuccess: async (data) => {
+      const finishLocal = () => {
+        toast({ title: `✓ ${data.fullName || "Client"} registered`, description: `Ref: ${data.reference}` });
+        setSessionCount(c => c + 1);
+        qc.invalidateQueries({ queryKey: ["agent-clients"] });
+        const keepPkg = form.packageId;
+        setForm({ ...BLANK_FORM, packageId: keepPkg });
+        setRegStep(1);
+        setDialogOpen(false);
+      };
+
+      if (form.paymentMethod === "online") {
+        try {
+          const amount = selectedPkg?.price ?? 0;
+          const res = await fetch("/api/payments/paystack/initialize", {
+            method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+            body: JSON.stringify({ bookingId: data.id, amount, email: form.email || "admin@raudah.com" }),
+          });
+          if (!res.ok) throw new Error("Initialize failed");
+          const pdata = await res.json() as { reference: string };
+          if (!(window as any).PaystackPop) throw new Error("Paystack script not loaded");
+          
+          const handler = (window as any).PaystackPop.setup({
+            key: appConfig?.paystackPublicKey ?? "",
+            email: form.email || "admin@raudah.com",
+            amount: amount * 100,
+            ref: pdata.reference,
+            currency: "NGN",
+            metadata: { bookingId: data.id },
+            callback: () => finishLocal(),
+            onClose: () => {
+              toast({ title: "Payment cancelled", description: "Booking created — payment pending." });
+              finishLocal();
+            },
+          });
+          handler.openIframe();
+        } catch {
+          toast({ title: "Payment error", description: "Could not launch Paystack. Booking still created.", variant: "destructive" });
+          finishLocal();
+        }
+      } else {
+        finishLocal();
+      }
     },
     onError: (err: Error) => toast({ title: "Registration failed", description: err.message, variant: "destructive" }),
   });
@@ -942,7 +996,14 @@ export default function AgentClients() {
 
                   <div>
                     <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Payment Method</Label>
-                    <div className="grid grid-cols-2 gap-3 mt-1">
+                    <div className={`grid gap-3 mt-1 ${paystackEnabled ? "grid-cols-3" : "grid-cols-2"}`}>
+                      {paystackEnabled && (
+                        <div onClick={() => setForm(f => ({ ...f, paymentMethod: "online" }))}
+                          className={`cursor-pointer rounded-xl border-2 p-3 text-sm font-semibold text-center transition-all ${form.paymentMethod === "online" ? "border-[#FF3B00] bg-[#FFF0EC] text-[#FF3B00]" : "border-[#DCE3F0] text-[#64748B] hover:border-[#FF3B00]/30"}`}>
+                          💳 Pay Online
+                          <span className="block text-[10px] mt-0.5 font-normal opacity-70">Paystack — Instant</span>
+                        </div>
+                      )}
                       <div onClick={() => setForm(f => ({ ...f, paymentMethod: "cash" }))}
                         className={`cursor-pointer rounded-xl border-2 p-3 text-sm font-semibold text-center transition-all ${form.paymentMethod === "cash" ? "border-[#2D3199] bg-[#EEF0FF] text-[#2D3199]" : "border-[#DCE3F0] text-[#64748B] hover:border-[#2D3199]/30"}`}>
                         💵 Cash
@@ -956,34 +1017,48 @@ export default function AgentClients() {
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide">Amount Paid (₦) <span className="text-red-500">*</span></Label>
-                    <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#64748B] font-bold">₦</span>
-                      <Input type="number" value={form.amountPaid} onChange={e => set("amountPaid", e.target.value)} placeholder={selectedPkg ? String(selectedPkg.price) : "0"} className="pl-8 rounded-xl border-[#E2E8F0] h-12 text-lg font-black text-[#0F172A] bg-white" />
-                    </div>
-                  </div>
-                  
-                  {selectedPkg && form.amountPaid && Number(form.amountPaid) > 0 && (
-                    <div className="p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-xs space-y-1">
-                      <div className="flex justify-between text-[#64748B]"><span>Total Price:</span> <span>₦{selectedPkg.price.toLocaleString()}</span></div>
-                      <div className="flex justify-between text-emerald-600 font-bold"><span>Amount Paid:</span> <span>₦{Number(form.amountPaid).toLocaleString()}</span></div>
-                      <div className="flex justify-between text-[#0F172A] font-black border-t border-[#E2E8F0] pt-1 mt-1">
-                        <span>Balance Remaining:</span> 
-                        <span>₦{Math.max(0, selectedPkg.price - Number(form.amountPaid)).toLocaleString()}</span>
+                  {form.paymentMethod !== "online" && (
+                    <>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide">Amount Paid (₦) <span className="text-red-500">*</span></Label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#64748B] font-bold">₦</span>
+                          <Input type="number" value={form.amountPaid} onChange={e => set("amountPaid", e.target.value)} placeholder={selectedPkg ? String(selectedPkg.price) : "0"} className="pl-8 rounded-xl border-[#E2E8F0] h-12 text-lg font-black text-[#0F172A] bg-white" />
+                        </div>
                       </div>
-                    </div>
+                      
+                      {selectedPkg && form.amountPaid && Number(form.amountPaid) > 0 && (
+                        <div className="p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-xs space-y-1">
+                          <div className="flex justify-between text-[#64748B]"><span>Total Price:</span> <span>₦{selectedPkg.price.toLocaleString()}</span></div>
+                          <div className="flex justify-between text-emerald-600 font-bold"><span>Amount Paid:</span> <span>₦{Number(form.amountPaid).toLocaleString()}</span></div>
+                          <div className="flex justify-between text-[#0F172A] font-black border-t border-[#E2E8F0] pt-1 mt-1">
+                            <span>Balance Remaining:</span> 
+                            <span>₦{Math.max(0, selectedPkg.price - Number(form.amountPaid)).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex items-start gap-3 p-4 bg-emerald-50 rounded-xl border border-emerald-200 mt-2">
+                        <input type="checkbox" id="markVerified" checked={form.markVerified} onChange={e => set("markVerified", e.target.checked)} className="mt-1 w-4 h-4 accent-emerald-600" />
+                        <label htmlFor="markVerified" className="cursor-pointer flex-1">
+                          <span className="text-sm font-black text-emerald-800 block">Mark as Verified & Confirmed</span>
+                          <span className="text-[10px] text-emerald-700 mt-0.5 block">
+                            If checked, this booking will be instantly confirmed and sent for visa processing. Leave unchecked if waiting for funds to clear.
+                          </span>
+                        </label>
+                      </div>
+                    </>
                   )}
 
-                  <div className="flex items-start gap-3 p-4 bg-emerald-50 rounded-xl border border-emerald-200 mt-2">
-                    <input type="checkbox" id="markVerified" checked={form.markVerified} onChange={e => set("markVerified", e.target.checked)} className="mt-1 w-4 h-4 accent-emerald-600" />
-                    <label htmlFor="markVerified" className="cursor-pointer flex-1">
-                      <span className="text-sm font-black text-emerald-800 block">Mark as Verified & Confirmed</span>
-                      <span className="text-[10px] text-emerald-700 mt-0.5 block">
-                        If checked, this booking will be instantly confirmed and sent for visa processing. Leave unchecked if waiting for funds to clear.
-                      </span>
-                    </label>
-                  </div>
+                  {form.paymentMethod === "online" && (
+                    <div className="bg-[#FFF4F0] border border-[#FF3B00]/20 rounded-xl p-4 text-sm">
+                      <p className="font-bold text-[#FF3B00] mb-1">💳 Paystack Online Payment</p>
+                      <p className="text-[#64748B]">The pilgrim's email will be used for payment. A Paystack popup will open after you click Complete Registration.</p>
+                      {!form.email && (
+                        <p className="text-amber-600 font-semibold mt-1 text-xs">⚠ Add pilgrim email in Contact step for best results.</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
