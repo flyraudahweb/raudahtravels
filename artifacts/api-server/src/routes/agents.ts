@@ -427,10 +427,6 @@ router.post("/agent/register-client", async (req, res) => {
   }
   const clampedPaid = Math.min(rawPaid, price);
 
-  // SECURITY: markVerified is derived server-side — confirmed only when fully paid.
-  // An agent cannot force-confirm a booking by sending markVerified: true in the body.
-  const isFullyPaid = clampedPaid >= price;
-
   const [walkInUser] = await db.insert(profilesTable).values({
     id: randomUUID(),
     clerkUserId: `walkin-${walkinUuid}`,
@@ -448,7 +444,7 @@ router.post("/agent/register-client", async (req, res) => {
     userId: walkInUser.id,
     packageId,
     agentId: agent.id,
-    status: isFullyPaid ? "confirmed" : "pending",
+    status: "pending",
     totalPrice: String(price),
     amountPaid: String(clampedPaid),
     pilgrimCount: 1,
@@ -491,16 +487,6 @@ router.post("/agent/register-client", async (req, res) => {
     mahramPassport: nullify(mahramPassport),
   }).returning();
 
-  if (markVerified) {
-    await db.insert(visaApplicationsTable).values({
-      id: randomUUID(),
-      bookingId: booking.id,
-      pilgrimName: resolvedFullName || undefined,
-      passportNumber: (passportNumber as string | undefined) || undefined,
-      status: "pending",
-    });
-  }
-
   if (clampedPaid > 0) {
     await db.insert(paymentsTable).values({
       id: randomUUID(),
@@ -508,7 +494,7 @@ router.post("/agent/register-client", async (req, res) => {
       userId: walkInUser.id,
       amount: String(clampedPaid),
       method: paymentMethod || "cash",
-      status: markVerified ? "verified" : "pending",
+      status: "pending",
       reference: `INIT-${booking.reference}`,
       notes: "Initial payment during agent registration",
     });

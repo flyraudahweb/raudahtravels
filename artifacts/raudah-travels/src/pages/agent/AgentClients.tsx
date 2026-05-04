@@ -1038,15 +1038,6 @@ export default function AgentClients() {
                         </div>
                       )}
 
-                      <div className="flex items-start gap-3 p-4 bg-emerald-50 rounded-xl border border-emerald-200 mt-2">
-                        <input type="checkbox" id="markVerified" checked={form.markVerified} onChange={e => set("markVerified", e.target.checked)} className="mt-1 w-4 h-4 accent-emerald-600" />
-                        <label htmlFor="markVerified" className="cursor-pointer flex-1">
-                          <span className="text-sm font-black text-emerald-800 block">Mark as Verified & Confirmed</span>
-                          <span className="text-[10px] text-emerald-700 mt-0.5 block">
-                            If checked, this booking will be instantly confirmed and sent for visa processing. Leave unchecked if waiting for funds to clear.
-                          </span>
-                        </label>
-                      </div>
                     </>
                   )}
 
