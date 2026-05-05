@@ -1,8 +1,8 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "openssl"]
+nixPkgs = ["nodejs_20", "openssl", "pnpm"]
 
 [phases.install]
-cmds = ["npm install -g pnpm@10", "pnpm install --no-frozen-lockfile"]
+cmds = ["pnpm install --no-frozen-lockfile"]
 
 [phases.build]
 cmds = ["chmod +x render-build.sh", "./render-build.sh"]
