@@ -19,10 +19,21 @@ const PACKAGE_IMAGES = [
   "https://images.pexels.com/photos/29676866/pexels-photo-29676866.jpeg",
 ];
 
+/** Returns a valid external image URL for a package.
+ * Falls back to a Pexels photo when imageUrl is absent, a localhost URL,
+ * a Render/Railway internal URL, or a relative path — all of which are
+ * dead on the production deployment.
+ */
 function getPackageImage(id: string, imageUrl?: string | null) {
-  if (imageUrl) return imageUrl;
+  const isDeadUrl = !imageUrl ||
+    imageUrl.startsWith("/") ||
+    imageUrl.includes("localhost") ||
+    imageUrl.includes("127.0.0.1") ||
+    imageUrl.includes(".onrender.com") ||
+    imageUrl.includes(".repl.co");
+
   const idx = id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % PACKAGE_IMAGES.length;
-  return PACKAGE_IMAGES[idx];
+  return isDeadUrl ? PACKAGE_IMAGES[idx] : imageUrl!;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {

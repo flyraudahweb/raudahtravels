@@ -180,6 +180,7 @@ Railway is the simplest option for a monorepo with both services.
 - **Start Command:** `node --enable-source-maps artifacts/api-server/dist/index.mjs`
 - **Build Command:** `pnpm install && pnpm --filter @workspace/api-server run build`
 - Environment variables: (same list as Render above)
+  > **CRITICAL FIX FOR RAILWAY:** You **MUST** include `VITE_CLERK_PUBLISHABLE_KEY=pk_live_...` in your Railway Variables. Because Vite bakes this key into the frontend bundle at build time, if it is missing during the Railway build, Clerk will fail to load (`failed_to_load_clerk_ui`). If you add it later, you **must trigger a manual redeploy** to rebuild the frontend.
 - Railway provides `PORT` automatically
 
 ### Service 2: Frontend (static)

@@ -94,16 +94,28 @@ function SearchDropdown({
   );
 }
 
+const PACKAGE_IMAGES_HOME = [
+  "https://images.pexels.com/photos/28209449/pexels-photo-28209449.jpeg",
+  "https://images.pexels.com/photos/26436662/pexels-photo-26436662.jpeg",
+  "https://images.pexels.com/photos/34246939/pexels-photo-34246939.jpeg",
+  "https://images.pexels.com/photos/29676866/pexels-photo-29676866.jpeg",
+];
+
+/** Returns a valid external image URL for a package.
+ * Falls back to a Pexels photo when imageUrl is absent, a localhost URL,
+ * a Render/Railway internal URL, or a relative path — all of which are
+ * dead on the production deployment.
+ */
 function getPackageImage(id: string, imageUrl?: string | null) {
-  const imgs = [
-    "https://images.pexels.com/photos/28209449/pexels-photo-28209449.jpeg",
-    "https://images.pexels.com/photos/26436662/pexels-photo-26436662.jpeg",
-    "https://images.pexels.com/photos/34246939/pexels-photo-34246939.jpeg",
-    "https://images.pexels.com/photos/29676866/pexels-photo-29676866.jpeg",
-  ];
-  if (imageUrl) return imageUrl;
-  const idx = id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % imgs.length;
-  return imgs[idx];
+  const isDeadUrl = !imageUrl ||
+    imageUrl.startsWith("/") ||
+    imageUrl.includes("localhost") ||
+    imageUrl.includes("127.0.0.1") ||
+    imageUrl.includes(".onrender.com") ||
+    imageUrl.includes(".repl.co");
+
+  const idx = id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % PACKAGE_IMAGES_HOME.length;
+  return isDeadUrl ? PACKAGE_IMAGES_HOME[idx] : imageUrl!;
 }
 
 const TESTIMONIALS = [

@@ -15,6 +15,23 @@ const PACKAGE_IMAGES = [
   "https://images.pexels.com/photos/29676866/pexels-photo-29676866.jpeg",
 ];
 
+/** Returns a valid external image URL for a package.
+ * Falls back to a Pexels photo when imageUrl is absent, a localhost URL,
+ * a Render/Railway internal URL, or a relative path — all of which are
+ * dead on the production deployment.
+ */
+function getPackageImage(id: string, imageUrl?: string | null) {
+  const isDeadUrl = !imageUrl ||
+    imageUrl.startsWith("/") ||
+    imageUrl.includes("localhost") ||
+    imageUrl.includes("127.0.0.1") ||
+    imageUrl.includes(".onrender.com") ||
+    imageUrl.includes(".repl.co");
+
+  const idx = id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % PACKAGE_IMAGES.length;
+  return isDeadUrl ? PACKAGE_IMAGES[idx] : imageUrl!;
+}
+
 export default function PackageDetail() {
   const [, params] = useRoute("/packages/:id");
   const packageId = params?.id || "";
@@ -40,8 +57,7 @@ export default function PackageDetail() {
       <main className="flex-1">
         {/* Header Hero */}
         {(() => {
-          const imgIdx = packageId.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % PACKAGE_IMAGES.length;
-          const heroImg = pkg.imageUrl || PACKAGE_IMAGES[imgIdx];
+          const heroImg = getPackageImage(pkg.id, pkg.imageUrl);
           return (
             <div className="h-72 md:h-[480px] relative overflow-hidden bg-[#1C1F66]">
               <img src={heroImg} alt={pkg.name} className="absolute inset-0 w-full h-full object-cover" />
