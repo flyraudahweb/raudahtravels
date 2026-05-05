@@ -4,7 +4,7 @@ import { paymentsTable, profilesTable, bookingsTable, visaApplicationsTable, sit
 import { createNotification } from "../utils/notify.js";
 import { getAuth } from "@clerk/express";
 import { eq, and, sql, desc } from "drizzle-orm";
-import { randomUUID, createHmac } from "crypto";
+import { randomUUID, createHmac, timingSafeEqual } from "crypto";
 import { sendPaymentReceipt } from "../utils/email";
 import { logger } from "../lib/logger";
 
@@ -504,7 +504,16 @@ router.post("/payments/paystack/webhook", async (req, res) => {
 
   const { secretKey: paystackSecret } = await getPaystackKeys();
   const hash = createHmac("sha512", paystackSecret).update(rawBody).digest("hex");
-  if (hash !== signature) return res.status(401).json({ error: "Invalid signature" });
+
+  // SECURITY FIX #3: Timing-safe HMAC comparison.
+  // Regular string comparison (===) is vulnerable to timing attacks where
+  // an attacker measures response times to guess the valid signature
+  // byte-by-byte. timingSafeEqual runs in constant time.
+  const hashBuf = Buffer.from(hash, "hex");
+  const sigBuf = Buffer.from(signature, "hex");
+  if (hashBuf.length !== sigBuf.length || !timingSafeEqual(hashBuf, sigBuf)) {
+    return res.status(401).json({ error: "Invalid signature" });
+  }
 
   // Acknowledge immediately — Paystack requires 200 OK before any long-running work.
   // Processing happens asynchronously so a slow DB can never cause a timeout retry.
@@ -520,32 +529,63 @@ router.post("/payments/paystack/webhook", async (req, res) => {
       if (event.event === "charge.success") {
         const { reference, amount, metadata } = event.data;
 
-        // Idempotency: only verify if still pending — prevents re-processing on webhook retries
-        const [payment] = await db.update(paymentsTable)
-          .set({ status: "verified" })
-          .where(and(eq(paymentsTable.reference, reference), eq(paymentsTable.status, "pending")))
-          .returning();
+        // SECURITY FIX #1 & #2: Wrap in a transaction for atomicity +
+        // accumulate amountPaid via SQL instead of overwriting.
+        // Without this, partial payments get lost: if a pilgrim pays
+        // ₦200k then ₦300k, the old code would set amountPaid=₦300k
+        // instead of ₦500k.
+        let confirmedPayment: typeof paymentsTable.$inferSelect | undefined;
+        let confirmedBooking: typeof bookingsTable.$inferSelect | undefined;
 
-        const bookingId = metadata?.bookingId ?? payment?.bookingId;
-        if (bookingId) {
-          // Idempotency: only confirm if not already confirmed (prevents double-update on webhook retry)
-          const [booking] = await db.update(bookingsTable)
-            .set({ status: "confirmed", amountPaid: String(amount / 100), updatedAt: new Date() })
-            .where(and(eq(bookingsTable.id, bookingId), sql`status != 'confirmed'`))
+        await db.transaction(async (tx) => {
+          // Idempotency: only verify if still pending
+          const [payment] = await tx.update(paymentsTable)
+            .set({ status: "verified" })
+            .where(and(eq(paymentsTable.reference, reference), eq(paymentsTable.status, "pending")))
             .returning();
-          if (booking) {
-            await ensureVisaApplication(booking.id, booking.fullName, booking.passportNumber);
-            // Send receipt email (non-blocking)
-            await sendBookingReceipt(booking.id, amount / 100, reference, "paystack").catch(() => {});
-            if (payment?.userId) {
-              await db.insert(userActivityTable).values({
-                id: randomUUID(),
-                userId: payment.userId,
-                eventType: "payment_success",
-                bookingId,
-                metadata: { amount: amount / 100, reference, targetName: booking.fullName, targetPhone: booking.phone },
-              }).catch(() => {});
+          if (!payment) return; // already processed — idempotent
+          confirmedPayment = payment;
+
+          // SECURITY FIX #4: Verify webhook amount matches stored payment record.
+          // Prevents confirming if amounts diverge (defence-in-depth).
+          const expectedKobo = Math.round(Number(payment.amount) * 100);
+          if (amount !== expectedKobo) {
+            logger.error(
+              { reference, expected: expectedKobo, received: amount },
+              "WEBHOOK AMOUNT MISMATCH — possible tampering, rolling back",
+            );
+            throw new Error("Amount mismatch"); // rolls back the transaction
+          }
+
+          const bookingId = metadata?.bookingId ?? payment.bookingId;
+          if (bookingId) {
+            // Accumulate (not overwrite) amountPaid; only transition non-confirmed bookings
+            const [booking] = await tx.update(bookingsTable)
+              .set({
+                status: "confirmed",
+                amountPaid: sql`${bookingsTable.amountPaid} + ${payment.amount}`,
+                updatedAt: new Date(),
+              })
+              .where(and(eq(bookingsTable.id, bookingId), sql`status != 'confirmed'`))
+              .returning();
+            if (booking) {
+              confirmedBooking = booking;
+              await ensureVisaApplication(booking.id, booking.fullName, booking.passportNumber);
             }
+          }
+        });
+
+        // Non-blocking post-transaction work
+        if (confirmedBooking && confirmedPayment) {
+          sendBookingReceipt(confirmedBooking.id, amount / 100, reference, "paystack").catch(() => {});
+          if (confirmedPayment.userId) {
+            db.insert(userActivityTable).values({
+              id: randomUUID(),
+              userId: confirmedPayment.userId,
+              eventType: "payment_success",
+              bookingId: confirmedBooking.id,
+              metadata: { amount: amount / 100, reference, targetName: confirmedBooking.fullName, targetPhone: confirmedBooking.phone },
+            }).catch(() => {});
           }
         }
       }

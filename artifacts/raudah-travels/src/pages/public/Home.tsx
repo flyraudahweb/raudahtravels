@@ -142,13 +142,33 @@ const TESTIMONIALS = [
   },
 ];
 
+/** Default hero video — shown when no video is configured in Admin Settings */
+const DEFAULT_HERO_VIDEO = "https://www.youtube.com/watch?v=zlUXmn4FJ0o&t=148s";
+
+/**
+ * Converts a YouTube/Vimeo watch URL into an embeddable URL.
+ *
+ * IMPORTANT — Error 153 fix:
+ * YouTube blocks embeds that suppress native controls (`controls=0`,
+ * `showinfo=0`, `modestbranding=1`). We keep autoplay/mute/loop but
+ * let the player render its standard chrome to avoid restrictions.
+ */
 function getEmbedUrl(url: string): string {
   if (!url) return "";
-  
-  // If already an embed URL, try to extract ID to ensure loop works correctly
+
+  // Extract start-time from ?t=148s or &start=148
+  function extractStart(u: string): string {
+    const tMatch = u.match(/[?&]t=(\d+)/);
+    if (tMatch) return `&start=${tMatch[1]}`;
+    const sMatch = u.match(/[?&]start=(\d+)/);
+    if (sMatch) return `&start=${sMatch[1]}`;
+    return "";
+  }
+
+  // If already an embed URL, normalise parameters
   if (url.includes("youtube.com/embed/")) {
-    const id = url.split("youtube.com/embed/")[1]?.split("?")[0];
-    if (id) return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=0&showinfo=0&rel=0&modestbranding=1`;
+    const id = url.split("youtube.com/embed/")[1]?.split(/[?&#]/)[0];
+    if (id) return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&rel=0${extractStart(url)}`;
     return url;
   }
   if (url.includes("player.vimeo.com/video/")) {
@@ -163,7 +183,7 @@ function getEmbedUrl(url: string): string {
   const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([^&\s?]+)/);
   if (ytMatch) {
     const id = ytMatch[1];
-    return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=0&showinfo=0&rel=0&modestbranding=1`;
+    return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&rel=0${extractStart(url)}`;
   }
 
   // Vimeo
@@ -172,33 +192,30 @@ function getEmbedUrl(url: string): string {
     return `https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1&muted=1&loop=1&background=1`;
   }
 
-  // Check for localhost or internal assets accidentally used as video URLs
+  // Dead / internal URLs
   if (url.includes("localhost") || url.includes("/src/assets/")) {
     console.warn("Invalid Video URL detected: ", url);
-    return ""; // Force fallback to placeholder
+    return "";
   }
 
   return url;
 }
 
 function HeroVideoCard({ videoUrl }: { videoUrl?: string }) {
-  const embedUrl = videoUrl ? getEmbedUrl(videoUrl) : null;
+  // Use admin-configured URL, or fall back to the default Raudah Travels promo
+  const embedUrl = getEmbedUrl(videoUrl || DEFAULT_HERO_VIDEO);
   return (
     <div className="relative w-full max-w-[560px] mx-auto lg:ml-8">
       <div className="rounded-3xl overflow-hidden bg-[#0d1b2a] shadow-2xl border border-white/10 aspect-[1/1] sm:aspect-[6/5]">
         {embedUrl ? (
-          <div className="relative w-full h-full">
-            <iframe
-              src={embedUrl}
-              className="w-full h-full"
-              allow="autoplay; fullscreen; picture-in-picture"
-              allowFullScreen
-              style={{ border: "none" }}
-              title="Raudah Travels hero video"
-            />
-            {/* Transparent overlay to suppress YouTube/Vimeo hover UI (title bar, share button) */}
-            <div className="absolute inset-0 z-10" style={{ pointerEvents: "auto", background: "transparent" }} />
-          </div>
+          <iframe
+            src={embedUrl}
+            className="w-full h-full"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+            style={{ border: "none" }}
+            title="Raudah Travels hero video"
+          />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-5 bg-gradient-to-br from-[#0d1b2a] to-[#1a2f45]">
             <div className="relative">
