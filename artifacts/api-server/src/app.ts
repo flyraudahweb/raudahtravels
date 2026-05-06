@@ -99,7 +99,7 @@ if (process.env.NODE_ENV === "production") {
   // Permissive CSP for the SPA shell — must allow YouTube & Vimeo iframes
   const frontendCSP = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://clerk.raudahtravels.com https://*.clerk.accounts.dev https://*.clerk.dev https://challenges.cloudflare.com",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://clerk.raudahtravels.com https://*.clerk.accounts.dev https://*.clerk.dev https://challenges.cloudflare.com https://js.paystack.co https://static.cloudflareinsights.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' data: blob: https: http:",

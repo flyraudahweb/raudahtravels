@@ -665,8 +665,8 @@ router.get("/admin/analytics", async (req, res) => {
   const total = allBookings.length;
 
   // Payment method breakdown
-  const paymentMethodBreakdown = ["online", "bank_transfer", "cash"].map(method => ({
-    method: method === "bank_transfer" ? "Bank Transfer" : method === "online" ? "Online" : "Cash",
+  const paymentMethodBreakdown = ["paystack", "bank_transfer", "cash"].map(method => ({
+    method: method === "bank_transfer" ? "Bank Transfer" : method === "paystack" ? "Online" : "Cash",
     count: allPayments.filter(p => p.method === method).length,
     collected: allPayments.filter(p => p.method === method && p.status === "verified").reduce((s, p) => s + Number(p.amount), 0),
   }));

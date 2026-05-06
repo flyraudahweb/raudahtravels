@@ -307,8 +307,8 @@ export default function AgentClients() {
       partner: form.partner || undefined,
       underCover: form.underCover || undefined,
       observation: form.observation || undefined,
-      amountPaid: form.amountPaid ? Number(form.amountPaid) : undefined,
-      paymentMethod: form.paymentMethod,
+      amountPaid: form.paymentMethod === "online" ? 0 : (form.amountPaid ? Number(form.amountPaid) : undefined),
+      paymentMethod: form.paymentMethod === "online" ? "paystack" : form.paymentMethod,
       paymentReference: form.paymentReference || undefined,
       paymentProofUrl: form.paymentProofUrl || undefined,
     });

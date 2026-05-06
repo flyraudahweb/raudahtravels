@@ -189,6 +189,7 @@ export default function BookingWizard() {
     staleTime: 60000,
   });
   const primaryBank = bankData?.accounts?.[0];
+  const bankAccounts = bankData?.accounts || [];
 
   const createBooking = useCreateBooking();
   const createPayment = useCreatePayment();

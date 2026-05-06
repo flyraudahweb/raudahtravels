@@ -398,11 +398,11 @@ export default function AdminBookPilgrim() {
       phone: pilgrim.phone ? `${phoneCode}${pilgrim.phone}` : "",
       fullName: `${pilgrim.firstName} ${pilgrim.lastName}`.trim(),
       ...travel,
-      paymentMethod: payment.method,
+      paymentMethod: payment.method === "online" ? "paystack" : payment.method,
       paymentReference: payment.paymentReference || undefined,
       paymentProofUrl: payment.paymentProofUrl || undefined,
-      markVerified: payment.markVerified,
-      amountPaid: payment.amountPaid ? Number(payment.amountPaid) : undefined,
+      markVerified: payment.method === "online" ? false : payment.markVerified,
+      amountPaid: payment.method === "online" ? 0 : (payment.amountPaid ? Number(payment.amountPaid) : undefined),
       totalPrice: selectedPkg?.price,
     });
   };

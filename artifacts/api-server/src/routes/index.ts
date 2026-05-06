@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { siteSettingsTable, contactMessagesTable, bankAccountsTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { siteSettingsTable, contactMessagesTable, bankAccountsTable, bookingFormFieldsTable } from "@workspace/db";
+import { eq, and, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import healthRouter from "./health";
 import authRouter from "./auth";
@@ -61,6 +61,23 @@ router.get("/bank-accounts", async (_req, res) => {
     return res.json({ accounts });
   } catch {
     return res.json({ accounts: [] });
+  }
+});
+
+// Public booking form fields (for user booking wizard)
+router.get("/public/booking-form-fields", async (req, res) => {
+  try {
+    const { appliesTo } = req.query as Record<string, string>;
+    const conditions: any[] = [];
+    if (appliesTo) conditions.push(eq(bookingFormFieldsTable.appliesTo, appliesTo));
+
+    const fields = await db.query.bookingFormFieldsTable.findMany({
+      where: conditions.length ? and(...conditions) : undefined,
+      orderBy: bookingFormFieldsTable.sortOrder,
+    });
+    return res.json({ fields });
+  } catch {
+    return res.status(500).json({ error: "Failed to load form fields" });
   }
 });
 

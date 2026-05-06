@@ -12,7 +12,7 @@ export type FieldCfgFn = (fieldName: string) => { visible: boolean; required: bo
 export function useFormFieldConfig(): FieldCfgFn {
   const { data } = useQuery<{ fields: FormFieldSetting[] }>({
     queryKey: ["admin-booking-form-fields"],
-    queryFn: () => fetch("/api/admin/booking-form-fields").then(r => r.json()),
+    queryFn: () => fetch("/api/public/booking-form-fields").then(r => r.json()),
     staleTime: 60_000,
   });
 
