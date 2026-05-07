@@ -8,9 +8,9 @@ export async function ensureDefaultData() {
   if (Number(existingChannels[0]?.count) === 0) {
     console.log("Seeding default chat channels...");
     await db.insert(chatChannelsTable).values([
-      { name: "General", slug: "general", description: "General team communication", isDefault: true },
-      { name: "Announcements", slug: "announcements", description: "Important updates and announcements", isDefault: true },
-      { name: "Support", slug: "support", description: "Agent and client support", isDefault: true },
+      { id: crypto.randomUUID(), name: "General", slug: "general", description: "General team communication", isDefault: true },
+      { id: crypto.randomUUID(), name: "Announcements", slug: "announcements", description: "Important updates and announcements", isDefault: true },
+      { id: crypto.randomUUID(), name: "Support", slug: "support", description: "Agent and client support", isDefault: true },
     ]);
   }
 
@@ -70,6 +70,7 @@ export async function ensureDefaultData() {
     await db.insert(bookingFormFieldsTable).values(
       fields.map((f, i) => ({
         ...f,
+        id: crypto.randomUUID(),
         enabled: true,
         isSystem: true,
         sortOrder: i * 10
