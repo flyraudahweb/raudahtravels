@@ -74,7 +74,7 @@ export async function ensureDefaultData() {
   const missingFields = fields.filter(f => !existingFieldNames.has(f.fieldName));
 
   if (missingFields.length > 0) {
-    console.log(\`Seeding \${missingFields.length} missing booking form fields...\`);
+    console.log(`Seeding ${missingFields.length} missing booking form fields...`);
     await db.insert(bookingFormFieldsTable).values(
       missingFields.map((f, i) => ({
         ...f,
@@ -85,5 +85,4 @@ export async function ensureDefaultData() {
       }))
     );
   }
-}
 }
