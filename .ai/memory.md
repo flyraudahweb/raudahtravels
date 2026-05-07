@@ -28,3 +28,4 @@
 - [Session 6: Railway Deployment & Clerk Fixes](file:///c:/Users/DEEPMIND/Downloads/Travel-Master-Guide-main/Travel-Master-Guide-main/.ai/logs/session_6_railway_deployment.md)
 - [Session 7: YouTube Hero Video Fix and Paystack Security Hardening](file:///c:/Users/DEEPMIND/Downloads/Travel-Master-Guide-main/Travel-Master-Guide-main/.ai/logs/session_7_video_and_paystack_security.md)
 - [Session 8: Admin Booking Fixes & Dashboard Stability](file:///c:/Users/DEEPMIND/Downloads/Travel-Master-Guide-main/Travel-Master-Guide-main/.ai/logs/session_8_admin_booking_fixes.md)
+- [Session 9: Agent Activity Tracking, ID Tag Printing & Seeding Automation](file:///c:/Users/DEEPMIND/Downloads/Travel-Master-Guide-main/Travel-Master-Guide-main/.ai/logs/session_9_agent_activity_and_id_tags.md)
