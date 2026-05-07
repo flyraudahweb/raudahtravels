@@ -807,6 +807,114 @@ function AgentDetailDialog({ agent, onClose, onAction }: {
 
 /* ─── Main Component ──────────────────────────────────────────────────── */
 
+function AgentActivityList({ agents }: { agents: any[] }) {
+  const [page, setPage] = useState(1);
+  const [filterAgent, setFilterAgent] = useState("all");
+  const PAGE_SIZE = 50;
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["admin-agents-activity", filterAgent, page],
+    queryFn: () => fetch(`/api/admin/agents-activity?agentId=${filterAgent}&limit=${PAGE_SIZE}&offset=${(page - 1) * PAGE_SIZE}`, { credentials: "include" }).then(r => r.json()),
+  });
+
+  const activities = data?.activities || [];
+  const totalPages = data?.totalPages || 1;
+
+  return (
+    <div className="bg-white rounded-2xl border border-[#DCE3F0] overflow-hidden flex flex-col min-h-[400px]">
+      <div className="p-4 border-b border-[#F1F5F9] bg-[#FAFBFF] flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-2">
+          <RefreshCw className="w-4 h-4 text-[#2D3199]" />
+          <p className="font-bold text-[#0F172A] text-sm">Unified Activity Logs</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-bold text-[#64748B]">Filter Agent:</label>
+          <select value={filterAgent} onChange={e => { setFilterAgent(e.target.value); setPage(1); }}
+            className="h-8 px-2 rounded-lg border border-[#DCE3F0] bg-white text-xs font-medium focus:outline-none focus:border-[#2D3199]">
+            <option value="all">All Agents</option>
+            {agents.map(a => <option key={a.id} value={a.id}>{a.businessName}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="flex-1 p-0">
+        {isLoading ? (
+          <div className="p-6 space-y-4">
+            {[1,2,3].map(i => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}
+          </div>
+        ) : activities.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <Clock className="w-10 h-10 text-[#CBD5E1] mb-3" />
+            <p className="font-bold text-[#64748B]">No activity recorded</p>
+            <p className="text-xs text-[#94A3B8] mt-1">Try changing the agent filter</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-[#F1F5F9]">
+            {activities.map((a: any) => (
+              <div key={a._id} className="p-4 hover:bg-[#FAFBFF] transition-colors flex gap-4 items-start">
+                {a._type === "wallet" ? (
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0">
+                    <Wallet className="w-5 h-5 text-emerald-600" />
+                  </div>
+                ) : (
+                  <div className="w-10 h-10 rounded-xl bg-[#EEF0FF] flex items-center justify-center shrink-0">
+                    <ActivityIcon type={a.eventType} />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start mb-1">
+                    <p className="text-sm font-bold text-[#0F172A]">
+                      {a._type === "wallet" ? "Wallet Transaction" : formatEventName(a.eventType)}
+                    </p>
+                    <span className="text-[10px] font-bold text-[#94A3B8] whitespace-nowrap ml-2">
+                      {new Date(a.createdAt).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}
+                    </span>
+                  </div>
+                  {filterAgent === "all" && a.businessName && (
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-[#2D3199] mb-1">{a.businessName}</p>
+                  )}
+                  {a._type === "wallet" ? (
+                    <p className="text-xs text-[#64748B]">
+                      {a.txType === "credit" ? "Credited " : "Debited "}
+                      <span className="font-bold text-[#0F172A]">₦{Number(a.amount).toLocaleString()}</span>
+                      {a.description ? ` - ${a.description}` : ""}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-[#64748B]">
+                      {a.metadata?.message || "System event triggered"}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {totalPages > 1 && (
+        <div className="p-4 border-t border-[#F1F5F9] bg-[#FAFBFF] flex items-center justify-between">
+          <span className="text-xs font-bold text-[#64748B]">Page {page} of {totalPages}</span>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setPage(p => p - 1)} disabled={page <= 1} className="h-8 text-xs">Prev</Button>
+            <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={page >= totalPages} className="h-8 text-xs">Next</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActivityIcon({ type }: { type: string }) {
+  if (type.includes("payment")) return <DollarSign className="w-5 h-5 text-[#2D3199]" />;
+  if (type.includes("booking") || type.includes("pilgrim")) return <Users className="w-5 h-5 text-[#2D3199]" />;
+  return <RefreshCw className="w-5 h-5 text-[#2D3199]" />;
+}
+
+function formatEventName(t: string) {
+  return t.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+
 type ActiveDialog =
   | { type: "create" }
   | { type: "approve-app"; app: any }
@@ -1088,11 +1196,7 @@ export default function AdminAgents() {
 
       {/* ── Tab: Logs ── */}
       {activeTab === "logs" && (
-        <div className="bg-white rounded-2xl border border-[#DCE3F0] p-8 text-center">
-          <RefreshCw className="w-10 h-10 text-[#2D3199]/30 mx-auto mb-3" />
-          <p className="font-bold text-[#0F172A]">Activity Logs</p>
-          <p className="text-[#94A3B8] text-sm mt-1">Agent wallet transactions and approval history will appear here</p>
-        </div>
+        <AgentActivityList agents={agents} />
       )}
 
       {/* ── Dialogs ── */}

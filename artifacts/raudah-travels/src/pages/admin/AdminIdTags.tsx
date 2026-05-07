@@ -31,6 +31,7 @@ interface Pilgrim {
   mahramName?: string;
   mahramRelationship?: string;
   package?: { id?: string; name: string; type: string };
+  profilePhotoUrl?: string | null;
   user?: { email: string; avatarUrl?: string | null };
 }
 
@@ -100,8 +101,8 @@ function LandscapeCard({ pilgrim }: { pilgrim: Pilgrim }) {
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         {/* Photo */}
         <div style={{ width: 178, background: "#F1F3FC", display: "flex", alignItems: "center", justifyContent: "center", borderRight: "1.5px solid #C7CCF0", flexShrink: 0, padding: 14 }}>
-          {pilgrim.user?.avatarUrl ? (
-            <img src={pilgrim.user.avatarUrl} alt="" style={{ width: 142, height: 168, objectFit: "cover", border: "2px solid #2D3199", borderRadius: 4 }} />
+          {(pilgrim.profilePhotoUrl || pilgrim.user?.avatarUrl) ? (
+            <img src={pilgrim.profilePhotoUrl || pilgrim.user?.avatarUrl || ""} alt="" style={{ width: 142, height: 168, objectFit: "cover", border: "2px solid #2D3199", borderRadius: 4 }} />
           ) : (
             <div style={{ width: 142, height: 168, border: "2px solid #2D3199", borderRadius: 4, background: "linear-gradient(160deg,#2D3199 0%,#1C1F66 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
               <div style={{ color: "#FFFFFF", fontSize: 46, fontWeight: 900, fontFamily: "Arial, sans-serif", lineHeight: 1 }}>{initials}</div>
@@ -194,8 +195,8 @@ function PortraitCard({ pilgrim }: { pilgrim: Pilgrim }) {
         {/* Left col: photo + reg + QR */}
         <div style={{ width: 128, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, flexShrink: 0 }}>
           {/* Photo */}
-          {pilgrim.user?.avatarUrl ? (
-            <img src={pilgrim.user.avatarUrl} alt="" style={{ width: 114, height: 138, objectFit: "cover", border: "2px solid #2D3199", borderRadius: 4 }} />
+          {(pilgrim.profilePhotoUrl || pilgrim.user?.avatarUrl) ? (
+            <img src={pilgrim.profilePhotoUrl || pilgrim.user?.avatarUrl || ""} alt="" style={{ width: 114, height: 138, objectFit: "cover", border: "2px solid #2D3199", borderRadius: 4 }} />
           ) : (
             <div style={{ width: 114, height: 138, border: "2px solid #2D3199", borderRadius: 4, background: "linear-gradient(160deg,#2D3199 0%,#1C1F66 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
               <div style={{ color: "#FFFFFF", fontSize: 34, fontWeight: 900, fontFamily: "Arial, sans-serif", lineHeight: 1 }}>{initials}</div>
@@ -360,89 +361,98 @@ export default function AdminIdTags() {
       const ini   = [parts[0]?.[0], parts[parts.length - 1]?.[0]].filter(Boolean).join("").toUpperCase() || "??";
       const pkg   = (p.package?.name || "—").toUpperCase();
       const reg   = p.idNumber ? String(p.idNumber) : (p.reference || "—");
-      const dep   = p.departureCity ? `<div style="color:#64748B;font-size:7pt;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;">DEPARTURE / DÉPART</div><div style="color:#2D3199;font-size:11pt;font-weight:800;">${p.departureCity.toUpperCase()}</div>` : "";
+      const dep   = p.departureCity ? `<div><div style="color:#64748B;font-size:9px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">DEPARTURE / DÉPART</div><div style="color:#2D3199;font-size:14px;font-weight:800;letter-spacing:0.06em;margin-top:3px;">${p.departureCity.toUpperCase()}</div></div>` : "";
+      const depP  = p.departureCity ? `<div style="margin-top:10px;"><div style="color:#64748B;font-size:8px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">DEPARTURE / DÉPART</div><div style="color:#2D3199;font-size:12px;font-weight:800;letter-spacing:0.06em;margin-top:3px;">${p.departureCity.toUpperCase()}</div></div>` : "";
       const portrait = cardType === "portrait" || cardType === "both";
       const landscape = cardType === "landscape" || cardType === "both";
-      const lCard = landscape ? `<div style="width:240mm;height:135mm;border:2px solid #2D3199;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;background:#fff;break-inside:avoid;">
-  <div style="height:22mm;background:#2D3199;display:flex;align-items:center;padding:0 5mm;gap:4mm;">
-    <div style="background:#fff;border-radius:6px;padding:2mm 3mm;display:flex;align-items:center;min-width:36mm;height:16mm;"><img src="/logo.png" style="height:11mm;object-fit:contain;" /></div>
-    <div style="flex:1;text-align:center;"><div style="color:#fff;font-size:15pt;font-weight:900;letter-spacing:0.12em;">RAUDAH TRAVELS &amp; TOURS</div><div style="color:rgba(255,255,255,0.55);font-size:7pt;letter-spacing:0.2em;margin-top:1mm;">PILGRIM IDENTIFICATION CARD</div></div>
-    <div style="border:1.5px solid rgba(255,255,255,0.35);border-radius:4px;overflow:hidden;"><svg width="18mm" height="12mm" viewBox="0 0 3 2"><rect width="1" height="2" fill="#008751"/><rect x="1" width="1" height="2" fill="#fff"/><rect x="2" width="1" height="2" fill="#008751"/></svg></div>
+      
+      const photoUrl = p.profilePhotoUrl || p.user?.avatarUrl;
+      const lPhotoHtml = photoUrl
+        ? `<img src="${photoUrl}" style="width:142px;height:168px;object-fit:cover;border:2px solid #2D3199;border-radius:4px;" />`
+        : `<div style="width:142px;height:168px;border:2px solid #2D3199;border-radius:4px;background:linear-gradient(160deg,#2D3199,#1C1F66);display:flex;flex-direction:column;align-items:center;justify-content:center;"><div style="color:#fff;font-size:46px;font-weight:900;line-height:1;">${ini}</div><div style="color:rgba(255,255,255,0.4);font-size:9px;letter-spacing:0.15em;margin-top:8px;text-transform:uppercase;">NO PHOTO</div></div>`;
+      
+      const pPhotoHtml = photoUrl
+        ? `<img src="${photoUrl}" style="width:114px;height:138px;object-fit:cover;border:2px solid #2D3199;border-radius:4px;" />`
+        : `<div style="width:114px;height:138px;border:2px solid #2D3199;border-radius:4px;background:linear-gradient(160deg,#2D3199,#1C1F66);display:flex;flex-direction:column;align-items:center;justify-content:center;"><div style="color:#fff;font-size:34px;font-weight:900;line-height:1;">${ini}</div><div style="color:rgba(255,255,255,0.4);font-size:8px;letter-spacing:0.1em;margin-top:6px;text-transform:uppercase;">NO PHOTO</div></div>`;
+
+      const lCard = landscape ? `<div style="width:800px;height:450px;border:2px solid #2D3199;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;background:#fff;break-inside:avoid;transform-origin:top left;transform:scale(0.85);margin-bottom:-67px;margin-right:-120px;">
+  <div style="height:76px;background:#2D3199;display:flex;align-items:center;padding:0 18px;gap:14px;">
+    <div style="background:#fff;border-radius:8px;padding:6px 10px;display:flex;align-items:center;justify-content:center;min-width:130px;height:54px;"><img src="/logo.png" style="height:38px;object-fit:contain;display:block;" /></div>
+    <div style="flex:1;text-align:center;"><div style="color:#fff;font-size:21px;font-weight:900;letter-spacing:0.12em;line-height:1;">RAUDAH TRAVELS &amp; TOURS</div><div style="color:rgba(255,255,255,0.55);font-size:10px;letter-spacing:0.2em;margin-top:5px;text-transform:uppercase;">PILGRIM IDENTIFICATION CARD</div></div>
+    <div style="border:2px solid rgba(255,255,255,0.35);border-radius:6px;overflow:hidden;"><svg width="60" height="40" viewBox="0 0 3 2" style="display:block;border-radius:3px;"><rect width="1" height="2" fill="#008751"/><rect x="1" width="1" height="2" fill="#fff"/><rect x="2" width="1" height="2" fill="#008751"/></svg></div>
   </div>
-  <div style="height:11mm;background:#EEF0FF;display:flex;align-items:center;justify-content:center;border-top:1.5px solid #BEC5EE;border-bottom:1.5px solid #BEC5EE;"><span style="color:#2D3199;font-size:11pt;font-weight:900;letter-spacing:0.1em;">${pkg}</span></div>
+  <div style="height:38px;background:#EEF0FF;display:flex;align-items:center;justify-content:center;border-top:1.5px solid #BEC5EE;border-bottom:1.5px solid #BEC5EE;"><span style="color:#2D3199;font-size:15px;font-weight:900;letter-spacing:0.1em;">${pkg}</span></div>
   <div style="flex:1;display:flex;overflow:hidden;">
-    <div style="width:52mm;background:#F1F3FC;display:flex;align-items:center;justify-content:center;border-right:1.5px solid #C7CCF0;padding:3mm;">
-      <div style="width:42mm;height:50mm;border:2px solid #2D3199;border-radius:3px;background:linear-gradient(160deg,#2D3199,#1C1F66);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-        <div style="color:#fff;font-size:22pt;font-weight:900;">${ini}</div>
-        <div style="color:rgba(255,255,255,0.4);font-size:6pt;letter-spacing:0.15em;margin-top:2mm;text-transform:uppercase;">NO PHOTO</div>
-      </div>
+    <div style="width:178px;background:#F1F3FC;display:flex;align-items:center;justify-content:center;border-right:1.5px solid #C7CCF0;padding:14px;">
+      ${lPhotoHtml}
     </div>
-    <div style="flex:1;padding:4mm 5mm;display:flex;flex-direction:column;justify-content:center;">
-      <div style="margin-bottom:3mm;"><div style="color:#64748B;font-size:6pt;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">FIRST NAME / NOM</div><div style="color:#0F172A;font-size:14pt;font-weight:900;margin-top:1mm;">${first}</div><div style="height:0.5mm;background:#CBD5E1;margin-top:2mm;"></div></div>
-      <div style="margin-bottom:3mm;"><div style="color:#64748B;font-size:6pt;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">LAST NAME / PRENOM</div><div style="color:#0F172A;font-size:14pt;font-weight:900;margin-top:1mm;">${last}</div><div style="height:0.5mm;background:#CBD5E1;margin-top:2mm;"></div></div>
-      <div><div style="color:#64748B;font-size:6pt;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">PASSPORT / PASSEPORT</div><div style="color:#0F172A;font-size:12pt;font-weight:900;margin-top:1mm;">${(p.passportNumber || "—").toUpperCase()}</div><div style="height:0.5mm;background:#CBD5E1;margin-top:2mm;"></div></div>
+    <div style="flex:1;padding:18px 22px;display:flex;flex-direction:column;justify-content:center;">
+      <div style="margin-bottom:10px;"><div style="color:#64748B;font-size:9px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">FIRST NAME / NOM</div><div style="color:#0F172A;font-size:20px;font-weight:900;margin-top:3px;letter-spacing:0.06em;line-height:1.2;">${first}</div><div style="height:1px;background:#CBD5E1;margin-top:7px;"></div></div>
+      <div style="margin-bottom:10px;"><div style="color:#64748B;font-size:9px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">LAST NAME / PRENOM</div><div style="color:#0F172A;font-size:20px;font-weight:900;margin-top:3px;letter-spacing:0.06em;line-height:1.2;">${last}</div><div style="height:1px;background:#CBD5E1;margin-top:7px;"></div></div>
+      <div><div style="color:#64748B;font-size:9px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">PASSPORT / PASSEPORT</div><div style="color:#0F172A;font-size:17px;font-weight:900;margin-top:3px;letter-spacing:0.06em;line-height:1.2;">${(p.passportNumber || "—").toUpperCase()}</div><div style="height:1px;background:#CBD5E1;margin-top:7px;"></div></div>
       ${dep}
     </div>
-    <div style="width:56mm;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3mm;padding:3mm 4mm;border-left:1.5px solid #C7CCF0;">
-      <div style="border:2px solid #0F172A;border-radius:6px;padding:2mm 4mm;text-align:center;width:100%;box-sizing:border-box;">
-        <div style="color:#64748B;font-size:6pt;font-weight:700;text-transform:uppercase;">REG NO.</div>
-        <div style="color:#FF3B00;font-size:18pt;font-weight:900;">${reg}</div>
+    <div style="width:188px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:14px 16px;border-left:1.5px solid #C7CCF0;">
+      <div style="border:2.5px solid #0F172A;border-radius:8px;padding:7px 16px;text-align:center;width:100%;box-sizing:border-box;">
+        <div style="color:#64748B;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;">REG NO.</div>
+        <div style="color:#FF3B00;font-size:24px;font-weight:900;line-height:1.1;letter-spacing:0.06em;">${reg}</div>
       </div>
+      <div style="border:2px solid #0F172A;border-radius:6px;padding:5px;background:#fff;"><img src="https://api.qrserver.com/v1/create-qr-code/?size=118x118&data=https://${SITE}/verify/${reg}" width="118" height="118" /></div>
     </div>
   </div>
-  <div style="height:13mm;background:#1C1F66;display:flex;align-items:center;padding:0 5mm;border-top:2px solid #2D3199;">
-    <div style="width:2mm;height:6mm;background:#FF3B00;border-radius:1px;margin-right:3mm;flex-shrink:0;"></div>
-    <span style="color:#fff;font-size:8pt;font-weight:900;letter-spacing:0.1em;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">PACKAGE : ${pkg}</span>
-    <span style="color:rgba(255,255,255,0.4);font-size:7pt;">${SITE}</span>
+  <div style="height:44px;background:#1C1F66;display:flex;align-items:center;padding:0 20px;border-top:2px solid #2D3199;">
+    <div style="width:8px;height:20px;background:#FF3B00;border-radius:2px;margin-right:10px;flex-shrink:0;"></div>
+    <span style="color:#fff;font-size:12px;font-weight:900;letter-spacing:0.1em;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">PACKAGE : ${pkg}</span>
+    <span style="color:rgba(255,255,255,0.4);font-size:10px;letter-spacing:0.08em;">${SITE}</span>
   </div>
 </div>` : "";
-      const pCard = portrait ? `<div style="width:135mm;height:191mm;border:2px solid #2D3199;border-radius:10px;overflow:hidden;display:flex;flex-direction:column;background:#fff;break-inside:avoid;">
-  <div style="background:#2D3199;padding:8px 12px;display:flex;flex-direction:column;align-items:center;">
-    <div style="color:#fff;font-size:16pt;font-weight:900;letter-spacing:0.15em;">RAUDAH</div>
-    <div style="color:rgba(255,255,255,0.7);font-size:7pt;letter-spacing:0.18em;margin-top:2px;text-transform:uppercase;">TRAVEL AND TOURS LIMITED</div>
-    <div style="display:flex;align-items:center;justify-content:space-between;width:100%;margin-top:8px;">
-      <div style="background:#fff;border-radius:5px;padding:3px 6px;height:34px;display:flex;align-items:center;"><img src="/logo.png" style="height:24px;object-fit:contain;" /></div>
-      <div style="border:1.5px solid rgba(255,255,255,0.4);border-radius:4px;overflow:hidden;"><svg width="40px" height="26px" viewBox="0 0 3 2"><rect width="1" height="2" fill="#008751"/><rect x="1" width="1" height="2" fill="#fff"/><rect x="2" width="1" height="2" fill="#008751"/></svg></div>
+
+      const pCard = portrait ? `<div style="width:450px;height:640px;border:2px solid #2D3199;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;background:#fff;break-inside:avoid;transform-origin:top left;transform:scale(0.85);margin-bottom:-96px;margin-right:-67px;">
+  <div style="background:#2D3199;padding:12px 16px;display:flex;flex-direction:column;align-items:center;">
+    <div style="color:#fff;font-size:22px;font-weight:900;letter-spacing:0.15em;line-height:1;">RAUDAH</div>
+    <div style="color:rgba(255,255,255,0.7);font-size:9px;letter-spacing:0.18em;margin-top:4px;text-transform:uppercase;">TRAVEL AND TOURS LIMITED</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;width:100%;margin-top:10px;">
+      <div style="background:#fff;border-radius:6px;padding:4px 8px;height:44px;display:flex;align-items:center;"><img src="/logo.png" style="height:32px;object-fit:contain;display:block;" /></div>
+      <div style="border:1.5px solid rgba(255,255,255,0.4);border-radius:5px;overflow:hidden;"><svg width="52" height="34" viewBox="0 0 3 2" style="display:block;border-radius:3px;"><rect width="1" height="2" fill="#008751"/><rect x="1" width="1" height="2" fill="#fff"/><rect x="2" width="1" height="2" fill="#008751"/></svg></div>
     </div>
   </div>
-  <div style="padding:5px 10px;background:#F8FAFF;border-bottom:1.5px solid #BEC5EE;">
-    <div style="border:2px solid #2D3199;border-radius:5px;padding:4px 8px;text-align:center;">
-      <span style="color:#2D3199;font-size:9pt;font-weight:900;letter-spacing:0.1em;">${pkg}</span>
+  <div style="padding:8px 14px;background:#F8FAFF;border-bottom:1.5px solid #BEC5EE;">
+    <div style="border:2px solid #2D3199;border-radius:6px;padding:5px 10px;text-align:center;">
+      <span style="color:#2D3199;font-size:13px;font-weight:900;letter-spacing:0.1em;">${pkg}</span>
     </div>
   </div>
-  <div style="flex:1;display:flex;padding:8px 10px 6px 10px;gap:8px;overflow:hidden;">
-    <div style="width:90px;display:flex;flex-direction:column;align-items:center;gap:5px;flex-shrink:0;">
-      <div style="width:82px;height:100px;border:2px solid #2D3199;border-radius:3px;background:linear-gradient(160deg,#2D3199,#1C1F66);display:flex;flex-direction:column;align-items:center;justify-content:center;">
-        <div style="color:#fff;font-size:24pt;font-weight:900;">${ini}</div>
-        <div style="color:rgba(255,255,255,0.4);font-size:6pt;margin-top:4px;text-transform:uppercase;">NO PHOTO</div>
+  <div style="flex:1;display:flex;padding:14px 14px 10px 14px;gap:12px;overflow:hidden;">
+    <div style="width:128px;display:flex;flex-direction:column;align-items:center;gap:8px;flex-shrink:0;">
+      ${pPhotoHtml}
+      <div style="border:2px solid #0F172A;border-radius:6px;padding:4px 8px;text-align:center;width:100%;box-sizing:border-box;">
+        <div style="color:#64748B;font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;">REG NO.</div>
+        <div style="color:#FF3B00;font-size:18px;font-weight:900;letter-spacing:0.04em;">${reg}</div>
       </div>
-      <div style="border:2px solid #0F172A;border-radius:4px;padding:3px 5px;text-align:center;width:100%;box-sizing:border-box;">
-        <div style="color:#64748B;font-size:6pt;font-weight:700;text-transform:uppercase;">REG NO.</div>
-        <div style="color:#FF3B00;font-size:13pt;font-weight:900;">${reg}</div>
-      </div>
+      <div style="border:2px solid #0F172A;border-radius:5px;padding:4px;background:#fff;"><img src="https://api.qrserver.com/v1/create-qr-code/?size=96x96&data=https://${SITE}/verify/${reg}" width="96" height="96" /></div>
     </div>
-    <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-start;padding-top:2px;">
-      <div style="margin-bottom:6px;"><div style="color:#64748B;font-size:6pt;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;">FIRST NAME / NOM</div><div style="color:#0F172A;font-size:11pt;font-weight:900;margin-top:1px;">${first}</div><div style="height:0.5mm;background:#CBD5E1;margin-top:4px;"></div></div>
-      <div style="margin-bottom:6px;"><div style="color:#64748B;font-size:6pt;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;">LAST NAME / PRENOM</div><div style="color:#0F172A;font-size:11pt;font-weight:900;margin-top:1px;">${last}</div><div style="height:0.5mm;background:#CBD5E1;margin-top:4px;"></div></div>
-      <div><div style="color:#64748B;font-size:6pt;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;">PASSPORT / PASSEPORT</div><div style="color:#0F172A;font-size:10pt;font-weight:900;margin-top:1px;">${(p.passportNumber || "—").toUpperCase()}</div><div style="height:0.5mm;background:#CBD5E1;margin-top:4px;"></div></div>
+    <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-start;padding-top:4px;">
+      <div style="margin-bottom:10px;"><div style="color:#64748B;font-size:8px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">FIRST NAME / NOM</div><div style="color:#0F172A;font-size:16px;font-weight:900;margin-top:3px;letter-spacing:0.06em;line-height:1.2;">${first}</div><div style="height:1px;background:#CBD5E1;margin-top:6px;"></div></div>
+      <div style="margin-bottom:10px;"><div style="color:#64748B;font-size:8px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">LAST NAME / PRENOM</div><div style="color:#0F172A;font-size:16px;font-weight:900;margin-top:3px;letter-spacing:0.06em;line-height:1.2;">${last}</div><div style="height:1px;background:#CBD5E1;margin-top:6px;"></div></div>
+      <div><div style="color:#64748B;font-size:8px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">PASSPORT / PASSEPORT</div><div style="color:#0F172A;font-size:14px;font-weight:900;margin-top:3px;letter-spacing:0.06em;line-height:1.2;">${(p.passportNumber || "—").toUpperCase()}</div><div style="height:1px;background:#CBD5E1;margin-top:6px;"></div></div>
+      ${depP}
     </div>
   </div>
-  <div style="background:#2D3199;padding:5px 10px;flex-shrink:0;">
-    <div style="color:rgba(255,255,255,0.6);font-size:6pt;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">PARTNER / PARTENAIRE</div>
-    <div style="color:#fff;font-size:10pt;font-weight:900;margin-top:1px;">${(p.mahramName || "—").toUpperCase()}</div>
+  <div style="background:#2D3199;padding:8px 14px;flex-shrink:0;">
+    <div style="color:rgba(255,255,255,0.6);font-size:8px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">PARTNER / PARTENAIRE</div>
+    <div style="color:#fff;font-size:14px;font-weight:900;margin-top:2px;letter-spacing:0.06em;">${(p.mahramName || "—").toUpperCase()}</div>
   </div>
-  <div style="background:#1C1F66;padding:5px 10px;border-top:2px solid #2D3199;flex-shrink:0;">
-    <div style="color:rgba(255,255,255,0.55);font-size:6pt;font-weight:700;text-transform:uppercase;">PACKAGE</div>
-    <div style="color:#fff;font-size:9pt;font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${pkg}</div>
-    <div style="color:rgba(255,255,255,0.35);font-size:6pt;margin-top:2px;">${SITE}</div>
+  <div style="background:#1C1F66;padding:8px 14px;border-top:2px solid #2D3199;flex-shrink:0;">
+    <div style="color:rgba(255,255,255,0.55);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;">PACKAGE</div>
+    <div style="color:#fff;font-size:13px;font-weight:900;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:0.08em;">${pkg}</div>
+    <div style="color:rgba(255,255,255,0.35);font-size:8px;margin-top:4px;">${SITE}</div>
   </div>
 </div>` : "";
-      return `<div style="display:flex;gap:8mm;flex-wrap:wrap;margin-bottom:8mm;break-inside:avoid;">${lCard}${pCard}</div>`;
+      return `<div style="display:flex;gap:32px;flex-wrap:wrap;margin-bottom:32px;break-inside:avoid;">${lCard}${pCard}</div>`;
     }).join("");
 
     w.document.write(`<!DOCTYPE html><html><head><title>Raudah Pilgrim ID Cards</title>
     <style>*{box-sizing:border-box;margin:0;padding:0;font-family:Arial,sans-serif;}body{background:#fff;padding:8mm;}
-    @media print{@page{size:A4;margin:5mm;}body{-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:0;}.no-print{display:none!important;}}</style>
+    @media print{@page{margin:5mm;}body{-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:0;}.no-print{display:none!important;}}</style>
     </head><body>
     <div class="no-print" style="padding:10px;background:#2D3199;color:white;display:flex;align-items:center;gap:12px;margin-bottom:10px;border-radius:6px;">
       <strong>Raudah ID Cards — ${selectedList.length} pilgrim${selectedList.length !== 1 ? "s" : ""} (${cardType})</strong>

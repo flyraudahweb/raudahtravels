@@ -1034,6 +1034,98 @@ router.get("/admin/activity", async (req, res) => {
   });
 });
 
+// ── Agent Activity (Unified Logs & Wallet) ────────────────────────────────────
+
+router.get("/admin/agents-activity", async (req, res) => {
+  const { agentId, limit = "50", offset = "0" } = req.query as Record<string, string>;
+
+  // 1. Get agent mapping
+  const agents = await db.select({
+    id: agentsTable.id,
+    userId: agentsTable.userId,
+    businessName: agentsTable.businessName,
+  }).from(agentsTable);
+
+  const targetAgentIds = agentId && agentId !== "all" ? [agentId] : agents.map(a => a.id);
+  const targetUserIds = agents.filter(a => targetAgentIds.includes(a.id)).map(a => a.userId);
+
+  // 2. Fetch User Activities for these agents
+  let userActivities: any[] = [];
+  if (targetUserIds.length > 0) {
+    userActivities = await db.select({
+      id: userActivityTable.id,
+      userId: userActivityTable.userId,
+      eventType: userActivityTable.eventType,
+      metadata: userActivityTable.metadata,
+      createdAt: userActivityTable.createdAt,
+    })
+    .from(userActivityTable)
+    .where(inArray(userActivityTable.userId, targetUserIds));
+  }
+
+  // 3. Fetch Wallet Transactions for these agents
+  let walletActivities: any[] = [];
+  if (targetAgentIds.length > 0) {
+    walletActivities = await db.select({
+      id: walletTransactionsTable.id,
+      agentId: walletTransactionsTable.agentId,
+      amount: walletTransactionsTable.amount,
+      type: walletTransactionsTable.type,
+      reference: walletTransactionsTable.reference,
+      description: walletTransactionsTable.description,
+      createdAt: walletTransactionsTable.createdAt,
+    })
+    .from(walletTransactionsTable)
+    .where(inArray(walletTransactionsTable.agentId, targetAgentIds));
+  }
+
+  // 4. Combine & Format
+  const combined = [
+    ...userActivities.map(a => {
+      const agent = agents.find(ag => ag.userId === a.userId);
+      return {
+        _id: a.id,
+        _type: "system",
+        agentId: agent?.id,
+        businessName: agent?.businessName,
+        eventType: a.eventType,
+        metadata: a.metadata,
+        createdAt: a.createdAt,
+      };
+    }),
+    ...walletActivities.map(w => {
+      const agent = agents.find(ag => ag.id === w.agentId);
+      return {
+        _id: w.id,
+        _type: "wallet",
+        agentId: w.agentId,
+        businessName: agent?.businessName,
+        eventType: "wallet_transaction",
+        amount: Number(w.amount),
+        txType: w.type,
+        reference: w.reference,
+        description: w.description,
+        createdAt: w.createdAt,
+      };
+    })
+  ];
+
+  // 5. Sort & Paginate
+  combined.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  
+  const total = combined.length;
+  const pLimit = parseInt(limit);
+  const pOffset = parseInt(offset);
+  const paginated = combined.slice(pOffset, pOffset + pLimit);
+
+  return res.json({
+    activities: paginated,
+    total,
+    totalPages: Math.ceil(total / pLimit),
+  });
+});
+
+
 // ── Amendment Requests ────────────────────────────────────────────────────────
 
 router.get("/admin/amendments", async (req, res) => {
