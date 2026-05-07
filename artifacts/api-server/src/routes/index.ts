@@ -46,7 +46,8 @@ router.get("/public/settings", async (_req, res) => {
       if (PUBLIC_KEYS.has(row.key)) result[row.key] = row.value;
     }
     return res.json(result);
-  } catch {
+  } catch (err) {
+    console.error("Public settings error:", err);
     return res.status(500).json({ error: "Failed to load settings" });
   }
 });

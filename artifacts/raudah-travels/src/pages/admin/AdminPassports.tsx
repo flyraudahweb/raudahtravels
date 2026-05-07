@@ -22,6 +22,7 @@ interface PassportEntry {
   hasProfilePhoto: boolean;
   package?: { name: string; type: string } | null;
   agentId?: string;
+  registeredByStaffId?: string;
   status: string;
   createdAt: string;
 }
@@ -176,6 +177,8 @@ export default function AdminPassports() {
   const [filterExpiry, setFilterExpiry] = useState(FILTER_ALL);
   const [filterDocs, setFilterDocs]     = useState(FILTER_ALL);
   const [filterSource, setFilterSource] = useState(FILTER_ALL);
+  const [filterStaff, setFilterStaff]   = useState(FILTER_ALL);
+  const [filterAgent, setFilterAgent]   = useState(FILTER_ALL);
   const [page, setPage]                 = useState(1);
   const [selected, setSelected]         = useState<Set<string>>(new Set());
   const [bulkDownloading, setBulkDownloading] = useState(false);
@@ -183,17 +186,33 @@ export default function AdminPassports() {
 
   const debouncedSearch = useDebounce(search, 400);
 
-  const hasFilters = search || filterType !== FILTER_ALL || filterExpiry !== FILTER_ALL || filterDocs !== FILTER_ALL || filterSource !== FILTER_ALL;
+  // Fetch staff and agent lists for filter dropdowns
+  const { data: staffData } = useQuery<{ staff: { id: string; fullName: string }[] }>({
+    queryKey: ["admin-staff-list"],
+    queryFn: () => fetch("/api/admin/staff", { credentials: "include" }).then(r => r.json()),
+    staleTime: 120_000,
+  });
+  const { data: agentData } = useQuery<{ agents: { id: string; businessName: string; user?: { fullName?: string } | null }[] }>({
+    queryKey: ["admin-agent-list"],
+    queryFn: () => fetch("/api/agents?limit=200", { credentials: "include" }).then(r => r.json()),
+    staleTime: 120_000,
+  });
+  const staffList = staffData?.staff ?? [];
+  const agentList = agentData?.agents ?? [];
+
+  const hasFilters = search || filterType !== FILTER_ALL || filterExpiry !== FILTER_ALL || filterDocs !== FILTER_ALL || filterSource !== FILTER_ALL || filterStaff !== FILTER_ALL || filterAgent !== FILTER_ALL;
 
   const filterParams = useMemo(() => {
     const p: Record<string, string> = { page: String(page), limit: String(PAGE_SIZE) };
-    if (debouncedSearch)          p.search       = debouncedSearch;
-    if (filterType !== FILTER_ALL)   p.filterType   = filterType;
-    if (filterExpiry !== FILTER_ALL) p.filterExpiry = filterExpiry;
-    if (filterDocs !== FILTER_ALL)   p.filterDocs   = filterDocs;
-    if (filterSource !== FILTER_ALL) p.filterSource = filterSource;
+    if (debouncedSearch)              p.search              = debouncedSearch;
+    if (filterType !== FILTER_ALL)    p.filterType          = filterType;
+    if (filterExpiry !== FILTER_ALL)  p.filterExpiry        = filterExpiry;
+    if (filterDocs !== FILTER_ALL)    p.filterDocs          = filterDocs;
+    if (filterSource !== FILTER_ALL)  p.filterSource        = filterSource;
+    if (filterStaff !== FILTER_ALL)   p.registeredByStaffId = filterStaff;
+    if (filterAgent !== FILTER_ALL)   p.agentId             = filterAgent;
     return p;
-  }, [page, debouncedSearch, filterType, filterExpiry, filterDocs, filterSource]);
+  }, [page, debouncedSearch, filterType, filterExpiry, filterDocs, filterSource, filterStaff, filterAgent]);
 
   const { data, isLoading } = useQuery<{ passports: PassportEntry[]; total: number; totalPages: number }>({
     queryKey: ["admin-passports", filterParams],
@@ -223,11 +242,31 @@ export default function AdminPassports() {
   );
 
   const downloadFile = useCallback(async (id: string, reference: string, silent = false) => {
-    const r = await fetch(`/api/admin/passports/${id}/file`);
+    const r = await fetch(`/api/admin/passports/${id}/file`, { credentials: "include" });
     if (!r.ok) {
-      if (!silent) toast({ title: "Download failed", description: "Could not fetch document", variant: "destructive" });
+      const body = await r.json().catch(() => ({}));
+      if (!silent) toast({ title: "Download failed", description: (body as any).error || "Could not fetch document", variant: "destructive" });
       return null;
     }
+
+    const contentType = r.headers.get("content-type") || "";
+
+    // Binary response (proxied external file) — use blob download
+    if (!contentType.includes("application/json")) {
+      const blob = await r.blob();
+      const ext = contentType.includes("pdf") ? "pdf" : "jpg";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `passport-${reference}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      return url;
+    }
+
+    // JSON response (data URL stored in DB)
     const { passportCopyUrl } = await r.json();
     const isPdf = passportCopyUrl.startsWith("data:application/pdf");
     const ext   = isPdf ? "pdf" : "jpg";
@@ -263,10 +302,11 @@ export default function AdminPassports() {
 
   const clearFilters = () => {
     setSearch(""); setFilterType(FILTER_ALL); setFilterExpiry(FILTER_ALL);
-    setFilterDocs(FILTER_ALL); setFilterSource(FILTER_ALL); setPage(1);
+    setFilterDocs(FILTER_ALL); setFilterSource(FILTER_ALL);
+    setFilterStaff(FILTER_ALL); setFilterAgent(FILTER_ALL); setPage(1);
   };
 
-  useEffect(() => { setPage(1); }, [debouncedSearch, filterType, filterExpiry, filterDocs, filterSource]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, filterType, filterExpiry, filterDocs, filterSource, filterStaff, filterAgent]);
 
   const selectedWithDocs = passports.filter(p => selected.has(p.id) && p.hasPassportDoc).length;
 
@@ -347,6 +387,28 @@ export default function AdminPassports() {
               <SelectItem value="direct">Direct / Online</SelectItem>
             </SelectContent>
           </Select>
+          {staffList.length > 0 && (
+            <Select value={filterStaff} onValueChange={v => { setFilterStaff(v); setPage(1); }}>
+              <SelectTrigger className="w-44 rounded-xl border-[#DCE3F0]"><SelectValue placeholder="All Staff" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={FILTER_ALL}>All Staff</SelectItem>
+                {staffList.map(s => (
+                  <SelectItem key={s.id} value={s.id}>{s.fullName || "Unnamed"}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {agentList.length > 0 && (
+            <Select value={filterAgent} onValueChange={v => { setFilterAgent(v); setPage(1); }}>
+              <SelectTrigger className="w-44 rounded-xl border-[#DCE3F0]"><SelectValue placeholder="All Agents" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={FILTER_ALL}>All Agents</SelectItem>
+                {agentList.map(a => (
+                  <SelectItem key={a.id} value={a.id}>{a.businessName || a.user?.fullName || "Unnamed"}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           {hasFilters && (
             <button onClick={clearFilters}
               className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-[#64748B] border border-[#DCE3F0] rounded-xl hover:bg-[#F8F9FF] transition-all">

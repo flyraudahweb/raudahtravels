@@ -188,6 +188,7 @@ router.get("/admin/passports/stats", async (req, res) => {
 router.get("/admin/passports", async (req, res) => {
   const {
     search, filterType, filterExpiry, filterDocs, filterSource,
+    registeredByStaffId, agentId,
     page: pageStr, limit: limitStr,
   } = req.query as Record<string, string>;
 
@@ -216,6 +217,12 @@ router.get("/admin/passports", async (req, res) => {
   else if (filterExpiry === "critical")     conditions.push(and(isNotNull(bookingsTable.passportExpiry), gte(bookingsTable.passportExpiry, today), lte(bookingsTable.passportExpiry, threeMonths)));
   else if (filterExpiry === "ok")           conditions.push(and(isNotNull(bookingsTable.passportExpiry), gt(bookingsTable.passportExpiry, threeMonths)));
 
+  // Staff and agent filters
+  if (registeredByStaffId && registeredByStaffId !== "all")
+    conditions.push(eq(bookingsTable.registeredByStaffId, registeredByStaffId));
+  if (agentId && agentId !== "all")
+    conditions.push(eq(bookingsTable.agentId, agentId));
+
   const whereClause = conditions.length ? and(...conditions) : undefined;
 
   const baseQuery = () => db
@@ -237,6 +244,7 @@ router.get("/admin/passports", async (req, res) => {
     passportNumber: bookingsTable.passportNumber,
     passportExpiry: bookingsTable.passportExpiry,
     agentId:        bookingsTable.agentId,
+    registeredByStaffId: bookingsTable.registeredByStaffId,
     status:         bookingsTable.status,
     createdAt:      bookingsTable.createdAt,
     hasPassportDoc:  sql<boolean>`(${bookingsTable.passportCopyUrl} is not null)`,
@@ -266,6 +274,28 @@ router.get("/admin/passports/:bookingId/file", async (req, res) => {
   });
   if (!booking)                 return res.status(404).json({ error: "Booking not found" });
   if (!booking.passportCopyUrl) return res.status(404).json({ error: "No passport document uploaded" });
+
+  const url = booking.passportCopyUrl;
+
+  // If the stored URL is an external HTTP(S) link (not a data URI), proxy it
+  // to avoid CORS issues and dead-link errors on the frontend
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    try {
+      const upstream = await fetch(url);
+      if (!upstream.ok) return res.status(502).json({ error: "Passport file no longer available at stored URL" });
+      const contentType = upstream.headers.get("content-type") || "application/octet-stream";
+      const buffer = Buffer.from(await upstream.arrayBuffer());
+      const ext = contentType.includes("pdf") ? "pdf" : "jpg";
+      const filename = `passport-${booking.reference || booking.passportNumber || "doc"}.${ext}`;
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      return res.send(buffer);
+    } catch {
+      return res.status(502).json({ error: "Failed to fetch passport file from external storage" });
+    }
+  }
+
+  // Data URL — return as JSON for the frontend to trigger a client-side download
   return res.json({
     passportCopyUrl: booking.passportCopyUrl,
     reference: booking.reference,

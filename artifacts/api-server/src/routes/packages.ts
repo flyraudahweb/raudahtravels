@@ -2,7 +2,7 @@ import { Router, type Request, type Response, type NextFunction } from "express"
 import { db } from "@workspace/db";
 import { packagesTable, profilesTable } from "@workspace/db";
 import { getAuth } from "@clerk/express";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 const router = Router();
@@ -61,29 +61,39 @@ function toPackageResponse(p: typeof packagesTable.$inferSelect) {
 }
 
 router.get("/packages", async (req, res) => {
-  const { type, available, status, limit = "20", offset = "0" } = req.query as Record<string, string>;
+  try {
+    const { type, available, status, limit = "100", offset = "0" } = req.query as Record<string, string>;
 
-  const conditions = [];
-  if (type) conditions.push(eq(packagesTable.type, type as "hajj" | "umrah"));
-  if (available === "true") conditions.push(eq(packagesTable.isActive, true));
-  if (status) conditions.push(eq(packagesTable.status, status as any));
+    const conditions = [];
+    if (type) conditions.push(eq(packagesTable.type, type as "hajj" | "umrah"));
+    if (available === "true") conditions.push(eq(packagesTable.isActive, true));
+    if (status) conditions.push(eq(packagesTable.status, status as any));
 
-  const packages = await db.query.packagesTable.findMany({
-    where: conditions.length ? and(...conditions) : undefined,
-    limit: parseInt(limit),
-    offset: parseInt(offset),
-    orderBy: packagesTable.createdAt,
-  });
+    const packages = await db.query.packagesTable.findMany({
+      where: conditions.length ? and(...conditions) : undefined,
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      orderBy: desc(packagesTable.createdAt),
+    });
 
-  let mapped = packages.map(toPackageResponse);
+    let mapped = packages.map(toPackageResponse);
 
-  // For public listings, hide packages whose countdown has expired (regardless of action)
-  if (available === "true") {
-    mapped = mapped.filter(p => !p.isRegistrationClosed);
+    // For public listings, hide packages whose countdown expired AND action is to disable/hide.
+    // Packages with countdownAction "show_closed_badge" stay visible with a "Registration Closed" indicator.
+    if (available === "true") {
+      mapped = mapped.filter(p => {
+        if (!p.isRegistrationClosed) return true;
+        // Keep visible when admin chose to show a closed badge instead of hiding
+        return p.countdownAction === "show_closed_badge";
+      });
+    }
+
+    const total = await db.select({ count: sql<number>`count(*)` }).from(packagesTable);
+    return res.json({ packages: mapped, total: Number(total[0].count) });
+  } catch (err) {
+    console.error("Packages list error:", err);
+    return res.status(500).json({ error: "Failed to load packages" });
   }
-
-  const total = await db.select({ count: sql<number>`count(*)` }).from(packagesTable);
-  return res.json({ packages: mapped, total: Number(total[0].count) });
 });
 
 router.get("/packages/stats", async (req, res) => {
