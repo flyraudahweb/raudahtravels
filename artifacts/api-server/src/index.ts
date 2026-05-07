@@ -22,16 +22,16 @@ const port = Number(process.env["PORT"]) || 8080;
 
 ensureDefaultData()
   .then(() => {
-    app.listen(port, (err) => {
-      if (err) {
-        logger.error({ err }, "Error listening on port");
-        process.exit(1);
-      }
-
-      logger.info({ port }, "Server listening");
-    });
+    logger.info("Default data initialization successful.");
   })
   .catch((err) => {
-    logger.error({ err }, "Failed to initialize default database data");
-    process.exit(1);
+    logger.error({ err }, "Failed to initialize default database data (possibly unmigrated schema). Proceeding to start server anyway.");
+  })
+  .finally(() => {
+    app.listen(port, () => {
+      logger.info({ port }, "Server listening");
+    }).on('error', (err) => {
+      logger.error({ err }, "Error listening on port");
+      process.exit(1);
+    });
   });
