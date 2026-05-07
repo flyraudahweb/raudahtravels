@@ -16,13 +16,22 @@ try {
 import app from "./app";
 import { logger } from "./lib/logger";
 
+import { ensureDefaultData } from "./utils/init-db";
+
 const port = Number(process.env["PORT"]) || 8080;
 
-app.listen(port, (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
-  }
+ensureDefaultData()
+  .then(() => {
+    app.listen(port, (err) => {
+      if (err) {
+        logger.error({ err }, "Error listening on port");
+        process.exit(1);
+      }
 
-  logger.info({ port }, "Server listening");
-});
+      logger.info({ port }, "Server listening");
+    });
+  })
+  .catch((err) => {
+    logger.error({ err }, "Failed to initialize default database data");
+    process.exit(1);
+  });

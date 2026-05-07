@@ -28,6 +28,14 @@ async function run() {
     console.error("Migration error:", err);
   }
 
+  const { ensureDefaultData } = await import("./src/utils/init-db.js");
+  try {
+    await ensureDefaultData();
+    console.log("Default data ensured!");
+  } catch(err) {
+    console.error("Default data error:", err);
+  }
+
   console.log("Inserting packages...");
   const mappedPackages = rawPackages.map((p) => ({
     id: p.id,
