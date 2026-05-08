@@ -15,6 +15,7 @@ import {
   Package, Loader2, ChevronLeft, ChevronRight, CreditCard, User, Upload,
 } from "lucide-react";
 import PassportScanner from "@/components/PassportScanner";
+import { useFormFieldConfig } from "@/hooks/useFormFieldConfig";
 
 function readFileAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -157,6 +158,11 @@ export default function AgentClients() {
   const lastPkgRef = useRef("");
   const autoOpenedRef = useRef(false);
 
+  const cfg = useFormFieldConfig();
+  const show = (name: string) => cfg(name).visible;
+  const req  = (name: string) => cfg(name).visible && cfg(name).required;
+  const lbl  = (name: string, label: string) => <>{label}{req(name) && <span className="text-red-500 ml-0.5 font-black normal-case">*</span>}</>;
+
   const { data, isLoading } = useQuery<{ clients: AgentClient[]; total: number }>({
     queryKey: ["agent-clients", page],
     queryFn: () => {
@@ -276,7 +282,9 @@ export default function AgentClients() {
   const handleSubmit = () => {
     // Only submit when user is on the final payment step
     if (!form.packageId) { toast({ title: "Select a package", variant: "destructive" }); return; }
-    if (!form.firstName.trim() && !form.lastName.trim()) { toast({ title: "Enter a name", variant: "destructive" }); return; }
+    if (req("firstName") && !form.firstName.trim()) { toast({ title: "First Name is required", variant: "destructive" }); return; }
+    if (req("lastName") && !form.lastName.trim()) { toast({ title: "Last Name is required", variant: "destructive" }); return; }
+    if (req("phone") && !form.phone.trim()) { toast({ title: "Phone number is required", variant: "destructive" }); return; }
     const warn = passportWarn(form.passportExpiry);
     if (warn === "expired") { toast({ title: "Passport expired", description: "Cannot register with expired passport.", variant: "destructive" }); return; }
     registerMutation.mutate({
@@ -754,22 +762,36 @@ export default function AgentClients() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide">Passport No.</Label>
-                    <Input value={form.passportNumber} onChange={e => set("passportNumber", e.target.value.toUpperCase())} placeholder="A12345678" className="rounded-xl border-[#E2E8F0] h-12 font-mono bg-white" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide">Issuing Authority</Label>
-                    <Input value={form.passportIssuingAuthority} onChange={e => set("passportIssuingAuthority", e.target.value)} placeholder="e.g., NIS" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide">Issue Date</Label>
-                    <Input type="date" value={form.passportIssueDate} onChange={e => set("passportIssueDate", e.target.value)} className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide">Expiry Date</Label>
-                    <Input type="date" value={form.passportExpiry} onChange={e => set("passportExpiry", e.target.value)} className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
-                  </div>
+                  {show("passportNumber") && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide">{lbl("passportNumber", "Passport No.")}</Label>
+                      <Input value={form.passportNumber} onChange={e => set("passportNumber", e.target.value.toUpperCase())} placeholder="A12345678" className="rounded-xl border-[#E2E8F0] h-12 font-mono bg-white" />
+                    </div>
+                  )}
+                  {show("passportIssuingAuthority") && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide">{lbl("passportIssuingAuthority", "Issuing Authority")}</Label>
+                      <Input value={form.passportIssuingAuthority} onChange={e => set("passportIssuingAuthority", e.target.value)} placeholder="e.g., NIS" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                    </div>
+                  )}
+                  {show("passportIssueDate") && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide">{lbl("passportIssueDate", "Issue Date")}</Label>
+                      <Input type="date" value={form.passportIssueDate} onChange={e => set("passportIssueDate", e.target.value)} className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                    </div>
+                  )}
+                  {show("passportExpiry") && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide">{lbl("passportExpiry", "Expiry Date")}</Label>
+                      <Input type="date" value={form.passportExpiry} onChange={e => set("passportExpiry", e.target.value)} className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                    </div>
+                  )}
+                  {show("visaNumber") && (
+                    <div className="space-y-1.5 col-span-2">
+                      <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide">{lbl("visaNumber", "Visa Number")}</Label>
+                      <Input value={form.visaNumber} onChange={e => set("visaNumber", e.target.value)} placeholder="Visa Number" className="rounded-xl border-[#E2E8F0] h-12 font-mono bg-white" />
+                    </div>
+                  )}
                 </div>
                 {passportWarnLevel && (
                   <div className={`flex items-center gap-2 p-3 rounded-xl text-xs font-semibold ${passportWarnLevel === "expired" ? "bg-red-50 text-red-700 border border-red-200" : "bg-amber-50 text-amber-700 border border-amber-200"}`}>
@@ -778,20 +800,24 @@ export default function AgentClients() {
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-4 pt-1">
-                  <FileUploadBox
-                    label="Passport Copy"
-                    accept="image/*,.pdf"
-                    value={form.passportCopyUrl}
-                    onChange={v => set("passportCopyUrl", v)}
-                    previewType="image"
-                  />
-                  <FileUploadBox
-                    label="Profile Photo"
-                    accept="image/*"
-                    value={form.profilePhotoUrl}
-                    onChange={v => set("profilePhotoUrl", v)}
-                    previewType="image"
-                  />
+                  {show("passportCopyUrl") && (
+                    <FileUploadBox
+                      label="Passport Copy"
+                      accept="image/*,.pdf"
+                      value={form.passportCopyUrl}
+                      onChange={v => set("passportCopyUrl", v)}
+                      previewType="image"
+                    />
+                  )}
+                  {show("profilePhotoUrl") && (
+                    <FileUploadBox
+                      label="Profile Photo"
+                      accept="image/*"
+                      value={form.profilePhotoUrl}
+                      onChange={v => set("profilePhotoUrl", v)}
+                      previewType="image"
+                    />
+                  )}
                 </div>
               </div>
             )}
@@ -800,63 +826,47 @@ export default function AgentClients() {
             {regStep === 3 && (
               <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                 
-                {/* Basic Info */}
                 <div className="space-y-4">
                   <h3 className="text-sm font-black border-b border-[#E2E8F0] pb-2 text-[#1C1F66]">Basic Information</h3>
                   <div className="grid grid-cols-5 gap-3">
-                    <div className="col-span-2 space-y-1.5">
-                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Title</Label>
-                      <Select value={form.civility} onValueChange={v => set("civility", v)}>
-                        <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue placeholder="—" /></SelectTrigger>
-                        <SelectContent>{CIVILITY.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                    <div className="col-span-3 space-y-1.5">
-                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">First Name <span className="text-red-500">*</span></Label>
-                      <Input value={form.firstName} onChange={e => set("firstName", e.target.value)} placeholder="Abubakar" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
-                    </div>
+                    {show("civility") && (
+                      <div className="col-span-2 space-y-1.5">
+                        <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("civility", "Title")}</Label>
+                        <Select value={form.civility} onValueChange={v => set("civility", v)}>
+                          <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue placeholder="—" /></SelectTrigger>
+                          <SelectContent>{CIVILITY.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {show("firstName") && (
+                      <div className="col-span-3 space-y-1.5">
+                        <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("firstName", "First Name")}</Label>
+                        <Input value={form.firstName} onChange={e => set("firstName", e.target.value)} placeholder="Abubakar" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                      </div>
+                    )}
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Last Name <span className="text-red-500">*</span></Label>
-                    <Input value={form.lastName} onChange={e => set("lastName", e.target.value)} placeholder="Ibrahim" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
-                  </div>
+                  {show("lastName") && (
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("lastName", "Last Name")}</Label>
+                      <Input value={form.lastName} onChange={e => set("lastName", e.target.value)} placeholder="Ibrahim" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Date of Birth</Label>
-                      <Input type="date" value={form.dateOfBirth} onChange={e => set("dateOfBirth", e.target.value)} className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Gender</Label>
-                      <Select value={form.gender} onValueChange={v => set("gender", v)}>
-                        <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue placeholder="—" /></SelectTrigger>
-                        <SelectContent>{GENDERS.map(g => <SelectItem key={g} value={g} className="capitalize">{g}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Contact */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-black border-b border-[#E2E8F0] pb-2 text-[#1C1F66]">Contact</h3>
-                  <div className="space-y-1.5">
-                    <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Phone</Label>
-                    <div className="flex gap-2">
-                      <Select value={phoneCode} onValueChange={setPhoneCode}>
-                        <SelectTrigger className="w-[100px] rounded-xl border-[#E2E8F0] h-12 bg-white shrink-0">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {PHONE_CODES.map(p => (
-                            <SelectItem key={p.code} value={p.code}>{p.flag} {p.code}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="800 000 0000" className="rounded-xl border-[#E2E8F0] h-12 bg-white flex-1" />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Email</Label>
-                    <Input type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="client@example.com" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                    {show("dateOfBirth") && (
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("dateOfBirth", "Date of Birth")}</Label>
+                        <Input type="date" value={form.dateOfBirth} onChange={e => set("dateOfBirth", e.target.value)} className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                      </div>
+                    )}
+                    {show("gender") && (
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("gender", "Gender")}</Label>
+                        <Select value={form.gender} onValueChange={v => set("gender", v)}>
+                          <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue placeholder="—" /></SelectTrigger>
+                          <SelectContent>{GENDERS.map(g => <SelectItem key={g} value={g} className="capitalize">{g}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -864,54 +874,72 @@ export default function AgentClients() {
                 <div className="space-y-4">
                   <h3 className="text-sm font-black border-b border-[#E2E8F0] pb-2 text-[#1C1F66]">Other &amp; Preferences</h3>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Nationality</Label>
-                      <Select value={form.nationality} onValueChange={v => set("nationality", v)}>
-                        <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue /></SelectTrigger>
-                        <SelectContent>{NATIONALITIES.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Place of Birth</Label>
-                      <Input value={form.placeOfBirth} onChange={e => set("placeOfBirth", e.target.value)} placeholder="City / State" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Marital Status</Label>
-                      <Select value={form.maritalStatus} onValueChange={v => set("maritalStatus", v)}>
-                        <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue placeholder="—" /></SelectTrigger>
-                        <SelectContent>{MARITAL_STATUS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Level of Study</Label>
-                      <Select value={form.levelOfStudy} onValueChange={v => set("levelOfStudy", v)}>
-                        <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue placeholder="—" /></SelectTrigger>
-                        <SelectContent>{LEVEL_OF_STUDY.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Ethnic Group</Label>
-                      <Input value={form.ethnicGroup} onChange={e => set("ethnicGroup", e.target.value)} placeholder="e.g. Hausa" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Room Preference</Label>
-                      <Select value={form.roomPreference} onValueChange={v => set("roomPreference", v)}>
-                        <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue /></SelectTrigger>
-                        <SelectContent>{ROOMS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Partner / Mahram</Label>
-                      <Input value={form.partner} onChange={e => set("partner", e.target.value)} placeholder="Partner name" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Under Cover</Label>
-                      <Input value={form.underCover} onChange={e => set("underCover", e.target.value)} placeholder="e.g. RAUDAH FUNTUA" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
-                    </div>
-                    <div className="space-y-1.5 col-span-2">
-                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Observation</Label>
-                      <Textarea value={form.observation} onChange={e => set("observation", e.target.value)} placeholder="Any notes…" className="rounded-xl border-[#E2E8F0] bg-white resize-none" rows={2} />
-                    </div>
+                    {show("nationality") && (
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("nationality", "Nationality")}</Label>
+                        <Select value={form.nationality} onValueChange={v => set("nationality", v)}>
+                          <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue /></SelectTrigger>
+                          <SelectContent>{NATIONALITIES.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {show("placeOfBirth") && (
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("placeOfBirth", "Place of Birth")}</Label>
+                        <Input value={form.placeOfBirth} onChange={e => set("placeOfBirth", e.target.value)} placeholder="City / State" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                      </div>
+                    )}
+                    {show("maritalStatus") && (
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("maritalStatus", "Marital Status")}</Label>
+                        <Select value={form.maritalStatus} onValueChange={v => set("maritalStatus", v)}>
+                          <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue placeholder="—" /></SelectTrigger>
+                          <SelectContent>{MARITAL_STATUS.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {show("levelOfStudy") && (
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("levelOfStudy", "Level of Study")}</Label>
+                        <Select value={form.levelOfStudy} onValueChange={v => set("levelOfStudy", v)}>
+                          <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue placeholder="—" /></SelectTrigger>
+                          <SelectContent>{LEVEL_OF_STUDY.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {show("ethnicGroup") && (
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("ethnicGroup", "Ethnic Group")}</Label>
+                        <Input value={form.ethnicGroup} onChange={e => set("ethnicGroup", e.target.value)} placeholder="e.g. Hausa" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                      </div>
+                    )}
+                    {show("roomType") && (
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("roomType", "Room Preference")}</Label>
+                        <Select value={form.roomPreference} onValueChange={v => set("roomPreference", v)}>
+                          <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue /></SelectTrigger>
+                          <SelectContent>{ROOMS.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}</SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {show("partner") && (
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("partner", "Partner / Mahram")}</Label>
+                        <Input value={form.partner} onChange={e => set("partner", e.target.value)} placeholder="Partner name" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                      </div>
+                    )}
+                    {show("underCover") && (
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("underCover", "Under Cover")}</Label>
+                        <Input value={form.underCover} onChange={e => set("underCover", e.target.value)} placeholder="e.g. RAUDAH FUNTUA" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                      </div>
+                    )}
+                    {show("observation") && (
+                      <div className="space-y-1.5 col-span-2">
+                        <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("observation", "Observation")}</Label>
+                        <Textarea value={form.observation} onChange={e => set("observation", e.target.value)} placeholder="Any notes…" className="rounded-xl border-[#E2E8F0] bg-white resize-none" rows={2} />
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -922,52 +950,64 @@ export default function AgentClients() {
               <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div className="space-y-4">
                   <h3 className="text-sm font-black border-b border-[#E2E8F0] pb-2 text-[#1C1F66]">Contact &amp; Address</h3>
-                  <div className="space-y-1.5">
-                    <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Phone <span className="text-red-500">*</span></Label>
-                    <div className="flex gap-2">
-                      <Select value={phoneCode} onValueChange={setPhoneCode}>
-                        <SelectTrigger className="w-[100px] rounded-xl border-[#E2E8F0] h-12 bg-white shrink-0">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {PHONE_CODES.map(p => (
-                            <SelectItem key={p.code} value={p.code}>{p.flag} {p.code}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="800 000 0000" className="rounded-xl border-[#E2E8F0] h-12 bg-white flex-1" />
+                  {show("phone") && (
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("phone", "Phone")}</Label>
+                      <div className="flex gap-2">
+                        <Select value={phoneCode} onValueChange={setPhoneCode}>
+                          <SelectTrigger className="w-[100px] rounded-xl border-[#E2E8F0] h-12 bg-white shrink-0">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {PHONE_CODES.map(p => (
+                              <SelectItem key={p.code} value={p.code}>{p.flag} {p.code}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="800 000 0000" className="rounded-xl border-[#E2E8F0] h-12 bg-white flex-1" />
+                      </div>
                     </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Email</Label>
-                    <Input type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="client@example.com" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
-                  </div>
+                  )}
+                  {show("email") && (
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("email", "Email")}</Label>
+                      <Input type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="client@example.com" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Occupation</Label>
                       <Input value={form.occupation} onChange={e => set("occupation", e.target.value)} placeholder="e.g. Teacher" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">City</Label>
-                      <Input value={form.city} onChange={e => set("city", e.target.value)} placeholder="City" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
-                    </div>
-                    <div className="space-y-1.5 col-span-2">
-                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Address</Label>
-                      <Input value={form.address} onChange={e => set("address", e.target.value)} placeholder="Full residential address" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Departure City</Label>
-                      <Select value={form.departureCity} onValueChange={v => set("departureCity", v)}>
-                        <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue placeholder="Select…" /></SelectTrigger>
-                        <SelectContent>
-                          {["Lagos", "Abuja", "Kano", "Port Harcourt", "Ibadan", "Enugu"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Special Requests</Label>
-                      <Input value={form.specialRequests} onChange={e => set("specialRequests", e.target.value)} placeholder="Any notes…" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
-                    </div>
+                    {show("city") && (
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("city", "City")}</Label>
+                        <Input value={form.city} onChange={e => set("city", e.target.value)} placeholder="City" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                      </div>
+                    )}
+                    {show("address") && (
+                      <div className="space-y-1.5 col-span-2">
+                        <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("address", "Address")}</Label>
+                        <Input value={form.address} onChange={e => set("address", e.target.value)} placeholder="Full residential address" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                      </div>
+                    )}
+                    {show("departureCity") && (
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("departureCity", "Departure City")}</Label>
+                        <Select value={form.departureCity} onValueChange={v => set("departureCity", v)}>
+                          <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue placeholder="Select…" /></SelectTrigger>
+                          <SelectContent>
+                            {["Lagos", "Abuja", "Kano", "Port Harcourt", "Ibadan", "Enugu"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {show("specialRequests") && (
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("specialRequests", "Special Requests")}</Label>
+                        <Input value={form.specialRequests} onChange={e => set("specialRequests", e.target.value)} placeholder="Any notes…" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1116,8 +1156,8 @@ export default function AgentClients() {
               {regStep < 5 ? (
                 <Button type="button" onClick={() => {
                   if (regStep === 1 && !form.packageId) { toast({ title: "Select a package", variant: "destructive" }); return; }
-                  if (regStep === 3 && (!form.firstName.trim() || !form.lastName.trim())) { toast({ title: "First or Last name is required", variant: "destructive" }); return; }
-                  if (regStep === 4 && !form.phone.trim()) { toast({ title: "Phone number is required", variant: "destructive" }); return; }
+                  if (regStep === 3 && ((req("firstName") && !form.firstName.trim()) || (req("lastName") && !form.lastName.trim()))) { toast({ title: "First or Last name is required", variant: "destructive" }); return; }
+                  if (regStep === 4 && req("phone") && !form.phone.trim()) { toast({ title: "Phone number is required", variant: "destructive" }); return; }
                   setRegStep(s => s + 1);
                 }} className="w-full sm:w-auto bg-[#2D3199] hover:bg-[#1C1F66] text-white rounded-xl font-black h-12 px-8 shadow-md">
                   Next Step <ChevronRight className="w-4 h-4 ml-2" />
