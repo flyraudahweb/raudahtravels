@@ -295,7 +295,25 @@ router.get("/admin/passports/:bookingId/file", async (req, res) => {
     }
   }
 
-  // Data URL — return as JSON for the frontend to trigger a client-side download
+  // Data URL — convert to binary and send as a proper file download
+  if (url.startsWith("data:")) {
+    try {
+      const [header, base64Data] = url.split(",");
+      const mimeMatch = header.match(/data:(.*?);/);
+      const contentType = mimeMatch ? mimeMatch[1] : "application/octet-stream";
+      const buffer = Buffer.from(base64Data, "base64");
+      const ext = contentType.includes("pdf") ? "pdf" : contentType.includes("png") ? "png" : "jpg";
+      const filename = `passport-${booking.reference || booking.passportNumber || "doc"}.${ext}`;
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Content-Length", String(buffer.length));
+      return res.send(buffer);
+    } catch {
+      return res.status(500).json({ error: "Failed to process stored passport file" });
+    }
+  }
+
+  // Fallback — return as JSON for unknown URL formats
   return res.json({
     passportCopyUrl: booking.passportCopyUrl,
     reference: booking.reference,
@@ -1892,137 +1910,89 @@ router.put("/admin/agents/:id/commission", async (req, res) => {
   return res.json({ ...agent, commissionRate: Number(agent.commissionRate) });
 });
 
-// ── Wallet Top-Up with OTP ────────────────────────────────────────────────────
+// ── Secure Wallet Top-Up ──────────────────────────────────────────────────────
 
-router.post("/admin/agents/:id/wallet/topup/initiate", async (req, res) => {
+router.post("/admin/agents/:id/wallet/topup", async (req, res) => {
   const { userId: clerkUserId } = getAuth(req);
   if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
+
   const adminProfile = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, clerkUserId) });
   if (!adminProfile) return res.status(404).json({ error: "Admin profile not found" });
 
-  const { amount } = req.body as { amount: number };
-  if (!amount || amount <= 0) return res.status(400).json({ error: "Valid amount is required" });
+  // SECURITY: Only super_admin can perform wallet top-ups directly
+  if (adminProfile.role !== "super_admin") {
+    return res.status(403).json({ error: "Only Super Admin can perform wallet top-ups" });
+  }
 
-  const agent = await db.query.agentsTable.findFirst({ where: eq(agentsTable.id, req.params.id) });
+  const { amount, idempotencyKey } = req.body as { amount: number; idempotencyKey: string };
+  if (!amount || amount <= 0) return res.status(400).json({ error: "Valid amount is required" });
+  if (!idempotencyKey) return res.status(400).json({ error: "idempotencyKey is required" });
+
+  const agentId = req.params.id;
+  const agent = await db.query.agentsTable.findFirst({ where: eq(agentsTable.id, agentId) });
   if (!agent) return res.status(404).json({ error: "Agent not found" });
 
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  const otpHash = createHash("sha256").update(otp).digest("hex");
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-  const [otpRequest] = await db.insert(adminOtpRequestsTable).values({
-    id: randomUUID(),
-    adminId: adminProfile.id,
-    agentId: agent.id,
-    amount: String(amount),
-    otpHash,
-    expiresAt,
-  }).returning();
-
-  const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-  let emailSent = false;
-  if (clerkSecretKey && adminProfile.clerkUserId) {
-    try {
-      const clerkUserRes = await fetch(`https://api.clerk.com/v1/users/${adminProfile.clerkUserId}`, {
-        headers: { Authorization: `Bearer ${clerkSecretKey}` },
-      });
-      if (clerkUserRes.ok) {
-        const clerkUser = await clerkUserRes.json() as any;
-        const emailAddressId = clerkUser?.email_addresses?.[0]?.id;
-        if (emailAddressId) {
-          await fetch("https://api.clerk.com/v1/emails", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${clerkSecretKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              email_address_id: emailAddressId,
-              subject: "Wallet Top-Up Verification Code",
-              body: `Your OTP for topping up agent wallet by ₦${Number(amount).toLocaleString()} is: <strong>${otp}</strong><br>This code expires in 10 minutes. Do not share it with anyone.`,
-              from_email_name: "Raudah Travels Admin",
-            }),
-          });
-          emailSent = true;
-        }
-      }
-    } catch (_e) {}
-  }
-
-  return res.json({
-    requestId: otpRequest.id,
-    message: emailSent
-      ? `OTP sent to ${adminProfile.email}. Enter it below to confirm the top-up.`
-      : `OTP generated (email delivery not configured). Use dev OTP.`,
-    devOtp: process.env.NODE_ENV !== "production" ? otp : undefined,
-  });
-});
-
-router.post("/admin/agents/:id/wallet/topup/confirm", async (req, res) => {
-  const { requestId, otp } = req.body as { requestId: string; otp: string };
-  if (!requestId || !otp) return res.status(400).json({ error: "requestId and otp are required" });
-
-  const otpRecord = await db.query.adminOtpRequestsTable.findFirst({
-    where: eq(adminOtpRequestsTable.id, requestId),
-  });
-  if (!otpRecord) return res.status(404).json({ error: "OTP request not found" });
-  if (otpRecord.used) return res.status(400).json({ error: "OTP already used or invalidated" });
-  if (new Date() > new Date(otpRecord.expiresAt)) return res.status(400).json({ error: "OTP has expired" });
-  if (otpRecord.agentId !== req.params.id) return res.status(400).json({ error: "OTP does not match this agent" });
-
-  const otpHash = createHash("sha256").update(otp).digest("hex");
-  if (otpHash !== otpRecord.otpHash) {
-    // SECURITY: Immediately invalidate the OTP on any wrong attempt to prevent brute-force.
-    // The admin must initiate a new top-up request to try again.
-    await db.update(adminOtpRequestsTable)
-      .set({ used: true })
-      .where(eq(adminOtpRequestsTable.id, requestId));
-    return res.status(400).json({ error: "Invalid OTP — the code has been invalidated. Please start a new top-up request." });
-  }
-
-  const amount = Number(otpRecord.amount);
-  const adminName = (req as any).adminProfile?.fullName ?? "Admin";
-  const agentId = req.params.id;
-
-  // SECURITY: Wrap all mutations in a single DB transaction.
-  // If any step fails, the entire operation is rolled back — no partial wallet credits.
   let finalBalance = 0;
-  await db.transaction(async (tx) => {
-    // Mark OTP used FIRST inside the transaction to prevent concurrent re-use
-    await tx.update(adminOtpRequestsTable)
-      .set({ used: true })
-      .where(and(eq(adminOtpRequestsTable.id, requestId), eq(adminOtpRequestsTable.used, false)));
 
-    // Upsert wallet
-    const existing = await tx.query.agentWalletsTable.findFirst({
-      where: eq(agentWalletsTable.agentId, agentId),
-    });
+  try {
+    // SECURITY: Wrap all mutations in a single DB transaction.
+    await db.transaction(async (tx) => {
+      // 1. Lock the wallet row to prevent concurrent modifications
+      const lockResult = await tx.execute(
+        sql`SELECT * FROM agent_wallets WHERE agent_id = ${agentId} FOR UPDATE`
+      );
+      const existingWallet = (lockResult as any).rows?.[0] ?? (Array.isArray(lockResult) ? lockResult[0] : null);
 
-    let wallet;
-    if (!existing) {
-      const [w] = await tx.insert(agentWalletsTable).values({
+      let wallet;
+      if (!existingWallet) {
+        const [w] = await tx.insert(agentWalletsTable).values({
+          id: randomUUID(),
+          agentId,
+          balance: String(amount),
+        }).returning();
+        wallet = w;
+      } else {
+        const [w] = await tx.update(agentWalletsTable)
+          .set({ balance: sql`balance + ${amount}`, updatedAt: new Date() })
+          .where(eq(agentWalletsTable.agentId, agentId))
+          .returning();
+        wallet = w;
+      }
+
+      // 2. Record transaction using idempotencyKey as reference.
+      // If the idempotencyKey was already used, this insert will throw a unique constraint error,
+      // rolling back the transaction and preventing double top-up.
+      await tx.insert(walletTransactionsTable).values({
         id: randomUUID(),
         agentId,
-        balance: String(amount),
-      }).returning();
-      wallet = w;
-    } else {
-      const [w] = await tx.update(agentWalletsTable)
-        .set({ balance: sql`balance + ${amount}`, updatedAt: new Date() })
-        .where(eq(agentWalletsTable.agentId, agentId))
-        .returning();
-      wallet = w;
-    }
+        amount: String(amount),
+        type: "topup",
+        reference: `TOPUP-${idempotencyKey}`,
+        description: `Top-up by Super Admin (${adminProfile.fullName})`,
+      });
 
-    // Record transaction
-    await tx.insert(walletTransactionsTable).values({
-      id: randomUUID(),
-      agentId,
-      amount: String(amount),
-      type: "topup",
-      reference: `TOPUP-${randomUUID()}`,
-      description: `Top-up by ${adminName}`,
+      // 3. Log audit activity
+      await tx.insert(userActivityTable).values({
+        id: randomUUID(),
+        userId: adminProfile.id,
+        eventType: "wallet_topup",
+        metadata: {
+          agentId,
+          agentName: agent.businessName || agentId,
+          amount,
+          idempotencyKey,
+        },
+      });
+
+      finalBalance = Number(wallet?.balance || 0);
     });
-
-    finalBalance = Number(wallet?.balance || 0);
-  });
+  } catch (err: any) {
+    if (err.code === "23505" || err.message.includes("unique constraint")) {
+      return res.status(409).json({ error: "This top-up has already been processed (duplicate request)" });
+    }
+    console.error("Wallet topup error:", err);
+    return res.status(500).json({ error: "Failed to process wallet top-up" });
+  }
 
   return res.json({
     success: true,

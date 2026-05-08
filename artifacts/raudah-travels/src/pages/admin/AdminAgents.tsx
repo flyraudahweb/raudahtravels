@@ -4,13 +4,12 @@ import {
   useApproveAgentApplication, useRejectAgentApplication,
   useCreateAgentDirect,
   useListAgents, getListAgentsQueryKey,
-  useInitiateWalletTopup, useConfirmWalletTopup,
   useGetAgentPackageDiscountsAdmin, getGetAgentPackageDiscountsAdminQueryKey,
   useSetAgentPackageDiscount, useDeleteAgentPackageDiscount,
   useUpdateAgentCommission,
   useListPackages, getListPackagesQueryKey,
 } from "@workspace/api-client-react";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -266,40 +265,32 @@ function ApproveApplicationDialog({ app, onClose }: { app: any; onClose: () => v
 function WalletTopupDialog({ agent, onClose }: { agent: any; onClose: () => void }) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const initiate = useInitiateWalletTopup();
-  const confirm = useConfirmWalletTopup();
-  const [step, setStep] = useState<"amount" | "otp" | "done">("amount");
+  const [step, setStep] = useState<"amount" | "confirm" | "done">("amount");
   const [amount, setAmount] = useState("");
-  const [requestId, setRequestId] = useState("");
-  const [otp, setOtp] = useState("");
-  const [devOtp, setDevOtp] = useState("");
   const [newBalance, setNewBalance] = useState(0);
-  const [msg, setMsg] = useState("");
 
-  const handleInitiate = () => {
-    if (!amount || parseFloat(amount) <= 0) return;
-    initiate.mutate({ id: agent.id, data: { amount: parseFloat(amount) } }, {
-      onSuccess: (data) => {
-        setRequestId(data.requestId);
-        setMsg(data.message);
-        setDevOtp(data.devOtp || "");
-        setStep("otp");
-      },
-      onError: (err: any) => toast({ title: err?.data?.error || err?.message || "Failed to initiate top-up", variant: "destructive" }),
-    });
-  };
+  // Generate a stable idempotency key for this top-up attempt when the dialog opens
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
 
-  const handleConfirm = () => {
-    confirm.mutate({ id: agent.id, data: { requestId, otp } }, {
-      onSuccess: (data) => {
-        setNewBalance(data.newBalance);
-        setStep("done");
-        qc.invalidateQueries({ queryKey: getListAgentsQueryKey({}) });
-        toast({ title: `Wallet credited with ₦${parseFloat(amount).toLocaleString()}!` });
-      },
-      onError: (err: any) => toast({ title: err?.data?.error || err?.message || "Invalid OTP", variant: "destructive" }),
-    });
-  };
+  const topupMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/admin/agents/${agent.id}/wallet/topup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: parseFloat(amount), idempotencyKey }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to process top-up");
+      return data;
+    },
+    onSuccess: (data) => {
+      setNewBalance(data.newBalance);
+      setStep("done");
+      qc.invalidateQueries({ queryKey: getListAgentsQueryKey({}) });
+      toast({ title: `Wallet credited with ₦${parseFloat(amount).toLocaleString()}!` });
+    },
+    onError: (err: any) => toast({ title: err.message, variant: "destructive" }),
+  });
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -319,37 +310,30 @@ function WalletTopupDialog({ agent, onClose }: { agent: any; onClose: () => void
               <Label className="text-xs font-bold text-[#334155]">Amount to Add (₦)</Label>
               <Input value={amount} onChange={e => setAmount(e.target.value)} type="number" min="100" placeholder="e.g. 50000" className="text-lg font-bold" />
             </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
-              <strong>Secure process:</strong> An OTP will be sent to your registered email to confirm this transaction.
-            </div>
-            <Button onClick={handleInitiate} disabled={initiate.isPending || !amount} className="w-full bg-[#2D3199] text-white font-bold rounded-xl">
-              {initiate.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Sending OTP...</> : "Send Verification Code"}
+            <Button onClick={() => setStep("confirm")} disabled={!amount || parseFloat(amount) <= 0} className="w-full bg-[#2D3199] text-white font-bold rounded-xl">
+              Proceed to Confirmation
             </Button>
           </div>
         )}
 
-        {step === "otp" && (
+        {step === "confirm" && (
           <div className="space-y-4 py-2">
-            <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-center">
-              <p className="text-blue-800 text-sm font-medium">{msg}</p>
-              {devOtp && (
-                <div className="mt-3 bg-white rounded-xl p-3 border border-blue-200">
-                  <p className="text-xs text-blue-600 font-bold uppercase tracking-wider mb-1">Dev Mode OTP</p>
-                  <p className="text-2xl font-black text-[#2D3199] tracking-[0.2em]">{devOtp}</p>
-                </div>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-[#334155]">Enter 6-Digit OTP</Label>
-              <Input value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                placeholder="000000" className="text-center text-2xl font-black tracking-[0.3em]" maxLength={6} />
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center">
+              <p className="text-amber-800 text-sm font-medium">Please confirm this transaction.</p>
+              <div className="mt-3 bg-white rounded-xl p-3 border border-amber-200">
+                <p className="text-xs text-amber-600 font-bold uppercase tracking-wider mb-1">Top-up Amount</p>
+                <p className="text-2xl font-black text-[#2D3199]">₦{parseFloat(amount).toLocaleString()}</p>
+              </div>
             </div>
             <p className="text-center text-xs text-[#94A3B8]">
-              Confirming top-up of <strong className="text-[#0F172A]">₦{parseFloat(amount).toLocaleString()}</strong>
+              This action is permanent and cannot be undone. Only Super Admins can perform this.
             </p>
-            <Button onClick={handleConfirm} disabled={confirm.isPending || otp.length !== 6} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl">
-              {confirm.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Confirming...</> : "Confirm Top-Up"}
-            </Button>
+            <div className="flex gap-3">
+              <Button onClick={() => setStep("amount")} variant="outline" className="flex-1 rounded-xl">Back</Button>
+              <Button onClick={() => topupMutation.mutate()} disabled={topupMutation.isPending} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl">
+                {topupMutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Confirming...</> : "Confirm Top-Up"}
+              </Button>
+            </div>
           </div>
         )}
 

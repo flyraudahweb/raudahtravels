@@ -267,4 +267,40 @@ router.put("/bookings/:id", async (req, res) => {
   return res.json(toBookingResponse(booking));
 });
 
+router.delete("/bookings/:id", async (req, res) => {
+  const { userId: clerkUserId } = getAuth(req);
+  if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
+
+  const profile = await getProfileByClerkId(clerkUserId);
+  if (!profile) return res.status(404).json({ error: "Profile not found" });
+
+  const booking = await db.query.bookingsTable.findFirst({
+    where: eq(bookingsTable.id, req.params.id),
+  });
+  if (!booking) return res.status(404).json({ error: "Booking not found" });
+
+  const isAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
+  if (!isAdmin && booking.userId !== profile.id) return res.status(403).json({ error: "Forbidden" });
+
+  // Only allow deleting pending bookings that have no payments
+  if (booking.status !== "pending" || Number(booking.amountPaid) > 0) {
+    return res.status(400).json({ error: "Can only delete pending bookings with no payments" });
+  }
+
+  // Decrement package stock
+  if (booking.packageId) {
+    await db.update(packagesTable)
+      .set({ currentBookings: sql`${packagesTable.currentBookings} - ${booking.pilgrimCount || 1}` })
+      .where(eq(packagesTable.id, booking.packageId));
+  }
+
+  // Clean up related records
+  await db.delete(visaApplicationsTable).where(eq(visaApplicationsTable.bookingId, booking.id));
+  const { paymentsTable } = await import("@workspace/db");
+  await db.delete(paymentsTable).where(eq(paymentsTable.bookingId, booking.id));
+  await db.delete(bookingsTable).where(eq(bookingsTable.id, booking.id));
+
+  return res.json({ success: true });
+});
+
 export default router;

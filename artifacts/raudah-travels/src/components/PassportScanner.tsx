@@ -1,6 +1,9 @@
 import { useRef, useState } from "react";
-import { ScanLine, Loader2, CheckCircle2, AlertTriangle, X, PenLine, RefreshCw } from "lucide-react";
+import { ScanLine, Loader2, CheckCircle2, AlertTriangle, X, PenLine, RefreshCw, Crop as CropIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import ReactCrop, { type Crop, type PercentCrop } from "react-image-crop";
+import "react-image-crop/dist/ReactCrop.css";
 
 interface BBox {
   ymin: number;
@@ -121,83 +124,94 @@ function normalizeGender(sex: string): string {
   return "";
 }
 
-async function cropFace(file: File, bbox: BBox | null | undefined): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(file);
-    const img = new Image();
+function generateCroppedImage(image: HTMLImageElement, crop: Crop): string {
+  const canvas = document.createElement("canvas");
+  const scaleX = image.naturalWidth / image.width;
+  const scaleY = image.naturalHeight / image.height;
 
-    img.onload = () => {
-      try {
-        const W = img.naturalWidth || img.width;
-        const H = img.naturalHeight || img.height;
-        if (!W || !H) { reject(new Error("Could not read image dimensions")); return; }
+  // ReactCrop returns percent-based crop — convert to pixel values on the displayed image
+  const isPercent = (crop as PercentCrop).unit === "%";
+  const pxX = isPercent ? (crop.x / 100) * image.width : crop.x;
+  const pxY = isPercent ? (crop.y / 100) * image.height : crop.y;
+  const pxW = isPercent ? (crop.width / 100) * image.width : crop.width;
+  const pxH = isPercent ? (crop.height / 100) * image.height : crop.height;
 
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-        if (!ctx) { reject(new Error("Canvas unavailable")); return; }
+  // Draw at the full natural resolution for quality
+  canvas.width = pxW * scaleX;
+  canvas.height = pxH * scaleY;
+  const ctx = canvas.getContext("2d");
 
-        // Normalize a single coordinate value to 0–1 range.
-        // Handles: already 0-1, 0-100 percentages, 0-1000 range, or raw pixel coordinates.
-        function toNorm(v: number, dim: number): number {
-          if (!isFinite(v) || v < 0) return 0;
-          if (v <= 1.5)   return Math.min(1, v);          // already 0-1
-          if (v <= 2)     return Math.min(1, v);
-          if (v <= 100)   return v / 100;                  // percentage
-          if (v <= 1500)  return Math.min(1, v / 1000);    // 0-1000 notation
-          return Math.min(1, v / dim);                     // pixel coordinates
-        }
+  if (!ctx) return "";
 
-        let xmin = 0, ymin = 0, xmax = 1, ymax = 1;
-        let usingAi = false;
+  ctx.drawImage(
+    image,
+    pxX * scaleX,
+    pxY * scaleY,
+    pxW * scaleX,
+    pxH * scaleY,
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
 
-        if (bbox && typeof bbox.xmin === "number" && typeof bbox.xmax === "number") {
-          const nx0 = toNorm(bbox.xmin, W);
-          const ny0 = toNorm(bbox.ymin, H);
-          const nx1 = toNorm(bbox.xmax, W);
-          const ny1 = toNorm(bbox.ymax, H);
-          const area = (nx1 - nx0) * (ny1 - ny0);
-          // Accept bbox only when it looks like a plausible face region
-          if (nx1 > nx0 + 0.02 && ny1 > ny0 + 0.02 && area > 0.003 && area < 0.75) {
-            xmin = nx0; ymin = ny0; xmax = nx1; ymax = ny1;
-            usingAi = true;
-          }
-        }
+  // Scale down to a 400×400 profile picture
+  const finalCanvas = document.createElement("canvas");
+  finalCanvas.width = 400;
+  finalCanvas.height = 400;
+  const fCtx = finalCanvas.getContext("2d");
+  if (fCtx) {
+    fCtx.fillStyle = "#fff";
+    fCtx.fillRect(0, 0, 400, 400);
+    fCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, 400, 400);
+  }
+  return finalCanvas.toDataURL("image/jpeg", 0.92);
+}
 
-        // Fallback: ICAO passport photo zone — always in the left ~30%, upper ~65%
-        if (!usingAi) {
-          xmin = 0.03; ymin = 0.07; xmax = 0.31; ymax = 0.68;
-        }
+function calculateInitialCrop(bbox: BBox | null | undefined, W: number, H: number): PercentCrop {
+  function toNorm(v: number, dim: number): number {
+    if (!isFinite(v) || v < 0) return 0;
+    if (v <= 1.5)   return Math.min(1, v);
+    if (v <= 2)     return Math.min(1, v);
+    if (v <= 100)   return v / 100;
+    if (v <= 1500)  return Math.min(1, v / 1000);
+    return Math.min(1, v / dim);
+  }
 
-        // Add generous padding so we include the full head
-        const padX = (xmax - xmin) * 0.12;
-        const padY = (ymax - ymin) * 0.14;
-        const sx = Math.max(0, (xmin - padX) * W);
-        const sy = Math.max(0, (ymin - padY) * H);
-        const sw = Math.min(W - sx, (xmax - xmin + 2 * padX) * W);
-        const sh = Math.min(H - sy, (ymax - ymin + 2 * padY) * H);
+  let xmin = 0, ymin = 0, xmax = 1, ymax = 1;
+  let usingAi = false;
 
-        if (sw < 4 || sh < 4) { reject(new Error("Crop region too small")); return; }
+  if (bbox && typeof bbox.xmin === "number" && typeof bbox.xmax === "number") {
+    const nx0 = toNorm(bbox.xmin, W);
+    const ny0 = toNorm(bbox.ymin, H);
+    const nx1 = toNorm(bbox.xmax, W);
+    const ny1 = toNorm(bbox.ymax, H);
+    const area = (nx1 - nx0) * (ny1 - ny0);
+    if (nx1 > nx0 + 0.02 && ny1 > ny0 + 0.02 && area > 0.003 && area < 0.75) {
+      xmin = nx0; ymin = ny0; xmax = nx1; ymax = ny1;
+      usingAi = true;
+    }
+  }
 
-        const size = 400;
-        canvas.width = size;
-        canvas.height = size;
-        ctx.fillStyle = "#fff";
-        ctx.fillRect(0, 0, size, size);
-        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, size, size);
-        resolve(canvas.toDataURL("image/jpeg", 0.92));
-      } catch (e) {
-        reject(e);
-      } finally {
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
+  if (!usingAi) {
+    xmin = 0.03; ymin = 0.07; xmax = 0.31; ymax = 0.68;
+  }
 
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error("Image load failed"));
-    };
-    img.src = objectUrl;
-  });
+  const padX = (xmax - xmin) * 0.12;
+  const padY = (ymax - ymin) * 0.14;
+
+  const cx = Math.max(0, xmin - padX) * 100;
+  const cy = Math.max(0, ymin - padY) * 100;
+  const cw = Math.min(100 - cx, (xmax - xmin + 2 * padX) * 100);
+  const ch = Math.min(100 - cy, (ymax - ymin + 2 * padY) * 100);
+  
+  return {
+    unit: '%',
+    x: cx,
+    y: cy,
+    width: cw,
+    height: ch,
+  };
 }
 
 export default function PassportScanner({ onExtracted, onProfilePhoto, compact }: Props) {
@@ -206,6 +220,11 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
   const [errorInfo, setErrorInfo] = useState<ErrorInfo | null>(null);
   const [profilePicUrl, setProfilePicUrl] = useState<string | null>(null);
   const [extractedName, setExtractedName] = useState<string | null>(null);
+
+  // Manual Crop State
+  const [pendingCrop, setPendingCrop] = useState<{ imageUrl: string; result: PassportScanResult; bbox?: BBox | null } | null>(null);
+  const [crop, setCrop] = useState<Crop>();
+  const imgRef = useRef<HTMLImageElement>(null);
 
   const reset = () => {
     setStatus("idle");
@@ -276,19 +295,18 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
       const passportImageDataUrl = URL.createObjectURL(file);
       result.passportImageDataUrl = passportImageDataUrl;
 
-      if (data.faceBoundingBox && onProfilePhoto) {
-        try {
-          const cropped = await cropFace(file, data.faceBoundingBox);
-          setProfilePicUrl(cropped);
-          onProfilePhoto(cropped);
-        } catch {
-          // face crop is best-effort — manual entry still works
-        }
+      if (onProfilePhoto) {
+        setPendingCrop({
+          imageUrl: passportImageDataUrl,
+          result,
+          bbox: data.faceBoundingBox,
+        });
+        // We defer calling onExtracted and setting status to 'done' until cropping completes or is skipped.
+      } else {
+        onExtracted(result);
+        setExtractedName(`${result.firstName} ${result.lastName}`.trim() || "Passport scanned");
+        setStatus("done");
       }
-
-      onExtracted(result);
-      setExtractedName(`${result.firstName} ${result.lastName}`.trim() || "Passport scanned");
-      setStatus("done");
     } catch (err: any) {
       setStatus("error");
       setErrorInfo(classifyError(err.message || "Unknown error"));
@@ -473,6 +491,90 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
           </div>
         </div>
       )}
+
+      {/* Manual Cropping Dialog */}
+      <Dialog open={!!pendingCrop} onOpenChange={(open) => {
+        if (!open && pendingCrop) {
+          onExtracted(pendingCrop.result);
+          setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
+          setStatus("done");
+          setPendingCrop(null);
+        }
+      }}>
+        <DialogContent className="max-w-xl p-0 overflow-hidden bg-white rounded-3xl gap-0 border-0">
+          <DialogHeader className="p-5 pb-3">
+            <DialogTitle className="text-lg font-black text-[#0F172A] flex items-center gap-2">
+              <CropIcon className="w-5 h-5 text-[#2D3199]" />
+              Crop Profile Picture
+            </DialogTitle>
+            <DialogDescription className="text-xs font-semibold text-[#64748B]">
+              Please drag and resize the box to perfectly frame the profile face.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="bg-[#1e293b] border-y border-[#334155] p-4 flex justify-center items-center relative min-h-[300px]">
+            {pendingCrop && (
+              <ReactCrop
+                crop={crop}
+                onChange={(_, percentCrop) => setCrop(percentCrop)}
+                aspect={1}
+                className="max-h-[60vh]"
+                keepSelection
+              >
+                <img
+                  ref={imgRef}
+                  src={pendingCrop.imageUrl}
+                  alt="Passport"
+                  className="max-w-full max-h-[60vh] object-contain rounded-lg shadow-xl"
+                  onLoad={(e) => {
+                    const img = e.currentTarget;
+                    setCrop(calculateInitialCrop(pendingCrop.bbox, img.naturalWidth, img.naturalHeight));
+                  }}
+                />
+              </ReactCrop>
+            )}
+          </div>
+
+          <DialogFooter className="p-4 bg-white flex items-center justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                if (pendingCrop) {
+                  onExtracted(pendingCrop.result);
+                  setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
+                  setStatus("done");
+                  setPendingCrop(null);
+                }
+              }}
+              className="rounded-xl border-[#E2E8F0] text-[#64748B] font-bold h-11 px-6"
+            >
+              Skip
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (pendingCrop && imgRef.current && crop) {
+                  try {
+                    const b64 = generateCroppedImage(imgRef.current, crop);
+                    setProfilePicUrl(b64);
+                    onProfilePhoto?.(b64);
+                  } catch (err) {
+                    console.error("Crop error", err);
+                  }
+                  onExtracted(pendingCrop.result);
+                  setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
+                  setStatus("done");
+                  setPendingCrop(null);
+                }
+              }}
+              className="rounded-xl bg-[#2D3199] hover:bg-[#1C1F66] text-white font-black h-11 px-6 shadow-md"
+            >
+              Confirm Crop
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

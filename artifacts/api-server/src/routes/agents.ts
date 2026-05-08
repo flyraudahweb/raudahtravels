@@ -427,6 +427,99 @@ router.post("/agent/register-client", async (req, res) => {
   }
   const clampedPaid = Math.min(rawPaid, price);
 
+  const nullify = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v) as string | undefined;
+  const bookingReference = `RDH-${randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase()}`;
+
+  // ── Wallet Payment Flow (atomic, race-condition-proof) ─────────────────
+  if (paymentMethod === "wallet") {
+    const walletPaid = Math.min(price, price); // always pay full price from wallet
+
+    let booking: any;
+    let finalWalletBalance = 0;
+
+    try {
+      await db.transaction(async (tx) => {
+        // Row-level lock: prevents concurrent wallet debits from racing
+        const lockResult = await tx.execute(
+          sql`SELECT * FROM agent_wallets WHERE agent_id = ${agent.id} FOR UPDATE`
+        );
+        const walletRow = (lockResult as any).rows?.[0] ?? (Array.isArray(lockResult) ? lockResult[0] : null);
+        if (!walletRow) throw new Error("Wallet not found. Please contact admin to set up your wallet.");
+        const currentBalance = Number((walletRow as any).balance);
+        if (currentBalance < walletPaid) {
+          throw new Error(`Insufficient wallet balance. Available: ₦${currentBalance.toLocaleString()}, Required: ₦${walletPaid.toLocaleString()}`);
+        }
+
+        // Create walk-in user
+        const [walkInUser] = await tx.insert(profilesTable).values({
+          id: randomUUID(),
+          clerkUserId: `walkin-${walkinUuid}`,
+          email: (email as string | undefined) || `walkin-${walkinUuid}@raudah.internal`,
+          fullName: resolvedFullName || "Walk-in Client",
+          role: "user",
+        }).returning();
+
+        // Create booking
+        [booking] = await tx.insert(bookingsTable).values({
+          id: randomUUID(), reference: bookingReference, userId: walkInUser.id,
+          packageId, agentId: agent.id, status: "confirmed",
+          totalPrice: String(price), amountPaid: String(walletPaid), pilgrimCount: 1,
+          fullName: resolvedFullName || undefined,
+          civility: nullify(civility), firstName: nullify(firstName), lastName: nullify(lastName),
+          passportNumber: nullify(passportNumber), passportIssueDate: nullify(passportIssueDate),
+          passportExpiry: nullify(passportExpiry), passportIssuingAuthority: nullify(passportIssuingAuthority),
+          passportCopyUrl: nullify(passportCopyUrl), profilePhotoUrl: nullify(profilePhotoUrl),
+          dateOfBirth: nullify(dateOfBirth), placeOfBirth: nullify(placeOfBirth),
+          gender: nullify(gender), phone: nullify(phone), email: nullify(email),
+          nationality: nullify(nationality) || "Nigerian", ethnicGroup: nullify(ethnicGroup),
+          maritalStatus: nullify(maritalStatus), levelOfStudy: nullify(levelOfStudy),
+          occupation: nullify(occupation), address: nullify(address), city: nullify(city),
+          country: nullify(country), roomPreference: nullify(roomPreference) || "Double",
+          departureCity: nullify(departureCity), specialRequests: nullify(specialRequests),
+          partner: nullify(partner), underCover: nullify(underCover), observation: nullify(observation),
+          emergencyContactName: nullify(emergencyContactName),
+          emergencyContactPhone: nullify(emergencyContactPhone),
+          emergencyContactRelationship: nullify(emergencyContactRelationship),
+          fathersName: nullify(fathersName), mothersName: nullify(mothersName),
+          mahramName: nullify(mahramName), mahramRelationship: nullify(mahramRelationship),
+          mahramPassport: nullify(mahramPassport),
+        }).returning();
+
+        // Create verified payment record
+        await tx.insert(paymentsTable).values({
+          id: randomUUID(), bookingId: booking.id, userId: walkInUser.id,
+          amount: String(walletPaid), method: "wallet", status: "verified",
+          reference: `WALLET-${bookingReference}`,
+          notes: `Paid from agent wallet (${agent.businessName})`,
+        });
+
+        // Debit wallet atomically
+        const [updatedWallet] = await tx.update(agentWalletsTable)
+          .set({ balance: sql`balance - ${walletPaid}`, updatedAt: new Date() })
+          .where(eq(agentWalletsTable.agentId, agent.id))
+          .returning();
+        finalWalletBalance = Number(updatedWallet?.balance || 0);
+
+        // Record wallet transaction
+        await tx.insert(walletTransactionsTable).values({
+          id: randomUUID(), agentId: agent.id,
+          amount: String(-walletPaid), type: "booking_payment",
+          reference: `BOOKING-${bookingReference}`,
+          description: `Booking for ${resolvedFullName || "Client"} — ${pkg.name}`,
+        });
+      });
+    } catch (err: any) {
+      return res.status(400).json({ error: err.message || "Wallet payment failed" });
+    }
+
+    return res.status(201).json({
+      id: booking.id, reference: booking.reference, status: booking.status,
+      fullName: booking.fullName, packageName: pkg.name,
+      walletDebited: true, newWalletBalance: finalWalletBalance,
+    });
+  }
+
+  // ── Standard (non-wallet) Payment Flow ─────────────────────────────────
   const [walkInUser] = await db.insert(profilesTable).values({
     id: randomUUID(),
     clerkUserId: `walkin-${walkinUuid}`,
@@ -435,12 +528,9 @@ router.post("/agent/register-client", async (req, res) => {
     role: "user",
   }).returning();
 
-  const nullify = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v) as string | undefined;
-  const reference = `RDH-${randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase()}`;
-
   const [booking] = await db.insert(bookingsTable).values({
     id: randomUUID(),
-    reference,
+    reference: bookingReference,
     userId: walkInUser.id,
     packageId,
     agentId: agent.id,

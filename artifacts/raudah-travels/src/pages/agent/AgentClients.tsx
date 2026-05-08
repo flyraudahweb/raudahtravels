@@ -179,11 +179,18 @@ export default function AgentClients() {
   });
   const paystackEnabled = appConfig?.paystackEnabled ?? true;
 
+  const { data: walletData } = useQuery<{ balance: number }>({
+    queryKey: ["agent-wallet"],
+    queryFn: () => fetch("/api/agents/wallet", { credentials: "include" }).then(r => r.json()),
+    staleTime: 30000,
+  });
+  const walletBalance = walletData?.balance ?? 0;
+
   const paystackScriptLoaded = useRef(false);
   useEffect(() => {
     if (!paystackScriptLoaded.current) {
       const script = document.createElement("script");
-      script.src = "https://js.paystack.co/v1/inline.js";
+      script.src = "https://js.paystack.co/v2/inline.js";
       script.async = true;
       document.body.appendChild(script);
       paystackScriptLoaded.current = true;
@@ -250,27 +257,28 @@ export default function AgentClients() {
             method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
             body: JSON.stringify({ bookingId: data.id, amount, email: form.email || "admin@raudah.com" }),
           });
-          if (!res.ok) throw new Error("Initialize failed");
-          const pdata = await res.json() as { reference: string };
+          if (!res.ok) {
+            const errBody = await res.json().catch(() => ({}));
+            throw new Error((errBody as any).error || "Initialize failed");
+          }
+          const pdata = await res.json() as { reference: string; accessCode: string };
           if (!(window as any).PaystackPop) throw new Error("Paystack script not loaded");
           
-          const handler = (window as any).PaystackPop.setup({
-            key: appConfig?.paystackPublicKey ?? "",
-            email: form.email || "admin@raudah.com",
-            amount: amount * 100,
-            ref: pdata.reference,
-            currency: "NGN",
-            metadata: { bookingId: data.id },
-            callback: () => finishLocal(),
-            onClose: () => {
-              toast({ title: "Payment cancelled", description: "Booking created — payment pending." });
-              finishLocal();
+          const popup = new (window as any).PaystackPop();
+          popup.resumeTransaction(pdata.accessCode, {
+            onSuccess: () => finishLocal(),
+            onCancel: () => {
+              fetch(`/api/bookings/${data.id}`, { method: "DELETE", credentials: "include" }).catch(() => {});
+              toast({ title: "Payment cancelled", description: "The payment window was closed and the pending booking has been discarded." });
             },
+            onError: (err: Error) => {
+              fetch(`/api/bookings/${data.id}`, { method: "DELETE", credentials: "include" }).catch(() => {});
+              toast({ title: "Payment error", description: err.message || "Could not launch Paystack. The pending booking was discarded.", variant: "destructive" });
+            }
           });
-          handler.openIframe();
-        } catch {
-          toast({ title: "Payment error", description: "Could not launch Paystack. Booking still created.", variant: "destructive" });
-          finishLocal();
+        } catch (err: any) {
+          fetch(`/api/bookings/${data.id}`, { method: "DELETE", credentials: "include" }).catch(() => {});
+          toast({ title: "Payment error", description: err.message || "Could not launch Paystack. The pending booking was discarded.", variant: "destructive" });
         }
       } else {
         finishLocal();
@@ -315,7 +323,7 @@ export default function AgentClients() {
       partner: form.partner || undefined,
       underCover: form.underCover || undefined,
       observation: form.observation || undefined,
-      amountPaid: form.paymentMethod === "online" ? 0 : (form.amountPaid ? Number(form.amountPaid) : undefined),
+      amountPaid: form.paymentMethod === "online" ? 0 : form.paymentMethod === "wallet" ? (selectedPkg?.price || 0) : (form.amountPaid ? Number(form.amountPaid) : undefined),
       paymentMethod: form.paymentMethod === "online" ? "paystack" : form.paymentMethod,
       paymentReference: form.paymentReference || undefined,
       paymentProofUrl: form.paymentProofUrl || undefined,
@@ -1044,7 +1052,7 @@ export default function AgentClients() {
 
                   <div>
                     <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Payment Method</Label>
-                    <div className={`grid gap-3 mt-1 ${paystackEnabled ? "grid-cols-3" : "grid-cols-2"}`}>
+                    <div className={`grid gap-3 mt-1 ${paystackEnabled ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
                       {paystackEnabled && (
                         <div onClick={() => setForm(f => ({ ...f, paymentMethod: "online" }))}
                           className={`cursor-pointer rounded-xl border-2 p-3 text-sm font-semibold text-center transition-all ${form.paymentMethod === "online" ? "border-[#FF3B00] bg-[#FFF0EC] text-[#FF3B00]" : "border-[#DCE3F0] text-[#64748B] hover:border-[#FF3B00]/30"}`}>
@@ -1052,6 +1060,15 @@ export default function AgentClients() {
                           <span className="block text-[10px] mt-0.5 font-normal opacity-70">Paystack — Instant</span>
                         </div>
                       )}
+                      <div onClick={() => {
+                        if (walletBalance >= (selectedPkg?.price || 0)) {
+                          setForm(f => ({ ...f, paymentMethod: "wallet" }));
+                        }
+                      }}
+                        className={`cursor-pointer rounded-xl border-2 p-3 text-sm font-semibold text-center transition-all ${walletBalance < (selectedPkg?.price || 0) ? "opacity-50 cursor-not-allowed border-[#E2E8F0] bg-gray-50 text-gray-400" : form.paymentMethod === "wallet" ? "border-[#2D3199] bg-[#EEF0FF] text-[#2D3199]" : "border-[#DCE3F0] text-[#64748B] hover:border-[#2D3199]/30"}`}>
+                        🏦 Wallet
+                        <span className="block text-[10px] mt-0.5 font-normal opacity-70">{walletBalance >= (selectedPkg?.price || 0) ? "Instant Deduct" : "Insuff. Balance"}</span>
+                      </div>
                       <div onClick={() => setForm(f => ({ ...f, paymentMethod: "cash" }))}
                         className={`cursor-pointer rounded-xl border-2 p-3 text-sm font-semibold text-center transition-all ${form.paymentMethod === "cash" ? "border-[#2D3199] bg-[#EEF0FF] text-[#2D3199]" : "border-[#DCE3F0] text-[#64748B] hover:border-[#2D3199]/30"}`}>
                         💵 Cash
@@ -1059,13 +1076,13 @@ export default function AgentClients() {
                       </div>
                       <div onClick={() => setForm(f => ({ ...f, paymentMethod: "bank_transfer" }))}
                         className={`cursor-pointer rounded-xl border-2 p-3 text-sm font-semibold text-center transition-all ${form.paymentMethod === "bank_transfer" ? "border-[#2D3199] bg-[#EEF0FF] text-[#2D3199]" : "border-[#DCE3F0] text-[#64748B] hover:border-[#2D3199]/30"}`}>
-                        🏦 Bank Transfer
-                        <span className="block text-[10px] mt-0.5 font-normal opacity-70">Transfer & confirm</span>
+                        🏦 Bank
+                        <span className="block text-[10px] mt-0.5 font-normal opacity-70">Transfer</span>
                       </div>
                     </div>
                   </div>
 
-                  {form.paymentMethod !== "online" && (
+                  {form.paymentMethod !== "online" && form.paymentMethod !== "wallet" && (
                     <>
                       <div className="space-y-1.5">
                         <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide">Amount Paid (₦) <span className="text-red-500">*</span></Label>
@@ -1135,6 +1152,16 @@ export default function AgentClients() {
                       {!form.email && (
                         <p className="text-amber-600 font-semibold mt-1 text-xs">⚠ Add pilgrim email in Contact step for best results.</p>
                       )}
+                    </div>
+                  )}
+
+                  {form.paymentMethod === "wallet" && (
+                    <div className="bg-[#EEF0FF] border border-[#2D3199]/20 rounded-xl p-4 text-sm">
+                      <p className="font-bold text-[#2D3199] mb-1">🏦 Wallet Payment</p>
+                      <p className="text-[#64748B]">₦{(selectedPkg?.price || 0).toLocaleString()} will be automatically deducted from your wallet balance to confirm this booking.</p>
+                      <p className="text-[#2D3199] font-bold mt-2 pt-2 border-t border-[#2D3199]/10">
+                        Remaining Balance: ₦{Math.max(0, walletBalance - (selectedPkg?.price || 0)).toLocaleString()}
+                      </p>
                     </div>
                   )}
                 </div>

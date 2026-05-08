@@ -16,13 +16,15 @@ import { useFormFieldConfig } from "@/hooks/useFormFieldConfig";
 
 declare global {
   interface Window {
-    PaystackPop?: {
-      setup(opts: {
-        key: string; email: string; amount: number; ref: string; currency: string;
-        metadata?: object;
-        callback: (resp: { reference: string }) => void;
-        onClose: () => void;
-      }): { openIframe(): void };
+    PaystackPop?: new () => {
+      resumeTransaction(
+        accessCode: string,
+        options?: {
+          onSuccess?: (transaction: { reference: string }) => void;
+          onCancel?: () => void;
+          onError?: (error: Error) => void;
+        }
+      ): void;
     };
   }
 }
@@ -306,7 +308,7 @@ export default function AdminBookPilgrim() {
   useEffect(() => {
     if (!paystackScriptLoaded.current) {
       const script = document.createElement("script");
-      script.src = "https://js.paystack.co/v1/inline.js";
+      script.src = "https://js.paystack.co/v2/inline.js";
       script.async = true;
       document.body.appendChild(script);
       paystackScriptLoaded.current = true;
@@ -349,27 +351,27 @@ export default function AdminBookPilgrim() {
         method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify({ bookingId, amount, email: pilgrim.email || "admin@raudah.com" }),
       });
-      if (!res.ok) throw new Error("Initialize failed");
-      const data = await res.json() as { reference: string };
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error((errBody as any).error || "Initialize failed");
+      }
+      const data = await res.json() as { reference: string; accessCode: string };
       if (!window.PaystackPop) throw new Error("Paystack script not loaded");
-      const handler = window.PaystackPop.setup({
-        key: appConfig?.paystackPublicKey ?? "",
-        email: pilgrim.email || "admin@raudah.com",
-        amount: amount * 100,
-        ref: data.reference,
-        currency: "NGN",
-        metadata: { bookingId },
-        callback: () => { setResult({ reference: data.reference }); setStep(6); },
-        onClose: () => {
-          toast({ title: "Payment cancelled", description: "Booking created — payment pending." });
-          setResult({ reference: data.reference });
-          setStep(6);
+      const popup = new window.PaystackPop();
+      popup.resumeTransaction(data.accessCode, {
+        onSuccess: (transaction) => { setResult({ reference: transaction.reference }); setStep(6); },
+        onCancel: () => {
+          fetch(`/api/bookings/${bookingId}`, { method: "DELETE", credentials: "include" }).catch(() => {});
+          toast({ title: "Payment cancelled", description: "The payment window was closed and the pending booking has been discarded." });
         },
+        onError: (err) => {
+          fetch(`/api/bookings/${bookingId}`, { method: "DELETE", credentials: "include" }).catch(() => {});
+          toast({ title: "Payment error", description: err.message || "Could not launch Paystack. The pending booking was discarded.", variant: "destructive" });
+        }
       });
-      handler.openIframe();
-    } catch {
-      toast({ title: "Payment error", description: "Could not launch Paystack. Booking still created.", variant: "destructive" });
-      setStep(6);
+    } catch (err: any) {
+      fetch(`/api/bookings/${bookingId}`, { method: "DELETE", credentials: "include" }).catch(() => {});
+      toast({ title: "Payment error", description: err.message || "Could not launch Paystack. The pending booking was discarded.", variant: "destructive" });
     }
   };
 

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { paymentsTable, profilesTable, bookingsTable, visaApplicationsTable, siteSettingsTable, userActivityTable, packagesTable } from "@workspace/db";
+import { paymentsTable, profilesTable, bookingsTable, visaApplicationsTable, siteSettingsTable, userActivityTable, packagesTable, agentsTable } from "@workspace/db";
 import { createNotification } from "../utils/notify.js";
 import { getAuth } from "@clerk/express";
 import { eq, and, sql, desc } from "drizzle-orm";
@@ -327,7 +327,18 @@ router.post("/payments/paystack/initialize", async (req, res) => {
   // Fetch booking server-side — NEVER trust a client-supplied amount
   const initBooking = await db.query.bookingsTable.findFirst({ where: eq(bookingsTable.id, bookingId) });
   if (!initBooking) return res.status(404).json({ error: "Booking not found" });
-  if (initBooking.userId !== profile.id) return res.status(403).json({ error: "Forbidden" });
+
+  // Allow initialization if the caller owns the booking, is admin/staff, or is the booking's agent
+  const isCallerAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
+  const isBookingAgent = initBooking.agentId
+    ? await (async () => {
+        const agent = await db.query.agentsTable.findFirst({ where: eq(agentsTable.userId, profile.id) });
+        return agent?.id === initBooking.agentId;
+      })()
+    : false;
+  if (!isCallerAdmin && !isBookingAgent && initBooking.userId !== profile.id) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
   if (initBooking.status === "confirmed") return res.status(409).json({ error: "Booking is already confirmed" });
 
   const amount = Number(initBooking.totalPrice) - Number(initBooking.amountPaid);
