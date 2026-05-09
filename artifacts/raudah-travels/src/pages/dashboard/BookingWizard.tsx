@@ -232,7 +232,34 @@ export default function BookingWizard() {
   const [doneMethod, setDoneMethod] = useState<PayMethod>("bank_transfer");
   const [processing, setProcessing] = useState(false);
   const [phoneCode, setPhoneCode] = useState("+234");
+  const [isRestored, setIsRestored] = useState(false);
   const paystackScriptLoaded = useRef(false);
+
+  useEffect(() => {
+    try {
+      const draft = localStorage.getItem("user_booking_draft");
+      if (draft) {
+        const parsed = JSON.parse(draft);
+        if (parsed.passportForm) setPassportForm(parsed.passportForm);
+        if (parsed.personalForm) setPersonalForm(parsed.personalForm);
+        if (parsed.contactForm) setContactForm(parsed.contactForm);
+        if (parsed.payForm) setPayForm(parsed.payForm);
+        if (parsed.step) setStep(parsed.step);
+      }
+    } catch (e) {}
+    setIsRestored(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isRestored) return;
+    if (done) {
+      localStorage.removeItem("user_booking_draft");
+      return;
+    }
+    localStorage.setItem("user_booking_draft", JSON.stringify({
+      passportForm, personalForm, contactForm, payForm, step
+    }));
+  }, [passportForm, personalForm, contactForm, payForm, step, done, isRestored]);
 
   useEffect(() => {
     if (!paystackScriptLoaded.current) {

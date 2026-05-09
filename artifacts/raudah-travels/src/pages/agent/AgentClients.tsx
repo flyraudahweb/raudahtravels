@@ -157,6 +157,31 @@ export default function AgentClients() {
   const pageSize = 20;
   const lastPkgRef = useRef("");
   const autoOpenedRef = useRef(false);
+  const [isRestored, setIsRestored] = useState(false);
+  const [result, setResult] = useState<{ reference: string } | null>(null);
+
+  // Restore draft on mount
+  useEffect(() => {
+    try {
+      const draft = localStorage.getItem("agent_client_draft");
+      if (draft) {
+        const parsed = JSON.parse(draft);
+        if (parsed.form) setForm(parsed.form);
+        if (parsed.regStep) setRegStep(parsed.regStep);
+      }
+    } catch (e) {}
+    setIsRestored(true);
+  }, []);
+
+  // Save draft on changes
+  useEffect(() => {
+    if (!isRestored) return;
+    if (regStep === 6 || !dialogOpen) {
+      localStorage.removeItem("agent_client_draft");
+      return;
+    }
+    localStorage.setItem("agent_client_draft", JSON.stringify({ form, regStep }));
+  }, [form, regStep, isRestored, dialogOpen]);
 
   const cfg = useFormFieldConfig();
   const show = (name: string) => cfg(name).visible;
@@ -244,10 +269,9 @@ export default function AgentClients() {
         toast({ title: `✓ ${data.fullName || "Client"} registered`, description: `Ref: ${data.reference}` });
         setSessionCount(c => c + 1);
         qc.invalidateQueries({ queryKey: ["agent-clients"] });
-        const keepPkg = form.packageId;
-        setForm({ ...BLANK_FORM, packageId: keepPkg });
-        setRegStep(1);
-        setDialogOpen(false);
+        setResult({ reference: data.reference });
+        localStorage.removeItem("agent_client_draft");
+        setRegStep(6);
       };
 
       if (form.paymentMethod === "online") {
@@ -1168,31 +1192,67 @@ export default function AgentClients() {
               </div>
             )}
 
+            {/* ── STEP 6: SUCCESS ── */}
+            {regStep === 6 && (
+              <div className="space-y-6 text-center py-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-[#0F172A]">Registration Complete</h3>
+                  <p className="text-sm text-[#64748B] mt-1">Client has been successfully added to your list.</p>
+                </div>
+                <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 inline-block">
+                  <p className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider mb-1">Reference Number</p>
+                  <p className="font-mono text-2xl font-black text-[#2D3199]">{result?.reference}</p>
+                </div>
+              </div>
+            )}
+
             {/* ── FOOTER ACTIONS ── */}
             <div className="pt-4 border-t border-[#E2E8F0] flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#F8FAFC]">
-              {regStep > 1 ? (
-                <Button type="button" variant="outline" onClick={() => setRegStep(s => s - 1)} className="w-full sm:w-auto rounded-xl border-[#E2E8F0] text-[#64748B] hover:bg-[#F1F5F9] font-bold h-12 px-6">
-                  <ChevronLeft className="w-4 h-4 mr-2" /> Back
-                </Button>
+              {regStep === 6 ? (
+                <>
+                  <Button type="button" variant="ghost" onClick={() => setDialogOpen(false)} className="w-full sm:w-auto rounded-xl text-[#94A3B8] hover:bg-[#E2E8F0] font-bold h-12 px-6">
+                    Close
+                  </Button>
+                  {form.paymentMethod !== "online" && (
+                    <Button type="button" onClick={() => {
+                      setResult(null);
+                      setForm(f => ({ ...BLANK_FORM, packageId: f.packageId, paymentMethod: f.paymentMethod }));
+                      setRegStep(2);
+                    }} className="w-full sm:w-auto bg-[#2D3199] hover:bg-[#1C1F66] text-white rounded-xl font-black h-12 px-6 shadow-md">
+                      <UserPlus className="w-4 h-4 mr-2" /> Register Another Client
+                    </Button>
+                  )}
+                </>
               ) : (
-                <Button type="button" variant="ghost" onClick={() => setDialogOpen(false)} className="w-full sm:w-auto rounded-xl text-[#94A3B8] hover:bg-[#E2E8F0] font-bold h-12 px-6">
-                  Cancel
-                </Button>
-              )}
+                <>
+                  {regStep > 1 ? (
+                    <Button type="button" variant="outline" onClick={() => setRegStep(s => s - 1)} className="w-full sm:w-auto rounded-xl border-[#E2E8F0] text-[#64748B] hover:bg-[#F1F5F9] font-bold h-12 px-6">
+                      <ChevronLeft className="w-4 h-4 mr-2" /> Back
+                    </Button>
+                  ) : (
+                    <Button type="button" variant="ghost" onClick={() => setDialogOpen(false)} className="w-full sm:w-auto rounded-xl text-[#94A3B8] hover:bg-[#E2E8F0] font-bold h-12 px-6">
+                      Cancel
+                    </Button>
+                  )}
 
-              {regStep < 5 ? (
-                <Button type="button" onClick={() => {
-                  if (regStep === 1 && !form.packageId) { toast({ title: "Select a package", variant: "destructive" }); return; }
-                  if (regStep === 3 && ((req("firstName") && !form.firstName.trim()) || (req("lastName") && !form.lastName.trim()))) { toast({ title: "First or Last name is required", variant: "destructive" }); return; }
-                  if (regStep === 4 && req("phone") && !form.phone.trim()) { toast({ title: "Phone number is required", variant: "destructive" }); return; }
-                  setRegStep(s => s + 1);
-                }} className="w-full sm:w-auto bg-[#2D3199] hover:bg-[#1C1F66] text-white rounded-xl font-black h-12 px-8 shadow-md">
-                  Next Step <ChevronRight className="w-4 h-4 ml-2" />
-                </Button>
-              ) : (
-                <Button type="button" onClick={handleSubmit} disabled={registerMutation.isPending || passportWarnLevel === "expired"} className="w-full sm:w-auto bg-[#FF3B00] hover:bg-[#D63200] text-white rounded-xl font-black h-12 px-8 shadow-lg shadow-[#FF3B00]/20 gap-2">
-                  {registerMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</> : <><CheckCircle2 className="w-4 h-4" /> Complete Registration</>}
-                </Button>
+                  {regStep < 5 ? (
+                    <Button type="button" onClick={() => {
+                      if (regStep === 1 && !form.packageId) { toast({ title: "Select a package", variant: "destructive" }); return; }
+                      if (regStep === 3 && ((req("firstName") && !form.firstName.trim()) || (req("lastName") && !form.lastName.trim()))) { toast({ title: "First or Last name is required", variant: "destructive" }); return; }
+                      if (regStep === 4 && req("phone") && !form.phone.trim()) { toast({ title: "Phone number is required", variant: "destructive" }); return; }
+                      setRegStep(s => s + 1);
+                    }} className="w-full sm:w-auto bg-[#2D3199] hover:bg-[#1C1F66] text-white rounded-xl font-black h-12 px-8 shadow-md">
+                      Next Step <ChevronRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  ) : (
+                    <Button type="button" onClick={handleSubmit} disabled={registerMutation.isPending || passportWarnLevel === "expired"} className="w-full sm:w-auto bg-[#FF3B00] hover:bg-[#D63200] text-white rounded-xl font-black h-12 px-8 shadow-lg shadow-[#FF3B00]/20 gap-2">
+                      {registerMutation.isPending ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</> : <><CheckCircle2 className="w-4 h-4" /> Complete Registration</>}
+                    </Button>
+                  )}
+                </>
               )}
             </div>
           </div>

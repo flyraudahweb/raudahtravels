@@ -485,6 +485,11 @@ router.post("/agent/register-client", async (req, res) => {
           mahramPassport: nullify(mahramPassport),
         }).returning();
 
+        // Increment package capacity
+        await tx.update(packagesTable)
+          .set({ currentBookings: sql`${packagesTable.currentBookings} + 1` })
+          .where(eq(packagesTable.id, packageId));
+
         // Create verified payment record
         await tx.insert(paymentsTable).values({
           id: randomUUID(), bookingId: booking.id, userId: walkInUser.id,
@@ -576,6 +581,11 @@ router.post("/agent/register-client", async (req, res) => {
     mahramRelationship: nullify(mahramRelationship),
     mahramPassport: nullify(mahramPassport),
   }).returning();
+
+  // Increment package capacity
+  await db.update(packagesTable)
+    .set({ currentBookings: sql`${packagesTable.currentBookings} + 1` })
+    .where(eq(packagesTable.id, packageId));
 
   if (clampedPaid > 0) {
     await db.insert(paymentsTable).values({

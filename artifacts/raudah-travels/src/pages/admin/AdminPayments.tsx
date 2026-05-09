@@ -33,6 +33,7 @@ export default function AdminPayments() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
+  const [viewingProof, setViewingProof] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
 
   const params = statusFilter !== "all" ? { status: statusFilter } : {};
@@ -215,11 +216,12 @@ export default function AdminPayments() {
                     </button>
 
                     {payment.proofUrl && (
-                      <a href={payment.proofUrl} target="_blank" rel="noreferrer"
+                      <button onClick={() => setViewingProof(payment.proofUrl)}
                         className="w-9 h-9 rounded-xl bg-[#F0F2FF] hover:bg-[#EEF0FF] flex items-center justify-center transition-colors"
+                        title="View receipt"
                         data-testid={`button-view-proof-${payment.id}`}>
                         <ExternalLink className="w-4 h-4 text-[#2D3199]" />
-                      </a>
+                      </button>
                     )}
 
                     {payment.status === "pending" && (
@@ -265,6 +267,26 @@ export default function AdminPayments() {
                 <XCircle className="w-4 h-4" /> Reject
               </button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Proof Viewer dialog */}
+      <Dialog open={!!viewingProof} onOpenChange={o => { if (!o) setViewingProof(null); }}>
+        <DialogContent className="sm:max-w-3xl rounded-3xl p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-[#F1F5F9]">
+            <DialogTitle className="font-black text-[#0F172A]">Payment Receipt</DialogTitle>
+          </DialogHeader>
+          <div className="p-6 bg-[#F8FAFC] flex justify-center max-h-[85vh] overflow-y-auto">
+            {viewingProof?.startsWith("data:application/pdf") ? (
+              <object data={viewingProof} type="application/pdf" className="w-full h-[70vh] rounded-lg">
+                <iframe src={viewingProof} className="w-full h-[70vh] border-0 rounded-lg">
+                  This browser does not support PDFs. Please download the PDF to view it.
+                </iframe>
+              </object>
+            ) : (
+              <img src={viewingProof || ""} alt="Payment Proof" className="max-w-full rounded-lg shadow-sm" />
+            )}
           </div>
         </DialogContent>
       </Dialog>

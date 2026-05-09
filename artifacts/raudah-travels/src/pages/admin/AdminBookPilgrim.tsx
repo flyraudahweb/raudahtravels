@@ -287,7 +287,37 @@ export default function AdminBookPilgrim() {
   const [pkgTab, setPkgTab]     = useState<"all" | "hajj" | "umrah">("all");
   const [pkgSearch, setPkgSearch] = useState("");
   const [phoneCode, setPhoneCode] = useState("+234");
+  const [isRestored, setIsRestored] = useState(false);
   const paystackScriptLoaded = useRef(false);
+
+  // Restore draft on mount
+  useEffect(() => {
+    try {
+      const draft = localStorage.getItem("admin_pilgrim_draft");
+      if (draft) {
+        const parsed = JSON.parse(draft);
+        if (parsed.packageId) setPackageId(parsed.packageId);
+        if (parsed.pilgrim) setPilgrim(parsed.pilgrim);
+        if (parsed.travel) setTravel(parsed.travel);
+        if (parsed.payment) setPayment(parsed.payment);
+        if (parsed.step) setStep(parsed.step);
+      }
+    } catch (e) {
+      // ignore
+    }
+    setIsRestored(true);
+  }, []);
+
+  // Save draft on changes
+  useEffect(() => {
+    if (!isRestored) return;
+    // Don't save draft if we are on the success step
+    if (step === 6) {
+      localStorage.removeItem("admin_pilgrim_draft");
+      return;
+    }
+    localStorage.setItem("admin_pilgrim_draft", JSON.stringify({ packageId, pilgrim, travel, payment, step }));
+  }, [packageId, pilgrim, travel, payment, step, isRestored]);
 
   const { data: pkgData } = useQuery({ queryKey: ["packages-for-booking"], queryFn: fetchPackages });
   
@@ -381,6 +411,7 @@ export default function AdminBookPilgrim() {
       if (payment.method === "online") {
         await handlePaystackPayment(data.booking.id);
       } else {
+        localStorage.removeItem("admin_pilgrim_draft");
         setResult({ reference: data.reference });
         setStep(6);
       }
@@ -440,10 +471,18 @@ export default function AdminBookPilgrim() {
   };
 
   const resetForm = () => {
+    localStorage.removeItem("admin_pilgrim_draft");
     setStep(1); setResult(null); setPackageId("");
     setPilgrim(DEFAULT_PILGRIM);
     setTravel({ departureCity: "", roomPreference: "Double", specialRequests: "" });
-    setPayment({ method: "cash", markVerified: true, amountPaid: "" });
+    setPayment({ method: "cash", markVerified: true, amountPaid: "", paymentReference: "", paymentProofUrl: "" });
+  };
+
+  const registerAnother = () => {
+    // Keep packageId and payment, but reset personal details
+    setResult(null);
+    setPilgrim(DEFAULT_PILGRIM);
+    setStep(2);
   };
 
   if (result) {
@@ -460,9 +499,15 @@ export default function AdminBookPilgrim() {
           <p className="text-xs font-bold text-[#2D3199] uppercase tracking-widest mb-2">Reference Number</p>
           <p className="text-3xl font-black text-[#0F172A] font-mono">{result.reference}</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
+          {payment.method !== "online" && (
+            <Button variant="outline" onClick={registerAnother} className="flex-1 rounded-xl border-[#DCE3F0]">
+              <UserPlus className="w-4 h-4 mr-2" />
+              Register Another for this Package
+            </Button>
+          )}
           <Button variant="outline" onClick={resetForm} className="flex-1 rounded-xl border-[#DCE3F0]">
-            Register Another
+            Start New Booking
           </Button>
           <Link href="/admin/pilgrims" className="flex-1">
             <Button className="w-full bg-[#2D3199] hover:bg-[#1C1F66] text-white rounded-xl">View Pilgrims</Button>

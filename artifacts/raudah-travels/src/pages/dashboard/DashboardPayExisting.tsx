@@ -235,7 +235,6 @@ export default function DashboardPayExisting() {
 
           {/* Islamic message */}
           <div className="px-8 py-5 bg-[#FAFBFF] text-center">
-            <p className="text-[#2D3199] font-bold text-sm">بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ</p>
             <p className="text-[#64748B] text-xs mt-1.5">
               {doneMethod === "online"
                 ? "May Allah accept your Hajj/Umrah and grant you a blessed journey."

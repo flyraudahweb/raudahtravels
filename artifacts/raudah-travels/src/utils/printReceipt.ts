@@ -213,9 +213,7 @@ export function printReceipt(data: ReceiptData) {
 
   </div>
 
-  <!-- Footer -->
   <div class="footer">
-    <div class="footer-arabic">بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ</div>
     <p class="footer-text">
       Thank you for choosing Raudah Travels & Tours for your sacred pilgrimage.<br>
       May Allah accept your Hajj/Umrah and grant you a blessed journey.
