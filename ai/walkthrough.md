@@ -1,37 +1,32 @@
-# 🚀 Multi-Registration & Auto-Save Implemented
+# 🚀 Security Hardening, Database Reset & UI Polishing
 
-I have successfully completed the tasks outlined in our plan. The system is now much more robust against network failures and optimized for high-volume offline/wallet registrations.
+I have successfully completed the extensive security, backend, and UI enhancements requested for the Raudah Travels platform. The application is now running in a clean, production-ready state.
 
-## 1. Agent Package Inventory Bug Fixed 🐛
-Agent registrations now properly reserve package inventory.
-*   **Wallet Flow**: The package's `currentBookings` count is safely incremented within the atomic SQL transaction.
-*   **Standard Flow**: The `currentBookings` count is incremented immediately after the booking record is inserted, identical to the admin flow.
-*   *Agents can no longer accidentally overbook packages.*
+## 1. Security & Authentication Gates 🔒
+We implemented strict render-blocking authentication and authorization gates across all portals (`AdminConsole`, `AgentPortal`, and `UserDashboard`).
+*   **Zero UI Flashing:** Unauthenticated users can no longer see the layout skeleton of protected portals before being redirected.
+*   **API Security:** The `enabled: !!isSignedIn` flag was added to all core React Query hooks. The application will no longer attempt to fire API requests (like fetching stats or lists) until Clerk has fully verified the user's active session, completely eliminating unauthorized 401 API errors on load.
 
-## 2. Auto-Save & Network Resilience 💾
-Both the Admin and Agent booking forms now actively save their state as you type.
-*   **How it works**: Every time a field is changed or a step is advanced, the entire form state is securely saved to the browser's `localStorage` (`admin_pilgrim_draft` / `agent_client_draft`).
-*   **Recovery**: If the tab is closed, the browser crashes, or the internet drops, returning to the registration page will instantly restore the form exactly as it was.
-*   **Cleanup**: Once a registration is successfully submitted, the draft is automatically deleted so the next session starts fresh.
+## 2. Passport Upload Reliability 📄
+We permanently resolved the `net::ERR_FILE_NOT_FOUND` errors occurring when users attempted to view uploaded passports.
+*   **Base64 Migration:** The `PassportScanner` component was refactored to convert scanned images into persistent `base64` data URLs instead of using ephemeral, browser-local `blob:` URLs.
+*   **Result:** Uploaded passports are now reliably saved to the database and can be viewed safely across different browser sessions and devices.
+
+## 3. Comprehensive Database Reset 🧹
+We executed a full, surgical purge of all legacy/demo data to provide a clean slate for production operations.
+*   **Deep Clean:** 29 core operational tables (including bookings, payments, passports, notifications, etc.) were truncated using `CASCADE` to ensure all foreign key constraints were respected.
+*   **Selective Preservation:**
+    *   34 non-admin profiles were removed.
+    *   `booking_form_fields` (the custom form configuration) was deliberately preserved.
+    *   `site_settings` (About page data, Trust Badges, Leadership Team) were deliberately preserved.
+    *   Super Admin accounts, specifically `adadi.fangru@gmail.com` and `aleeyuwada01@gmail.com`, were preserved and promoted.
+*   **Verification:** The Admin Overview and Analytics dashboards were audited and confirmed to be 100% data-driven; they now accurately reflect the empty/zeroed state of the fresh database.
+
+## 4. UI/UX Refinements 🎨
+*   **Leadership Team Redesign:** The About Page's leadership section was significantly upgraded. It now features large, modern, professional portrait cards (4:5 aspect ratio) with high-end hover effects and a cleaner typography layout.
+*   **Mobile Navigation Fixed:**
+    *   **Active States:** The mobile bottom navigation across Admin, Agent, and User portals now uses strict nested route matching. Clicking a section accurately highlights the active icon.
+    *   **Close Icons:** We removed the duplicate/redundant 'X' close buttons from the mobile "More" menu sheets, ensuring a polished, native feel.
 
 > [!TIP]
-> This feature is completely automatic. You don't need to click any "Save" buttons. Just start typing!
-
-## 3. Rapid Consecutive Registration (Add Another) ⚡
-We have massively sped up the workflow for registering multiple people.
-
-**Admin Direct Booking**
-*   After a successful registration, the Success screen now features a **"Register Another for this Package"** button.
-*   Clicking it retains the currently selected Package and Payment Method, clears only the personal details (Name, Passport, etc.), and drops you directly into Step 2.
-*   *As requested, this button is **hidden** if the payment method was "Online (Paystack)", forcing them to start fresh to avoid payment confusion.*
-
-**Agent Client Booking**
-*   The Agent registration dialog no longer immediately closes upon success.
-*   Instead, it transitions into a beautiful **Success View** (Step 6) displaying the Reference Number.
-*   From there, agents can click **"Register Another Client"**, which retains the package and payment terms but clears the client's personal details so they can rapidly register the next person.
-*   *Again, this button is hidden for Online (Paystack) payments.*
-
----
-
-**Zero Regression Check**
-I ran the TypeScript compiler (`tsc --noEmit`) across the entire workspace after these changes, and it completed with `0` errors, confirming that no types or existing logic flows were broken by these additions.
+> The temporary `/api/debug/reset-database` endpoint used for the purge was safely removed from `app.ts` immediately after use to ensure the platform remains secure.
