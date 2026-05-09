@@ -37,7 +37,9 @@ function NavItem({ href, label, icon: Icon, exact }: { href: string; label: stri
 }
 
 function MobileNavItem({ href, label, icon: Icon, exact }: { href: string; label: string; icon: typeof LayoutDashboard; exact?: boolean }) {
-  const [isActive] = useRoute(exact ? href : `${href}/*`);
+  const [isExact] = useRoute(href);
+  const [isNested] = useRoute(`${href}/:rest*`);
+  const isActive = exact ? isExact : (isExact || isNested);
   return (
     <Link href={href} className="flex-1 flex flex-col items-center justify-center gap-1 py-2">
       <div className={`w-12 h-7 rounded-full flex items-center justify-center transition-all duration-200 ${
@@ -67,9 +69,6 @@ function AgentMoreSheet({ open, onClose, navItems, mobileNavSet }: {
               <p className="text-[10px] font-black text-[#94A3B8] uppercase tracking-widest mb-0.5">Agent Portal</p>
               <h2 className="text-base font-black text-[#0F172A]">All Sections</h2>
             </div>
-            <button onClick={onClose} className="w-9 h-9 rounded-full bg-[#F1F5F9] flex items-center justify-center hover:bg-[#E2E8F0] transition-colors">
-              <X className="w-4 h-4 text-[#64748B]" />
-            </button>
           </div>
           <div className="overflow-y-auto px-4 py-4 pb-8 space-y-0.5">
             {extras.map(item => {

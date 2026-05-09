@@ -182,23 +182,29 @@ export default function About() {
                 Experienced professionals united by a shared commitment to serving Nigeria's pilgrims.
               </p>
             </div>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 max-w-4xl mx-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 max-w-5xl mx-auto justify-center">
               {team.map((member, idx) => {
                 const initials = member.initials || member.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase();
                 const color = AVATAR_COLORS[idx % AVATAR_COLORS.length];
                 return (
                   <div key={member.name}
-                    className="text-center p-6 rounded-2xl bg-white border border-[#DCE3F0] hover:shadow-[0_4px_24px_rgba(45,49,153,0.10)] transition-all">
-                    {member.photoUrl ? (
-                      <img src={member.photoUrl} alt={member.name}
-                        className="w-20 h-20 rounded-3xl object-cover mx-auto mb-4 shadow-lg border-2 border-[#EEF0FF]" />
-                    ) : (
-                      <div className={`w-20 h-20 rounded-3xl bg-gradient-to-br ${color} flex items-center justify-center text-2xl font-black text-white mx-auto mb-4 shadow-lg`}>
-                        {initials}
-                      </div>
-                    )}
-                    <h3 className="font-black text-[#0F172A] text-sm mb-1 leading-snug">{member.name}</h3>
-                    <p className="text-[#2D3199] text-xs font-semibold">{member.role}</p>
+                    className="group relative overflow-hidden rounded-3xl bg-white border border-[#DCE3F0] hover:shadow-[0_20px_40px_rgba(45,49,153,0.12)] hover:-translate-y-1 transition-all duration-300">
+                    <div className="aspect-[4/5] w-full overflow-hidden bg-gray-50 relative">
+                      {member.photoUrl ? (
+                        <img src={member.photoUrl} alt={member.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out" />
+                      ) : (
+                        <div className={`w-full h-full bg-gradient-to-br ${color} flex items-center justify-center text-6xl font-black text-white/50`}>
+                          {initials}
+                        </div>
+                      )}
+                      {/* Subtle overlay gradient at the bottom of the image for contrast if needed, but we have text below */}
+                    </div>
+                    <div className="p-6 md:p-8 text-center bg-white relative z-10 border-t border-[#F1F5F9]">
+                      <h3 className="text-xl md:text-2xl font-black text-[#0F172A] mb-1.5 group-hover:text-[#2D3199] transition-colors">{member.name}</h3>
+                      <p className="text-[#FF3B00] font-bold tracking-wide uppercase text-xs mb-3">{member.role}</p>
+                      <div className="w-12 h-1 bg-[#F1F5F9] mx-auto rounded-full group-hover:bg-[#2D3199] transition-colors" />
+                    </div>
                   </div>
                 );
               })}
