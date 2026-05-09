@@ -253,20 +253,30 @@ function AdminMoreSheet({ open, onClose, navGroups }: { open: boolean; onClose: 
 /* ── Main layout ──────────────────────────────────────────────────────────── */
 
 export default function AdminConsole() {
-  const { user } = useUser();
+  const { user, isLoaded: isClerkLoaded, isSignedIn } = useUser();
   const { signOut } = useClerk();
   const [, setLocation] = useLocation();
-  const { data: profile } = useGetProfile({ query: { queryKey: getGetProfileQueryKey() } });
+  const { data: profile, isLoading: isProfileLoading } = useGetProfile({
+    query: {
+      queryKey: getGetProfileQueryKey(),
+      enabled: !!isSignedIn,       // only fetch profile when signed in
+    },
+  });
   const isStaffOnly = profile?.role === "staff";
 
-  // Redirect non-admin users to their correct portal
+  // ── Auth gate: redirect to sign-in if not authenticated ──────────────────
   useEffect(() => {
-    if (!user) return; // User signed out, let Clerk handle redirect
-    if (!profile) return; // Still loading
+    if (!isClerkLoaded) return;                   // still initialising
+    if (!isSignedIn) {
+      setLocation("/sign-in", { replace: true }); // not logged in → sign-in
+      return;
+    }
+    if (!profile) return;                          // still loading profile
     if (!["admin", "super_admin", "staff"].includes(profile.role)) {
       setLocation(profile.role === "agent" ? "/agent" : "/dashboard", { replace: true });
     }
-  }, [profile, user, setLocation]);
+  }, [isClerkLoaded, isSignedIn, profile, setLocation]);
+
   const { data: myPerms } = useGetMyPermissions({
     query: { queryKey: getGetMyPermissionsQueryKey(), enabled: isStaffOnly },
   });
@@ -297,6 +307,34 @@ export default function AdminConsole() {
 
   const sidebarW = collapsed ? "w-16" : "w-60";
   const mainMl   = collapsed ? "md:ml-16" : "md:ml-60";
+
+  // ── Block rendering until auth + role are confirmed ──────────────────────
+  if (!isClerkLoaded || !isSignedIn) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-[#F0F2FF]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-4 border-[#2D3199] border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm font-medium text-[#64748B]">Checking authentication…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isProfileLoading || !profile) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-[#F0F2FF]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-4 border-[#2D3199] border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm font-medium text-[#64748B]">Loading admin console…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!["admin", "super_admin", "staff"].includes(profile.role)) {
+    // Redirect is handled by useEffect above; render nothing while it redirects
+    return null;
+  }
 
   return (
     <SidebarCtx.Provider value={collapsed}>

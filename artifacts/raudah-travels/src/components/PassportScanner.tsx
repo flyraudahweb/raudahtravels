@@ -292,7 +292,14 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
         nationality:       data.nationality || "",
       };
 
-      const passportImageDataUrl = URL.createObjectURL(file);
+      // Convert file to a base64 data URL (NOT a blob URL!) so it can be safely
+      // stored in the database. Blob URLs are ephemeral browser memory addresses
+      // that vanish on page refresh.
+      const passportImageDataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
       result.passportImageDataUrl = passportImageDataUrl;
 
       if (onProfilePhoto) {

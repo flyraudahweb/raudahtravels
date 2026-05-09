@@ -165,25 +165,60 @@ function MobileNavItem({ href, label, icon: Icon, exact }: { href: string; label
 }
 
 export default function UserDashboard() {
-  const { user } = useUser();
+  const { user, isLoaded: isClerkLoaded, isSignedIn } = useUser();
   const { signOut } = useClerk();
   const [, setLocation] = useLocation();
-  const { data: profile } = useGetProfile({ query: { queryKey: getGetProfileQueryKey() } });
-  const { data: notifData } = useListNotifications({}, { query: { queryKey: getListNotificationsQueryKey({}) } });
+  const { data: profile, isLoading: isProfileLoading } = useGetProfile({
+    query: { queryKey: getGetProfileQueryKey(), enabled: !!isSignedIn },
+  });
+  const { data: notifData } = useListNotifications({}, {
+    query: { queryKey: getListNotificationsQueryKey({}), enabled: !!isSignedIn },
+  });
 
-  // Redirect non-user/pilgrim users to their correct portal
+  // ── Auth gate: redirect to sign-in if not authenticated ──────────────────
   useEffect(() => {
-    if (!user) return; // User signed out, let Clerk handle redirect
-    if (!profile) return; // Still loading
+    if (!isClerkLoaded) return;
+    if (!isSignedIn) {
+      setLocation("/sign-in", { replace: true });
+      return;
+    }
+    if (!profile) return;
     if (!["user", "pilgrim"].includes(profile.role)) {
       setLocation(["admin", "super_admin", "staff"].includes(profile.role) ? "/admin" : "/agent", { replace: true });
     }
-  }, [profile, user, setLocation]);
+  }, [isClerkLoaded, isSignedIn, profile, setLocation]);
 
   const unreadCount = notifData?.unreadCount || 0;
   const displayName = profile?.fullName || user?.fullName || "Pilgrim";
   const initials = displayName.split(" ").map((n: string) => n[0]).slice(0, 2).join("").toUpperCase();
   const [moreOpen, setMoreOpen] = useState(false);
+
+  // ── Block rendering until auth is confirmed ──────────────────────────────
+  if (!isClerkLoaded || !isSignedIn) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-[#F0F2FF]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-4 border-[#2D3199] border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm font-medium text-[#64748B]">Checking authentication…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isProfileLoading || !profile) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-[#F0F2FF]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-4 border-[#2D3199] border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm font-medium text-[#64748B]">Loading dashboard…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!["user", "pilgrim"].includes(profile.role)) {
+    return null;
+  }
 
   return (
       <div className="flex min-h-screen bg-[#F0F2FF]">

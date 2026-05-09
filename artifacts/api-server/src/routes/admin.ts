@@ -276,6 +276,20 @@ router.get("/admin/passports/:bookingId/file", async (req, res) => {
   if (!booking.passportCopyUrl) return res.status(404).json({ error: "No passport document uploaded" });
 
   const url = booking.passportCopyUrl;
+  const mode = (req.query.mode as string) || "download";
+
+  // Preview mode — always return the raw URL as JSON so the frontend can
+  // render it directly in an <img> or <object> tag without blob URLs.
+  if (mode === "preview") {
+    return res.json({
+      passportCopyUrl: url,
+      reference: booking.reference,
+      passportNumber: booking.passportNumber,
+      fullName: booking.fullName,
+    });
+  }
+
+  // --- Download mode (default) ---
 
   // If the stored URL is an external HTTP(S) link (not a data URI), proxy it
   // to avoid CORS issues and dead-link errors on the frontend

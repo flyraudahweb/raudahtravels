@@ -2,11 +2,12 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Download, FileText, Search, User, AlertTriangle, CheckCircle2,
-  Clock, Shield, Filter, X, ChevronLeft, ChevronRight, FileImage,
+  Clock, Shield, Filter, X, ChevronLeft, ChevronRight, FileImage, Eye,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 
@@ -61,12 +62,13 @@ const EXPIRY_CONFIG: Record<ExpiryState, { border: string; badge: string; label:
 };
 
 function PassportCard({
-  pilgrim, selected, onToggle, onDownload, downloading,
+  pilgrim, selected, onToggle, onDownload, onPreview, downloading,
 }: {
   pilgrim: PassportEntry;
   selected: boolean;
   onToggle: () => void;
   onDownload: () => void;
+  onPreview: () => void;
   downloading: boolean;
 }) {
   const state = getExpiryState(pilgrim.passportExpiry);
@@ -112,19 +114,28 @@ function PassportCard({
           {selected && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
         </button>
 
-        {/* Download button (only if has document) */}
+        {/* Actions (only if has document) */}
         {pilgrim.hasPassportDoc && (
-          <button
-            onClick={onDownload}
-            disabled={downloading}
-            className="absolute bottom-2 right-2 w-7 h-7 rounded-lg bg-white/90 hover:bg-white border border-[#DCE3F0] flex items-center justify-center shadow-sm hover:shadow transition-all disabled:opacity-50"
-            title="Download passport"
-          >
-            {downloading
-              ? <span className="w-3.5 h-3.5 border-2 border-[#2D3199] border-t-transparent rounded-full animate-spin" />
-              : <Download className="w-3.5 h-3.5 text-[#2D3199]" />
-            }
-          </button>
+          <div className="absolute bottom-2 right-2 flex items-center gap-1.5">
+            <button
+              onClick={onPreview}
+              className="w-7 h-7 rounded-lg bg-white/90 hover:bg-white border border-[#DCE3F0] flex items-center justify-center shadow-sm hover:shadow transition-all"
+              title="Preview passport"
+            >
+              <Eye className="w-3.5 h-3.5 text-[#2D3199]" />
+            </button>
+            <button
+              onClick={onDownload}
+              disabled={downloading}
+              className="w-7 h-7 rounded-lg bg-white/90 hover:bg-white border border-[#DCE3F0] flex items-center justify-center shadow-sm hover:shadow transition-all disabled:opacity-50"
+              title="Download passport"
+            >
+              {downloading
+                ? <span className="w-3.5 h-3.5 border-2 border-[#2D3199] border-t-transparent rounded-full animate-spin" />
+                : <Download className="w-3.5 h-3.5 text-[#2D3199]" />
+              }
+            </button>
+          </div>
         )}
       </div>
 
@@ -183,6 +194,7 @@ export default function AdminPassports() {
   const [selected, setSelected]         = useState<Set<string>>(new Set());
   const [bulkDownloading, setBulkDownloading] = useState(false);
   const [downloadingId, setDownloadingId]     = useState<string | null>(null);
+  const [previewingDoc, setPreviewingDoc]     = useState<{ url: string; isPdf: boolean } | null>(null);
 
   const debouncedSearch = useDebounce(search, 400);
 
@@ -242,41 +254,68 @@ export default function AdminPassports() {
   );
 
   const downloadFile = useCallback(async (id: string, reference: string, silent = false) => {
-    const r = await fetch(`/api/admin/passports/${id}/file`, { credentials: "include" });
+    // Fetch the raw data URL via preview mode (avoids Content-Disposition: attachment
+    // which causes Chrome to create broken blob URLs with fetch)
+    const r = await fetch(`/api/admin/passports/${id}/file?mode=preview`, { credentials: "include" });
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));
       if (!silent) toast({ title: "Download failed", description: (body as any).error || "Could not fetch document", variant: "destructive" });
       return null;
     }
 
-    const contentType = r.headers.get("content-type") || "";
-
-    // Binary response (proxied external file) — use blob download
-    if (!contentType.includes("application/json")) {
-      const blob = await r.blob();
-      const ext = contentType.includes("pdf") ? "pdf" : "jpg";
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `passport-${reference}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      return url;
+    const { passportCopyUrl } = await r.json();
+    if (!passportCopyUrl) {
+      if (!silent) toast({ title: "Download failed", description: "No passport document found", variant: "destructive" });
+      return null;
     }
 
-    // JSON response (data URL stored in DB)
-    const { passportCopyUrl } = await r.json();
-    const isPdf = passportCopyUrl.startsWith("data:application/pdf");
-    const ext   = isPdf ? "pdf" : "jpg";
-    const a     = document.createElement("a");
-    a.href     = passportCopyUrl;
-    a.download = `passport-${reference}.${ext}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    // If it's a data URL, convert to blob for download (Chrome can't download raw data URLs)
+    if (passportCopyUrl.startsWith("data:")) {
+      try {
+        const parts = passportCopyUrl.split(",");
+        const mime = (parts[0].match(/:(.*?);/) || [])[1] || "application/octet-stream";
+        const bstr = atob(parts[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) u8arr[n] = bstr.charCodeAt(n);
+        const blob = new Blob([u8arr], { type: mime });
+        const ext = mime.includes("pdf") ? "pdf" : mime.includes("png") ? "png" : "jpg";
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `passport-${reference}.${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        // Give Chrome enough time to initiate the download before revoking
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
+      } catch {
+        if (!silent) toast({ title: "Download failed", description: "Could not process passport file", variant: "destructive" });
+      }
+      return passportCopyUrl;
+    }
+
+    // If it's an http(s) URL, open in a new tab (browser will handle the download)
+    window.open(passportCopyUrl, "_blank");
     return passportCopyUrl;
+  }, [toast]);
+
+  const previewFile = useCallback(async (id: string, silent = false) => {
+    // Use preview mode to get the raw data URL — renders directly in <img>/<object>
+    const r = await fetch(`/api/admin/passports/${id}/file?mode=preview`, { credentials: "include" });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      if (!silent) toast({ title: "Preview failed", description: (body as any).error || "Could not load document", variant: "destructive" });
+      return;
+    }
+    const { passportCopyUrl } = await r.json();
+    if (!passportCopyUrl) {
+      if (!silent) toast({ title: "Preview failed", description: "No passport document found", variant: "destructive" });
+      return;
+    }
+    const isPdf = passportCopyUrl.startsWith("data:application/pdf") || passportCopyUrl.endsWith(".pdf");
+    setPreviewingDoc({ url: passportCopyUrl, isPdf });
   }, [toast]);
 
   const handleSingleDownload = useCallback(async (id: string, reference: string) => {
@@ -453,6 +492,7 @@ export default function AdminPassports() {
               selected={selected.has(p.id)}
               onToggle={() => toggleSelect(p.id)}
               onDownload={() => handleSingleDownload(p.id, p.reference)}
+              onPreview={() => previewFile(p.id)}
               downloading={downloadingId === p.id}
             />
           ))}
@@ -494,6 +534,26 @@ export default function AdminPassports() {
           </div>
         </div>
       )}
+
+      {/* Proof Viewer dialog */}
+      <Dialog open={!!previewingDoc} onOpenChange={o => { if (!o) setPreviewingDoc(null); }}>
+        <DialogContent className="sm:max-w-3xl rounded-3xl p-0 overflow-hidden" aria-describedby={undefined}>
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-[#F1F5F9]">
+            <DialogTitle className="font-black text-[#0F172A]">Passport Document</DialogTitle>
+          </DialogHeader>
+          <div className="p-6 bg-[#F8FAFC] flex justify-center max-h-[85vh] overflow-y-auto">
+            {previewingDoc?.isPdf ? (
+              <object data={previewingDoc.url} type="application/pdf" className="w-full h-[70vh] rounded-lg">
+                <iframe src={previewingDoc.url} className="w-full h-[70vh] border-0 rounded-lg">
+                  This browser does not support PDFs. Please download the PDF to view it.
+                </iframe>
+              </object>
+            ) : previewingDoc?.url ? (
+              <img src={previewingDoc.url} alt="Passport Document" className="max-w-full rounded-lg shadow-sm" />
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
