@@ -74,9 +74,21 @@ function CreateAgentDialog({ open, onClose }: { open: boolean; onClose: () => vo
       onSuccess: (data) => {
         setResult({ tempPassword: data.tempPassword || form.tempPassword, message: data.message });
         qc.invalidateQueries({ queryKey: getListAgentsQueryKey({}) });
-        toast({ title: "Agent account created!" });
+        toast({ title: data.alreadyExisted ? "Agent account already exists — showing credentials." : "Agent account created!" });
       },
-      onError: (err: any) => toast({ title: err?.data?.error || err?.message || "Failed to create agent", variant: "destructive" }),
+      onError: (err: any) => {
+        const msg = err?.data?.error || err?.message || "";
+        // "Failed to fetch" = network timeout — the account likely WAS created server-side
+        if (msg.toLowerCase().includes("failed to fetch") || msg.toLowerCase().includes("network") || msg.toLowerCase().includes("timeout")) {
+          toast({
+            title: "Network timeout — but account may have been created",
+            description: "Please click 'Create Agent Account' again with the same email. If the account was created, it will show the credentials.",
+            variant: "destructive",
+          });
+        } else {
+          toast({ title: msg || "Failed to create agent", variant: "destructive" });
+        }
+      },
     });
   };
 
@@ -195,17 +207,28 @@ function ApproveApplicationDialog({ app, onClose }: { app: any; onClose: () => v
   const approve = useApproveAgentApplication();
   const [commissionRate, setCommissionRate] = useState("10");
   const [commissionType, setCommissionType] = useState("percentage");
-  const [result, setResult] = useState<{ tempPassword: string } | null>(null);
+  const [result, setResult] = useState<{ tempPassword: string; message: string } | null>(null);
 
   const handleApprove = () => {
     approve.mutate({ id: app.id, data: { commissionRate: parseFloat(commissionRate), commissionType: commissionType as any } }, {
       onSuccess: (data) => {
-        setResult({ tempPassword: data.tempPassword });
+        setResult({ tempPassword: data.tempPassword, message: data.message || "Agent account created." });
         qc.invalidateQueries({ queryKey: getListAgentApplicationsQueryKey() });
         qc.invalidateQueries({ queryKey: getListAgentsQueryKey({}) });
-        toast({ title: "Agent approved and account created!" });
+        toast({ title: data.alreadyExisted ? "Agent account already exists!" : "Agent approved and account created!" });
       },
-      onError: (err: any) => toast({ title: err?.data?.error || err?.message || "Failed to approve", variant: "destructive" }),
+      onError: (err: any) => {
+        const msg = err?.data?.error || err?.message || "";
+        if (msg.toLowerCase().includes("failed to fetch") || msg.toLowerCase().includes("network") || msg.toLowerCase().includes("timeout")) {
+          toast({
+            title: "Network timeout — but account may have been created",
+            description: "Please try approving again. If the account was already created, it will show the credentials.",
+            variant: "destructive",
+          });
+        } else {
+          toast({ title: msg || "Failed to approve", variant: "destructive" });
+        }
+      },
     });
   };
 
@@ -221,6 +244,7 @@ function ApproveApplicationDialog({ app, onClose }: { app: any; onClose: () => v
             <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-center">
               <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
               <p className="font-bold text-emerald-800">Account Created!</p>
+              <p className="text-emerald-700 text-sm mt-1">{result.message}</p>
             </div>
             <div className="rounded-2xl bg-[#F8FAFC] border border-[#DCE3F0] p-4 space-y-2">
               <p className="text-xs font-black text-[#2D3199] uppercase tracking-wider">Login Credentials</p>

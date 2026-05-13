@@ -1726,35 +1726,144 @@ router.put("/admin/agent-applications/:id/approve", async (req, res) => {
   const clerkSecretKey = process.env.CLERK_SECRET_KEY;
   if (!clerkSecretKey) return res.status(500).json({ error: "Clerk not configured" });
 
+  const clerkHeaders = { Authorization: `Bearer ${clerkSecretKey}`, "Content-Type": "application/json" };
   const nameParts = app.contactPerson.trim().split(" ");
+
+  let clerkUser: any = null;
+  let usedExistingClerkUser = false;
+
+  // Step 1: Try to create a new Clerk user
   const clerkRes = await fetch("https://api.clerk.com/v1/users", {
     method: "POST",
-    headers: { Authorization: `Bearer ${clerkSecretKey}`, "Content-Type": "application/json" },
+    headers: clerkHeaders,
     body: JSON.stringify({
       first_name: nameParts[0],
       last_name: nameParts.slice(1).join(" ") || "",
       email_address: [app.email],
       password,
       skip_password_checks: true,
+      skip_legal_checks: true,
     }),
   });
 
-  if (!clerkRes.ok) {
-    const err = await clerkRes.json() as any;
-    const msg = err?.errors?.[0]?.long_message || "Failed to create Clerk user";
-    return res.status(400).json({ error: msg });
+  if (clerkRes.ok) {
+    clerkUser = await clerkRes.json();
+  } else {
+    const errBody = await clerkRes.json() as any;
+    const errCode: string = errBody?.errors?.[0]?.code ?? "";
+    const errMsg: string = errBody?.errors?.[0]?.long_message || errBody?.errors?.[0]?.message || "";
+    const isExistingUser = errCode.includes("form_identifier_exists")
+      || errCode.includes("duplicate")
+      || errMsg.toLowerCase().includes("taken")
+      || errMsg.toLowerCase().includes("already exists")
+      || errMsg.toLowerCase().includes("unique");
+
+    if (isExistingUser) {
+      // The applicant already has a Clerk account (e.g. signed up as a regular user).
+      // Look them up by email and use the existing account.
+      const searchRes = await fetch(
+        `https://api.clerk.com/v1/users?email_address=${encodeURIComponent(app.email)}&limit=1`,
+        { method: "GET", headers: clerkHeaders },
+      );
+      if (searchRes.ok) {
+        const users = await searchRes.json() as any[];
+        if (users?.length > 0) {
+          clerkUser = users[0];
+          usedExistingClerkUser = true;
+        }
+      }
+
+      if (!clerkUser) {
+        return res.status(400).json({
+          error: "A Clerk account exists for this email but could not be found. Please try the direct agent creation instead.",
+        });
+      }
+    } else {
+      // Retry without password if the issue is password-related
+      const isPasswordIssue = errCode.includes("password") || errCode.includes("form_password");
+      if (isPasswordIssue) {
+        const retryRes = await fetch("https://api.clerk.com/v1/users", {
+          method: "POST",
+          headers: clerkHeaders,
+          body: JSON.stringify({
+            first_name: nameParts[0],
+            last_name: nameParts.slice(1).join(" ") || "",
+            email_address: [app.email],
+            skip_legal_checks: true,
+          }),
+        });
+        if (retryRes.ok) {
+          clerkUser = await retryRes.json();
+        } else {
+          const err2 = await retryRes.json() as any;
+          const msg = err2?.errors?.[0]?.long_message || errMsg || "Failed to create Clerk user";
+          return res.status(400).json({ error: msg });
+        }
+      } else {
+        return res.status(400).json({ error: errMsg || "Failed to create Clerk user" });
+      }
+    }
   }
 
-  const clerkUser = await clerkRes.json() as any;
-  const profileId = randomUUID();
-  await db.insert(profilesTable).values({
-    id: profileId,
-    clerkUserId: clerkUser.id,
-    email: app.email,
-    fullName: app.contactPerson,
-    role: "agent",
+  // Mark the email address as verified — fire-and-forget
+  if (!usedExistingClerkUser) {
+    const emailAddressId: string | undefined = clerkUser?.email_addresses?.[0]?.id;
+    if (emailAddressId) {
+      setImmediate(() => {
+        fetch(`https://api.clerk.com/v1/email_addresses/${emailAddressId}`, {
+          method: "PATCH",
+          headers: clerkHeaders,
+          body: JSON.stringify({ verified: true }),
+        }).catch(() => {});
+      });
+    }
+  }
+
+  // Step 2: Check if a profile already exists for this Clerk user
+  let profileId: string;
+  const existingProfile = await db.query.profilesTable.findFirst({
+    where: eq(profilesTable.clerkUserId, clerkUser.id),
   });
 
+  if (existingProfile) {
+    profileId = existingProfile.id;
+    // Promote the existing user to agent role if they were a regular user
+    if (existingProfile.role !== "agent") {
+      await db.update(profilesTable)
+        .set({ role: "agent", updatedAt: new Date() })
+        .where(eq(profilesTable.id, existingProfile.id));
+    }
+  } else {
+    profileId = randomUUID();
+    await db.insert(profilesTable).values({
+      id: profileId,
+      clerkUserId: clerkUser.id,
+      email: app.email,
+      fullName: app.contactPerson,
+      role: "agent",
+    });
+  }
+
+  // Step 3: Check if an agent record already exists (idempotent safety)
+  const existingAgent = await db.query.agentsTable.findFirst({
+    where: eq(agentsTable.userId, profileId),
+  });
+
+  if (existingAgent) {
+    // Agent already created (previous attempt succeeded) — mark application and return
+    await db.update(agentApplicationsTable)
+      .set({ status: "approved", updatedAt: new Date() })
+      .where(eq(agentApplicationsTable.id, id));
+
+    return res.json({
+      agent: { ...existingAgent, walletBalance: 0 },
+      tempPassword: password,
+      message: "Agent account already exists — credentials shown.",
+      alreadyExisted: true,
+    });
+  }
+
+  // Step 4: Create agent record + wallet
   const agentCode = `AG${Date.now().toString(36).toUpperCase().slice(-6)}`;
   const [agent] = await db.insert(agentsTable).values({
     id: randomUUID(),
@@ -1783,7 +1892,9 @@ router.put("/admin/agent-applications/:id/approve", async (req, res) => {
   return res.json({
     agent: { ...agent, walletBalance: 0 },
     tempPassword: password,
-    message: "Agent account created. Share the login credentials with the agent.",
+    message: usedExistingClerkUser
+      ? "Agent account created using existing login. The agent can sign in with their current credentials."
+      : "Agent account created. Share the login credentials with the agent.",
   });
 });
 
@@ -1811,9 +1922,26 @@ router.post("/admin/agents/create", async (req, res) => {
     return res.status(400).json({ error: "fullName, businessName, email, phone and tempPassword are required" });
   }
 
-  // Check if email already exists in our DB
+  // Check if email already exists in our DB — if agent was already fully created
+  // (e.g. previous request succeeded server-side but client timed out), return
+  // the existing agent data as a success response (idempotent retry).
   const existingProfile = await db.query.profilesTable.findFirst({ where: eq(profilesTable.email, email) });
-  if (existingProfile) return res.status(400).json({ error: "An account with this email address already exists." });
+  if (existingProfile) {
+    const existingAgent = await db.query.agentsTable.findFirst({ where: eq(agentsTable.userId, existingProfile.id) });
+    if (existingAgent) {
+      // Account was fully created on a previous attempt — return success so
+      // the frontend shows the credentials dialog instead of an error toast.
+      return res.status(200).json({
+        agent: { ...existingAgent, commissionRate: Number(existingAgent.commissionRate), walletBalance: 0 },
+        profile: existingProfile,
+        tempPassword,
+        message: "Agent account already exists (previous request completed successfully).",
+        alreadyExisted: true,
+      });
+    }
+    // Profile exists but no agent record — genuine duplicate email from a non-agent user
+    return res.status(400).json({ error: "An account with this email address already exists (non-agent user)." });
+  }
 
   const clerkSecretKey = process.env.CLERK_SECRET_KEY;
   if (!clerkSecretKey) return res.status(500).json({ error: "Clerk not configured" });
@@ -1864,14 +1992,17 @@ router.post("/admin/agents/create", async (req, res) => {
 
   const clerkUser = await clerkRes.json() as any;
 
-  // Mark the email address as verified so the agent can log in immediately
+  // Mark the email address as verified — fire-and-forget to reduce response time.
+  // This was previously awaited and added ~1-2s latency, contributing to client timeouts.
   const emailAddressId: string | undefined = clerkUser?.email_addresses?.[0]?.id;
   if (emailAddressId) {
-    await fetch(`https://api.clerk.com/v1/email_addresses/${emailAddressId}`, {
-      method: "PATCH",
-      headers: clerkHeaders,
-      body: JSON.stringify({ verified: true }),
-    }).catch(() => {}); // non-fatal
+    setImmediate(() => {
+      fetch(`https://api.clerk.com/v1/email_addresses/${emailAddressId}`, {
+        method: "PATCH",
+        headers: clerkHeaders,
+        body: JSON.stringify({ verified: true }),
+      }).catch(() => {}); // non-fatal, fire-and-forget
+    });
   }
 
   void passwordlessMode; // used for response message only
@@ -1908,6 +2039,7 @@ router.post("/admin/agents/create", async (req, res) => {
   return res.status(201).json({
     agent: { ...agent, commissionRate: Number(agent.commissionRate), walletBalance: 0 },
     profile,
+    tempPassword,
     message: "Agent account created successfully.",
   });
 });
