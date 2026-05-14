@@ -141,7 +141,14 @@ export async function sendEmail(opts: {
   }
   try {
     if (cfg.provider === "resend" && cfg.resendKey) {
-      const from = cfg.resendFrom ?? "Raudah Travels & Tours <onboarding@resend.dev>";
+      // Ensure from address is properly formatted and ASCII-safe
+      let from = cfg.resendFrom ?? "onboarding@resend.dev";
+      // If it's just a plain email (no display name), add one
+      if (!from.includes("<")) {
+        from = `Raudah Travels <${from}>`;
+      }
+      // Strip any non-ASCII characters that break byte-string encoding
+      from = from.replace(/[^\x00-\xFF]/g, "");
       logger.info({ to: opts.to, from, provider: "resend" }, "Attempting to send email via Resend");
       await sendViaResend(cfg.resendKey, from, opts);
     } else if (cfg.provider === "smtp" && cfg.smtp) {
