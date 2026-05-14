@@ -1,7 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
-import { sendEmail } from "../utils/email.js";
+import { sendEmail, sendAgentApprovalEmail } from "../utils/email.js";
 import { createNotification } from "../utils/notify.js";
 
 import {
@@ -1946,6 +1946,19 @@ router.put("/admin/agent-applications/:id/approve", async (req, res) => {
     .set({ status: "approved", updatedAt: new Date() })
     .where(eq(agentApplicationsTable.id, id));
 
+  // Send approval notification email (fire-and-forget)
+  setImmediate(() => {
+    sendAgentApprovalEmail({
+      agentName: app.contactPerson,
+      businessName: app.businessName,
+      email: app.email,
+      loginEmail: app.email,
+      tempPassword: usedExistingClerkUser ? undefined : password,
+      agentCode,
+      isExistingUser: usedExistingClerkUser,
+    }).catch(() => {});
+  });
+
   return res.json({
     agent: { ...agent, walletBalance: 0 },
     tempPassword: password,
@@ -2092,6 +2105,19 @@ router.post("/admin/agents/create", async (req, res) => {
     agentId: agent.id,
     balance: "0",
   }).onConflictDoNothing();
+
+  // Send welcome email to directly created agent (fire-and-forget)
+  setImmediate(() => {
+    sendAgentApprovalEmail({
+      agentName: fullName,
+      businessName,
+      email,
+      loginEmail: email,
+      tempPassword,
+      agentCode,
+      isExistingUser: false,
+    }).catch(() => {});
+  });
 
   return res.status(201).json({
     agent: { ...agent, commissionRate: Number(agent.commissionRate), walletBalance: 0 },

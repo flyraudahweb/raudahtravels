@@ -341,3 +341,125 @@ export async function sendLoginAlert(data: LoginAlertData): Promise<boolean> {
     text: `As-salamu alaykum ${data.name}, a new sign-in was detected on your ${roleLabel} account at ${data.time.toISOString()}. If you did not sign in, contact support immediately.`,
   });
 }
+
+// ── Agent Approval Emails ─────────────────────────────────────────────────────
+
+export interface AgentApprovalData {
+  agentName: string;
+  businessName: string;
+  email: string;
+  loginEmail: string;
+  tempPassword?: string;
+  agentCode: string;
+  isExistingUser: boolean;
+  loginUrl?: string;
+}
+
+function buildNewAgentEmail(data: AgentApprovalData): string {
+  const loginUrl = data.loginUrl || "https://flyraudah.com.ng/sign-in";
+  const content = `
+    <div style="text-align:center;margin-bottom:28px;">
+      <div style="display:inline-flex;align-items:center;justify-content:center;width:64px;height:64px;border-radius:16px;background:#DCFCE7;margin-bottom:16px;">
+        <span style="font-size:28px;">🎉</span>
+      </div>
+      <h1 style="margin:0 0 8px;color:#0F172A;font-size:22px;font-weight:800;">Welcome to Raudah Travels!</h1>
+      <p style="margin:0;color:#64748B;font-size:14px;">As-salamu alaykum, ${data.agentName}. Your agent application has been <strong style="color:#16A34A;">approved</strong>!</p>
+    </div>
+    <div style="background:#F8FAFF;border:2px solid #C7CBF5;border-radius:16px;padding:24px;margin-bottom:24px;">
+      <p style="margin:0 0 16px;color:#2D3199;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Your Agent Login Details</p>
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="padding:8px 0;border-bottom:1px solid #E2E8F0;color:#64748B;font-size:13px;font-weight:600;width:40%;">Business Name</td>
+          <td style="padding:8px 0;border-bottom:1px solid #E2E8F0;color:#0F172A;font-size:13px;font-weight:700;">${data.businessName}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;border-bottom:1px solid #E2E8F0;color:#64748B;font-size:13px;font-weight:600;">Agent Code</td>
+          <td style="padding:8px 0;border-bottom:1px solid #E2E8F0;color:#2D3199;font-size:14px;font-weight:800;letter-spacing:1px;">${data.agentCode}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;border-bottom:1px solid #E2E8F0;color:#64748B;font-size:13px;font-weight:600;">Email</td>
+          <td style="padding:8px 0;border-bottom:1px solid #E2E8F0;color:#0F172A;font-size:13px;font-weight:600;">${data.loginEmail}</td>
+        </tr>
+        ${data.tempPassword ? `
+        <tr>
+          <td style="padding:8px 0;color:#64748B;font-size:13px;font-weight:600;">Temporary Password</td>
+          <td style="padding:8px 0;color:#FF3B00;font-size:14px;font-weight:800;font-family:'Courier New',monospace;">${data.tempPassword}</td>
+        </tr>` : ""}
+      </table>
+    </div>
+    ${data.tempPassword ? `
+    <div style="background:#FFF7F5;border:1px solid #FFDDD5;border-radius:12px;padding:16px;margin-bottom:24px;">
+      <p style="margin:0;color:#FF3B00;font-size:12px;font-weight:700;">⚠️ Important</p>
+      <p style="margin:6px 0 0;color:#64748B;font-size:12px;line-height:1.6;">
+        Please change your password after your first login. Do <strong>not</strong> share your login credentials with anyone.
+      </p>
+    </div>` : ""}
+    <div style="text-align:center;margin-bottom:28px;">
+      <a href="${loginUrl}" style="display:inline-block;background:linear-gradient(135deg,#2D3199 0%,#4C56B8 100%);color:#ffffff;font-size:14px;font-weight:800;padding:14px 40px;border-radius:12px;text-decoration:none;">Sign In to Agent Portal</a>
+    </div>
+    <p style="color:#64748B;font-size:13px;line-height:1.6;text-align:center;margin:0;">
+      You can now register clients, manage bookings, and earn commissions through your agent portal.<br/><br/>
+      For support, contact us at <a href="mailto:support@flyraudah.com.ng" style="color:#2D3199;font-weight:600;">support@flyraudah.com.ng</a>
+    </p>`;
+  return emailWrapper(content);
+}
+
+function buildExistingUserPromotionEmail(data: AgentApprovalData): string {
+  const loginUrl = data.loginUrl || "https://flyraudah.com.ng/sign-in";
+  const content = `
+    <div style="text-align:center;margin-bottom:28px;">
+      <div style="display:inline-flex;align-items:center;justify-content:center;width:64px;height:64px;border-radius:16px;background:#EEF0FF;margin-bottom:16px;">
+        <span style="font-size:28px;">🚀</span>
+      </div>
+      <h1 style="margin:0 0 8px;color:#0F172A;font-size:22px;font-weight:800;">You're Now a Raudah Agent!</h1>
+      <p style="margin:0;color:#64748B;font-size:14px;">As-salamu alaykum, ${data.agentName}. Your application has been <strong style="color:#16A34A;">approved</strong> and your account has been upgraded to Agent.</p>
+    </div>
+    <div style="background:#F8FAFF;border:2px solid #C7CBF5;border-radius:16px;padding:24px;margin-bottom:24px;">
+      <p style="margin:0 0 16px;color:#2D3199;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Your Agent Details</p>
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="padding:8px 0;border-bottom:1px solid #E2E8F0;color:#64748B;font-size:13px;font-weight:600;width:40%;">Business Name</td>
+          <td style="padding:8px 0;border-bottom:1px solid #E2E8F0;color:#0F172A;font-size:13px;font-weight:700;">${data.businessName}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;border-bottom:1px solid #E2E8F0;color:#64748B;font-size:13px;font-weight:600;">Agent Code</td>
+          <td style="padding:8px 0;border-bottom:1px solid #E2E8F0;color:#2D3199;font-size:14px;font-weight:800;letter-spacing:1px;">${data.agentCode}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;color:#64748B;font-size:13px;font-weight:600;">Login</td>
+          <td style="padding:8px 0;color:#0F172A;font-size:13px;font-weight:600;">Use your existing credentials</td>
+        </tr>
+      </table>
+    </div>
+    <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;padding:16px;margin-bottom:24px;">
+      <p style="margin:0;color:#16A34A;font-size:12px;font-weight:700;">✅ No new password needed</p>
+      <p style="margin:6px 0 0;color:#64748B;font-size:12px;line-height:1.6;">
+        Since you already have an account with us, simply sign in with your <strong>existing email and password</strong>. You'll be redirected to the Agent Portal automatically.
+      </p>
+    </div>
+    <div style="text-align:center;margin-bottom:28px;">
+      <a href="${loginUrl}" style="display:inline-block;background:linear-gradient(135deg,#2D3199 0%,#4C56B8 100%);color:#ffffff;font-size:14px;font-weight:800;padding:14px 40px;border-radius:12px;text-decoration:none;">Go to Agent Portal</a>
+    </div>
+    <p style="color:#64748B;font-size:13px;line-height:1.6;text-align:center;margin:0;">
+      You can now register clients, manage bookings, and earn commissions through your agent portal.<br/><br/>
+      For support, contact us at <a href="mailto:support@flyraudah.com.ng" style="color:#2D3199;font-weight:600;">support@flyraudah.com.ng</a>
+    </p>`;
+  return emailWrapper(content);
+}
+
+export async function sendAgentApprovalEmail(data: AgentApprovalData): Promise<boolean> {
+  const html = data.isExistingUser
+    ? buildExistingUserPromotionEmail(data)
+    : buildNewAgentEmail(data);
+
+  const subject = data.isExistingUser
+    ? `You're Now a Raudah Agent! 🎉 | Raudah Travels & Tours`
+    : `Agent Account Approved — Your Login Details | Raudah Travels & Tours`;
+
+  const textBody = data.isExistingUser
+    ? `As-salamu alaykum ${data.agentName}, congratulations! Your agent application for "${data.businessName}" has been approved. Your agent code is ${data.agentCode}. Sign in with your existing credentials at https://flyraudah.com.ng/sign-in`
+    : `As-salamu alaykum ${data.agentName}, your agent application for "${data.businessName}" has been approved! Your agent code is ${data.agentCode}. Login: ${data.loginEmail}${data.tempPassword ? `, Temp Password: ${data.tempPassword}` : ""}. Sign in at https://flyraudah.com.ng/sign-in`;
+
+  return sendEmail({ to: data.email, subject, html, text: textBody });
+}
+
