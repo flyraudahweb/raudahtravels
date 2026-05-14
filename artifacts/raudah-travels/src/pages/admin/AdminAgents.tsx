@@ -16,6 +16,7 @@ import {
   UserCheck, CheckCircle2, XCircle, Building2, BadgeCheck, Plus,
   Wallet, TrendingUp, Percent, DollarSign, Tag, Trash2, Edit3,
   Eye, EyeOff, Loader2, ChevronDown, Clock, RefreshCw, Users, CreditCard, Phone, Mail, MapPin, X, ChevronRight, Download,
+  ShieldBan, ShieldCheck, Ban, AlertTriangle,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -930,9 +931,12 @@ type ActiveDialog =
   | { type: "discounts"; agent: any }
   | { type: "commission"; agent: any }
   | { type: "detail"; agent: any }
+  | { type: "confirm-status"; agent: any; newStatus: string }
+  | { type: "confirm-delete-agent"; agent: any }
+  | { type: "confirm-delete-app"; app: any }
   | null;
 
-const TABS = ["applications", "active", "rejected", "logs"] as const;
+const TABS = ["applications", "active", "suspended", "rejected", "logs"] as const;
 type Tab = typeof TABS[number];
 
 export default function AdminAgents() {
@@ -956,6 +960,7 @@ export default function AdminAgents() {
   const pending = applications.filter(a => a.status === "pending");
   const rejectedApps = applications.filter(a => a.status === "rejected");
   const activeAgents = agents.filter(a => a.status === "active");
+  const inactiveAgents = agents.filter(a => a.status === "suspended" || a.status === "blocked");
 
   const handleRejectApp = (app: any) => {
     rejectApp.mutate({ id: app.id, data: {} }, {
@@ -967,9 +972,43 @@ export default function AdminAgents() {
     });
   };
 
+  const handleChangeAgentStatus = (agentId: string, newStatus: string) => {
+    fetch(`/api/admin/agents/${agentId}/status`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: newStatus }),
+    }).then(async r => {
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Failed");
+      qc.invalidateQueries({ queryKey: getListAgentsQueryKey({}) });
+      toast({ title: d.message || `Agent ${newStatus}` });
+      setDialog(null);
+    }).catch((e: any) => toast({ title: e.message, variant: "destructive" }));
+  };
+
+  const handleDeleteAgent = (agentId: string) => {
+    fetch(`/api/admin/agents/${agentId}`, { method: "DELETE" }).then(async r => {
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Failed");
+      qc.invalidateQueries({ queryKey: getListAgentsQueryKey({}) });
+      toast({ title: d.message || "Agent deleted" });
+      setDialog(null);
+    }).catch((e: any) => toast({ title: e.message, variant: "destructive" }));
+  };
+
+  const handleDeleteApp = (appId: string) => {
+    fetch(`/api/admin/agent-applications/${appId}`, { method: "DELETE" }).then(async r => {
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Failed");
+      qc.invalidateQueries({ queryKey: getListAgentApplicationsQueryKey() });
+      toast({ title: d.message || "Application deleted" });
+      setDialog(null);
+    }).catch((e: any) => toast({ title: e.message, variant: "destructive" }));
+  };
+
   const tabCounts = {
     applications: pending.length,
     active: activeAgents.length,
+    suspended: inactiveAgents.length,
     rejected: rejectedApps.length,
     logs: 0,
   };
@@ -1012,7 +1051,7 @@ export default function AdminAgents() {
             className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition-colors capitalize ${
               activeTab === tab ? "bg-white text-[#2D3199] shadow-sm" : "text-[#64748B] hover:text-[#334155]"
             }`}>
-            {tab === "applications" ? "Pending" : tab === "active" ? "Active Agents" : tab === "rejected" ? "Rejected" : "Logs"}
+            {tab === "applications" ? "Pending" : tab === "active" ? "Active Agents" : tab === "suspended" ? "Suspended" : tab === "rejected" ? "Rejected" : "Logs"}
             {tabCounts[tab] > 0 && (
               <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${activeTab === tab ? "bg-[#2D3199] text-white" : "bg-[#94A3B8] text-white"}`}>
                 {tabCounts[tab]}
@@ -1067,6 +1106,10 @@ export default function AdminAgents() {
                             <button onClick={() => handleRejectApp(app)} disabled={rejectApp.isPending}
                               className="flex items-center gap-1 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-lg border border-red-200 transition-colors disabled:opacity-50">
                               <XCircle className="w-3 h-3" /> Reject
+                            </button>
+                            <button onClick={() => setDialog({ type: "confirm-delete-app", app })}
+                              className="flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-red-50 text-red-400 hover:text-red-600 text-xs font-bold rounded-lg border border-[#E2E8F0] transition-colors">
+                              <Trash2 className="w-3 h-3" />
                             </button>
                           </div>
                         </td>
@@ -1156,6 +1199,65 @@ export default function AdminAgents() {
                       className="flex items-center gap-1.5 px-3 py-2 bg-white border border-[#DCE3F0] hover:bg-[#F8FAFC] text-[#334155] text-xs font-bold rounded-xl transition-colors">
                       <Tag className="w-3.5 h-3.5" /> Package Discounts
                     </button>
+                    <button onClick={() => setDialog({ type: "confirm-status", agent, newStatus: "suspended" })}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 border border-amber-200 hover:bg-amber-100 text-amber-700 text-xs font-bold rounded-xl transition-colors">
+                      <ShieldBan className="w-3.5 h-3.5" /> Suspend
+                    </button>
+                    <button onClick={() => setDialog({ type: "confirm-status", agent, newStatus: "blocked" })}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-red-50 border border-red-200 hover:bg-red-100 text-red-700 text-xs font-bold rounded-xl transition-colors">
+                      <Ban className="w-3.5 h-3.5" /> Block
+                    </button>
+                    <button onClick={() => setDialog({ type: "confirm-delete-agent", agent })}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-red-50 border border-red-200 hover:bg-red-100 text-red-600 text-xs font-bold rounded-xl transition-colors">
+                      <Trash2 className="w-3.5 h-3.5" /> Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Tab: Suspended / Blocked ── */}
+      {activeTab === "suspended" && (
+        <div>
+          {inactiveAgents.length === 0 ? (
+            <div className="flex flex-col items-center py-16 bg-white rounded-2xl border border-dashed border-[#DCE3F0]">
+              <ShieldCheck className="w-10 h-10 text-emerald-300 mb-3" />
+              <p className="font-bold text-[#0F172A]">No suspended or blocked agents</p>
+              <p className="text-[#94A3B8] text-sm mt-1">All agents are currently active</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {inactiveAgents.map(agent => (
+                <div key={agent.id} className={`bg-white rounded-2xl border p-5 ${agent.status === "blocked" ? "border-red-200" : "border-amber-200"}`}>
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div className="flex items-start gap-4">
+                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${agent.status === "blocked" ? "bg-red-100" : "bg-amber-100"}`}>
+                        {agent.status === "blocked" ? <Ban className="w-5 h-5 text-red-600" /> : <ShieldBan className="w-5 h-5 text-amber-600" />}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <h3 className="font-black text-[#0F172A] text-base">{agent.businessName}</h3>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase ${agent.status === "blocked" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                            {agent.status}
+                          </span>
+                        </div>
+                        {agent.email && <p className="text-xs text-[#94A3B8]">{agent.email}</p>}
+                        {agent.phone && <p className="text-xs text-[#94A3B8] mt-0.5">{agent.phone}</p>}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-[#F1F5F9]">
+                    <button onClick={() => handleChangeAgentStatus(agent.id, "active")}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors">
+                      <ShieldCheck className="w-3.5 h-3.5" /> {agent.status === "blocked" ? "Unblock" : "Unsuspend"} (Set Active)
+                    </button>
+                    <button onClick={() => setDialog({ type: "confirm-delete-agent", agent })}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-red-50 border border-red-200 hover:bg-red-100 text-red-600 text-xs font-bold rounded-xl transition-colors">
+                      <Trash2 className="w-3.5 h-3.5" /> Delete Agent
+                    </button>
                   </div>
                 </div>
               ))}
@@ -1178,7 +1280,7 @@ export default function AdminAgents() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-[#F1F5F9]">
-                      {["Business", "Contact", "Email", "Phone", "Date", "Reason"].map(h => (
+                      {["Business", "Contact", "Email", "Phone", "Date", "Reason", ""].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-[10px] font-black text-[#94A3B8] uppercase tracking-wider">{h}</th>
                       ))}
                     </tr>
@@ -1192,6 +1294,12 @@ export default function AdminAgents() {
                         <td className="px-4 py-3 text-sm text-[#64748B]">{app.phone}</td>
                         <td className="px-4 py-3 text-xs text-[#94A3B8]">{fmt(app.createdAt)}</td>
                         <td className="px-4 py-3 text-xs text-[#94A3B8]">{app.rejectionReason || "—"}</td>
+                        <td className="px-4 py-3">
+                          <button onClick={() => setDialog({ type: "confirm-delete-app", app })}
+                            className="flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-red-50 text-red-400 hover:text-red-600 text-xs font-bold rounded-lg border border-[#E2E8F0] transition-colors">
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1226,6 +1334,78 @@ export default function AdminAgents() {
       {dialog?.type === "detail" && (
         <AgentDetailDialog agent={dialog.agent} onClose={() => setDialog(null)}
           onAction={(type, agent) => { setDialog({ type, agent }); }} />
+      )}
+
+      {/* Confirm Status Change */}
+      {dialog?.type === "confirm-status" && (
+        <Dialog open onOpenChange={() => setDialog(null)}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="font-black flex items-center gap-2">
+                <AlertTriangle className={`w-5 h-5 ${dialog.newStatus === "blocked" ? "text-red-500" : "text-amber-500"}`} />
+                {dialog.newStatus === "blocked" ? "Block" : "Suspend"} Agent?
+              </DialogTitle>
+              <DialogDescription>
+                {dialog.newStatus === "blocked"
+                  ? `This will block "${dialog.agent.businessName}" from accessing the platform entirely.`
+                  : `This will temporarily suspend "${dialog.agent.businessName}". They won't be able to register clients.`}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex gap-3 pt-2">
+              <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setDialog(null)}>Cancel</Button>
+              <Button className={`flex-1 rounded-xl font-bold text-white ${dialog.newStatus === "blocked" ? "bg-red-600 hover:bg-red-700" : "bg-amber-600 hover:bg-amber-700"}`}
+                onClick={() => handleChangeAgentStatus(dialog.agent.id, dialog.newStatus)}>
+                {dialog.newStatus === "blocked" ? "Block Agent" : "Suspend Agent"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Confirm Delete Agent */}
+      {dialog?.type === "confirm-delete-agent" && (
+        <Dialog open onOpenChange={() => setDialog(null)}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="font-black flex items-center gap-2 text-red-600">
+                <Trash2 className="w-5 h-5" /> Delete Agent?
+              </DialogTitle>
+              <DialogDescription>
+                This will permanently delete <strong>{dialog.agent.businessName}</strong>, their wallet, discounts, and downgrade their login to a regular user. This cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex gap-3 pt-2">
+              <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setDialog(null)}>Cancel</Button>
+              <Button className="flex-1 rounded-xl font-bold bg-red-600 hover:bg-red-700 text-white"
+                onClick={() => handleDeleteAgent(dialog.agent.id)}>
+                Delete Permanently
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Confirm Delete Application */}
+      {dialog?.type === "confirm-delete-app" && (
+        <Dialog open onOpenChange={() => setDialog(null)}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="font-black flex items-center gap-2 text-red-600">
+                <Trash2 className="w-5 h-5" /> Delete Application?
+              </DialogTitle>
+              <DialogDescription>
+                Delete the application from <strong>{dialog.app.businessName}</strong> ({dialog.app.email})? This cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex gap-3 pt-2">
+              <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setDialog(null)}>Cancel</Button>
+              <Button className="flex-1 rounded-xl font-bold bg-red-600 hover:bg-red-700 text-white"
+                onClick={() => handleDeleteApp(dialog.app.id)}>
+                Delete
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

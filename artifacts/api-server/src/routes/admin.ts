@@ -2056,6 +2056,90 @@ router.put("/admin/agents/:id/commission", async (req, res) => {
   return res.json({ ...agent, commissionRate: Number(agent.commissionRate) });
 });
 
+// ── Agent Status Update (suspend / unsuspend / block / unblock) ───────────────
+
+router.put("/admin/agents/:id/status", async (req, res) => {
+  const { status } = req.body as { status: string };
+  const validStatuses = ["active", "suspended", "blocked"];
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
+  }
+
+  const agent = await db.query.agentsTable.findFirst({ where: eq(agentsTable.id, req.params.id) });
+  if (!agent) return res.status(404).json({ error: "Agent not found" });
+
+  const [updated] = await db.update(agentsTable)
+    .set({ status: status as any, updatedAt: new Date() })
+    .where(eq(agentsTable.id, req.params.id))
+    .returning();
+
+  return res.json({
+    ...updated,
+    commissionRate: Number(updated.commissionRate),
+    message: `Agent status updated to "${status}".`,
+  });
+});
+
+// ── Delete Agent Account ──────────────────────────────────────────────────────
+
+router.delete("/admin/agents/:id", async (req, res) => {
+  const agent = await db.query.agentsTable.findFirst({ where: eq(agentsTable.id, req.params.id) });
+  if (!agent) return res.status(404).json({ error: "Agent not found" });
+
+  // Check for confirmed bookings that would be orphaned
+  const confirmedBookings = await db.select({ count: sql<number>`count(*)::int` })
+    .from(bookingsTable)
+    .where(and(eq(bookingsTable.agentId, agent.id), eq(bookingsTable.status, "confirmed")));
+  const confirmedCount = confirmedBookings[0]?.count ?? 0;
+  if (confirmedCount > 0) {
+    return res.status(409).json({
+      error: `Cannot delete agent with ${confirmedCount} confirmed booking(s). Cancel or complete them first.`,
+    });
+  }
+
+  // Delete wallet transactions, wallet, package discounts, then agent
+  await db.delete(walletTransactionsTable).where(eq(walletTransactionsTable.agentId, agent.id));
+  await db.delete(agentWalletsTable).where(eq(agentWalletsTable.agentId, agent.id));
+  await db.delete(agentPackageDiscountsTable).where(eq(agentPackageDiscountsTable.agentId, agent.id));
+  await db.delete(agentsTable).where(eq(agentsTable.id, agent.id));
+
+  // Optionally delete the Clerk user so the email can be reused
+  const profile = await db.query.profilesTable.findFirst({ where: eq(profilesTable.id, agent.userId) });
+  if (profile?.clerkUserId) {
+    const CLERK_SECRET = process.env.CLERK_SECRET_KEY;
+    if (CLERK_SECRET) {
+      // Fire-and-forget — don't block the response
+      setImmediate(async () => {
+        try {
+          await fetch(`https://api.clerk.com/v1/users/${profile.clerkUserId}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${CLERK_SECRET}` },
+          });
+        } catch (e) { /* best-effort */ }
+      });
+    }
+  }
+
+  // Downgrade profile role back to user
+  await db.update(profilesTable)
+    .set({ role: "user", updatedAt: new Date() })
+    .where(eq(profilesTable.id, agent.userId));
+
+  return res.json({ message: "Agent account deleted successfully." });
+});
+
+// ── Delete Agent Application ──────────────────────────────────────────────────
+
+router.delete("/admin/agent-applications/:id", async (req, res) => {
+  const application = await db.query.agentApplicationsTable.findFirst({
+    where: eq(agentApplicationsTable.id, req.params.id),
+  });
+  if (!application) return res.status(404).json({ error: "Application not found" });
+
+  await db.delete(agentApplicationsTable).where(eq(agentApplicationsTable.id, req.params.id));
+  return res.json({ message: "Application deleted successfully." });
+});
+
 // ── Secure Wallet Top-Up ──────────────────────────────────────────────────────
 
 router.post("/admin/agents/:id/wallet/topup", async (req, res) => {

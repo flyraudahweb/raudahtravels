@@ -16,6 +16,7 @@ import { profilesTable } from "./profiles";
 export const agentStatusEnum = pgEnum("agent_status", [
   "active",
   "suspended",
+  "blocked",
   "pending",
 ]);
 

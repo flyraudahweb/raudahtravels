@@ -1,15 +1,11 @@
-# Task List: Multi-Registration & Auto-Save
+# Task List: Agent Account Creation Fixes
 
-- [x] Fix Agent Package Inventory Bug (`api-server/src/routes/agents.ts`)
-  - [x] Increment `packagesTable.currentBookings` in Wallet flow
-  - [x] Increment `packagesTable.currentBookings` in Standard flow
-- [x] Implement Auto-Save (Network Resilience)
-  - [x] `AdminBookPilgrim.tsx`: Save/Restore `pilgrim` and `travel` to `localStorage`
-  - [x] `AdminBookPilgrim.tsx`: Clear draft on success
-  - [x] `AgentClients.tsx`: Save/Restore `form` to `localStorage`
-  - [x] `AgentClients.tsx`: Clear draft on success
-- [x] Implement "Register Another" Flow
-  - [x] `AdminBookPilgrim.tsx`: Add "Register Another Pilgrim" button (hide if online payment)
-  - [x] `AdminBookPilgrim.tsx`: Retain package/payment, clear personal details, jump to Step 2
-  - [x] `AgentClients.tsx`: Transition to Success View inside Dialog
-  - [x] `AgentClients.tsx`: Add "Register Another Client" button (hide if online payment)
+- [x] Fix "Failed to fetch" timeout on Direct Agent Creation
+  - [x] `admin.ts`: Make email verification fire-and-forget in `/admin/agents/create`
+  - [x] `admin.ts`: Make duplicate email check return idempotent success if agent already exists
+  - [x] `AdminAgents.tsx`: Handle "failed to fetch" network timeouts with a helpful toast
+  - [x] `AdminAgents.tsx`: Handle `alreadyExisted` flag to show credentials dialog
+- [x] Fix "User already exists" on Agent Application Approval
+  - [x] `admin.ts`: Catch `form_identifier_exists` in `/admin/agent-applications/:id/approve`
+  - [x] `admin.ts`: Fetch existing Clerk user and promote their profile to `agent` role
+  - [x] `AdminAgents.tsx`: Update success dialog to explain when an existing login was used

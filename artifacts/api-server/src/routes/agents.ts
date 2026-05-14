@@ -36,6 +36,25 @@ function toAgentResponse(a: typeof agentsTable.$inferSelect) {
   };
 }
 
+/** Returns the agent record if the logged-in user is an active agent, else sends an error response. */
+async function ensureActiveAgent(req: any, res: any): Promise<typeof agentsTable.$inferSelect | null> {
+  const { userId: clerkUserId } = getAuth(req);
+  if (!clerkUserId) { res.status(401).json({ error: "Unauthorized" }); return null; }
+  const profile = await getProfileByClerkId(clerkUserId);
+  if (!profile) { res.status(404).json({ error: "Profile not found" }); return null; }
+  const agent = await db.query.agentsTable.findFirst({ where: eq(agentsTable.userId, profile.id) });
+  if (!agent) { res.status(404).json({ error: "Agent profile not found" }); return null; }
+  if (agent.status === "suspended") {
+    res.status(403).json({ error: "Your agent account has been suspended. Please contact support." });
+    return null;
+  }
+  if (agent.status === "blocked") {
+    res.status(403).json({ error: "Your agent account has been blocked. Please contact support." });
+    return null;
+  }
+  return agent;
+}
+
 // ── Public: Submit agent application (no auth required) ──────────────────────
 
 // SECURITY FIX #10: Rate limit public agent applications (max 3/min per IP)
