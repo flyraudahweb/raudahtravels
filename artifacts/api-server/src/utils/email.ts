@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-import { Resend } from "resend";
+// Note: We use the Resend REST API directly (not the SDK) to avoid Node.js fetch encoding issues
 import { db } from "@workspace/db";
 import { siteSettingsTable } from "@workspace/db";
 import { inArray } from "drizzle-orm";
@@ -105,23 +105,38 @@ async function sendViaSMTP(cfg: NonNullable<EmailConfig["smtp"]>, opts: {
 async function sendViaResend(apiKey: string, from: string, opts: {
   to: string; subject: string; html: string; text?: string;
 }): Promise<boolean> {
-  const resend = new Resend(apiKey);
-  logger.info({ from, to: opts.to, subject: opts.subject }, "Resend: calling emails.send()");
-  const result = await resend.emails.send({
+  // Use direct REST API instead of SDK to avoid Node.js fetch encoding issues
+  const body = JSON.stringify({
     from,
-    to: opts.to,
+    to: [opts.to],
     subject: opts.subject,
     html: opts.html,
-    text: opts.text,
+    ...(opts.text ? { text: opts.text } : {}),
   });
-  logger.info({ resendResult: JSON.stringify(result) }, "Resend: API response");
-  if (result.error) {
-    logger.error({ resendError: result.error }, "Resend: API returned error");
-    throw new Error(result.error.message || JSON.stringify(result.error));
+
+  logger.info({ from, to: opts.to, subject: opts.subject }, "Resend: calling REST API");
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: new TextEncoder().encode(body),
+  });
+
+  const result = await response.json() as any;
+  logger.info({ status: response.status, resendResult: JSON.stringify(result) }, "Resend: API response");
+
+  if (!response.ok) {
+    const msg = result?.message || result?.error?.message || JSON.stringify(result);
+    throw new Error(`Resend API error (${response.status}): ${msg}`);
   }
-  if (!result.data?.id) {
-    logger.warn({ resendData: result.data }, "Resend: no email ID returned — email may not have been queued");
+
+  if (!result.id) {
+    logger.warn({ result }, "Resend: no email ID in response");
   }
+
   return true;
 }
 
