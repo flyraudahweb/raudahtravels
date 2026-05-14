@@ -219,6 +219,37 @@ export default function UserDashboard() {
     return null;
   }
 
+  // ── Block suspended/blocked users ──────────────────────────────────────────
+  const accountStatus = (profile as any).accountStatus;
+  if (accountStatus === "suspended" || accountStatus === "blocked") {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-[#F0F2FF]">
+        <div className="max-w-md w-full mx-4 bg-white rounded-3xl border border-[#E2E8F0] shadow-xl p-8 text-center">
+          <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 ${accountStatus === "blocked" ? "bg-red-100" : "bg-amber-100"}`}>
+            <ShieldCheck className={`w-8 h-8 ${accountStatus === "blocked" ? "text-red-600" : "text-amber-600"}`} />
+          </div>
+          <h2 className="text-xl font-black text-[#0F172A] mb-2">
+            Account {accountStatus === "blocked" ? "Blocked" : "Suspended"}
+          </h2>
+          <p className="text-[#64748B] text-sm mb-6">
+            {accountStatus === "blocked"
+              ? "Your account has been blocked. Please contact support for assistance."
+              : "Your account has been temporarily suspended. Please contact support for more information."}
+          </p>
+          <div className="flex flex-col gap-3">
+            <a href="mailto:support@raudahtravels.com" className="px-6 py-3 bg-[#2D3199] hover:bg-[#25297F] text-white font-bold rounded-xl transition-colors text-sm">
+              Contact Support
+            </a>
+            <button onClick={() => signOut({ redirectUrl: basePath || "/" })}
+              className="px-6 py-3 bg-white border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B] font-bold rounded-xl transition-colors text-sm">
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
       <div className="flex min-h-screen bg-[#F0F2FF]">
 

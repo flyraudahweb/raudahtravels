@@ -27,13 +27,14 @@ import AdminAiAssistant from "./AdminAiAssistant";
 import AdminBookPilgrim from "./AdminBookPilgrim";
 import AdminPassports from "./AdminPassports";
 import AdminBackup from "./AdminBackup";
+import AdminUsers from "./AdminUsers";
 import {
   LayoutDashboard, Package, CreditCard, Users, BookOpen, UserCheck,
   TrendingUp, MessageSquare, UserCog, LogOut, Home, ChevronRight,
   Building2, History, Pencil, ShieldCheck, Barcode, MessageCircle,
   FormInput, Settings, Bot, UserPlus, ChevronDown, ChevronUp,
   PanelLeftClose, PanelLeftOpen, LayoutGrid, X, FileImage, Inbox,
-  HardDrive,
+  HardDrive, UsersRound,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -92,6 +93,7 @@ const ALL_NAV_GROUPS: (NavGroupDef & { permKey?: string })[] = [
   {
     label: "System",
     items: [
+      { href: "/admin/users",        label: "User Accounts",  icon: UsersRound,    permKey: "staff_management" },
       { href: "/admin/support",      label: "Support",        icon: MessageSquare, permKey: "support_tickets" },
       { href: "/admin/enquiries",    label: "Enquiries",      icon: Inbox,         permKey: "support_tickets" },
       { href: "/admin/chat",         label: "Team Chat",      icon: MessageCircle, permKey: "team_chat" },
@@ -487,6 +489,7 @@ export default function AdminConsole() {
               <Route path="/admin/ai"           component={AdminAiAssistant} />
               <Route path="/admin/book-pilgrim" component={AdminBookPilgrim} />
               <Route path="/admin/passports"    component={AdminPassports} />
+              <Route path="/admin/users"        component={AdminUsers} />
               <Route path="/admin/backup"       component={AdminBackup} />
             </Switch>
           </div>

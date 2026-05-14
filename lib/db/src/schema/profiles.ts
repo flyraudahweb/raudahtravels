@@ -19,6 +19,7 @@ export const profilesTable = pgTable("profiles", {
   phone: text("phone"),
   avatarUrl: text("avatar_url"),
   role: roleEnum("role").notNull().default("user"),
+  accountStatus: text("account_status").notNull().default("active"),
   languagePreference: text("language_preference").default("en"),
   ninNumber: text("nin_number"),
   passportNumber: text("passport_number"),

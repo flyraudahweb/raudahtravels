@@ -54,6 +54,63 @@ async function requireAdmin(req: Request, res: Response, next: NextFunction) {
 
 router.use(requireAdmin as any);
 
+// ── Users Management ──────────────────────────────────────────────────────────
+
+router.get("/admin/users", async (req, res) => {
+  const { role, status, search, page: pageStr = "1", limit: limitStr = "50" } = req.query as Record<string, string>;
+  const page = Math.max(1, parseInt(pageStr) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(limitStr) || 50));
+
+  const conditions: any[] = [];
+  if (role && role !== "all") conditions.push(eq(profilesTable.role, role as any));
+  if (status && status !== "all") conditions.push(eq(profilesTable.accountStatus, status));
+  if (search && search.trim()) {
+    const q = `%${search.trim().toLowerCase()}%`;
+    conditions.push(
+      or(
+        ilike(profilesTable.fullName, q),
+        ilike(profilesTable.email, q),
+        ilike(profilesTable.phone, q),
+      )
+    );
+  }
+
+  const where = conditions.length ? and(...conditions) : undefined;
+  const [countResult] = await db.select({ count: sql<number>`count(*)::int` }).from(profilesTable).where(where);
+  const total = countResult?.count ?? 0;
+
+  const users = await db.select().from(profilesTable)
+    .where(where)
+    .orderBy(desc(profilesTable.createdAt))
+    .limit(limit)
+    .offset((page - 1) * limit);
+
+  return res.json({ users, total, page, limit, totalPages: Math.ceil(total / limit) });
+});
+
+router.put("/admin/users/:id/status", async (req, res) => {
+  const { accountStatus } = req.body as { accountStatus: string };
+  const validStatuses = ["active", "suspended", "blocked"];
+  if (!validStatuses.includes(accountStatus)) {
+    return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
+  }
+
+  const user = await db.query.profilesTable.findFirst({ where: eq(profilesTable.id, req.params.id) });
+  if (!user) return res.status(404).json({ error: "User not found" });
+
+  // Prevent suspending super_admins
+  if (user.role === "super_admin" && accountStatus !== "active") {
+    return res.status(403).json({ error: "Cannot suspend or block a super admin account." });
+  }
+
+  const [updated] = await db.update(profilesTable)
+    .set({ accountStatus, updatedAt: new Date() })
+    .where(eq(profilesTable.id, req.params.id))
+    .returning();
+
+  return res.json({ ...updated, message: `User account status updated to "${accountStatus}".` });
+});
+
 // ── Pilgrims ──────────────────────────────────────────────────────────────────
 
 router.get("/admin/pilgrims", async (req, res) => {
