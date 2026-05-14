@@ -6,7 +6,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useListPackages, getListPackagesQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { MapPin, CalendarDays, Star, CheckCircle2, Phone, MessageCircle, Users, Search, ArrowRight, ChevronRight, Check, Globe, ChevronDown, Minus, Plus, Play } from "lucide-react";
+import { MapPin, CalendarDays, Star, CheckCircle2, Phone, MessageCircle, Users, Search, ArrowRight, ChevronRight, Check, Globe, ChevronDown, Minus, Plus } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import consultancyImg from "@/assets/images/consultancy.png";
 import { PackageAvailability } from "@/components/PackageAvailability";
@@ -142,107 +142,6 @@ const TESTIMONIALS = [
   },
 ];
 
-/** Default hero video — shown when no video is configured in Admin Settings */
-const DEFAULT_HERO_VIDEO = "https://www.youtube.com/watch?v=zlUXmn4FJ0o&t=148s";
-
-/**
- * Converts a YouTube/Vimeo watch URL into an embeddable URL.
- *
- * IMPORTANT — Error 153 fix:
- * YouTube blocks embeds that suppress native controls (`controls=0`,
- * `showinfo=0`, `modestbranding=1`). We keep autoplay/mute/loop but
- * let the player render its standard chrome to avoid restrictions.
- */
-function getEmbedUrl(url: string): string {
-  if (!url) return "";
-
-  // Extract start-time from ?t=148s or &start=148
-  function extractStart(u: string): string {
-    const tMatch = u.match(/[?&]t=(\d+)/);
-    if (tMatch) return `&start=${tMatch[1]}`;
-    const sMatch = u.match(/[?&]start=(\d+)/);
-    if (sMatch) return `&start=${sMatch[1]}`;
-    return "";
-  }
-
-  // If already an embed URL, normalise parameters
-  if (url.includes("youtube.com/embed/")) {
-    const id = url.split("youtube.com/embed/")[1]?.split(/[?&#]/)[0];
-    if (id) return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&rel=0${extractStart(url)}`;
-    return url;
-  }
-  if (url.includes("player.vimeo.com/video/")) {
-    if (!url.includes("autoplay=1")) {
-      const sep = url.includes("?") ? "&" : "?";
-      return `${url}${sep}autoplay=1&muted=1&loop=1&background=1`;
-    }
-    return url;
-  }
-
-  // YouTube (standard, shorts, youtu.be)
-  const ytMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([^&\s?]+)/);
-  if (ytMatch) {
-    const id = ytMatch[1];
-    return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&rel=0${extractStart(url)}`;
-  }
-
-  // Vimeo
-  const vimeoMatch = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
-  if (vimeoMatch) {
-    return `https://player.vimeo.com/video/${vimeoMatch[1]}?autoplay=1&muted=1&loop=1&background=1`;
-  }
-
-  // Dead / internal URLs
-  if (url.includes("localhost") || url.includes("/src/assets/")) {
-    console.warn("Invalid Video URL detected: ", url);
-    return "";
-  }
-
-  return url;
-}
-
-function HeroVideoCard({ videoUrl }: { videoUrl?: string }) {
-  // Use admin-configured URL, or fall back to the default Raudah Travels promo
-  const embedUrl = getEmbedUrl(videoUrl || DEFAULT_HERO_VIDEO);
-  return (
-    <div className="relative w-full max-w-[560px] mx-auto lg:ml-8">
-      <div className="rounded-3xl overflow-hidden bg-[#0d1b2a] shadow-2xl border border-white/10 aspect-[1/1] sm:aspect-[6/5]">
-        {embedUrl ? (
-          <iframe
-            src={embedUrl}
-            className="w-full h-full"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-            style={{ border: "none" }}
-            title="Raudah Travels hero video"
-          />
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-5 bg-gradient-to-br from-[#0d1b2a] to-[#1a2f45]">
-            <div className="relative">
-              <div className="absolute inset-0 rounded-full bg-[#FF3B00]/20 animate-ping" style={{ animationDuration: "2s" }} />
-              <div className="relative w-20 h-20 rounded-full bg-[#FF3B00]/15 border-2 border-[#FF3B00]/40 flex items-center justify-center">
-                <Play className="w-9 h-9 text-[#FF3B00] ml-1" />
-              </div>
-            </div>
-            <div className="text-center px-8">
-              <p className="text-white font-bold text-base mb-2">Our Journey Awaits</p>
-              <p className="text-white/35 text-xs leading-relaxed">
-                Add a YouTube or Vimeo URL in<br />
-                Admin → Settings → Landing Page Edits
-              </p>
-            </div>
-            <div className="flex items-center gap-3 mt-1">
-              {["🕌 Makkah", "✈️ Direct Flights", "🌙 Madinah"].map(t => (
-                <span key={t} className="text-[10px] text-white/30 font-medium">{t}</span>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-      <div className="absolute -inset-6 bg-indigo-500/10 rounded-3xl blur-3xl -z-10" />
-    </div>
-  );
-}
 
 const HERO_IMAGES = [
   "https://images.pexels.com/photos/28209449/pexels-photo-28209449.jpeg",
@@ -275,7 +174,7 @@ export default function Home() {
     },
     staleTime: 60_000,
   });
-  const heroVideoUrl = pubSettings?.landing_video_url as string | undefined;
+
 
   const { data: packagesData, isLoading } = useListPackages(
     { limit: 3, available: true },
@@ -316,7 +215,7 @@ export default function Home() {
           {/* Hero content */}
           <div className="relative z-10 flex-1 flex items-center">
             <div className="container mx-auto px-4 md:px-8 pt-28 md:pt-32 pb-[340px] md:pb-52 max-w-7xl">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-4 items-center">
+              <div className="max-w-2xl">
 
                 {/* Left */}
                 <div className="space-y-6">
@@ -348,8 +247,6 @@ export default function Home() {
 
                 </div>
 
-                {/* Right — Hero video / placeholder */}
-                <HeroVideoCard videoUrl={heroVideoUrl} />
               </div>
             </div>
           </div>
