@@ -215,7 +215,7 @@ export default function Home() {
           {/* Hero content */}
           <div className="relative z-10 flex-1 flex items-center">
             <div className="container mx-auto px-4 md:px-8 pt-28 md:pt-32 pb-[340px] md:pb-52 max-w-7xl">
-              <div className="max-w-2xl">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-8 items-center">
 
                 {/* Left */}
                 <div className="space-y-6">
@@ -245,6 +245,21 @@ export default function Home() {
                     </Button>
                   </div>
 
+                </div>
+
+                {/* Right — Video */}
+                <div className="relative w-full max-w-[560px] mx-auto lg:ml-auto">
+                  <div className="rounded-3xl overflow-hidden bg-[#0d1b2a] shadow-2xl border border-white/10 aspect-video">
+                    <iframe 
+                      src="https://www.youtube.com/embed/zlUXmn4FJ0o?si=uIbWog9sX6wu7-rq&autoplay=1&mute=1" 
+                      title="YouTube video player" 
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+                      referrerPolicy="strict-origin-when-cross-origin" 
+                      allowFullScreen
+                      className="w-full h-full border-0"
+                    />
+                  </div>
+                  <div className="absolute -inset-6 bg-indigo-500/20 rounded-3xl blur-3xl -z-10" />
                 </div>
 
               </div>
