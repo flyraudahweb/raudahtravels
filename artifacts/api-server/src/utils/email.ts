@@ -32,42 +32,53 @@ async function getEmailConfig(): Promise<EmailConfig | null> {
         "resend_api_key", "resend_from_email",
       ])
     );
-    // value column is json — may be string, boolean, number
-    const m = Object.fromEntries(rows.map(r => [r.key, r.value]));
 
-    const provider: EmailProvider = (m.email_provider as EmailProvider) || "smtp";
-
-    if (provider === "resend") {
-      if (!m.resend_api_key) return null;
-      return {
-        provider,
-        resendKey: String(m.resend_api_key),
-        resendFrom: m.resend_from_email
-          ? String(m.resend_from_email)
-          : "Raudah Travels & Tours <onboarding@resend.dev>",
-      };
+    // The value column is jsonb — values may be raw strings, JSON-encoded strings,
+    // booleans, or numbers.  Unwrap any JSON string wrapping.
+    function unwrap(v: unknown): string {
+      if (v === null || v === undefined) return "";
+      if (typeof v === "string") return v;
+      return String(v);
     }
 
-    // Default: SMTP — value column is json so coerce everything to string/bool properly
-    const host = m.smtp_host ? String(m.smtp_host) : "";
-    const user = m.smtp_user ? String(m.smtp_user) : "";
-    const pass = m.smtp_pass ? String(m.smtp_pass) : "";
-    if (!host || !user || !pass) return null;
+    const m = Object.fromEntries(rows.map(r => [r.key, r.value]));
+
+    const provider: EmailProvider = (unwrap(m.email_provider) as EmailProvider) || "smtp";
+
+    if (provider === "resend") {
+      const resendKey = unwrap(m.resend_api_key);
+      if (!resendKey) {
+        logger.warn("Resend selected but no API key found in settings");
+        return null;
+      }
+      const resendFrom = unwrap(m.resend_from_email) || "Raudah Travels & Tours <onboarding@resend.dev>";
+      logger.info({ provider, resendFrom, keyPrefix: resendKey.substring(0, 8) + "..." }, "Email config loaded (Resend)");
+      return { provider, resendKey, resendFrom };
+    }
+
+    // Default: SMTP
+    const host = unwrap(m.smtp_host);
+    const user = unwrap(m.smtp_user);
+    const pass = unwrap(m.smtp_pass);
+    if (!host || !user || !pass) {
+      logger.warn({ host: !!host, user: !!user, pass: !!pass }, "SMTP selected but missing credentials");
+      return null;
+    }
 
     return {
       provider,
       smtp: {
         host,
-        port: m.smtp_port ? parseInt(String(m.smtp_port)) : 587,
-        // stored as JSON boolean — handle both boolean and string forms
-        secure: m.smtp_secure === true || m.smtp_secure === "true",
+        port: m.smtp_port ? parseInt(unwrap(m.smtp_port)) : 587,
+        secure: m.smtp_secure === true || unwrap(m.smtp_secure) === "true",
         user,
         pass,
-        fromName: m.smtp_from_name ? String(m.smtp_from_name) : "Raudah Travels & Tours",
-        fromEmail: m.smtp_from_email ? String(m.smtp_from_email) : user,
+        fromName: unwrap(m.smtp_from_name) || "Raudah Travels & Tours",
+        fromEmail: unwrap(m.smtp_from_email) || user,
       },
     };
-  } catch {
+  } catch (err) {
+    logger.error({ err }, "Failed to load email config from database");
     return null;
   }
 }

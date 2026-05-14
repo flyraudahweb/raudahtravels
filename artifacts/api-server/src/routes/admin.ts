@@ -944,31 +944,35 @@ router.post("/admin/email/test", async (req, res) => {
   const { to } = req.body as { to?: string };
   if (!to) return res.status(400).json({ error: "to (email address) is required" });
 
-  const ok = await sendEmail({
-    to,
-    subject: "Test Email — Raudah Travels & Tours",
-    html: `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:32px;background:#F0F2FF;">
-      <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;border:1px solid #E2E8F0;">
-        <div style="background:linear-gradient(135deg,#1C1F66,#2D3199);border-radius:12px;padding:20px;text-align:center;margin-bottom:24px;">
-          <p style="margin:0;color:#fff;font-size:18px;font-weight:800;">Raudah Travels &amp; Tours</p>
+  try {
+    const ok = await sendEmail({
+      to,
+      subject: "Test Email — Raudah Travels & Tours",
+      html: `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:32px;background:#F0F2FF;">
+        <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;border:1px solid #E2E8F0;">
+          <div style="background:linear-gradient(135deg,#1C1F66,#2D3199);border-radius:12px;padding:20px;text-align:center;margin-bottom:24px;">
+            <p style="margin:0;color:#fff;font-size:18px;font-weight:800;">Raudah Travels &amp; Tours</p>
+          </div>
+          <h2 style="color:#0F172A;margin:0 0 12px;">Email Configuration Test</h2>
+          <p style="color:#64748B;font-size:14px;line-height:1.6;margin:0 0 16px;">
+            This is a test email sent from your Admin Settings to verify your email configuration is working correctly.
+          </p>
+          <div style="background:#DCFCE7;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
+            <p style="margin:0;color:#16A34A;font-size:13px;font-weight:600;">✓ Your email settings are working!</p>
+          </div>
+          <p style="color:#94A3B8;font-size:12px;margin:0;">Sent from: Admin → Settings → Email → Send Test Email</p>
         </div>
-        <h2 style="color:#0F172A;margin:0 0 12px;">Email Configuration Test</h2>
-        <p style="color:#64748B;font-size:14px;line-height:1.6;margin:0 0 16px;">
-          This is a test email sent from your Admin Settings to verify your email configuration is working correctly.
-        </p>
-        <div style="background:#DCFCE7;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
-          <p style="margin:0;color:#16A34A;font-size:13px;font-weight:600;">✓ Your email settings are working!</p>
-        </div>
-        <p style="color:#94A3B8;font-size:12px;margin:0;">Sent from: Admin → Settings → Email → Send Test Email</p>
-      </div>
-    </body></html>`,
-    text: "This is a test email from Raudah Travels & Tours. Your email configuration is working correctly.",
-  });
+      </body></html>`,
+      text: "This is a test email from Raudah Travels & Tours. Your email configuration is working correctly.",
+    });
 
-  if (ok) {
-    return res.json({ success: true, message: `Test email sent to ${to}` });
-  } else {
-    return res.status(500).json({ success: false, error: "Email failed to send. Check your configuration in Settings." });
+    if (ok) {
+      return res.json({ success: true, message: `Test email sent to ${to}` });
+    } else {
+      return res.status(500).json({ success: false, error: "Email failed to send. Please check: 1) Email Provider is set to 'resend' in Settings, 2) Resend API Key is correct, 3) From Email is verified in Resend dashboard." });
+    }
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: `Email error: ${err?.message || "Unknown error"}. Check your Resend API key and from email.` });
   }
 });
 
