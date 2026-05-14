@@ -46,12 +46,13 @@ async function getEmailConfig(): Promise<EmailConfig | null> {
     const provider: EmailProvider = (unwrap(m.email_provider) as EmailProvider) || "smtp";
 
     if (provider === "resend") {
-      const resendKey = unwrap(m.resend_api_key);
+      // Strip any non-ASCII / invisible chars that sneak in via copy-paste in the admin UI
+      const resendKey = unwrap(m.resend_api_key).replace(/[^\x20-\x7E]/g, "").trim();
       if (!resendKey) {
         logger.warn("Resend selected but no API key found in settings");
         return null;
       }
-      const resendFrom = unwrap(m.resend_from_email) || "Raudah Travels & Tours <onboarding@resend.dev>";
+      const resendFrom = unwrap(m.resend_from_email).replace(/[^\x20-\x7E]/g, "").trim() || "Raudah Travels <onboarding@resend.dev>";
       logger.info({ provider, resendFrom, keyPrefix: resendKey.substring(0, 8) + "..." }, "Email config loaded (Resend)");
       return { provider, resendKey, resendFrom };
     }
