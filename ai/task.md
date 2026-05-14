@@ -12,3 +12,15 @@
 - [x] Frontend: Agent portal guard (full-page notice for suspended/blocked agents)
 - [x] Schema: Added `blocked` to `agent_status` PostgreSQL enum
 - [x] Pushed to GitHub → Railway deploying
+
+# Admin Users Page — Completed ✅
+
+## Done
+- [x] Schema: Added `account_status` field to profiles table
+- [x] Backend: `GET /admin/users` (list all users with role/status/search filters + pagination)
+- [x] Backend: `PUT /admin/users/:id/status` (suspend/block/activate any user)
+- [x] Frontend: Full AdminUsers page with stats, filters, table, mobile cards, pagination
+- [x] Frontend: User Dashboard suspension guard (shows notice page for suspended/blocked users)
+- [x] Admin Console: Wired Users page into sidebar nav and routes
+- [x] Migration: `0003_add_account_status_to_profiles.sql`
+- [x] Pushed to GitHub → Railway deploying

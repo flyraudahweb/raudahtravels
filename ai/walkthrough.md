@@ -23,23 +23,46 @@ I have successfully resolved the two major issues disrupting the creation and ap
 Full admin lifecycle management for agents with frontend UI, backend API, and portal-level enforcement.
 
 ## 3. Backend Endpoints
-*   **`PUT /admin/agents/:id/status`** — Change agent status to `active`, `suspended`, or `blocked`. Validates input and returns the updated agent.
-*   **`DELETE /admin/agents/:id`** — Permanently deletes an agent account. Prevents deletion if there are confirmed bookings. Cascades deletion through wallet transactions, wallet, package discounts, and agent record. Downgrades the user's profile role back to `user` and fire-and-forget deletes the Clerk user.
-*   **`DELETE /admin/agent-applications/:id`** — Deletes a pending or rejected application from the database.
+*   **`PUT /admin/agents/:id/status`** — Change agent status to `active`, `suspended`, or `blocked`.
+*   **`DELETE /admin/agents/:id`** — Permanently deletes an agent account. Cascades through wallet, discounts, and downgrades profile.
+*   **`DELETE /admin/agent-applications/:id`** — Deletes applications.
 
-## 4. Admin Dashboard UI
-*   **Active Agents tab** — Each agent card now has **Suspend**, **Block**, and **Delete** action buttons alongside the existing management controls.
-*   **New "Suspended" tab** — Shows all suspended and blocked agents with color-coded cards. Admins can **Unsuspend/Unblock** (set active) or **Delete** from this tab.
-*   **Pending Applications** — Added a delete button (trash icon) next to each Approve/Reject action.
-*   **Rejected Applications** — Added a delete column so admins can clean up old rejected applications.
-*   **Confirmation Dialogs** — All destructive actions (suspend, block, delete agent, delete app) require confirmation through a dialog before executing.
+## 4. Admin Dashboard UI (Agents)
+*   **Active Agents tab** — Suspend, Block, Delete action buttons per agent.
+*   **"Suspended" tab** — Shows suspended/blocked agents with Unsuspend/Unblock/Delete.
+*   **Pending & Rejected tabs** — Delete buttons on each application.
+*   **Confirmation Dialogs** — All destructive actions require confirmation.
 
 ## 5. Agent Portal Guard
-*   When a suspended or blocked agent logs in, they see a full-page notice ("Account Suspended/Blocked") with a "Contact Support" link and "Sign Out" button instead of the normal portal.
-*   Backend middleware (`ensureActiveAgent`) on agent routes returns `403 Forbidden` if the agent's status is `suspended` or `blocked`.
+*   Suspended/blocked agents see a notice page instead of the portal.
+*   Backend `ensureActiveAgent` middleware returns 403 for restricted agents.
 
-## 6. Schema Update
-*   Added `blocked` to the `agent_status` PostgreSQL enum (alongside `active`, `suspended`, `pending`).
+---
 
-> [!TIP]
-> All changes committed and pushed to `main`. Railway is deploying the updates.
+# 👥 Admin Users Page (Account Management)
+
+Full user account management page for admins to view and control all platform accounts.
+
+## 6. Backend Endpoints
+*   **`GET /admin/users`** — List all users with role, status, and search filters + pagination.
+*   **`PUT /admin/users/:id/status`** — Change any user's account status (active/suspended/blocked). Super admins cannot be suspended.
+
+## 7. Admin Users Page
+*   **Stats bar** — Total users, active, suspended, blocked counts with gradient cards.
+*   **Search** — Search by name, email, or phone.
+*   **Filters** — Filter by role (user/agent/staff/admin/super_admin) and status (active/suspended/blocked).
+*   **Responsive table** — Desktop table + mobile cards with role/status badges.
+*   **Actions** — Suspend, Block, Activate buttons per user with confirmation dialogs.
+*   **Pagination** — Server-side pagination for large user bases.
+
+## 8. User Dashboard Guard
+*   Suspended/blocked users see a full-page notice with "Contact Support" and "Sign Out" buttons.
+
+## 9. Schema Updates
+*   Added `account_status` text column to `profiles` table (default: 'active').
+*   Migration: `0003_add_account_status_to_profiles.sql`
+
+> [!IMPORTANT]
+> **Two SQL migrations need to be run on your Neon database:**
+> 1. `ALTER TYPE "public"."agent_status" ADD VALUE IF NOT EXISTS 'blocked';`
+> 2. `ALTER TABLE "profiles" ADD COLUMN IF NOT EXISTS "account_status" text NOT NULL DEFAULT 'active';`
