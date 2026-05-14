@@ -973,6 +973,30 @@ router.post("/admin/email/test", async (req, res) => {
   }
 });
 
+// ── DEBUG: Check email config (temporary diagnostic) ─────────────────────────
+router.get("/admin/email/debug", async (req, res) => {
+  const rows = await db.select().from(siteSettingsTable).where(
+    inArray(siteSettingsTable.key, [
+      "email_provider", "resend_api_key", "resend_from_email",
+      "smtp_host", "smtp_port", "smtp_user", "smtp_pass",
+      "smtp_secure", "smtp_from_name", "smtp_from_email",
+    ])
+  );
+  const settings = rows.map(r => ({
+    key: r.key,
+    valueType: typeof r.value,
+    value: r.key.includes("pass") || r.key.includes("api_key")
+      ? (r.value ? `${String(r.value).substring(0, 6)}...` : "(empty)")
+      : r.value,
+    rawJSON: JSON.stringify(r.value),
+  }));
+  return res.json({
+    totalSettingsFound: rows.length,
+    settings,
+    resolvedProvider: settings.find(s => s.key === "email_provider")?.value || "(not set, defaulting to smtp)",
+  });
+});
+
 router.put("/admin/settings/:key", async (req, res) => {
   const { value } = req.body;
   const existing = await db.query.siteSettingsTable.findFirst({

@@ -122,25 +122,32 @@ export async function sendEmail(opts: {
   subject: string;
   html: string;
   text?: string;
+  throwOnError?: boolean;
 }): Promise<boolean> {
   const cfg = await getEmailConfig();
   if (!cfg) {
-    logger.warn({ to: opts.to }, "Email not sent: no email provider configured in Settings");
+    const msg = "Email not sent: no email provider configured in Settings";
+    logger.warn({ to: opts.to }, msg);
+    if (opts.throwOnError) throw new Error(msg);
     return false;
   }
   try {
     if (cfg.provider === "resend" && cfg.resendKey) {
       const from = cfg.resendFrom ?? "Raudah Travels & Tours <onboarding@resend.dev>";
+      logger.info({ to: opts.to, from, provider: "resend" }, "Attempting to send email via Resend");
       await sendViaResend(cfg.resendKey, from, opts);
     } else if (cfg.provider === "smtp" && cfg.smtp) {
       await sendViaSMTP(cfg.smtp, opts);
     } else {
+      const msg = `Email provider "${cfg.provider}" is selected but not properly configured`;
+      if (opts.throwOnError) throw new Error(msg);
       return false;
     }
     logger.info({ to: opts.to, subject: opts.subject, provider: cfg.provider }, "Email sent");
     return true;
-  } catch (err) {
+  } catch (err: any) {
     logger.error({ err, to: opts.to, provider: cfg.provider }, "Email send failed");
+    if (opts.throwOnError) throw err;
     return false;
   }
 }
