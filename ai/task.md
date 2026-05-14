@@ -1,11 +1,14 @@
-# Task List: Agent Account Creation Fixes
+# Agent Lifecycle Controls — Completed ✅
 
-- [x] Fix "Failed to fetch" timeout on Direct Agent Creation
-  - [x] `admin.ts`: Make email verification fire-and-forget in `/admin/agents/create`
-  - [x] `admin.ts`: Make duplicate email check return idempotent success if agent already exists
-  - [x] `AdminAgents.tsx`: Handle "failed to fetch" network timeouts with a helpful toast
-  - [x] `AdminAgents.tsx`: Handle `alreadyExisted` flag to show credentials dialog
-- [x] Fix "User already exists" on Agent Application Approval
-  - [x] `admin.ts`: Catch `form_identifier_exists` in `/admin/agent-applications/:id/approve`
-  - [x] `admin.ts`: Fetch existing Clerk user and promote their profile to `agent` role
-  - [x] `AdminAgents.tsx`: Update success dialog to explain when an existing login was used
+## Done
+- [x] Backend: `PUT /admin/agents/:id/status` (suspend/block/unsuspend/unblock)
+- [x] Backend: `DELETE /admin/agents/:id` (delete agent + cascade cleanup)
+- [x] Backend: `DELETE /admin/agent-applications/:id` (delete applications)
+- [x] Backend: `ensureActiveAgent` guard on agent routes (403 for suspended/blocked)
+- [x] Frontend: Suspend / Block / Delete buttons on Active Agents tab
+- [x] Frontend: "Suspended" tab with Unsuspend/Unblock/Delete for inactive agents
+- [x] Frontend: Delete button on Pending and Rejected application tabs
+- [x] Frontend: Confirmation dialogs for all destructive actions
+- [x] Frontend: Agent portal guard (full-page notice for suspended/blocked agents)
+- [x] Schema: Added `blocked` to `agent_status` PostgreSQL enum
+- [x] Pushed to GitHub → Railway deploying

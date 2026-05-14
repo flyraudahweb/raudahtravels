@@ -16,5 +16,30 @@ I have successfully resolved the two major issues disrupting the creation and ap
 *   **Seamless Promotion:** When it detects a duplicate, the system automatically searches Clerk for the existing user. It links their existing Clerk ID to the new Agent profile and updates their database role from `user` to `agent`.
 *   **Contextual UI:** The frontend approval dialog was updated. Instead of showing a temporary password that won't work, it detects when an existing login was used and instructs the admin: *"Agent account created using existing login. The agent can sign in with their current credentials."*
 
+---
+
+# 🛡️ Agent Lifecycle Controls (Suspend / Block / Delete)
+
+Full admin lifecycle management for agents with frontend UI, backend API, and portal-level enforcement.
+
+## 3. Backend Endpoints
+*   **`PUT /admin/agents/:id/status`** — Change agent status to `active`, `suspended`, or `blocked`. Validates input and returns the updated agent.
+*   **`DELETE /admin/agents/:id`** — Permanently deletes an agent account. Prevents deletion if there are confirmed bookings. Cascades deletion through wallet transactions, wallet, package discounts, and agent record. Downgrades the user's profile role back to `user` and fire-and-forget deletes the Clerk user.
+*   **`DELETE /admin/agent-applications/:id`** — Deletes a pending or rejected application from the database.
+
+## 4. Admin Dashboard UI
+*   **Active Agents tab** — Each agent card now has **Suspend**, **Block**, and **Delete** action buttons alongside the existing management controls.
+*   **New "Suspended" tab** — Shows all suspended and blocked agents with color-coded cards. Admins can **Unsuspend/Unblock** (set active) or **Delete** from this tab.
+*   **Pending Applications** — Added a delete button (trash icon) next to each Approve/Reject action.
+*   **Rejected Applications** — Added a delete column so admins can clean up old rejected applications.
+*   **Confirmation Dialogs** — All destructive actions (suspend, block, delete agent, delete app) require confirmation through a dialog before executing.
+
+## 5. Agent Portal Guard
+*   When a suspended or blocked agent logs in, they see a full-page notice ("Account Suspended/Blocked") with a "Contact Support" link and "Sign Out" button instead of the normal portal.
+*   Backend middleware (`ensureActiveAgent`) on agent routes returns `403 Forbidden` if the agent's status is `suspended` or `blocked`.
+
+## 6. Schema Update
+*   Added `blocked` to the `agent_status` PostgreSQL enum (alongside `active`, `suspended`, `pending`).
+
 > [!TIP]
-> Both fixes have been successfully committed and pushed to the `main` branch. Railway is currently deploying the updates to production.
+> All changes committed and pushed to `main`. Railway is deploying the updates.
