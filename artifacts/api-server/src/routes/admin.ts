@@ -945,7 +945,7 @@ router.post("/admin/email/test", async (req, res) => {
   if (!to) return res.status(400).json({ error: "to (email address) is required" });
 
   try {
-    const ok = await sendEmail({
+    await sendEmail({
       to,
       subject: "Test Email — Raudah Travels & Tours",
       html: `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:32px;background:#F0F2FF;">
@@ -964,15 +964,12 @@ router.post("/admin/email/test", async (req, res) => {
         </div>
       </body></html>`,
       text: "This is a test email from Raudah Travels & Tours. Your email configuration is working correctly.",
+      throwOnError: true,
     });
-
-    if (ok) {
-      return res.json({ success: true, message: `Test email sent to ${to}` });
-    } else {
-      return res.status(500).json({ success: false, error: "Email failed to send. Please check: 1) Email Provider is set to 'resend' in Settings, 2) Resend API Key is correct, 3) From Email is verified in Resend dashboard." });
-    }
+    return res.json({ success: true, message: `Test email sent to ${to}` });
   } catch (err: any) {
-    return res.status(500).json({ success: false, error: `Email error: ${err?.message || "Unknown error"}. Check your Resend API key and from email.` });
+    const msg = err?.message || "Unknown error";
+    return res.status(500).json({ success: false, error: `Email failed: ${msg}` });
   }
 });
 
