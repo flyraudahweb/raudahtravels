@@ -106,14 +106,22 @@ async function sendViaResend(apiKey: string, from: string, opts: {
   to: string; subject: string; html: string; text?: string;
 }): Promise<boolean> {
   const resend = new Resend(apiKey);
-  const { error } = await resend.emails.send({
+  logger.info({ from, to: opts.to, subject: opts.subject }, "Resend: calling emails.send()");
+  const result = await resend.emails.send({
     from,
     to: opts.to,
     subject: opts.subject,
     html: opts.html,
     text: opts.text,
   });
-  if (error) throw new Error(error.message);
+  logger.info({ resendResult: JSON.stringify(result) }, "Resend: API response");
+  if (result.error) {
+    logger.error({ resendError: result.error }, "Resend: API returned error");
+    throw new Error(result.error.message || JSON.stringify(result.error));
+  }
+  if (!result.data?.id) {
+    logger.warn({ resendData: result.data }, "Resend: no email ID returned — email may not have been queued");
+  }
   return true;
 }
 
