@@ -105,8 +105,10 @@ async function sendViaSMTP(cfg: NonNullable<EmailConfig["smtp"]>, opts: {
 async function sendViaResend(apiKey: string, from: string, opts: {
   to: string; subject: string; html: string; text?: string;
 }): Promise<boolean> {
-  // Use direct REST API instead of SDK to avoid Node.js fetch encoding issues
-  const body = JSON.stringify({
+  // Use Node.js https module directly — bypasses undici/fetch bytestring encoding issues entirely
+  const https = await import("https");
+
+  const payload = JSON.stringify({
     from,
     to: [opts.to],
     subject: opts.subject,
@@ -114,30 +116,55 @@ async function sendViaResend(apiKey: string, from: string, opts: {
     ...(opts.text ? { text: opts.text } : {}),
   });
 
-  logger.info({ from, to: opts.to, subject: opts.subject }, "Resend: calling REST API");
+  const data = Buffer.from(payload, "utf-8");
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: new TextEncoder().encode(body),
+  logger.info({ from, to: opts.to, subject: opts.subject }, "Resend: calling REST API via https");
+
+  return new Promise<boolean>((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: "api.resend.com",
+        path: "/emails",
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + apiKey,
+          "Content-Type": "application/json; charset=utf-8",
+          "Content-Length": data.length,
+        },
+      },
+      (res) => {
+        let body = "";
+        res.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+        res.on("end", () => {
+          try {
+            const result = JSON.parse(body);
+            logger.info({ status: res.statusCode, resendResult: body }, "Resend: API response");
+
+            if (res.statusCode && res.statusCode >= 400) {
+              const msg = result?.message || result?.error?.message || body;
+              reject(new Error(`Resend API error (${res.statusCode}): ${msg}`));
+              return;
+            }
+
+            if (!result.id) {
+              logger.warn({ result }, "Resend: no email ID in response");
+            }
+            resolve(true);
+          } catch (e) {
+            reject(new Error(`Resend: failed to parse response: ${body}`));
+          }
+        });
+      }
+    );
+
+    req.on("error", (err: Error) => {
+      logger.error({ err }, "Resend: HTTPS request failed");
+      reject(err);
+    });
+
+    req.write(data);
+    req.end();
   });
-
-  const result = await response.json() as any;
-  logger.info({ status: response.status, resendResult: JSON.stringify(result) }, "Resend: API response");
-
-  if (!response.ok) {
-    const msg = result?.message || result?.error?.message || JSON.stringify(result);
-    throw new Error(`Resend API error (${response.status}): ${msg}`);
-  }
-
-  if (!result.id) {
-    logger.warn({ result }, "Resend: no email ID in response");
-  }
-
-  return true;
 }
 
 export async function sendEmail(opts: {

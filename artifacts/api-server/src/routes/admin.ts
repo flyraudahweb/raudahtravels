@@ -947,7 +947,7 @@ router.post("/admin/email/test", async (req, res) => {
   try {
     await sendEmail({
       to,
-      subject: "Test Email — Raudah Travels & Tours",
+      subject: "Test Email - Raudah Travels",
       html: `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:32px;background:#F0F2FF;">
         <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:32px;border:1px solid #E2E8F0;">
           <div style="background:linear-gradient(135deg,#1C1F66,#2D3199);border-radius:12px;padding:20px;text-align:center;margin-bottom:24px;">
@@ -958,12 +958,12 @@ router.post("/admin/email/test", async (req, res) => {
             This is a test email sent from your Admin Settings to verify your email configuration is working correctly.
           </p>
           <div style="background:#DCFCE7;border-radius:8px;padding:12px 16px;margin-bottom:16px;">
-            <p style="margin:0;color:#16A34A;font-size:13px;font-weight:600;">✓ Your email settings are working!</p>
+            <p style="margin:0;color:#16A34A;font-size:13px;font-weight:600;">&#10003; Your email settings are working!</p>
           </div>
-          <p style="color:#94A3B8;font-size:12px;margin:0;">Sent from: Admin → Settings → Email → Send Test Email</p>
+          <p style="color:#94A3B8;font-size:12px;margin:0;">Sent from: Admin &gt; Settings &gt; Email &gt; Send Test Email</p>
         </div>
       </body></html>`,
-      text: "This is a test email from Raudah Travels & Tours. Your email configuration is working correctly.",
+      text: "This is a test email from Raudah Travels. Your email configuration is working correctly.",
       throwOnError: true,
     });
     return res.json({ success: true, message: `Test email sent to ${to}` });
