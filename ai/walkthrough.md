@@ -1,68 +1,52 @@
-# 🚀 Agent Creation Reliability & Race Condition Fixes
+# Walkthrough: Email, Hero & Agent Fixes
 
-I have successfully resolved the two major issues disrupting the creation and approval of agent accounts. These fixes make the system highly resilient to network timeouts and elegantly handle users with pre-existing accounts.
+## 1. Email Encoding Fix (Critical)
 
-## 1. Network Timeout Fix (Direct Creation) ⏳
-**The Problem:** Creating an agent via the Admin Panel required 3 sequential external HTTP calls to Clerk's API. On slow connections, this exceeded the browser's/proxy's timeout limit, throwing a "Failed to fetch" error *even though the server successfully created the account in the background*.
-**The Solution:**
-*   **Fire-and-Forget Email Verification:** Moved the final Clerk API call (email verification) off the main request thread using `setImmediate`. This shaved 1-2 seconds off the response time.
-*   **Idempotent Retries:** If an admin encounters a timeout and clicks "Create" again, the system now detects that the account was already successfully created during the previous timed-out attempt. Instead of throwing an "Email already exists" error, it gracefully returns a `200 Success` and displays the credentials dialog.
-*   **Smart Error Handling:** The frontend now detects network timeout errors and provides a helpful toast advising the admin to retry to fetch the credentials.
+**Problem:** Sending emails via the Resend SDK threw `"cannot convert argument to a bytestring"` errors because Node.js's `fetch` (undici) cannot handle non-ASCII characters in headers or body payloads.
 
-## 2. "User Already Exists" Fix (Application Approval) 👥
-**The Problem:** When an applicant submitted the public Agent Application form using an email address that already existed in the system (e.g., they previously signed up as a regular user), the admin could not approve the application. The system would try to create a new Clerk user and fail with a "taken" error.
-**The Solution:**
-*   **Smart Account Lookup:** The approval route now specifically catches the `form_identifier_exists` (duplicate) error from Clerk.
-*   **Seamless Promotion:** When it detects a duplicate, the system automatically searches Clerk for the existing user. It links their existing Clerk ID to the new Agent profile and updates their database role from `user` to `agent`.
-*   **Contextual UI:** The frontend approval dialog was updated. Instead of showing a temporary password that won't work, it detects when an existing login was used and instructs the admin: *"Agent account created using existing login. The agent can sign in with their current credentials."*
+**Root Causes Found:**
+- The Resend SDK internally uses `fetch`, which triggers undici's strict Latin1 header validation
+- The API key stored in the database contained invisible Unicode characters from copy-paste in the admin UI
+- The test email subject and HTML contained non-ASCII characters (`—`, `✓`, `→`)
 
----
+**Solution (3-layer fix):**
+1. **Replaced Resend SDK with Node.js `https` module** — completely bypasses undici/fetch. Raw TCP has no character encoding restrictions.
+2. **Added ASCII sanitizer** on config load — strips all non-printable/non-ASCII chars from API key and From email via `/.replace(/[^\x20-\x7E]/g, "").trim()`
+3. **Made test email 100% ASCII** — replaced `—` with `-`, `✓` with `&#10003;`, `→` with `&gt;`
 
-# 🛡️ Agent Lifecycle Controls (Suspend / Block / Delete)
-
-Full admin lifecycle management for agents with frontend UI, backend API, and portal-level enforcement.
-
-## 3. Backend Endpoints
-*   **`PUT /admin/agents/:id/status`** — Change agent status to `active`, `suspended`, or `blocked`.
-*   **`DELETE /admin/agents/:id`** — Permanently deletes an agent account. Cascades through wallet, discounts, and downgrades profile.
-*   **`DELETE /admin/agent-applications/:id`** — Deletes applications.
-
-## 4. Admin Dashboard UI (Agents)
-*   **Active Agents tab** — Suspend, Block, Delete action buttons per agent.
-*   **"Suspended" tab** — Shows suspended/blocked agents with Unsuspend/Unblock/Delete.
-*   **Pending & Rejected tabs** — Delete buttons on each application.
-*   **Confirmation Dialogs** — All destructive actions require confirmation.
-
-## 5. Agent Portal Guard
-*   Suspended/blocked agents see a notice page instead of the portal.
-*   Backend `ensureActiveAgent` middleware returns 403 for restricted agents.
+**Files Changed:**
+- `artifacts/api-server/src/utils/email.ts` — `sendViaResend()` rewritten with `https.request()` + config sanitization
+- `artifacts/api-server/src/routes/admin.ts` — Test email template cleaned to ASCII
 
 ---
 
-# 👥 Admin Users Page (Account Management)
+## 2. Home Page Hero Redesign
 
-Full user account management page for admins to view and control all platform accounts.
+**Problem:** User wanted the hero video section back alongside the text, using a specific YouTube embed URL.
 
-## 6. Backend Endpoints
-*   **`GET /admin/users`** — List all users with role, status, and search filters + pagination.
-*   **`PUT /admin/users/:id/status`** — Change any user's account status (active/suspended/blocked). Super admins cannot be suspended.
+**Solution:**
+- Restored 2-column grid layout (text left, video right)
+- Embedded `https://www.youtube.com/embed/zlUXmn4FJ0o` with autoplay+mute
+- Polished video container with `rounded-3xl`, shadow, and indigo blur glow
+- Retained the fullscreen background slideshow (4 Pexels images cycling every 5s)
+- Cleaned up ~100 lines of dead code (`getEmbedUrl`, `HeroVideoCard`, `DEFAULT_HERO_VIDEO`)
 
-## 7. Admin Users Page
-*   **Stats bar** — Total users, active, suspended, blocked counts with gradient cards.
-*   **Search** — Search by name, email, or phone.
-*   **Filters** — Filter by role (user/agent/staff/admin/super_admin) and status (active/suspended/blocked).
-*   **Responsive table** — Desktop table + mobile cards with role/status badges.
-*   **Actions** — Suspend, Block, Activate buttons per user with confirmation dialogs.
-*   **Pagination** — Server-side pagination for large user bases.
+**File Changed:**
+- `artifacts/raudah-travels/src/pages/public/Home.tsx`
 
-## 8. User Dashboard Guard
-*   Suspended/blocked users see a full-page notice with "Contact Support" and "Sign Out" buttons.
+---
 
-## 9. Schema Updates
-*   Added `account_status` text column to `profiles` table (default: 'active').
-*   Migration: `0003_add_account_status_to_profiles.sql`
+## 3. Agent List Pagination Bug
 
-> [!IMPORTANT]
-> **Two SQL migrations need to be run on your Neon database:**
-> 1. `ALTER TYPE "public"."agent_status" ADD VALUE IF NOT EXISTS 'blocked';`
-> 2. `ALTER TABLE "profiles" ADD COLUMN IF NOT EXISTS "account_status" text NOT NULL DEFAULT 'active';`
+**Problem:** Admin page showed "39 Approved" in stats but only "20 Active Agents" in the tab.
+
+**Root Causes Found:**
+1. **API default limit was 20** — `GET /agents` had `limit = "20"` as default, and the frontend never passed a larger value. This silently truncated the list.
+2. **Two different data sources** — "39 Approved" counts from `agent_applications` table, while "Active Agents" counts from the `agents` table. These are separate tables; some approved applications may not have created corresponding agent records (e.g., Clerk API timeouts during creation).
+
+**Solution:**
+- Increased default limit from `20` to `500`
+- Added per-status breakdown counts (`active`, `suspended`, `blocked`, `pending`) to the API response for future use
+
+**File Changed:**
+- `artifacts/api-server/src/routes/agents.ts` — `GET /agents` endpoint

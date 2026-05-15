@@ -24,3 +24,28 @@
 - [x] Admin Console: Wired Users page into sidebar nav and routes
 - [x] Migration: `0003_add_account_status_to_profiles.sql`
 - [x] Pushed to GitHub → Railway deploying
+
+# Email Infrastructure Fixes — Completed ✅
+
+## Done
+- [x] Replaced Resend SDK with Node.js `https` module (bypasses undici bytestring encoding bug)
+- [x] Added ASCII sanitizer for API key and From email (strips invisible Unicode from copy-paste)
+- [x] Made test email HTML fully ASCII (HTML entities for special chars)
+- [x] Added `/admin/email/debug` diagnostic endpoint
+- [x] Pushed to GitHub → Railway deploying
+
+# Home Page Hero — Completed ✅
+
+## Done
+- [x] Added YouTube video embed (`zlUXmn4FJ0o`) alongside hero text in 2-column grid
+- [x] Retained fullscreen background slideshow (4 images, 5s cycle)
+- [x] Polished video container (rounded corners, shadow, indigo glow)
+- [x] Removed unused `getEmbedUrl`, `HeroVideoCard`, `DEFAULT_HERO_VIDEO` dead code
+- [x] Pushed to GitHub → Railway deploying
+
+# Agent List Pagination Fix — Completed ✅
+
+## Done
+- [x] Fixed `GET /agents` default limit from 20 → 500 (was silently truncating agent list)
+- [x] Added per-status breakdown counts (active/suspended/blocked/pending) to API response
+- [x] Pushed to GitHub → Railway deploying
