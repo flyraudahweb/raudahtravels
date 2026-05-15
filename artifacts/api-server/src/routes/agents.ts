@@ -202,7 +202,7 @@ router.get("/agents", async (req, res) => {
   const isAdmin = ["admin", "super_admin", "staff"].includes(callerProfile.role);
   if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
 
-  const { status, limit = "20", offset = "0" } = req.query as Record<string, string>;
+  const { status, limit = "500", offset = "0" } = req.query as Record<string, string>;
   const conditions = [];
   if (status) conditions.push(eq(agentsTable.status, status as any));
 
@@ -215,10 +215,21 @@ router.get("/agents", async (req, res) => {
   const wallets = await db.query.agentWalletsTable.findMany();
   const walletMap = Object.fromEntries(wallets.map(w => [w.agentId, Number(w.balance)]));
 
-  const total = await db.select({ count: sql<number>`count(*)` }).from(agentsTable);
+  const totalAll = await db.select({ count: sql<number>`count(*)` }).from(agentsTable);
+  const totalActive = await db.select({ count: sql<number>`count(*)` }).from(agentsTable).where(eq(agentsTable.status, "active"));
+  const totalSuspended = await db.select({ count: sql<number>`count(*)` }).from(agentsTable).where(eq(agentsTable.status, "suspended"));
+  const totalBlocked = await db.select({ count: sql<number>`count(*)` }).from(agentsTable).where(eq(agentsTable.status, "blocked"));
+  const totalPending = await db.select({ count: sql<number>`count(*)` }).from(agentsTable).where(eq(agentsTable.status, "pending"));
+
   return res.json({
     agents: agents.map(a => ({ ...toAgentResponse(a), walletBalance: walletMap[a.id] || 0 })),
-    total: Number(total[0].count),
+    total: Number(totalAll[0].count),
+    counts: {
+      active: Number(totalActive[0].count),
+      suspended: Number(totalSuspended[0].count),
+      blocked: Number(totalBlocked[0].count),
+      pending: Number(totalPending[0].count),
+    },
   });
 });
 
