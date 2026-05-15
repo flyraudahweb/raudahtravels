@@ -1243,7 +1243,7 @@ router.get("/admin/agents-activity", async (req, res) => {
 // ── Amendment Requests ────────────────────────────────────────────────────────
 
 router.get("/admin/amendments", async (req, res) => {
-  const { status, limit = "20", offset = "0" } = req.query as Record<string, string>;
+  const { status, limit = "500", offset = "0" } = req.query as Record<string, string>;
   const conditions: any[] = [];
   if (status) conditions.push(eq(bookingAmendmentRequestsTable.status, status));
 
@@ -1794,7 +1794,7 @@ router.get("/admin/agent-applications", async (_req, res) => {
 
 router.put("/admin/agent-applications/:id/approve", async (req, res) => {
   const { id } = req.params;
-  const { commissionRate = 10, commissionType = "percentage", tempPassword } = req.body as {
+  const { commissionRate = 0, commissionType = "percentage", tempPassword } = req.body as {
     commissionRate?: number; commissionType?: string; tempPassword?: string;
   };
 
@@ -2008,7 +2008,7 @@ router.put("/admin/agent-applications/:id/reject", async (req, res) => {
 // ── Direct Agent Creation ──────────────────────────────────────────────────────
 
 router.post("/admin/agents/create", async (req, res) => {
-  const { fullName, businessName, email, phone, tempPassword, commissionRate = 10, commissionType = "percentage" } = req.body as {
+  const { fullName, businessName, email, phone, tempPassword, commissionRate = 0, commissionType = "percentage" } = req.body as {
     fullName: string; businessName: string; email: string; phone: string;
     tempPassword: string; commissionRate?: number; commissionType?: string;
   };

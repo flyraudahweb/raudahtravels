@@ -16,7 +16,7 @@ import {
   UserCheck, CheckCircle2, XCircle, Building2, BadgeCheck, Plus,
   Wallet, TrendingUp, Percent, DollarSign, Tag, Trash2, Edit3,
   Eye, EyeOff, Loader2, ChevronDown, Clock, RefreshCw, Users, CreditCard, Phone, Mail, MapPin, X, ChevronRight, Download,
-  ShieldBan, ShieldCheck, Ban, AlertTriangle,
+  ShieldBan, ShieldCheck, Ban, AlertTriangle, ChevronLeft,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -41,7 +41,7 @@ function CreateAgentDialog({ open, onClose }: { open: boolean; onClose: () => vo
   const createAgent = useCreateAgentDirect();
   const [form, setForm] = useState({
     fullName: "", businessName: "", email: "", phone: "",
-    tempPassword: "", commissionType: "percentage", commissionRate: "10",
+    tempPassword: "", commissionType: "percentage", commissionRate: "0",
   });
   const [showPw, setShowPw] = useState(false);
   const [result, setResult] = useState<{ tempPassword: string; message: string } | null>(null);
@@ -68,7 +68,7 @@ function CreateAgentDialog({ open, onClose }: { open: boolean; onClose: () => vo
         email: form.email,
         phone: form.phone,
         tempPassword: form.tempPassword,
-        commissionRate: parseFloat(form.commissionRate) || 10,
+        commissionRate: parseFloat(form.commissionRate) || 0,
         commissionType: form.commissionType as "percentage" | "fixed",
       },
     }, {
@@ -94,7 +94,7 @@ function CreateAgentDialog({ open, onClose }: { open: boolean; onClose: () => vo
   };
 
   const handleClose = () => {
-    setForm({ fullName: "", businessName: "", email: "", phone: "", tempPassword: "", commissionType: "percentage", commissionRate: "10" });
+    setForm({ fullName: "", businessName: "", email: "", phone: "", tempPassword: "", commissionType: "percentage", commissionRate: "0" });
     setResult(null);
     setErrors({});
     onClose();
@@ -206,7 +206,7 @@ function ApproveApplicationDialog({ app, onClose }: { app: any; onClose: () => v
   const { toast } = useToast();
   const qc = useQueryClient();
   const approve = useApproveAgentApplication();
-  const [commissionRate, setCommissionRate] = useState("10");
+  const [commissionRate, setCommissionRate] = useState("0");
   const [commissionType, setCommissionType] = useState("percentage");
   const [result, setResult] = useState<{ tempPassword: string; message: string } | null>(null);
 
@@ -512,7 +512,7 @@ function CommissionEditDialog({ agent, onClose }: { agent: any; onClose: () => v
   const { toast } = useToast();
   const qc = useQueryClient();
   const update = useUpdateAgentCommission();
-  const [rate, setRate] = useState(String(agent.commissionRate || "10"));
+  const [rate, setRate] = useState(String(agent.commissionRate || "0"));
   const [type, setType] = useState(agent.commissionType || "percentage");
 
   const handleSave = () => {
@@ -944,6 +944,8 @@ export default function AdminAgents() {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<Tab>("applications");
   const [dialog, setDialog] = useState<ActiveDialog>(null);
+  const [agentPage, setAgentPage] = useState(1);
+  const AGENTS_PER_PAGE = 15;
 
   const { data: appsData, isLoading: appsLoading } = useListAgentApplications({
     query: { queryKey: getListAgentApplicationsQueryKey() },
@@ -1135,8 +1137,13 @@ export default function AdminAgents() {
               <p className="text-[#94A3B8] text-sm mt-1">Create agents directly or approve applications</p>
             </div>
           ) : (
+            (() => {
+              const totalAgentPages = Math.ceil(activeAgents.length / AGENTS_PER_PAGE);
+              const paginatedAgents = activeAgents.slice((agentPage - 1) * AGENTS_PER_PAGE, agentPage * AGENTS_PER_PAGE);
+              return (
+                <>
             <div className="space-y-4">
-              {activeAgents.map(agent => (
+              {paginatedAgents.map(agent => (
                 <div key={agent.id} className="bg-white rounded-2xl border border-[#DCE3F0] shadow-[0_2px_12px_rgba(45,49,153,0.04)] p-5 hover:shadow-[0_4px_20px_rgba(45,49,153,0.08)] transition-shadow">
                   <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div className="flex items-start gap-4">
@@ -1215,6 +1222,39 @@ export default function AdminAgents() {
                 </div>
               ))}
             </div>
+            
+            {/* Pagination Controls */}
+            {totalAgentPages > 1 && (
+              <div className="flex items-center justify-between pt-4">
+                <p className="text-xs text-[#94A3B8] font-medium">
+                  Showing {((agentPage - 1) * AGENTS_PER_PAGE) + 1}&ndash;{Math.min(agentPage * AGENTS_PER_PAGE, activeAgents.length)} of {activeAgents.length} agents
+                </p>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setAgentPage(p => Math.max(1, p - 1))}
+                    disabled={agentPage === 1}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-[#64748B] hover:bg-[#EEF0FF] hover:text-[#2D3199] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  {Array.from({ length: totalAgentPages }, (_, i) => i + 1).map(p => (
+                    <button key={p} onClick={() => setAgentPage(p)}
+                      className={`w-8 h-8 rounded-lg text-xs font-bold transition-colors ${p === agentPage ? "bg-[#2D3199] text-white" : "text-[#64748B] hover:bg-[#EEF0FF] hover:text-[#2D3199]"}`}
+                    >{p}</button>
+                  ))}
+                  <button
+                    onClick={() => setAgentPage(p => Math.min(totalAgentPages, p + 1))}
+                    disabled={agentPage === totalAgentPages}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-[#64748B] hover:bg-[#EEF0FF] hover:text-[#2D3199] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+            </>
+            );
+            })()
           )}
         </div>
       )}
