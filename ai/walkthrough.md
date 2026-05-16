@@ -50,3 +50,20 @@
 
 **File Changed:**
 - `artifacts/api-server/src/routes/agents.ts` — `GET /agents` endpoint
+
+---
+
+## 4. Admin Dashboard Pagination & Defaults
+
+**Problem:** The increased list of agents (up to 500) could clutter the active agents tab. Additionally, agent commission defaulted to 10% which the user wanted to be 0%, and the Amendments route had the same `limit=20` bug.
+
+**Solution:**
+1. **Frontend Pagination:** Added client-side pagination to the "Active Agents" tab (`AdminAgents.tsx`). It now slices the `activeAgents` array into chunks of 15 and provides `ChevronLeft` and `ChevronRight` navigation controls along with direct page number buttons.
+2. **Commission Defaults:** 
+   - Updated backend routes (`/admin/agents/create` and `/admin/agent-applications/:id/approve`) to default `commissionRate` to `0` instead of `10`.
+   - Updated frontend form states in `AdminAgents.tsx` to initialize `commissionRate` at `"0"`.
+3. **Amendment Pagination Fix:** Increased the default limit in `GET /admin/amendments` from `20` to `500`.
+
+**Files Changed:**
+- `artifacts/raudah-travels/src/pages/admin/AdminAgents.tsx` (Pagination UI & Form Defaults)
+- `artifacts/api-server/src/routes/admin.ts` (API Defaults & Limits)

@@ -49,3 +49,11 @@
 - [x] Fixed `GET /agents` default limit from 20 → 500 (was silently truncating agent list)
 - [x] Added per-status breakdown counts (active/suspended/blocked/pending) to API response
 - [x] Pushed to GitHub → Railway deploying
+
+# Admin Dashboard Pagination & Defaults — Completed ✅
+
+## Done
+- [x] **Agent Pagination:** Implemented frontend pagination (15 items/page) for the "Active Agents" tab in `AdminAgents.tsx` to handle large datasets cleanly.
+- [x] **Commission Default Fix:** Changed the default agent commission rate from `10%` to `0%` across the backend API (application approval and direct creation routes) and the frontend AdminAgents component.
+- [x] **Amendment Limit Fix:** Discovered and fixed a silent truncation bug in `GET /admin/amendments` where it was hardcoded to `limit = "20"`. Increased to `500` to show all amendment requests.
+- [x] Pushed to GitHub → Railway deploying
