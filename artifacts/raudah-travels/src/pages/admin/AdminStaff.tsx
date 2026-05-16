@@ -172,7 +172,7 @@ function StaffDialog({ open, onClose, member, onSaved }: StaffDialogProps) {
         onClose();
       },
       onError: (e: any) => {
-        const msg = e?.response?.data?.error || "Failed to create staff account";
+        const msg = e?.data?.error || e?.response?.data?.error || e?.message || "Failed to create staff account";
         toast({ title: msg, variant: "destructive" });
       },
     });

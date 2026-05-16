@@ -548,64 +548,84 @@ router.get("/admin/staff/my-permissions", async (req, res) => {
 });
 
 router.post("/admin/staff", async (req, res) => {
-  const { fullName, email, role = "staff", password, permissions = [], specialties = [] } = req.body as {
-    fullName: string; email: string; role: string; password: string;
-    permissions?: string[]; specialties?: string[];
-  };
+  try {
+    const { fullName, email, role = "staff", password, permissions = [], specialties = [] } = req.body as {
+      fullName: string; email: string; role: string; password: string;
+      permissions?: string[]; specialties?: string[];
+    };
 
-  if (!fullName || !email || !password) {
-    return res.status(400).json({ error: "fullName, email and password are required" });
+    if (!fullName || !email || !password) {
+      return res.status(400).json({ error: "fullName, email and password are required" });
+    }
+
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (!clerkSecretKey) return res.status(500).json({ error: "Clerk not configured" });
+
+    let clerkRes: Response;
+    try {
+      clerkRes = await fetch("https://api.clerk.com/v1/users", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${clerkSecretKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          first_name: fullName.split(" ")[0],
+          last_name: fullName.split(" ").slice(1).join(" ") || "",
+          email_address: [email],
+          password,
+          skip_password_checks: true,
+        }),
+      });
+    } catch (fetchErr: any) {
+      console.error("[staff-create] Clerk API network error:", fetchErr.message);
+      return res.status(502).json({ error: `Could not reach Clerk API: ${fetchErr.message}` });
+    }
+
+    if (!clerkRes.ok) {
+      const err = await clerkRes.json() as any;
+      const msg = err?.errors?.[0]?.long_message || err?.errors?.[0]?.message || "Failed to create Clerk user";
+      console.error("[staff-create] Clerk API error:", msg, JSON.stringify(err));
+      return res.status(400).json({ error: msg });
+    }
+
+    const clerkUser = await clerkRes.json() as any;
+    const clerkUserId: string = clerkUser.id;
+
+    // Check if a profile already exists for this Clerk user (idempotent retry)
+    const existingProfile = await db.query.profilesTable.findFirst({
+      where: eq(profilesTable.clerkUserId, clerkUserId),
+    });
+    if (existingProfile) {
+      return res.status(200).json({ ...existingProfile, permissions: [], specialties: [], message: "Account already exists" });
+    }
+
+    const profileId = randomUUID();
+    const [profile] = await db.insert(profilesTable).values({
+      id: profileId,
+      clerkUserId,
+      email,
+      fullName,
+      role: role as any,
+    }).returning();
+
+    if (permissions.length > 0) {
+      await db.insert(staffPermissionsTable).values(
+        permissions.map(p => ({ id: randomUUID(), userId: profileId, permission: p }))
+      );
+    }
+    if (specialties.length > 0) {
+      await db.insert(staffSupportSpecialtiesTable).values(
+        specialties.map(cat => ({ id: randomUUID(), userId: profileId, category: cat }))
+      );
+    }
+
+    return res.status(201).json({
+      ...profile,
+      permissions,
+      specialties,
+    });
+  } catch (err: any) {
+    console.error("[staff-create] Unexpected error:", err);
+    return res.status(500).json({ error: err.message || "Failed to create staff account" });
   }
-
-  const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-  if (!clerkSecretKey) return res.status(500).json({ error: "Clerk not configured" });
-
-  const clerkRes = await fetch("https://api.clerk.com/v1/users", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${clerkSecretKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      first_name: fullName.split(" ")[0],
-      last_name: fullName.split(" ").slice(1).join(" ") || "",
-      email_address: [email],
-      password,
-      skip_password_checks: true,
-    }),
-  });
-
-  if (!clerkRes.ok) {
-    const err = await clerkRes.json() as any;
-    const msg = err?.errors?.[0]?.long_message || err?.errors?.[0]?.message || "Failed to create Clerk user";
-    return res.status(400).json({ error: msg });
-  }
-
-  const clerkUser = await clerkRes.json() as any;
-  const clerkUserId: string = clerkUser.id;
-
-  const profileId = randomUUID();
-  const [profile] = await db.insert(profilesTable).values({
-    id: profileId,
-    clerkUserId,
-    email,
-    fullName,
-    role: role as any,
-  }).returning();
-
-  if (permissions.length > 0) {
-    await db.insert(staffPermissionsTable).values(
-      permissions.map(p => ({ id: randomUUID(), userId: profileId, permission: p }))
-    );
-  }
-  if (specialties.length > 0) {
-    await db.insert(staffSupportSpecialtiesTable).values(
-      specialties.map(cat => ({ id: randomUUID(), userId: profileId, category: cat }))
-    );
-  }
-
-  return res.status(201).json({
-    ...profile,
-    permissions,
-    specialties,
-  });
 });
 
 router.delete("/admin/staff/:id", async (req, res) => {
