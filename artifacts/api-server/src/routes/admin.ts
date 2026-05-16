@@ -629,82 +629,104 @@ router.post("/admin/staff", async (req, res) => {
 });
 
 router.delete("/admin/staff/:id", async (req, res) => {
-  const { id } = req.params;
-  const profile = await db.query.profilesTable.findFirst({ where: eq(profilesTable.id, id) });
-  if (!profile) return res.status(404).json({ error: "Staff not found" });
+  try {
+    const { id } = req.params;
+    const profile = await db.query.profilesTable.findFirst({ where: eq(profilesTable.id, id) });
+    if (!profile) return res.status(404).json({ error: "Staff not found" });
 
-  const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-  if (clerkSecretKey && profile.clerkUserId) {
-    await fetch(`https://api.clerk.com/v1/users/${profile.clerkUserId}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${clerkSecretKey}` },
-    });
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (clerkSecretKey && profile.clerkUserId) {
+      try {
+        await fetch(`https://api.clerk.com/v1/users/${profile.clerkUserId}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${clerkSecretKey}` },
+        });
+      } catch (e) { console.error("[staff-delete] Clerk delete failed (continuing):", e); }
+    }
+
+    await db.delete(staffPermissionsTable).where(eq(staffPermissionsTable.userId, id));
+    await db.delete(staffSupportSpecialtiesTable).where(eq(staffSupportSpecialtiesTable.userId, id));
+    await db.delete(profilesTable).where(eq(profilesTable.id, id));
+
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("[staff-delete] Error:", err);
+    return res.status(500).json({ error: err.message || "Failed to delete staff member" });
   }
-
-  await db.delete(staffPermissionsTable).where(eq(staffPermissionsTable.userId, id));
-  await db.delete(staffSupportSpecialtiesTable).where(eq(staffSupportSpecialtiesTable.userId, id));
-  await db.delete(profilesTable).where(eq(profilesTable.id, id));
-
-  return res.json({ success: true });
 });
 
 router.put("/admin/staff/:id/permissions", async (req, res) => {
-  const { permissions } = req.body as { permissions: string[] };
-  const userId = req.params.id;
+  try {
+    const { permissions } = req.body as { permissions: string[] };
+    const userId = req.params.id;
 
-  await db.delete(staffPermissionsTable).where(eq(staffPermissionsTable.userId, userId));
+    await db.delete(staffPermissionsTable).where(eq(staffPermissionsTable.userId, userId));
 
-  if (permissions && permissions.length > 0) {
-    await db.insert(staffPermissionsTable).values(
-      permissions.map(p => ({ id: randomUUID(), userId, permission: p }))
-    );
+    if (permissions && permissions.length > 0) {
+      await db.insert(staffPermissionsTable).values(
+        permissions.map(p => ({ id: randomUUID(), userId, permission: p }))
+      );
+    }
+
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("[staff-permissions] Error:", err);
+    return res.status(500).json({ error: err.message || "Failed to update permissions" });
   }
-
-  return res.json({ success: true });
 });
 
 router.put("/admin/staff/:id/specialties", async (req, res) => {
-  const { specialties } = req.body as { specialties: string[] };
-  const userId = req.params.id;
+  try {
+    const { specialties } = req.body as { specialties: string[] };
+    const userId = req.params.id;
 
-  await db.delete(staffSupportSpecialtiesTable).where(eq(staffSupportSpecialtiesTable.userId, userId));
+    await db.delete(staffSupportSpecialtiesTable).where(eq(staffSupportSpecialtiesTable.userId, userId));
 
-  if (specialties && specialties.length > 0) {
-    await db.insert(staffSupportSpecialtiesTable).values(
-      specialties.map(cat => ({ id: randomUUID(), userId, category: cat }))
-    );
+    if (specialties && specialties.length > 0) {
+      await db.insert(staffSupportSpecialtiesTable).values(
+        specialties.map(cat => ({ id: randomUUID(), userId, category: cat }))
+      );
+    }
+
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("[staff-specialties] Error:", err);
+    return res.status(500).json({ error: err.message || "Failed to update specialties" });
   }
-
-  return res.json({ success: true });
 });
 
 // SECURITY FIX #6: Validate role against allowed enum values.
 // Only super_admin can assign super_admin role.
 router.put("/admin/staff/:id/role", async (req, res) => {
-  const { role } = req.body;
-  const ALLOWED_ROLES = ["user", "staff", "moderator", "admin", "super_admin", "agent"];
-  if (!role || !ALLOWED_ROLES.includes(role)) {
-    return res.status(400).json({ error: `Invalid role. Allowed: ${ALLOWED_ROLES.join(", ")}` });
-  }
-
-  // Restrict super_admin assignment: only super_admins can grant super_admin
-  if (role === "super_admin") {
-    const { userId: clerkUserId } = getAuth(req);
-    if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
-    const callerProfile = await db.query.profilesTable.findFirst({
-      where: eq(profilesTable.clerkUserId, clerkUserId),
-    });
-    if (!callerProfile || callerProfile.role !== "super_admin") {
-      return res.status(403).json({ error: "Only super admins can assign the super_admin role" });
+  try {
+    const { role } = req.body;
+    const ALLOWED_ROLES = ["user", "staff", "moderator", "admin", "super_admin", "agent"];
+    if (!role || !ALLOWED_ROLES.includes(role)) {
+      return res.status(400).json({ error: `Invalid role. Allowed: ${ALLOWED_ROLES.join(", ")}` });
     }
-  }
 
-  const [updated] = await db.update(profilesTable)
-    .set({ role, updatedAt: new Date() })
-    .where(eq(profilesTable.id, req.params.id))
-    .returning();
-  if (!updated) return res.status(404).json({ error: "Staff not found" });
-  return res.json(updated);
+    // Restrict super_admin assignment: only super_admins can grant super_admin
+    if (role === "super_admin") {
+      const { userId: clerkUserId } = getAuth(req);
+      if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
+      const callerProfile = await db.query.profilesTable.findFirst({
+        where: eq(profilesTable.clerkUserId, clerkUserId),
+      });
+      if (!callerProfile || callerProfile.role !== "super_admin") {
+        return res.status(403).json({ error: "Only super admins can assign the super_admin role" });
+      }
+    }
+
+    const [updated] = await db.update(profilesTable)
+      .set({ role, updatedAt: new Date() })
+      .where(eq(profilesTable.id, req.params.id))
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Staff not found" });
+    return res.json(updated);
+  } catch (err: any) {
+    console.error("[staff-role] Error:", err);
+    return res.status(500).json({ error: err.message || "Failed to update role" });
+  }
 });
 
 // ── Analytics ─────────────────────────────────────────────────────────────────
@@ -1813,20 +1835,21 @@ router.get("/admin/agent-applications", async (_req, res) => {
 });
 
 router.put("/admin/agent-applications/:id/approve", async (req, res) => {
-  const { id } = req.params;
-  const { commissionRate = 0, commissionType = "percentage", tempPassword } = req.body as {
-    commissionRate?: number; commissionType?: string; tempPassword?: string;
-  };
+  try {
+    const { id } = req.params;
+    const { commissionRate = 0, commissionType = "percentage", tempPassword } = req.body as {
+      commissionRate?: number; commissionType?: string; tempPassword?: string;
+    };
 
-  const app = await db.query.agentApplicationsTable.findFirst({
-    where: eq(agentApplicationsTable.id, id),
-  });
-  if (!app) return res.status(404).json({ error: "Application not found" });
-  if (app.status !== "pending") return res.status(400).json({ error: "Application already processed" });
+    const app = await db.query.agentApplicationsTable.findFirst({
+      where: eq(agentApplicationsTable.id, id),
+    });
+    if (!app) return res.status(404).json({ error: "Application not found" });
+    if (app.status !== "pending") return res.status(400).json({ error: "Application already processed" });
 
-  const password = tempPassword || `Raudah@${Math.random().toString(36).slice(-6)}`;
-  const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-  if (!clerkSecretKey) return res.status(500).json({ error: "Clerk not configured" });
+    const password = tempPassword || `Raudah@${Math.random().toString(36).slice(-6)}`;
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (!clerkSecretKey) return res.status(500).json({ error: "Clerk not configured" });
 
   const clerkHeaders = { Authorization: `Bearer ${clerkSecretKey}`, "Content-Type": "application/json" };
   const nameParts = app.contactPerson.trim().split(" ");
@@ -2004,172 +2027,186 @@ router.put("/admin/agent-applications/:id/approve", async (req, res) => {
     }).catch(() => {});
   });
 
-  return res.json({
-    agent: { ...agent, walletBalance: 0 },
-    tempPassword: password,
-    message: usedExistingClerkUser
-      ? "Agent account created using existing login. The agent can sign in with their current credentials."
-      : "Agent account created. Share the login credentials with the agent.",
-  });
+    return res.json({
+      agent: { ...agent, walletBalance: 0 },
+      tempPassword: password,
+      message: usedExistingClerkUser
+        ? "Agent account created using existing login. The agent can sign in with their current credentials."
+        : "Agent account created. Share the login credentials with the agent.",
+    });
+  } catch (err: any) {
+    console.error("[agent-approve] Error:", err);
+    return res.status(500).json({ error: err.message || "Failed to approve agent application" });
+  }
 });
 
 router.put("/admin/agent-applications/:id/reject", async (req, res) => {
-  const { id } = req.params;
-  const { reason } = req.body as { reason?: string };
+  try {
+    const { id } = req.params;
+    const { reason } = req.body as { reason?: string };
 
-  const [updated] = await db.update(agentApplicationsTable)
-    .set({ status: "rejected", rejectionReason: reason || null, updatedAt: new Date() })
-    .where(eq(agentApplicationsTable.id, id))
-    .returning();
-  if (!updated) return res.status(404).json({ error: "Application not found" });
-  return res.json({ success: true });
+    const [updated] = await db.update(agentApplicationsTable)
+      .set({ status: "rejected", rejectionReason: reason || null, updatedAt: new Date() })
+      .where(eq(agentApplicationsTable.id, id))
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Application not found" });
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error("[agent-reject] Error:", err);
+    return res.status(500).json({ error: err.message || "Failed to reject agent application" });
+  }
 });
 
 // ── Direct Agent Creation ──────────────────────────────────────────────────────
 
 router.post("/admin/agents/create", async (req, res) => {
-  const { fullName, businessName, email, phone, tempPassword, commissionRate = 0, commissionType = "percentage" } = req.body as {
-    fullName: string; businessName: string; email: string; phone: string;
-    tempPassword: string; commissionRate?: number; commissionType?: string;
-  };
+  try {
+    const { fullName, businessName, email, phone, tempPassword, commissionRate = 0, commissionType = "percentage" } = req.body as {
+      fullName: string; businessName: string; email: string; phone: string;
+      tempPassword: string; commissionRate?: number; commissionType?: string;
+    };
 
-  if (!fullName || !businessName || !email || !phone || !tempPassword) {
-    return res.status(400).json({ error: "fullName, businessName, email, phone and tempPassword are required" });
-  }
-
-  // Check if email already exists in our DB — if agent was already fully created
-  // (e.g. previous request succeeded server-side but client timed out), return
-  // the existing agent data as a success response (idempotent retry).
-  const existingProfile = await db.query.profilesTable.findFirst({ where: eq(profilesTable.email, email) });
-  if (existingProfile) {
-    const existingAgent = await db.query.agentsTable.findFirst({ where: eq(agentsTable.userId, existingProfile.id) });
-    if (existingAgent) {
-      // Account was fully created on a previous attempt — return success so
-      // the frontend shows the credentials dialog instead of an error toast.
-      return res.status(200).json({
-        agent: { ...existingAgent, commissionRate: Number(existingAgent.commissionRate), walletBalance: 0 },
-        profile: existingProfile,
-        tempPassword,
-        message: "Agent account already exists (previous request completed successfully).",
-        alreadyExisted: true,
-      });
+    if (!fullName || !businessName || !email || !phone || !tempPassword) {
+      return res.status(400).json({ error: "fullName, businessName, email, phone and tempPassword are required" });
     }
-    // Profile exists but no agent record — genuine duplicate email from a non-agent user
-    return res.status(400).json({ error: "An account with this email address already exists (non-agent user)." });
-  }
 
-  const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-  if (!clerkSecretKey) return res.status(500).json({ error: "Clerk not configured" });
-
-  const nameParts = fullName.trim().split(" ");
-  const clerkHeaders = { Authorization: `Bearer ${clerkSecretKey}`, "Content-Type": "application/json" };
-
-  // Attempt 1: create with password
-  let clerkRes = await fetch("https://api.clerk.com/v1/users", {
-    method: "POST",
-    headers: clerkHeaders,
-    body: JSON.stringify({
-      first_name: nameParts[0],
-      last_name: nameParts.slice(1).join(" ") || "",
-      email_address: [email],
-      password: tempPassword,
-      skip_password_checks: true,
-      skip_legal_checks: true,
-    }),
-  });
-
-  // Attempt 2: if Clerk rejects the password field (e.g. password auth disabled),
-  // retry without the password so the account is still created.
-  let passwordlessMode = false;
-  if (!clerkRes.ok) {
-    const errBody = await clerkRes.json() as any;
-    const errCode: string = errBody?.errors?.[0]?.code ?? "";
-    const isPasswordIssue = errCode.includes("password") || errCode.includes("form_password");
-    if (isPasswordIssue) {
-      clerkRes = await fetch("https://api.clerk.com/v1/users", {
-        method: "POST",
-        headers: clerkHeaders,
-        body: JSON.stringify({
-          first_name: nameParts[0],
-          last_name: nameParts.slice(1).join(" ") || "",
-          email_address: [email],
-          skip_legal_checks: true,
-        }),
-      });
-      passwordlessMode = true;
+    // Check if email already exists in our DB — if agent was already fully created
+    // (e.g. previous request succeeded server-side but client timed out), return
+    // the existing agent data as a success response (idempotent retry).
+    const existingProfile = await db.query.profilesTable.findFirst({ where: eq(profilesTable.email, email) });
+    if (existingProfile) {
+      const existingAgent = await db.query.agentsTable.findFirst({ where: eq(agentsTable.userId, existingProfile.id) });
+      if (existingAgent) {
+        // Account was fully created on a previous attempt — return success so
+        // the frontend shows the credentials dialog instead of an error toast.
+        return res.status(200).json({
+          agent: { ...existingAgent, commissionRate: Number(existingAgent.commissionRate), walletBalance: 0 },
+          profile: existingProfile,
+          tempPassword,
+          message: "Agent account already exists (previous request completed successfully).",
+          alreadyExisted: true,
+        });
+      }
+      // Profile exists but no agent record — genuine duplicate email from a non-agent user
+      return res.status(400).json({ error: "An account with this email address already exists (non-agent user)." });
     }
-    if (!clerkRes.ok) {
-      const err2 = await clerkRes.json() as any;
-      const msg = err2?.errors?.[0]?.long_message || err2?.errors?.[0]?.message || errBody?.errors?.[0]?.long_message || "Failed to create Clerk user";
-      return res.status(400).json({ error: msg });
-    }
-  }
 
-  const clerkUser = await clerkRes.json() as any;
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (!clerkSecretKey) return res.status(500).json({ error: "Clerk not configured" });
 
-  // Mark the email address as verified — fire-and-forget to reduce response time.
-  // This was previously awaited and added ~1-2s latency, contributing to client timeouts.
-  const emailAddressId: string | undefined = clerkUser?.email_addresses?.[0]?.id;
-  if (emailAddressId) {
-    setImmediate(() => {
-      fetch(`https://api.clerk.com/v1/email_addresses/${emailAddressId}`, {
-        method: "PATCH",
-        headers: clerkHeaders,
-        body: JSON.stringify({ verified: true }),
-      }).catch(() => {}); // non-fatal, fire-and-forget
+    const nameParts = fullName.trim().split(" ");
+    const clerkHeaders = { Authorization: `Bearer ${clerkSecretKey}`, "Content-Type": "application/json" };
+
+    // Attempt 1: create with password
+    let clerkRes = await fetch("https://api.clerk.com/v1/users", {
+      method: "POST",
+      headers: clerkHeaders,
+      body: JSON.stringify({
+        first_name: nameParts[0],
+        last_name: nameParts.slice(1).join(" ") || "",
+        email_address: [email],
+        password: tempPassword,
+        skip_password_checks: true,
+        skip_legal_checks: true,
+      }),
     });
-  }
 
-  void passwordlessMode; // used for response message only
-  const profileId = randomUUID();
-  const [profile] = await db.insert(profilesTable).values({
-    id: profileId,
-    clerkUserId: clerkUser.id,
-    email,
-    fullName,
-    role: "agent",
-  }).returning();
+    // Attempt 2: if Clerk rejects the password field (e.g. password auth disabled),
+    // retry without the password so the account is still created.
+    let passwordlessMode = false;
+    if (!clerkRes.ok) {
+      const errBody = await clerkRes.json() as any;
+      const errCode: string = errBody?.errors?.[0]?.code ?? "";
+      const isPasswordIssue = errCode.includes("password") || errCode.includes("form_password");
+      if (isPasswordIssue) {
+        clerkRes = await fetch("https://api.clerk.com/v1/users", {
+          method: "POST",
+          headers: clerkHeaders,
+          body: JSON.stringify({
+            first_name: nameParts[0],
+            last_name: nameParts.slice(1).join(" ") || "",
+            email_address: [email],
+            skip_legal_checks: true,
+          }),
+        });
+        passwordlessMode = true;
+      }
+      if (!clerkRes.ok) {
+        const err2 = await clerkRes.json() as any;
+        const msg = err2?.errors?.[0]?.long_message || err2?.errors?.[0]?.message || errBody?.errors?.[0]?.long_message || "Failed to create Clerk user";
+        return res.status(400).json({ error: msg });
+      }
+    }
 
-  const agentCode = `AG${Date.now().toString(36).toUpperCase().slice(-6)}`;
-  const [agent] = await db.insert(agentsTable).values({
-    id: randomUUID(),
-    userId: profileId,
-    companyName: businessName,
-    businessName,
-    contactPerson: fullName,
-    email,
-    phone,
-    agentCode,
-    commissionRate: String(commissionRate),
-    commissionType,
-    status: "active",
-  }).returning();
+    const clerkUser = await clerkRes.json() as any;
 
-  await db.insert(agentWalletsTable).values({
-    id: randomUUID(),
-    agentId: agent.id,
-    balance: "0",
-  }).onConflictDoNothing();
+    // Mark the email address as verified — fire-and-forget to reduce response time.
+    // This was previously awaited and added ~1-2s latency, contributing to client timeouts.
+    const emailAddressId: string | undefined = clerkUser?.email_addresses?.[0]?.id;
+    if (emailAddressId) {
+      setImmediate(() => {
+        fetch(`https://api.clerk.com/v1/email_addresses/${emailAddressId}`, {
+          method: "PATCH",
+          headers: clerkHeaders,
+          body: JSON.stringify({ verified: true }),
+        }).catch(() => {}); // non-fatal, fire-and-forget
+      });
+    }
 
-  // Send welcome email to directly created agent (fire-and-forget)
-  setImmediate(() => {
-    sendAgentApprovalEmail({
-      agentName: fullName,
-      businessName,
+    void passwordlessMode; // used for response message only
+    const profileId = randomUUID();
+    const [profile] = await db.insert(profilesTable).values({
+      id: profileId,
+      clerkUserId: clerkUser.id,
       email,
-      loginEmail: email,
-      tempPassword,
-      agentCode,
-      isExistingUser: false,
-    }).catch(() => {});
-  });
+      fullName,
+      role: "agent",
+    }).returning();
 
-  return res.status(201).json({
-    agent: { ...agent, commissionRate: Number(agent.commissionRate), walletBalance: 0 },
-    profile,
-    tempPassword,
-    message: "Agent account created successfully.",
-  });
+    const agentCode = `AG${Date.now().toString(36).toUpperCase().slice(-6)}`;
+    const [agent] = await db.insert(agentsTable).values({
+      id: randomUUID(),
+      userId: profileId,
+      companyName: businessName,
+      businessName,
+      contactPerson: fullName,
+      email,
+      phone,
+      agentCode,
+      commissionRate: String(commissionRate),
+      commissionType,
+      status: "active",
+    }).returning();
+
+    await db.insert(agentWalletsTable).values({
+      id: randomUUID(),
+      agentId: agent.id,
+      balance: "0",
+    }).onConflictDoNothing();
+
+    // Send welcome email to directly created agent (fire-and-forget)
+    setImmediate(() => {
+      sendAgentApprovalEmail({
+        agentName: fullName,
+        businessName,
+        email,
+        loginEmail: email,
+        tempPassword,
+        agentCode,
+        isExistingUser: false,
+      }).catch(() => {});
+    });
+
+    return res.status(201).json({
+      agent: { ...agent, commissionRate: Number(agent.commissionRate), walletBalance: 0 },
+      profile,
+      tempPassword,
+      message: "Agent account created successfully.",
+    });
+  } catch (err: any) {
+    console.error("[agents-create] Error:", err);
+    return res.status(500).json({ error: err.message || "Failed to create agent" });
+  }
 });
 
 // ── Agent Commission Update ───────────────────────────────────────────────────
