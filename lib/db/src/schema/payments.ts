@@ -30,7 +30,6 @@ export const paymentsTable = pgTable("payments", {
     .notNull()
     .references(() => bookingsTable.id),
   userId: text("user_id")
-    .notNull()
     .references(() => profilesTable.id),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   method: paymentMethodEnum("method").notNull(),

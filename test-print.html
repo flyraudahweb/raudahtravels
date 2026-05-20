@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  @page {
+    size: A4;
+    margin: 20mm;
+  }
+  @page:first {
+    margin: 0;
+  }
+  body {
+    font-family: sans-serif;
+    margin: 0;
+    padding: 0;
+  }
+  .cover {
+    background-color: blue;
+    color: white;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    page-break-after: always;
+  }
+  .content {
+    background-color: lightgray;
+    height: 150vh; /* Will span 2 pages */
+  }
+</style>
+</head>
+<body>
+  <div class="cover">
+    <h1>Cover Page (Should be full bleed blue)</h1>
+  </div>
+  <div class="content">
+    <h1>Content Page 1</h1>
+    <p>This should have a 20mm margin around it.</p>
+  </div>
+</body>
+</html>

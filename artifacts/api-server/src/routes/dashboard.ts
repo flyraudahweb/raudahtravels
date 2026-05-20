@@ -148,7 +148,7 @@ router.get("/dashboard/agent-overview", async (req, res) => {
     }),
     agent
       ? db.query.commissionsTable.findMany({ where: eq(commissionsTable.agentId, agent.id) })
-      : Promise.resolve([]),
+      : Promise.resolve([] as any[]),
     agent
       ? db.query.agentWalletsTable.findFirst({ where: eq(agentWalletsTable.agentId, agent.id) })
       : Promise.resolve(null),

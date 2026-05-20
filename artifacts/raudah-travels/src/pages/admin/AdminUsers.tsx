@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useToast } from "@/hooks/use-toast";
 import {
   Users, Search, ShieldCheck, ShieldBan, Ban, UserCog,
-  ChevronLeft, ChevronRight, AlertTriangle, User, Crown, Briefcase,
+  ChevronLeft, ChevronRight, AlertTriangle, User, Crown, Briefcase, Trash2, Shield
 } from "lucide-react";
 
 interface UserProfile {
@@ -40,6 +40,8 @@ const ROLES = ["all", "user", "agent", "staff", "admin", "super_admin"];
 const STATUSES = ["all", "active", "suspended", "blocked"];
 
 type ConfirmDialog = { user: UserProfile; newStatus: string } | null;
+type DeleteDialog = UserProfile | null;
+type RoleDialog = UserProfile | null;
 
 export default function AdminUsers() {
   const { toast } = useToast();
@@ -50,7 +52,25 @@ export default function AdminUsers() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog>(null);
+  const [deleteDialog, setDeleteDialog] = useState<DeleteDialog>(null);
+  const [roleDialog, setRoleDialog] = useState<RoleDialog>(null);
+  
+  const [selectedRole, setSelectedRole] = useState("user");
+  const [agentBusinessName, setAgentBusinessName] = useState("");
+  const [agentContactPerson, setAgentContactPerson] = useState("");
+  const [agentEmail, setAgentEmail] = useState("");
+  const [agentPhone, setAgentPhone] = useState("");
+
   const limit = 30;
+
+  const openRoleDialog = (u: UserProfile) => {
+    setRoleDialog(u);
+    setSelectedRole(u.role);
+    setAgentBusinessName("");
+    setAgentContactPerson("");
+    setAgentEmail("");
+    setAgentPhone("");
+  };
 
   const queryKey = ["admin-users", roleFilter, statusFilter, search, page];
   const { data, isLoading } = useQuery<{ users: UserProfile[]; total: number; totalPages: number }>({
@@ -81,6 +101,46 @@ export default function AdminUsers() {
       toast({ title: d.message || `Status updated to ${newStatus}` });
       setConfirmDialog(null);
     }).catch((e: any) => toast({ title: e.message, variant: "destructive" }));
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    try {
+      const r = await fetch(`/api/admin/users/${userId}`, { method: "DELETE" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Failed to delete user");
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      toast({ title: "User deleted successfully" });
+      setDeleteDialog(null);
+    } catch (e: any) {
+      toast({ title: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleRoleChange = async () => {
+    if (!roleDialog) return;
+    try {
+      const payload: any = { role: selectedRole };
+      if (selectedRole === "agent") {
+        if (!agentBusinessName) throw new Error("Business Name is required for agents.");
+        payload.businessName = agentBusinessName;
+        payload.contactPerson = agentContactPerson;
+        payload.agentEmail = agentEmail;
+        payload.agentPhone = agentPhone;
+      }
+      
+      const r = await fetch(`/api/admin/users/${roleDialog.id}/role`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || "Failed to change role");
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      toast({ title: d.message || "Role updated successfully" });
+      setRoleDialog(null);
+    } catch (e: any) {
+      toast({ title: e.message, variant: "destructive" });
+    }
   };
 
   const roleCounts = users.reduce<Record<string, number>>((acc, u) => {
@@ -233,6 +293,15 @@ export default function AdminUsers() {
                                 Activate
                               </button>
                             )}
+                            <div className="w-px h-4 bg-[#E2E8F0] mx-1" />
+                            <button onClick={() => openRoleDialog(u)} title="Change Role"
+                              className="p-1.5 text-[#64748B] hover:text-[#2D3199] hover:bg-[#F8FAFF] rounded-lg transition-colors">
+                              <Shield className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => setDeleteDialog(u)} title="Delete User"
+                              className="p-1.5 text-[#64748B] hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         )}
                       </td>
@@ -275,6 +344,16 @@ export default function AdminUsers() {
                       <button onClick={() => handleStatusChange(u.id, "active")}
                         className="px-2.5 py-1 text-[10px] font-bold bg-emerald-50 text-emerald-600 rounded-lg">Activate</button>
                     ) : null}
+                    {u.role !== "super_admin" && (
+                      <div className="flex gap-1 ml-2 pl-2 border-l border-[#E2E8F0]">
+                        <button onClick={() => openRoleDialog(u)} className="p-1 text-[#64748B] hover:text-[#2D3199]">
+                          <Shield className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => setDeleteDialog(u)} className="p-1 text-[#64748B] hover:text-red-600">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -321,6 +400,94 @@ export default function AdminUsers() {
                 onClick={() => handleStatusChange(confirmDialog.user.id, confirmDialog.newStatus)}>
                 {confirmDialog.newStatus === "blocked" ? "Block Account" : "Suspend Account"}
               </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Delete User Dialog */}
+      {deleteDialog && (
+        <Dialog open onOpenChange={() => setDeleteDialog(null)}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="font-black flex items-center gap-2 text-red-600">
+                <Trash2 className="w-5 h-5" />
+                Delete User?
+              </DialogTitle>
+              <DialogDescription>
+                This will permanently delete <strong>{deleteDialog.fullName}</strong>. Their financial records (bookings, payments) will be preserved, but their profile and authentication account will be removed. This cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex gap-3 pt-2">
+              <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setDeleteDialog(null)}>Cancel</Button>
+              <Button className="flex-1 rounded-xl font-bold text-white bg-red-600 hover:bg-red-700"
+                onClick={() => handleDeleteUser(deleteDialog.id)}>
+                Delete Permanently
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Role Change Dialog */}
+      {roleDialog && (
+        <Dialog open onOpenChange={() => setRoleDialog(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="font-black flex items-center gap-2">
+                <Shield className="w-5 h-5 text-[#2D3199]" />
+                Change Role
+              </DialogTitle>
+              <DialogDescription>
+                Update permissions for {roleDialog.fullName}.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 pt-2">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Role</label>
+                <select 
+                  value={selectedRole} 
+                  onChange={e => setSelectedRole(e.target.value)}
+                  className="w-full flex h-11 rounded-xl border border-[#E2E8F0] bg-transparent px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#2D3199]"
+                >
+                  <option value="user">User</option>
+                  <option value="agent">Agent</option>
+                  <option value="staff">Staff</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+
+              {selectedRole === "agent" && roleDialog.role !== "agent" && (
+                <div className="bg-[#F8FAFF] p-4 rounded-xl border border-[#C7CBF5] space-y-3">
+                  <p className="text-xs font-bold text-[#2D3199] uppercase tracking-wider mb-2">Agent Details Required</p>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-[#64748B]">Business Name *</label>
+                    <Input value={agentBusinessName} onChange={e => setAgentBusinessName(e.target.value)} placeholder="e.g. Acme Travels" className="h-9" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-[#64748B]">Contact Person</label>
+                    <Input value={agentContactPerson} onChange={e => setAgentContactPerson(e.target.value)} placeholder={roleDialog.fullName} className="h-9" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-[#64748B]">Business Email</label>
+                      <Input value={agentEmail} onChange={e => setAgentEmail(e.target.value)} placeholder={roleDialog.email} className="h-9" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-[#64748B]">Business Phone</label>
+                      <Input value={agentPhone} onChange={e => setAgentPhone(e.target.value)} placeholder={roleDialog.phone || ""} className="h-9" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-4">
+                <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setRoleDialog(null)}>Cancel</Button>
+                <Button className="flex-1 rounded-xl font-bold text-white bg-gradient-to-br from-[#2D3199] to-[#4C56B8]"
+                  onClick={handleRoleChange}>
+                  Save Changes
+                </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>

@@ -1,0 +1,661 @@
+<!DOCTYPE html><html lang="en"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Travel Platform Proposal - BILALSADASUB</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&amp;display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Outfit', 'sans-serif'] },
+                    colors: { brand: { dark: '#0A0A0A', accent: '#38BDF8', purple: '#818CF8', pink: '#F472B6' } }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { 
+            -webkit-print-color-adjust: exact; 
+            print-color-adjust: exact; 
+            background-color: #F8FAFC; 
+            color: #1E293B;
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            padding: 2rem 0;
+        }
+        
+        .physical-page {
+            width: 794px;
+            height: 1123px;
+            margin: 0 auto 2rem auto;
+            background: white;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+            box-sizing: border-box;
+        }
+
+        .content-area {
+            position: relative;
+            z-index: 10;
+            padding: 80px 60px;
+            height: 1123px;
+            box-sizing: border-box;
+            overflow: hidden; /* Crucial for JS scrollHeight measuring */
+        }
+        
+        /* Abstract Backgrounds for Internal Pages */
+        .page-bg { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+        .page-bg::before {
+            content: ''; position: absolute; top: -20%; left: -10%; width: 60%; height: 60%;
+            background: linear-gradient(135deg, rgba(129, 140, 248, 0.15), rgba(56, 189, 248, 0.1));
+            border-radius: 50%; filter: blur(80px);
+        }
+        .page-bg::after {
+            content: ''; position: absolute; bottom: -20%; right: -10%; width: 60%; height: 60%;
+            background: linear-gradient(135deg, rgba(244, 114, 182, 0.1), rgba(129, 140, 248, 0.15));
+            border-radius: 50%; filter: blur(80px);
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.05);
+        }
+        
+        .gradient-text {
+            background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-image: linear-gradient(to right, #4F46E5, #06B6D4);
+        }
+
+        @media print {
+            body { padding: 0; background-color: white; }
+            .physical-page { margin: 0; box-shadow: none; page-break-after: always; }
+            @page { size: A4; margin: 0; }
+        }
+    </style>
+<style>*, ::before, ::after{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }/* ! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com */*,::after,::before{box-sizing:border-box;border-width:0;border-style:solid;border-color:#e5e7eb}::after,::before{--tw-content:''}:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;tab-size:4;font-family:Outfit, sans-serif;font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}fieldset{margin:0;padding:0}legend{padding:0}menu,ol,ul{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}[role=button],button{cursor:pointer}:disabled{cursor:default}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}.pointer-events-none{pointer-events:none}.absolute{position:absolute}.relative{position:relative}.inset-0{inset:0px}.right-0{right:0px}.top-0{top:0px}.-left-6{left:-1.5rem}.-top-10{top:-2.5rem}.bottom-10{bottom:2.5rem}.bottom-\[-20\%\]{bottom:-20%}.left-\[-20\%\]{left:-20%}.right-16{right:4rem}.right-\[-20\%\]{right:-20%}.top-\[-20\%\]{top:-20%}.z-10{z-index:10}.z-0{z-index:0}.z-20{z-index:20}.mx-auto{margin-left:auto;margin-right:auto}.mb-1{margin-bottom:0.25rem}.mb-10{margin-bottom:2.5rem}.mb-12{margin-bottom:3rem}.mb-16{margin-bottom:4rem}.mb-2{margin-bottom:0.5rem}.mb-3{margin-bottom:0.75rem}.mb-4{margin-bottom:1rem}.mb-6{margin-bottom:1.5rem}.mb-8{margin-bottom:2rem}.mt-3{margin-top:0.75rem}.mt-8{margin-top:2rem}.mb-0\.5{margin-bottom:0.125rem}.mt-2{margin-top:0.5rem}.block{display:block}.flex{display:flex}.inline-flex{display:inline-flex}.grid{display:grid}.hidden{display:none}.h-1{height:0.25rem}.h-1\.5{height:0.375rem}.h-10{height:2.5rem}.h-12{height:3rem}.h-16{height:4rem}.h-2\.5{height:0.625rem}.h-32{height:8rem}.h-6{height:1.5rem}.h-8{height:2rem}.h-14{height:3.5rem}.h-3{height:0.75rem}.h-\[80\%\]{height:80%}.h-full{height:100%}.w-1{width:0.25rem}.w-10{width:2.5rem}.w-12{width:3rem}.w-16{width:4rem}.w-2\.5{width:0.625rem}.w-3{width:0.75rem}.w-32{width:8rem}.w-6{width:1.5rem}.w-8{width:2rem}.w-full{width:100%}.w-14{width:3.5rem}.w-\[80\%\]{width:80%}.w-max{width:max-content}.max-w-3xl{max-width:48rem}.max-w-xl{max-width:36rem}.max-w-2xl{max-width:42rem}.max-w-5xl{max-width:64rem}.flex-1{flex:1 1 0%}.shrink-0{flex-shrink:0}@keyframes ping{75%, 100%{transform:scale(2);opacity:0}}.animate-ping{animation:ping 1s cubic-bezier(0, 0, 0.2, 1) infinite}.select-none{-webkit-user-select:none;user-select:none}.grid-cols-2{grid-template-columns:repeat(2, minmax(0, 1fr))}.grid-cols-3{grid-template-columns:repeat(3, minmax(0, 1fr))}.flex-col{flex-direction:column}.flex-wrap{flex-wrap:wrap}.items-start{align-items:flex-start}.items-center{align-items:center}.justify-end{justify-content:flex-end}.justify-center{justify-content:center}.justify-between{justify-content:space-between}.gap-2{gap:0.5rem}.gap-3{gap:0.75rem}.gap-4{gap:1rem}.gap-5{gap:1.25rem}.gap-6{gap:1.5rem}.gap-8{gap:2rem}.space-y-5 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1.25rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1.25rem * var(--tw-space-y-reverse))}.space-y-2 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.5rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.5rem * var(--tw-space-y-reverse))}.space-y-4 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1rem * var(--tw-space-y-reverse))}.overflow-hidden{overflow:hidden}.rounded-2xl{border-radius:1rem}.rounded-3xl{border-radius:1.5rem}.rounded-full{border-radius:9999px}.rounded-xl{border-radius:0.75rem}.border{border-width:1px}.border-b{border-bottom-width:1px}.border-l-4{border-left-width:4px}.border-t{border-top-width:1px}.border-l-2{border-left-width:2px}.border-brand-accent{--tw-border-opacity:1;border-color:rgb(56 189 248 / var(--tw-border-opacity, 1))}.border-slate-100{--tw-border-opacity:1;border-color:rgb(241 245 249 / var(--tw-border-opacity, 1))}.border-slate-200{--tw-border-opacity:1;border-color:rgb(226 232 240 / var(--tw-border-opacity, 1))}.border-white{--tw-border-opacity:1;border-color:rgb(255 255 255 / var(--tw-border-opacity, 1))}.border-white\/10{border-color:rgb(255 255 255 / 0.1)}.border-brand-accent\/50{border-color:rgb(56 189 248 / 0.5)}.bg-brand-accent{--tw-bg-opacity:1;background-color:rgb(56 189 248 / var(--tw-bg-opacity, 1))}.bg-brand-accent\/10{background-color:rgb(56 189 248 / 0.1)}.bg-brand-pink{--tw-bg-opacity:1;background-color:rgb(244 114 182 / var(--tw-bg-opacity, 1))}.bg-brand-purple{--tw-bg-opacity:1;background-color:rgb(129 140 248 / var(--tw-bg-opacity, 1))}.bg-slate-300{--tw-bg-opacity:1;background-color:rgb(203 213 225 / var(--tw-bg-opacity, 1))}.bg-slate-50{--tw-bg-opacity:1;background-color:rgb(248 250 252 / var(--tw-bg-opacity, 1))}.bg-slate-900{--tw-bg-opacity:1;background-color:rgb(15 23 42 / var(--tw-bg-opacity, 1))}.bg-white{--tw-bg-opacity:1;background-color:rgb(255 255 255 / var(--tw-bg-opacity, 1))}.bg-white\/10{background-color:rgb(255 255 255 / 0.1)}.bg-white\/80{background-color:rgb(255 255 255 / 0.8)}.bg-brand-dark{--tw-bg-opacity:1;background-color:rgb(10 10 10 / var(--tw-bg-opacity, 1))}.bg-indigo-50{--tw-bg-opacity:1;background-color:rgb(238 242 255 / var(--tw-bg-opacity, 1))}.bg-white\/5{background-color:rgb(255 255 255 / 0.05)}.bg-\[url\(\'data\:image\/svg\+xml\;base64\2c PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI\+PGcgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMSkiIGZpbGw9Im5vbmUiPjxwYXRoIGQ9Ik0wIDQwbDQwLTQwTTAgMGw0MCA0MCIvPjwvZz48L3N2Zz4\=\'\)\]{background-image:url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGcgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMSkiIGZpbGw9Im5vbmUiPjxwYXRoIGQ9Ik0wIDQwbDQwLTQwTTAgMGw0MCA0MCIvPjwvZz48L3N2Zz4=')}.bg-gradient-to-b{background-image:linear-gradient(to bottom, var(--tw-gradient-stops))}.bg-gradient-to-br{background-image:linear-gradient(to bottom right, var(--tw-gradient-stops))}.bg-gradient-to-r{background-image:linear-gradient(to right, var(--tw-gradient-stops))}.bg-\[url\(\'data\:image\/svg\+xml\;base64\2c PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI\+PGcgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDUpIiBmaWxsPSJub25lIj48cGF0aCBkPSJNMCA0MGw0MC00ME0wIDBsNDAgNDAiLz48L2c\+PC9zdmc\+\'\)\]{background-image:url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGcgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDUpIiBmaWxsPSJub25lIj48cGF0aCBkPSJNMCA0MGw0MC00ME0wIDBsNDAgNDAiLz48L2c+PC9zdmc+')}.bg-gradient-to-tl{background-image:linear-gradient(to top left, var(--tw-gradient-stops))}.from-brand-accent{--tw-gradient-from:#38BDF8 var(--tw-gradient-from-position);--tw-gradient-to:rgb(56 189 248 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-brand-pink{--tw-gradient-from:#F472B6 var(--tw-gradient-from-position);--tw-gradient-to:rgb(244 114 182 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-brand-purple{--tw-gradient-from:#818CF8 var(--tw-gradient-from-position);--tw-gradient-to:rgb(129 140 248 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-cyan-100{--tw-gradient-from:#cffafe var(--tw-gradient-from-position);--tw-gradient-to:rgb(207 250 254 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-cyan-400{--tw-gradient-from:#22d3ee var(--tw-gradient-from-position);--tw-gradient-to:rgb(34 211 238 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-indigo-100{--tw-gradient-from:#e0e7ff var(--tw-gradient-from-position);--tw-gradient-to:rgb(224 231 255 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-indigo-500{--tw-gradient-from:#6366f1 var(--tw-gradient-from-position);--tw-gradient-to:rgb(99 102 241 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-pink-100{--tw-gradient-from:#fce7f3 var(--tw-gradient-from-position);--tw-gradient-to:rgb(252 231 243 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-pink-400{--tw-gradient-from:#f472b6 var(--tw-gradient-from-position);--tw-gradient-to:rgb(244 114 182 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-purple-100{--tw-gradient-from:#f3e8ff var(--tw-gradient-from-position);--tw-gradient-to:rgb(243 232 255 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-slate-900{--tw-gradient-from:#0f172a var(--tw-gradient-from-position);--tw-gradient-to:rgb(15 23 42 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-cyan-500{--tw-gradient-from:#06b6d4 var(--tw-gradient-from-position);--tw-gradient-to:rgb(6 182 212 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.from-indigo-600{--tw-gradient-from:#4f46e5 var(--tw-gradient-from-position);--tw-gradient-to:rgb(79 70 229 / 0) var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), var(--tw-gradient-to)}.via-indigo-900{--tw-gradient-to:rgb(49 46 129 / 0)  var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), #312e81 var(--tw-gradient-via-position), var(--tw-gradient-to)}.via-blue-600{--tw-gradient-to:rgb(37 99 235 / 0)  var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), #2563eb var(--tw-gradient-via-position), var(--tw-gradient-to)}.via-indigo-400{--tw-gradient-to:rgb(129 140 248 / 0)  var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), #818cf8 var(--tw-gradient-via-position), var(--tw-gradient-to)}.via-purple-600{--tw-gradient-to:rgb(147 51 234 / 0)  var(--tw-gradient-to-position);--tw-gradient-stops:var(--tw-gradient-from), #9333ea var(--tw-gradient-via-position), var(--tw-gradient-to)}.to-blue-100{--tw-gradient-to:#dbeafe var(--tw-gradient-to-position)}.to-blue-500{--tw-gradient-to:#3b82f6 var(--tw-gradient-to-position)}.to-brand-accent{--tw-gradient-to:#38BDF8 var(--tw-gradient-to-position)}.to-brand-pink{--tw-gradient-to:#F472B6 var(--tw-gradient-to-position)}.to-brand-purple{--tw-gradient-to:#818CF8 var(--tw-gradient-to-position)}.to-cyan-200{--tw-gradient-to:#a5f3fc var(--tw-gradient-to-position)}.to-indigo-200{--tw-gradient-to:#c7d2fe var(--tw-gradient-to-position)}.to-pink-200{--tw-gradient-to:#fbcfe8 var(--tw-gradient-to-position)}.to-purple-100{--tw-gradient-to:#f3e8ff var(--tw-gradient-to-position)}.to-purple-200{--tw-gradient-to:#e9d5ff var(--tw-gradient-to-position)}.to-purple-600{--tw-gradient-to:#9333ea var(--tw-gradient-to-position)}.to-rose-100{--tw-gradient-to:#ffe4e6 var(--tw-gradient-to-position)}.to-rose-500{--tw-gradient-to:#f43f5e var(--tw-gradient-to-position)}.to-slate-800{--tw-gradient-to:#1e293b var(--tw-gradient-to-position)}.to-slate-900{--tw-gradient-to:#0f172a var(--tw-gradient-to-position)}.to-transparent{--tw-gradient-to:transparent var(--tw-gradient-to-position)}.bg-clip-text{-webkit-background-clip:text;background-clip:text}.object-cover{object-fit:cover}.p-10{padding:2.5rem}.p-4{padding:1rem}.p-5{padding:1.25rem}.p-6{padding:1.5rem}.p-8{padding:2rem}.p-16{padding:4rem}.px-5{padding-left:1.25rem;padding-right:1.25rem}.px-6{padding-left:1.5rem;padding-right:1.5rem}.py-2\.5{padding-top:0.625rem;padding-bottom:0.625rem}.py-4{padding-top:1rem;padding-bottom:1rem}.px-3{padding-left:0.75rem;padding-right:0.75rem}.py-1{padding-top:0.25rem;padding-bottom:0.25rem}.pb-4{padding-bottom:1rem}.pb-8{padding-bottom:2rem}.pl-6{padding-left:1.5rem}.pt-10{padding-top:2.5rem}.pt-6{padding-top:1.5rem}.pb-2{padding-bottom:0.5rem}.pb-6{padding-bottom:1.5rem}.pt-8{padding-top:2rem}.text-center{text-align:center}.text-right{text-align:right}.text-2xl{font-size:1.5rem;line-height:2rem}.text-3xl{font-size:1.875rem;line-height:2.25rem}.text-\[10px\]{font-size:10px}.text-\[11px\]{font-size:11px}.text-\[12px\]{font-size:12px}.text-\[13px\]{font-size:13px}.text-\[14px\]{font-size:14px}.text-\[15px\]{font-size:15px}.text-\[16px\]{font-size:16px}.text-sm{font-size:0.875rem;line-height:1.25rem}.text-xl{font-size:1.25rem;line-height:1.75rem}.text-xs{font-size:0.75rem;line-height:1rem}.text-4xl{font-size:2.25rem;line-height:2.5rem}.text-7xl{font-size:4.5rem;line-height:1}.text-\[10rem\]{font-size:10rem}.text-\[12rem\]{font-size:12rem}.font-black{font-weight:900}.font-bold{font-weight:700}.font-light{font-weight:300}.font-medium{font-weight:500}.uppercase{text-transform:uppercase}.lowercase{text-transform:lowercase}.leading-relaxed{line-height:1.625}.leading-\[1\.1\]{line-height:1.1}.tracking-\[0\.15em\]{letter-spacing:0.15em}.tracking-\[0\.2em\]{letter-spacing:0.2em}.tracking-tight{letter-spacing:-0.025em}.tracking-wide{letter-spacing:0.025em}.tracking-wider{letter-spacing:0.05em}.tracking-widest{letter-spacing:0.1em}.tracking-\[0\.1em\]{letter-spacing:0.1em}.tracking-\[0\.25em\]{letter-spacing:0.25em}.tracking-tighter{letter-spacing:-0.05em}.text-brand-accent{--tw-text-opacity:1;color:rgb(56 189 248 / var(--tw-text-opacity, 1))}.text-brand-pink{--tw-text-opacity:1;color:rgb(244 114 182 / var(--tw-text-opacity, 1))}.text-brand-purple{--tw-text-opacity:1;color:rgb(129 140 248 / var(--tw-text-opacity, 1))}.text-cyan-600{--tw-text-opacity:1;color:rgb(8 145 178 / var(--tw-text-opacity, 1))}.text-indigo-600{--tw-text-opacity:1;color:rgb(79 70 229 / var(--tw-text-opacity, 1))}.text-pink-600{--tw-text-opacity:1;color:rgb(219 39 119 / var(--tw-text-opacity, 1))}.text-purple-600{--tw-text-opacity:1;color:rgb(147 51 234 / var(--tw-text-opacity, 1))}.text-slate-200{--tw-text-opacity:1;color:rgb(226 232 240 / var(--tw-text-opacity, 1))}.text-slate-500{--tw-text-opacity:1;color:rgb(100 116 139 / var(--tw-text-opacity, 1))}.text-slate-600{--tw-text-opacity:1;color:rgb(71 85 105 / var(--tw-text-opacity, 1))}.text-slate-700{--tw-text-opacity:1;color:rgb(51 65 85 / var(--tw-text-opacity, 1))}.text-slate-800{--tw-text-opacity:1;color:rgb(30 41 59 / var(--tw-text-opacity, 1))}.text-slate-900{--tw-text-opacity:1;color:rgb(15 23 42 / var(--tw-text-opacity, 1))}.text-white{--tw-text-opacity:1;color:rgb(255 255 255 / var(--tw-text-opacity, 1))}.text-white\/30{color:rgb(255 255 255 / 0.3)}.text-white\/70{color:rgb(255 255 255 / 0.7)}.text-white\/80{color:rgb(255 255 255 / 0.8)}.text-white\/90{color:rgb(255 255 255 / 0.9)}.text-slate-100{--tw-text-opacity:1;color:rgb(241 245 249 / var(--tw-text-opacity, 1))}.text-slate-400{--tw-text-opacity:1;color:rgb(148 163 184 / var(--tw-text-opacity, 1))}.text-transparent{color:transparent}.text-white\/50{color:rgb(255 255 255 / 0.5)}.antialiased{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}.opacity-20{opacity:0.2}.opacity-40{opacity:0.4}.opacity-50{opacity:0.5}.opacity-75{opacity:0.75}.mix-blend-screen{mix-blend-mode:screen}.mix-blend-overlay{mix-blend-mode:overlay}.shadow-2xl{--tw-shadow:0 25px 50px -12px rgb(0 0 0 / 0.25);--tw-shadow-colored:0 25px 50px -12px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.shadow-\[0_0_20px_rgba\(255\2c 255\2c 255\2c 0\.3\)\]{--tw-shadow:0 0 20px rgba(255,255,255,0.3);--tw-shadow-colored:0 0 20px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.shadow-\[0_4px_15px_rgb\(0\2c 0\2c 0\2c 0\.05\)\]{--tw-shadow:0 4px 15px rgb(0,0,0,0.05);--tw-shadow-colored:0 4px 15px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.shadow-\[0_4px_20px_rgb\(0\2c 0\2c 0\2c 0\.03\)\]{--tw-shadow:0 4px 20px rgb(0,0,0,0.03);--tw-shadow-colored:0 4px 20px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.shadow-lg{--tw-shadow:0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);--tw-shadow-colored:0 10px 15px -3px var(--tw-shadow-color), 0 4px 6px -4px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.shadow-sm{--tw-shadow:0 1px 2px 0 rgb(0 0 0 / 0.05);--tw-shadow-colored:0 1px 2px 0 var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.shadow-\[0_0_30px_rgba\(255\2c 255\2c 255\2c 0\.2\)\]{--tw-shadow:0 0 30px rgba(255,255,255,0.2);--tw-shadow-colored:0 0 30px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.shadow-cyan-500\/20{--tw-shadow-color:rgb(6 182 212 / 0.2);--tw-shadow:var(--tw-shadow-colored)}.shadow-indigo-500\/20{--tw-shadow-color:rgb(99 102 241 / 0.2);--tw-shadow:var(--tw-shadow-colored)}.shadow-pink-500\/20{--tw-shadow-color:rgb(236 72 153 / 0.2);--tw-shadow:var(--tw-shadow-colored)}.blur-2xl{--tw-blur:blur(40px);filter:var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)}.blur-\[60px\]{--tw-blur:blur(60px);filter:var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)}.blur-\[70px\]{--tw-blur:blur(70px);filter:var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)}.blur-\[120px\]{--tw-blur:blur(120px);filter:var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)}.filter{filter:var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)}.backdrop-blur{--tw-backdrop-blur:blur(8px);-webkit-backdrop-filter:var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);backdrop-filter:var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia)}.backdrop-blur-md{--tw-backdrop-blur:blur(12px);-webkit-backdrop-filter:var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);backdrop-filter:var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia)}.backdrop-blur-xl{--tw-backdrop-blur:blur(24px);-webkit-backdrop-filter:var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);backdrop-filter:var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia)}.transition-transform{transition-property:transform;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms}.selection\:bg-brand-purple *::selection{--tw-bg-opacity:1;background-color:rgb(129 140 248 / var(--tw-bg-opacity, 1))}.selection\:text-white *::selection{--tw-text-opacity:1;color:rgb(255 255 255 / var(--tw-text-opacity, 1))}.selection\:bg-brand-purple::selection{--tw-bg-opacity:1;background-color:rgb(129 140 248 / var(--tw-bg-opacity, 1))}.selection\:text-white::selection{--tw-text-opacity:1;color:rgb(255 255 255 / var(--tw-text-opacity, 1))}.hover\:scale-105:hover{--tw-scale-x:1.05;--tw-scale-y:1.05;transform:translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))}@media (min-width: 640px){.sm\:grid-cols-2{grid-template-columns:repeat(2, minmax(0, 1fr))}}@media (min-width: 768px){.md\:block{display:block}.md\:w-auto{width:auto}.md\:grid-cols-3{grid-template-columns:repeat(3, minmax(0, 1fr))}.md\:grid-cols-4{grid-template-columns:repeat(4, minmax(0, 1fr))}.md\:flex-row{flex-direction:row}.md\:text-2xl{font-size:1.5rem;line-height:2rem}.md\:text-8xl{font-size:6rem;line-height:1}}</style></head>
+<body class="antialiased selection:bg-brand-purple selection:text-white">
+
+    <!-- THE ENGINE RENDER TARGET -->
+    <div id="render-target"><div class="physical-page bg-brand-dark text-white p-16 flex flex-col justify-center relative">
+                <div class="absolute inset-0 z-0">
+                    <div class="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-gradient-to-br from-indigo-600 via-purple-600 to-transparent rounded-full mix-blend-screen filter blur-[120px] opacity-50"></div>
+                    <div class="absolute bottom-[-20%] right-[-20%] w-[80%] h-[80%] bg-gradient-to-tl from-cyan-500 via-blue-600 to-transparent rounded-full mix-blend-screen filter blur-[120px] opacity-40"></div>
+                    <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGcgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDUpIiBmaWxsPSJub25lIj48cGF0aCBkPSJNMCA0MGw0MC00ME0wIDBsNDAgNDAiLz48L2c+PC9zdmc+')] opacity-20"></div>
+                </div>
+                <div class="relative z-10 w-full flex justify-between items-start border-b border-white/10 pb-8">
+                    <div class="flex items-center gap-4">
+                        <div class="w-14 h-14 bg-white rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(255,255,255,0.2)] overflow-hidden">
+                            <img src="traceroot_logo.jpg" alt="Traceroot Logo" class="w-full h-full object-cover">
+                        </div>
+                        <div>
+                            <h2 class="font-black text-2xl tracking-[0.15em] text-white mb-0.5 uppercase">TRACEROOT</h2>
+                            <p class="text-[10px] tracking-[0.25em] uppercase text-brand-accent font-bold">Technology Solutions</p>
+                        </div>
+                    </div>
+                    <div class="text-right text-xs text-white/70 space-y-2 font-medium tracking-widest uppercase">
+                        <p class="flex items-center justify-end gap-2">traceroot.io@gmail.com</p>
+                        <p class="flex items-center justify-end gap-2">09063412927</p>
+                    </div>
+                </div>
+                <div class="relative z-10 w-full max-w-5xl mx-auto flex-1 flex flex-col justify-center">
+                    <div class="mb-6 inline-flex items-center gap-3 bg-white/5 border border-white/10 backdrop-blur-md px-5 py-2.5 rounded-full w-max">
+                        <span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-accent opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-brand-accent"></span></span>
+                        <span class="text-white/90 text-xs font-bold tracking-[0.2em] uppercase">Enterprise Platform Proposal</span>
+                    </div>
+                    <h1 class="text-7xl md:text-8xl font-black tracking-tighter mb-8 text-white leading-[1.1]">Digital Travel <br><span class="text-transparent bg-clip-text bg-gradient-to-r from-brand-accent via-indigo-400 to-brand-pink">Platform</span></h1>
+                    <p class="text-xl text-white/70 font-light max-w-2xl leading-relaxed border-l-2 border-brand-accent/50 pl-6">A visually stunning, all-in-one digital ecosystem engineered to modernize operations, automate workflows, and aggressively scale revenue for BILALSADASUB.</p>
+                </div>
+                <div class="relative z-10 w-full grid grid-cols-3 gap-8 pt-8 border-t border-white/10 bg-white/5 backdrop-blur-xl p-8 rounded-3xl">
+                    <div><p class="text-brand-accent text-[10px] tracking-widest uppercase font-bold mb-2">Prepared For</p><p class="text-xl md:text-2xl font-black text-white tracking-wide">BILALSADASUB</p></div>
+                    <div><p class="text-brand-accent text-[10px] tracking-widest uppercase font-bold mb-2">Prepared By</p><p class="text-xl font-bold text-white mb-1">Aliyu Wada Umar</p><p class="text-[10px] text-brand-purple font-bold mb-2 tracking-[0.1em] uppercase">CEO, TRACEROOT TECHNOLOGY SOLUTIONS</p><p class="text-xs text-white/50 leading-relaxed font-light">Layout, Opposite Lugga mosque<br>Katsina</p></div>
+                    <div class="text-right flex flex-col justify-between"><div><p class="text-brand-accent text-[10px] tracking-widest uppercase font-bold mb-2">Date</p><p class="text-xl font-medium text-white tracking-wide">May 10, 2026</p></div></div>
+                </div>
+            </div><div class="physical-page">
+                <div class="page-bg"></div>
+                <div class="content-area">
+                    <div class="flex justify-between items-center pb-6 mb-10 border-b border-slate-200 relative z-10">
+                        <h2 class="font-black text-slate-900 text-2xl tracking-tighter">BILALSADASUB</h2>
+                        <div class="text-right">
+                            <p class="text-[10px] uppercase tracking-widest text-brand-purple font-bold bg-indigo-50 px-3 py-1 rounded-full">Table of Contents</p>
+                        </div>
+                    </div>
+                
+                <div class="absolute -top-10 -left-6 text-[10rem] font-black text-slate-100 opacity-50 select-none pointer-events-none">TOC</div>
+                <h2 class="text-4xl font-black text-slate-900 tracking-tight mb-12 relative z-10">Table of Contents</h2>
+                <div id="toc-list" class="space-y-4 relative z-10"><div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
+                    <p class="text-[16px] font-bold text-slate-800 uppercase tracking-wide">Letter of Presentation</p>
+                    <p class="font-black text-slate-400">Page 02</p>
+                </div><div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
+                    <p class="text-[16px] font-bold text-slate-800 uppercase tracking-wide">Executive Summary</p>
+                    <p class="font-black text-slate-400">Page 03</p>
+                </div><div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
+                    <p class="text-[16px] font-bold text-slate-800 uppercase tracking-wide">Platform Overview</p>
+                    <p class="font-black text-slate-400">Page 04</p>
+                </div><div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
+                    <p class="text-[16px] font-bold text-slate-800 uppercase tracking-wide">Admin Dashboard Features</p>
+                    <p class="font-black text-slate-400">Page 05</p>
+                </div><div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
+                    <p class="text-[16px] font-bold text-slate-800 uppercase tracking-wide">B2B Agent Portal Features</p>
+                    <p class="font-black text-slate-400">Page 07</p>
+                </div><div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
+                    <p class="text-[16px] font-bold text-slate-800 uppercase tracking-wide">Retail Customer Experience</p>
+                    <p class="font-black text-slate-400">Page 08</p>
+                </div><div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
+                    <p class="text-[16px] font-bold text-slate-800 uppercase tracking-wide">Enterprise Payment Gateway</p>
+                    <p class="font-black text-slate-400">Page 09</p>
+                </div><div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
+                    <p class="text-[16px] font-bold text-slate-800 uppercase tracking-wide">Business Benefits</p>
+                    <p class="font-black text-slate-400">Page 10</p>
+                </div><div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
+                    <p class="text-[16px] font-bold text-slate-800 uppercase tracking-wide">Proven Track Record</p>
+                    <p class="font-black text-slate-400">Page 11</p>
+                </div><div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
+                    <p class="text-[16px] font-bold text-slate-800 uppercase tracking-wide">Competitive Advantage</p>
+                    <p class="font-black text-slate-400">Page 11</p>
+                </div><div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
+                    <p class="text-[16px] font-bold text-slate-800 uppercase tracking-wide">Implementation Plan</p>
+                    <p class="font-black text-slate-400">Page 12</p>
+                </div></div>
+            </div>
+                <div class="absolute bottom-10 right-16 text-sm font-bold text-slate-400 tracking-widest z-20">01</div>
+                
+            </div><div class="physical-page">
+                <div class="page-bg"></div>
+                <div class="content-area">
+                    <div class="flex justify-between items-center pb-6 mb-10 border-b border-slate-200 relative z-10">
+                        <h2 class="font-black text-slate-900 text-2xl tracking-tighter">BILALSADASUB</h2>
+                        <div class="text-right">
+                            <p class="text-[10px] uppercase tracking-widest text-brand-purple font-bold bg-indigo-50 px-3 py-1 rounded-full">Enterprise Proposal</p>
+                        </div>
+                    </div>
+                <div data-force-break="true" data-toc-title="Letter of Presentation">
+                <h2 class="text-3xl font-black text-slate-900 tracking-tight mb-8">Letter of Presentation</h2>
+                <div class="glass-card p-10 rounded-3xl border border-white shadow-sm mb-12 bg-white">
+                    <p class="text-slate-700 font-medium mb-6 text-[16px] leading-relaxed">Dear Sir,</p>
+                    <p class="text-slate-700 font-medium mb-6 text-[16px] leading-relaxed">We are pleased to present this comprehensive proposal for the development and deployment of an Enterprise Travel Management Platform tailored specifically for your agency.</p>
+                    <p class="text-slate-700 font-medium mb-6 text-[16px] leading-relaxed">In today's rapidly digitizing travel industry, operational efficiency and superior customer experience are paramount. Our goal is to architect a digital ecosystem that centralizes your bookings, agent management, visa processing, and financial reconciliations into one seamless platform.</p>
+                    <p class="text-slate-700 font-medium mb-6 text-[16px] leading-relaxed">By automating routine tasks and providing both your B2B agents and B2C retail customers with an exceptional digital experience, BILALSADASUB will be positioned to scale aggressively while significantly reducing administrative overhead.</p>
+                    <p class="text-slate-700 font-medium mb-8 text-[16px] leading-relaxed">We look forward to the opportunity to partner with you and bring this vision to life.</p>
+                    <p class="text-slate-700 font-bold text-[16px]">Sincerely,</p>
+                    <p class="text-brand-purple font-black uppercase tracking-wide mt-2 text-[16px]">Aliyu Wada Umar</p>
+                    <p class="text-slate-500 text-[13px] font-medium uppercase tracking-wider">CEO, Traceroot Technology Solutions</p>
+                </div>
+            </div></div>
+                <div class="absolute bottom-10 right-16 text-sm font-bold text-slate-400 tracking-widest z-20">02</div>
+                <div class="absolute -top-10 -left-6 text-[12rem] font-black text-slate-100 opacity-50 z-0 select-none pointer-events-none">02</div>
+            </div><div class="physical-page">
+                <div class="page-bg"></div>
+                <div class="content-area">
+                    <div class="flex justify-between items-center pb-6 mb-10 border-b border-slate-200 relative z-10">
+                        <h2 class="font-black text-slate-900 text-2xl tracking-tighter">BILALSADASUB</h2>
+                        <div class="text-right">
+                            <p class="text-[10px] uppercase tracking-widest text-brand-purple font-bold bg-indigo-50 px-3 py-1 rounded-full">Enterprise Proposal</p>
+                        </div>
+                    </div>
+                <div data-force-break="true" data-toc-title="Executive Summary">
+            <h2 class="text-3xl font-black text-slate-900 tracking-tight mb-8">Executive Summary</h2>
+            <div class="glass-card p-10 rounded-3xl border border-white relative overflow-hidden mb-12">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-brand-accent/10 rounded-full blur-2xl"></div>
+                <h3 class="text-2xl font-bold mb-6 gradient-text">The Future of Travel Operations</h3>
+                <p class="text-[16px] text-slate-700 mb-10 relative z-10 font-medium">
+                    In today's fast-paced digital economy, travel agencies cannot rely on manual spreadsheets and outdated systems. We present a <strong>comprehensive enterprise travel management platform</strong> specifically engineered to transform how <span class="font-black text-slate-900">BILALSADASUB</span> operates, scales, and delivers value.
+                </p>
+                <div class="grid md:grid-cols-3 gap-6 relative z-10">
+                    <div class="bg-white/80 backdrop-blur border border-white p-6 rounded-2xl shadow-sm">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center mb-4">
+                            <svg class="w-6 h-6 text-brand-purple" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        </div>
+                        <h4 class="font-black text-slate-900 mb-2 tracking-wide">Automate Workflows</h4>
+                        <p class="text-[14px] text-slate-600 font-medium">Eliminate manual data entry and streamline the booking lifecycle completely.</p>
+                    </div>
+                    <div class="bg-white/80 backdrop-blur border border-white p-6 rounded-2xl shadow-sm">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-100 to-blue-100 flex items-center justify-center mb-4">
+                            <svg class="w-6 h-6 text-brand-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        </div>
+                        <h4 class="font-black text-slate-900 mb-2 tracking-wide">Increase Revenue</h4>
+                        <p class="text-[14px] text-slate-600 font-medium">Enable an army of B2B agents and provide a frictionless B2C booking experience.</p>
+                    </div>
+                    <div class="bg-white/80 backdrop-blur border border-white p-6 rounded-2xl shadow-sm">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-pink-100 to-rose-100 flex items-center justify-center mb-4">
+                            <svg class="w-6 h-6 text-brand-pink" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                        </div>
+                        <h4 class="font-black text-slate-900 mb-2 tracking-wide">Reduce Costs</h4>
+                        <p class="text-[14px] text-slate-600 font-medium">Centralize all customer support, document collection, and payment reconciliation.</p>
+                    </div>
+                </div>
+            </div>
+        </div></div>
+                <div class="absolute bottom-10 right-16 text-sm font-bold text-slate-400 tracking-widest z-20">03</div>
+                <div class="absolute -top-10 -left-6 text-[12rem] font-black text-slate-100 opacity-50 z-0 select-none pointer-events-none">03</div>
+            </div><div class="physical-page">
+                <div class="page-bg"></div>
+                <div class="content-area">
+                    <div class="flex justify-between items-center pb-6 mb-10 border-b border-slate-200 relative z-10">
+                        <h2 class="font-black text-slate-900 text-2xl tracking-tighter">BILALSADASUB</h2>
+                        <div class="text-right">
+                            <p class="text-[10px] uppercase tracking-widest text-brand-purple font-bold bg-indigo-50 px-3 py-1 rounded-full">Enterprise Proposal</p>
+                        </div>
+                    </div>
+                <h2 data-toc-title="Platform Overview" data-force-break="true" class="text-3xl font-black text-slate-900 tracking-tight mb-8">Platform Overview</h2><p class="text-[16px] text-slate-700 mb-8 max-w-3xl font-medium border-l-4 border-brand-accent pl-6">
+            An <strong>Enterprise-Grade Agency Operating System</strong> serving your Executive Administrators, Sub-Agents (B2B), and Retail Customers (B2C) seamlessly.
+        </p><div class="grid grid-cols-2 md:grid-cols-4 gap-5 mb-12">
+            <div class="p-6 rounded-2xl text-center bg-white border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)]"><div class="text-3xl mb-4 bg-slate-50 w-16 h-16 mx-auto rounded-full flex items-center justify-center">✈️</div><h4 class="font-black text-[12px] text-slate-900 uppercase tracking-widest">Flight Management</h4></div>
+            <div class="p-6 rounded-2xl text-center bg-white border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)]"><div class="text-3xl mb-4 bg-slate-50 w-16 h-16 mx-auto rounded-full flex items-center justify-center">🏨</div><h4 class="font-black text-[12px] text-slate-900 uppercase tracking-widest">Hotel Management</h4></div>
+            <div class="p-6 rounded-2xl text-center bg-white border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)]"><div class="text-3xl mb-4 bg-slate-50 w-16 h-16 mx-auto rounded-full flex items-center justify-center">🛂</div><h4 class="font-black text-[12px] text-slate-900 uppercase tracking-widest">Visa Management</h4></div>
+            <div class="p-6 rounded-2xl text-center bg-white border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)]"><div class="text-3xl mb-4 bg-slate-50 w-16 h-16 mx-auto rounded-full flex items-center justify-center">🌴</div><h4 class="font-black text-[12px] text-slate-900 uppercase tracking-widest">Tour Packages</h4></div>
+            <div class="p-6 rounded-2xl text-center bg-white border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)]"><div class="text-3xl mb-4 bg-slate-50 w-16 h-16 mx-auto rounded-full flex items-center justify-center">🕋</div><h4 class="font-black text-[12px] text-slate-900 uppercase tracking-widest">Hajj &amp; Umrah</h4></div>
+            <div class="p-6 rounded-2xl text-center bg-white border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)]"><div class="text-3xl mb-4 bg-slate-50 w-16 h-16 mx-auto rounded-full flex items-center justify-center">💳</div><h4 class="font-black text-[12px] text-slate-900 uppercase tracking-widest">Payments</h4></div>
+            <div class="p-6 rounded-2xl text-center bg-white border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)]"><div class="text-3xl mb-4 bg-slate-50 w-16 h-16 mx-auto rounded-full flex items-center justify-center">👥</div><h4 class="font-black text-[12px] text-slate-900 uppercase tracking-widest">Integrated CRM</h4></div>
+            <div class="p-6 rounded-2xl text-center bg-white border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)]"><div class="text-3xl mb-4 bg-slate-50 w-16 h-16 mx-auto rounded-full flex items-center justify-center">📱</div><h4 class="font-black text-[12px] text-slate-900 uppercase tracking-widest">Mobile Ready</h4></div>
+        </div></div>
+                <div class="absolute bottom-10 right-16 text-sm font-bold text-slate-400 tracking-widest z-20">04</div>
+                <div class="absolute -top-10 -left-6 text-[12rem] font-black text-slate-100 opacity-50 z-0 select-none pointer-events-none">04</div>
+            </div><div class="physical-page">
+                <div class="page-bg"></div>
+                <div class="content-area">
+                    <div class="flex justify-between items-center pb-6 mb-10 border-b border-slate-200 relative z-10">
+                        <h2 class="font-black text-slate-900 text-2xl tracking-tighter">BILALSADASUB</h2>
+                        <div class="text-right">
+                            <p class="text-[10px] uppercase tracking-widest text-brand-purple font-bold bg-indigo-50 px-3 py-1 rounded-full">Enterprise Proposal</p>
+                        </div>
+                    </div>
+                <h2 data-toc-title="Admin Dashboard Features" data-force-break="true" class="text-3xl font-black text-slate-900 tracking-tight mb-8">Admin Dashboard Features</h2><p class="text-slate-700 mb-10 text-[16px] font-medium max-w-3xl">The command center for BILALSADASUB executives and staff. Gain absolute control and visibility over every aspect of your travel business through a beautifully designed interface.</p><div class="flex items-start gap-5 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm mb-4">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-500/20"><span class="text-white text-[13px] font-black">1</span></div>
+            <div><strong class="text-slate-900 block mb-1 text-sm font-black uppercase tracking-wide">Dashboard Analytics</strong> <span class="text-slate-600 text-[14px] leading-relaxed font-medium">Real-time charts on revenue, booking volume, and agent performance metrics.</span></div>
+        </div><div class="flex items-start gap-5 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm mb-4">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center shrink-0 shadow-lg shadow-cyan-500/20"><span class="text-white text-[13px] font-black">2</span></div>
+            <div><strong class="text-slate-900 block mb-1 text-sm font-black uppercase tracking-wide">Booking Management</strong> <span class="text-slate-600 text-[14px] leading-relaxed font-medium">Track, modify, and fulfill client bookings seamlessly across flights, hotels, and packages.</span></div>
+        </div><div class="flex items-start gap-5 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm mb-4">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center shrink-0 shadow-lg shadow-pink-500/20"><span class="text-white text-[13px] font-black">3</span></div>
+            <div><strong class="text-slate-900 block mb-1 text-sm font-black uppercase tracking-wide">User &amp; Agent Management</strong> <span class="text-slate-600 text-[14px] leading-relaxed font-medium">Approve agent applications, suspend accounts, and view detailed user histories.</span></div>
+        </div><div class="flex items-start gap-5 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm mb-4">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-500/20"><span class="text-white text-[13px] font-black">4</span></div>
+            <div><strong class="text-slate-900 block mb-1 text-sm font-black uppercase tracking-wide">Commission Management</strong> <span class="text-slate-600 text-[14px] leading-relaxed font-medium">Automatically calculate and disburse B2B agent commissions with a click.</span></div>
+        </div><div class="flex items-start gap-5 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm mb-4">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center shrink-0 shadow-lg shadow-cyan-500/20"><span class="text-white text-[13px] font-black">5</span></div>
+            <div><strong class="text-slate-900 block mb-1 text-sm font-black uppercase tracking-wide">Visa Processing</strong> <span class="text-slate-600 text-[14px] leading-relaxed font-medium">Secure portal for collecting passports, updating processing statuses, and issuing e-Visas.</span></div>
+        </div><div class="flex items-start gap-5 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm mb-4">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center shrink-0 shadow-lg shadow-pink-500/20"><span class="text-white text-[13px] font-black">6</span></div>
+            <div><strong class="text-slate-900 block mb-1 text-sm font-black uppercase tracking-wide">Package Creator</strong> <span class="text-slate-600 text-[14px] leading-relaxed font-medium">Build custom Hajj, Umrah, or Vacation packages with dynamic pricing.</span></div>
+        </div></div>
+                <div class="absolute bottom-10 right-16 text-sm font-bold text-slate-400 tracking-widest z-20">05</div>
+                <div class="absolute -top-10 -left-6 text-[12rem] font-black text-slate-100 opacity-50 z-0 select-none pointer-events-none">05</div>
+            </div><div class="physical-page">
+                <div class="page-bg"></div>
+                <div class="content-area">
+                    <div class="flex justify-between items-center pb-6 mb-10 border-b border-slate-200 relative z-10">
+                        <h2 class="font-black text-slate-900 text-2xl tracking-tighter">BILALSADASUB</h2>
+                        <div class="text-right">
+                            <p class="text-[10px] uppercase tracking-widest text-brand-purple font-bold bg-indigo-50 px-3 py-1 rounded-full">Enterprise Proposal</p>
+                        </div>
+                    </div>
+                <div class="flex items-start gap-5 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm mb-4">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-500/20"><span class="text-white text-[13px] font-black">7</span></div>
+            <div><strong class="text-slate-900 block mb-1 text-sm font-black uppercase tracking-wide">Wallet &amp; Payment Logs</strong> <span class="text-slate-600 text-[14px] leading-relaxed font-medium">Oversee user wallets, approve manual funding, and view audit trails.</span></div>
+        </div><div class="flex items-start gap-5 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm mb-12">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center shrink-0 shadow-lg shadow-cyan-500/20"><span class="text-white text-[13px] font-black">8</span></div>
+            <div><strong class="text-slate-900 block mb-1 text-sm font-black uppercase tracking-wide">Support &amp; Settings</strong> <span class="text-slate-600 text-[14px] leading-relaxed font-medium">Built-in helpdesk, push notifications, and strict Role &amp; Permission access controls.</span></div>
+        </div></div>
+                <div class="absolute bottom-10 right-16 text-sm font-bold text-slate-400 tracking-widest z-20">06</div>
+                <div class="absolute -top-10 -left-6 text-[12rem] font-black text-slate-100 opacity-50 z-0 select-none pointer-events-none">06</div>
+            </div><div class="physical-page">
+                <div class="page-bg"></div>
+                <div class="content-area">
+                    <div class="flex justify-between items-center pb-6 mb-10 border-b border-slate-200 relative z-10">
+                        <h2 class="font-black text-slate-900 text-2xl tracking-tighter">BILALSADASUB</h2>
+                        <div class="text-right">
+                            <p class="text-[10px] uppercase tracking-widest text-brand-purple font-bold bg-indigo-50 px-3 py-1 rounded-full">Enterprise Proposal</p>
+                        </div>
+                    </div>
+                <h2 data-toc-title="B2B Agent Portal Features" data-force-break="true" class="text-3xl font-black text-slate-900 tracking-tight mb-8">B2B Agent Portal Features</h2><div class="bg-slate-900 rounded-3xl p-8 text-white flex flex-col justify-center relative overflow-hidden shadow-2xl mb-8">
+            <div class="absolute top-0 right-0 w-32 h-32 bg-brand-accent rounded-full blur-[60px] opacity-40"></div>
+            <h3 class="text-xl font-bold mb-4 uppercase tracking-widest gradient-text">Empower Partners</h3>
+            <p class="text-white/80 mb-6 text-[14px] leading-relaxed font-medium">Scale BILALSADASUB's reach rapidly by allowing independent agents to sell your packages nationwide while you retain central control.</p>
+            <div class="flex gap-2">
+                <div class="w-8 h-1.5 bg-brand-accent rounded-full"></div>
+                <div class="w-3 h-1.5 bg-brand-purple rounded-full"></div>
+                <div class="w-3 h-1.5 bg-brand-pink rounded-full"></div>
+            </div>
+        </div><div class="grid sm:grid-cols-2 gap-4 mb-12">
+            <div class="bg-white/80 backdrop-blur p-5 rounded-2xl border border-white flex flex-col justify-center shadow-sm">
+                <h4 class="font-black text-slate-900 mb-1 text-sm uppercase tracking-wide">Onboarding</h4><p class="text-[13px] text-slate-600 font-medium">Automated agent KYC registration and approval workflows.</p>
+            </div>
+            <div class="bg-white/80 backdrop-blur p-5 rounded-2xl border border-white flex flex-col justify-center shadow-sm">
+                <h4 class="font-black text-slate-900 mb-1 text-sm uppercase tracking-wide">Agent Wallet</h4><p class="text-[13px] text-slate-600 font-medium">Pre-fund wallets for instant bulk package bookings.</p>
+            </div>
+            <div class="bg-white/80 backdrop-blur p-5 rounded-2xl border border-white flex flex-col justify-center shadow-sm">
+                <h4 class="font-black text-slate-900 mb-1 text-sm uppercase tracking-wide">Client CRM</h4><p class="text-[13px] text-slate-600 font-medium">Agents can manage their own clients' passports and documents.</p>
+            </div>
+            <div class="bg-white/80 backdrop-blur p-5 rounded-2xl border border-white flex flex-col justify-center shadow-sm">
+                <h4 class="font-black text-slate-900 mb-1 text-sm uppercase tracking-wide">Commissions</h4><p class="text-[13px] text-slate-600 font-medium">Live earnings dashboard, tracking, and automated withdrawals.</p>
+            </div>
+        </div></div>
+                <div class="absolute bottom-10 right-16 text-sm font-bold text-slate-400 tracking-widest z-20">07</div>
+                <div class="absolute -top-10 -left-6 text-[12rem] font-black text-slate-100 opacity-50 z-0 select-none pointer-events-none">07</div>
+            </div><div class="physical-page">
+                <div class="page-bg"></div>
+                <div class="content-area">
+                    <div class="flex justify-between items-center pb-6 mb-10 border-b border-slate-200 relative z-10">
+                        <h2 class="font-black text-slate-900 text-2xl tracking-tighter">BILALSADASUB</h2>
+                        <div class="text-right">
+                            <p class="text-[10px] uppercase tracking-widest text-brand-purple font-bold bg-indigo-50 px-3 py-1 rounded-full">Enterprise Proposal</p>
+                        </div>
+                    </div>
+                <h2 data-toc-title="Retail Customer Experience" data-force-break="true" class="text-3xl font-black text-slate-900 tracking-tight mb-8">Retail Customer Experience (B2C)</h2><p class="text-slate-700 mb-10 text-[16px] font-medium">A frictionless, highly visual booking experience that builds immediate trust and keeps customers returning to BILALSADASUB.</p><div class="flex flex-col gap-4 mb-12">
+            <div class="flex items-center gap-3 bg-white p-4 rounded-xl border border-slate-100 shadow-sm"><div class="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-brand-accent to-brand-purple"></div><span class="font-bold text-slate-800 text-[13px] tracking-wide uppercase">Registration &amp; Login</span></div>
+            <div class="flex items-center gap-3 bg-white p-4 rounded-xl border border-slate-100 shadow-sm"><div class="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-brand-accent to-brand-purple"></div><span class="font-bold text-slate-800 text-[13px] tracking-wide uppercase">Flight &amp; Hotel Search</span></div>
+            <div class="flex items-center gap-3 bg-white p-4 rounded-xl border border-slate-100 shadow-sm"><div class="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-brand-accent to-brand-purple"></div><span class="font-bold text-slate-800 text-[13px] tracking-wide uppercase">Digital Visa Applications</span></div>
+            <div class="flex items-center gap-3 bg-white p-4 rounded-xl border border-slate-100 shadow-sm"><div class="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-brand-purple to-brand-pink"></div><span class="font-bold text-slate-800 text-[13px] tracking-wide uppercase">Hajj &amp; Umrah Packages</span></div>
+            <div class="flex items-center gap-3 bg-white p-4 rounded-xl border border-slate-100 shadow-sm"><div class="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-brand-purple to-brand-pink"></div><span class="font-bold text-slate-800 text-[13px] tracking-wide uppercase">Personal Digital Wallet</span></div>
+            <div class="flex items-center gap-3 bg-white p-4 rounded-xl border border-slate-100 shadow-sm"><div class="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-brand-purple to-brand-pink"></div><span class="font-bold text-slate-800 text-[13px] tracking-wide uppercase">Booking History &amp; Tracking</span></div>
+            <div class="flex items-center gap-3 bg-white p-4 rounded-xl border border-slate-100 shadow-sm"><div class="w-2.5 h-2.5 rounded-full bg-gradient-to-r from-brand-pink to-brand-accent"></div><span class="font-bold text-slate-800 text-[13px] tracking-wide uppercase">Downloadable Invoices</span></div>
+        </div></div>
+                <div class="absolute bottom-10 right-16 text-sm font-bold text-slate-400 tracking-widest z-20">08</div>
+                <div class="absolute -top-10 -left-6 text-[12rem] font-black text-slate-100 opacity-50 z-0 select-none pointer-events-none">08</div>
+            </div><div class="physical-page">
+                <div class="page-bg"></div>
+                <div class="content-area">
+                    <div class="flex justify-between items-center pb-6 mb-10 border-b border-slate-200 relative z-10">
+                        <h2 class="font-black text-slate-900 text-2xl tracking-tighter">BILALSADASUB</h2>
+                        <div class="text-right">
+                            <p class="text-[10px] uppercase tracking-widest text-brand-purple font-bold bg-indigo-50 px-3 py-1 rounded-full">Enterprise Proposal</p>
+                        </div>
+                    </div>
+                <h2 data-toc-title="Enterprise Payment Gateway" data-force-break="true" class="text-3xl font-black text-slate-900 tracking-tight mb-10">Enterprise Payment Gateway</h2><h3 class="text-xl font-bold mb-4 gradient-text tracking-wide uppercase">Total Financial Automation</h3><p class="text-slate-600 mb-8 text-[16px] font-medium leading-relaxed">
+            Eliminate the headache of manual bank reconciliations. Our platform integrates deeply with leading payment processors to instantly verify transactions automatically.
+        </p><div class="flex flex-wrap gap-3 mb-8">
+            <span class="px-5 py-2.5 bg-white shadow-[0_4px_15px_rgb(0,0,0,0.05)] rounded-xl border border-slate-100 text-[13px] font-bold text-slate-800 tracking-widest uppercase">Paystack</span>
+            <span class="px-5 py-2.5 bg-white shadow-[0_4px_15px_rgb(0,0,0,0.05)] rounded-xl border border-slate-100 text-[13px] font-bold text-slate-800 tracking-widest uppercase">Flutterwave</span>
+            <span class="px-5 py-2.5 bg-white shadow-[0_4px_15px_rgb(0,0,0,0.05)] rounded-xl border border-slate-100 text-[13px] font-bold text-slate-800 tracking-widest uppercase mt-3">Bank Transfer</span>
+            <span class="px-5 py-2.5 bg-white shadow-[0_4px_15px_rgb(0,0,0,0.05)] rounded-xl border border-slate-100 text-[13px] font-bold text-slate-800 tracking-widest uppercase mt-3">Card Payments</span>
+        </div><div class="bg-gradient-to-br from-slate-900 to-slate-800 p-8 rounded-3xl text-white shadow-2xl relative overflow-hidden mb-12">
+            <div class="absolute top-0 right-0 w-32 h-32 bg-brand-pink rounded-full blur-[70px] opacity-20"></div>
+            <h4 class="font-black text-sm mb-6 text-white uppercase tracking-[0.2em] border-b border-white/10 pb-4">Payment Workflow</h4>
+            <ol class="space-y-5 text-[14px] font-medium relative z-10">
+                <li class="flex items-center gap-4"><div class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center font-black text-brand-accent">1</div> <span>Verifies transaction via Webhook</span></li>
+                <li class="flex items-center gap-4"><div class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center font-black text-brand-accent">2</div> <span>Generates an official digital invoice</span></li>
+                <li class="flex items-center gap-4"><div class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center font-black text-brand-accent">3</div> <span>Changes the booking status to "Paid"</span></li>
+                <li class="flex items-center gap-4"><div class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center font-black text-brand-accent">4</div> <span>Notifies the accounting department</span></li>
+                <li class="flex items-center gap-4"><div class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center font-black text-brand-accent">5</div> <span>Credits referring agent's commission</span></li>
+            </ol>
+        </div></div>
+                <div class="absolute bottom-10 right-16 text-sm font-bold text-slate-400 tracking-widest z-20">09</div>
+                <div class="absolute -top-10 -left-6 text-[12rem] font-black text-slate-100 opacity-50 z-0 select-none pointer-events-none">09</div>
+            </div><div class="physical-page">
+                <div class="page-bg"></div>
+                <div class="content-area">
+                    <div class="flex justify-between items-center pb-6 mb-10 border-b border-slate-200 relative z-10">
+                        <h2 class="font-black text-slate-900 text-2xl tracking-tighter">BILALSADASUB</h2>
+                        <div class="text-right">
+                            <p class="text-[10px] uppercase tracking-widest text-brand-purple font-bold bg-indigo-50 px-3 py-1 rounded-full">Enterprise Proposal</p>
+                        </div>
+                    </div>
+                <h2 data-toc-title="Business Benefits" data-force-break="true" class="text-3xl font-black text-slate-900 tracking-tight mb-8">Business Benefits for BILALSADASUB</h2><div class="glass-card p-6 rounded-2xl border border-white shadow-sm flex gap-5 items-start mb-4">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center shrink-0">
+                <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"></path></svg>
+            </div>
+            <div>
+                <h4 class="font-black text-[15px] text-slate-900 mb-1 uppercase tracking-wide">Reduce Costs</h4><p class="text-slate-600 text-[13px] font-medium">Drastically lower staffing costs by eliminating manual processing.</p>
+            </div>
+        </div><div class="glass-card p-6 rounded-2xl border border-white shadow-sm flex gap-5 items-start mb-4">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-100 to-cyan-200 flex items-center justify-center shrink-0">
+                <svg class="w-6 h-6 text-cyan-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"></path></svg>
+            </div>
+            <div>
+                <h4 class="font-black text-[15px] text-slate-900 mb-1 uppercase tracking-wide">Global Reach</h4><p class="text-slate-600 text-[13px] font-medium">Operate 24/7. Accept bookings globally without a physical office.</p>
+            </div>
+        </div><div class="glass-card p-6 rounded-2xl border border-white shadow-sm flex gap-5 items-start mb-4">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-pink-100 to-pink-200 flex items-center justify-center shrink-0">
+                <svg class="w-6 h-6 text-pink-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            </div>
+            <div>
+                <h4 class="font-black text-[15px] text-slate-900 mb-1 uppercase tracking-wide">Maximum Efficiency</h4><p class="text-slate-600 text-[13px] font-medium">Process 10x more visas with centralized document management.</p>
+            </div>
+        </div><div class="glass-card p-6 rounded-2xl border border-white shadow-sm flex gap-5 items-start mb-12">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-100 to-purple-200 flex items-center justify-center shrink-0">
+                <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+            </div>
+            <div>
+                <h4 class="font-black text-[15px] text-slate-900 mb-1 uppercase tracking-wide">Brand Authority</h4><p class="text-slate-600 text-[13px] font-medium">Position BILALSADASUB as a top-tier, modern tech-driven agency.</p>
+            </div>
+        </div></div>
+                <div class="absolute bottom-10 right-16 text-sm font-bold text-slate-400 tracking-widest z-20">10</div>
+                <div class="absolute -top-10 -left-6 text-[12rem] font-black text-slate-100 opacity-50 z-0 select-none pointer-events-none">10</div>
+            </div><div class="physical-page">
+                <div class="page-bg"></div>
+                <div class="content-area">
+                    <div class="flex justify-between items-center pb-6 mb-10 border-b border-slate-200 relative z-10">
+                        <h2 class="font-black text-slate-900 text-2xl tracking-tighter">BILALSADASUB</h2>
+                        <div class="text-right">
+                            <p class="text-[10px] uppercase tracking-widest text-brand-purple font-bold bg-indigo-50 px-3 py-1 rounded-full">Enterprise Proposal</p>
+                        </div>
+                    </div>
+                <h2 data-toc-title="Proven Track Record" data-force-break="true" class="text-3xl font-black text-slate-900 tracking-tight mb-8">Proven Track Record</h2><div class="bg-gradient-to-r from-slate-900 via-indigo-900 to-slate-900 p-8 rounded-3xl text-white shadow-2xl flex flex-col md:flex-row items-center gap-8 relative overflow-hidden mb-12">
+            <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGcgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMSkiIGZpbGw9Im5vbmUiPjxwYXRoIGQ9Ik0wIDQwbDQwLTQwTTAgMGw0MCA0MCIvPjwvZz48L3N2Zz4=')] opacity-20 mix-blend-overlay"></div>
+            <div class="flex-1 relative z-10">
+                <h3 class="text-sm font-black text-brand-accent mb-3 uppercase tracking-[0.2em]">Case Study: Raudah Travels</h3>
+                <p class="text-white/90 text-[16px] mb-3 font-medium">We recently architected and deployed a similarly powerful enterprise platform for Raudah Travels.</p>
+                <p class="text-white/70 text-[14px] font-light">We invite you to view their live platform to experience firsthand the quality, speed, and premium design we deliver.</p>
+            </div>
+            <div class="shrink-0 relative z-10 w-full md:w-auto">
+                <a href="https://flyraudah.com.ng/" target="_blank" class="block w-full text-center bg-white py-4 px-6 rounded-2xl shadow-[0_0_20px_rgba(255,255,255,0.3)] hover:scale-105 transition-transform">
+                    <span class="block text-slate-900 font-black tracking-[0.15em] text-[12px] uppercase mb-1">Visit Live Project</span>
+                    <span class="block text-slate-500 font-medium tracking-wider text-[10px] lowercase">https://flyraudah.com.ng/</span>
+                </a>
+            </div>
+        </div><h2 data-toc-title="Competitive Advantage" class="text-3xl font-black text-slate-900 tracking-tight mb-8">Competitive Advantage</h2><div class="glass-card p-8 rounded-3xl border border-white mb-12">
+            <p class="text-slate-700 mb-4 text-[16px] font-medium leading-relaxed">While traditional agencies rely on WhatsApp messages, untracked bank transfers, and scattered Excel sheets, BILALSADASUB will operate on a centralized, automated platform.</p>
+            <p class="text-slate-700 text-[16px] font-medium leading-relaxed">This ensures <strong class="text-brand-purple">zero lost passports</strong>, <strong class="text-brand-accent">zero untracked payments</strong>, instant scalability during peak seasons (like Hajj), and an unmatched premium booking experience for your clients that your competitors simply cannot offer.</p>
+        </div></div>
+                <div class="absolute bottom-10 right-16 text-sm font-bold text-slate-400 tracking-widest z-20">11</div>
+                <div class="absolute -top-10 -left-6 text-[12rem] font-black text-slate-100 opacity-50 z-0 select-none pointer-events-none">11</div>
+            </div><div class="physical-page">
+                <div class="page-bg"></div>
+                <div class="content-area">
+                    <div class="flex justify-between items-center pb-6 mb-10 border-b border-slate-200 relative z-10">
+                        <h2 class="font-black text-slate-900 text-2xl tracking-tighter">BILALSADASUB</h2>
+                        <div class="text-right">
+                            <p class="text-[10px] uppercase tracking-widest text-brand-purple font-bold bg-indigo-50 px-3 py-1 rounded-full">Enterprise Proposal</p>
+                        </div>
+                    </div>
+                <h2 data-toc-title="Implementation Plan" data-force-break="true" class="text-3xl font-black text-slate-900 tracking-tight mb-8">Implementation Plan</h2><div class="grid sm:grid-cols-2 gap-4 mb-16">
+            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm text-center">
+                <div class="text-3xl font-black text-slate-200 mb-2">1</div><h4 class="font-bold text-slate-900 text-xs mb-2 uppercase tracking-wide">Customization &amp; Deployment</h4>
+            </div>
+            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm text-center">
+                <div class="text-3xl font-black text-slate-200 mb-2">2</div><h4 class="font-bold text-slate-900 text-xs mb-2 uppercase tracking-wide">Payment &amp; Security Setup</h4>
+            </div>
+            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm text-center">
+                <div class="text-3xl font-black text-slate-200 mb-2">3</div><h4 class="font-bold text-slate-900 text-xs mb-2 uppercase tracking-wide">Staff Onboarding</h4>
+            </div>
+            <div class="bg-gradient-to-b from-indigo-500 to-purple-600 p-5 rounded-2xl shadow-lg text-center text-white">
+                <div class="text-3xl font-black text-white/30 mb-2">4</div><h4 class="font-bold text-white text-xs mb-2 uppercase tracking-wide">Launch &amp; Support</h4>
+            </div>
+        </div><div class="border-t border-slate-200 pt-10 text-center pb-8" data-is-footer="true">
+            <h2 class="text-3xl font-black text-slate-900 mb-4 tracking-tight">Ready to transform your agency?</h2>
+            <p class="text-slate-500 mb-8 text-[16px] font-medium max-w-xl mx-auto">This proposal outlines the foundation for BILALSADASUB's digital dominance in the travel sector. We look forward to partnering with you on this journey.</p>
+            <div class="mt-8 pt-6 border-t border-slate-100 flex flex-col md:flex-row justify-center items-center gap-6 text-[11px] text-slate-500">
+                <strong class="text-slate-900 tracking-[0.2em] uppercase font-black">TRACEROOT TECHNOLOGY SOLUTIONS</strong>
+                <div class="hidden md:block w-1 h-1 rounded-full bg-slate-300"></div>
+                <div class="tracking-widest font-bold uppercase text-brand-purple">traceroot.io@gmail.com</div>
+                <div class="hidden md:block w-1 h-1 rounded-full bg-slate-300"></div>
+                <div class="tracking-widest font-bold uppercase text-brand-accent">09063412927</div>
+            </div>
+        </div></div>
+                <div class="absolute bottom-10 right-16 text-sm font-bold text-slate-400 tracking-widest z-20">12</div>
+                <div class="absolute -top-10 -left-6 text-[12rem] font-black text-slate-100 opacity-50 z-0 select-none pointer-events-none">12</div>
+            </div></div>
+
+    <!-- SOURCE CONTENT TO BE PAGINATED -->
+    
+
+    <!-- ENGINE LOGIC -->
+    <script>
+        window.onload = function() {
+            const source = document.getElementById('source-content');
+            const target = document.getElementById('render-target');
+            
+            // Generate Dates immediately so heights are accurate
+            const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
+            document.querySelectorAll('.currentDateText').forEach(el => {
+                el.textContent = new Date().toLocaleDateString('en-US', dateOptions);
+            });
+
+            // 1. CREATE COVER PAGE (Static)
+            const coverPage = document.createElement('div');
+            coverPage.className = 'physical-page bg-brand-dark text-white p-16 flex flex-col justify-center relative';
+            coverPage.innerHTML = `
+                <div class="absolute inset-0 z-0">
+                    <div class="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-gradient-to-br from-indigo-600 via-purple-600 to-transparent rounded-full mix-blend-screen filter blur-[120px] opacity-50"></div>
+                    <div class="absolute bottom-[-20%] right-[-20%] w-[80%] h-[80%] bg-gradient-to-tl from-cyan-500 via-blue-600 to-transparent rounded-full mix-blend-screen filter blur-[120px] opacity-40"></div>
+                    <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGcgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDUpIiBmaWxsPSJub25lIj48cGF0aCBkPSJNMCA0MGw0MC00ME0wIDBsNDAgNDAiLz48L2c+PC9zdmc+')] opacity-20"></div>
+                </div>
+                <div class="relative z-10 w-full flex justify-between items-start border-b border-white/10 pb-8">
+                    <div class="flex items-center gap-4">
+                        <div class="w-14 h-14 bg-white rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(255,255,255,0.2)] overflow-hidden">
+                            <img src="traceroot_logo.jpg" alt="Traceroot Logo" class="w-full h-full object-cover">
+                        </div>
+                        <div>
+                            <h2 class="font-black text-2xl tracking-[0.15em] text-white mb-0.5 uppercase">TRACEROOT</h2>
+                            <p class="text-[10px] tracking-[0.25em] uppercase text-brand-accent font-bold">Technology Solutions</p>
+                        </div>
+                    </div>
+                    <div class="text-right text-xs text-white/70 space-y-2 font-medium tracking-widest uppercase">
+                        <p class="flex items-center justify-end gap-2">traceroot.io@gmail.com</p>
+                        <p class="flex items-center justify-end gap-2">09063412927</p>
+                    </div>
+                </div>
+                <div class="relative z-10 w-full max-w-5xl mx-auto flex-1 flex flex-col justify-center">
+                    <div class="mb-6 inline-flex items-center gap-3 bg-white/5 border border-white/10 backdrop-blur-md px-5 py-2.5 rounded-full w-max">
+                        <span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-accent opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-brand-accent"></span></span>
+                        <span class="text-white/90 text-xs font-bold tracking-[0.2em] uppercase">Enterprise Platform Proposal</span>
+                    </div>
+                    <h1 class="text-7xl md:text-8xl font-black tracking-tighter mb-8 text-white leading-[1.1]">Digital Travel <br><span class="text-transparent bg-clip-text bg-gradient-to-r from-brand-accent via-indigo-400 to-brand-pink">Platform</span></h1>
+                    <p class="text-xl text-white/70 font-light max-w-2xl leading-relaxed border-l-2 border-brand-accent/50 pl-6">A visually stunning, all-in-one digital ecosystem engineered to modernize operations, automate workflows, and aggressively scale revenue for BILALSADASUB.</p>
+                </div>
+                <div class="relative z-10 w-full grid grid-cols-3 gap-8 pt-8 border-t border-white/10 bg-white/5 backdrop-blur-xl p-8 rounded-3xl">
+                    <div><p class="text-brand-accent text-[10px] tracking-widest uppercase font-bold mb-2">Prepared For</p><p class="text-xl md:text-2xl font-black text-white tracking-wide">BILALSADASUB</p></div>
+                    <div><p class="text-brand-accent text-[10px] tracking-widest uppercase font-bold mb-2">Prepared By</p><p class="text-xl font-bold text-white mb-1">Aliyu Wada Umar</p><p class="text-[10px] text-brand-purple font-bold mb-2 tracking-[0.1em] uppercase">CEO, TRACEROOT TECHNOLOGY SOLUTIONS</p><p class="text-xs text-white/50 leading-relaxed font-light">Layout, Opposite Lugga mosque<br>Katsina</p></div>
+                    <div class="text-right flex flex-col justify-between"><div><p class="text-brand-accent text-[10px] tracking-widest uppercase font-bold mb-2">Date</p><p class="text-xl font-medium text-white tracking-wide">${new Date().toLocaleDateString('en-US', dateOptions)}</p></div></div>
+                </div>
+            `;
+            target.appendChild(coverPage);
+
+            // 2. CREATE TOC PAGE (Placeholder)
+            const tocPageNum = 1;
+            const tocPage = createInternalPage(tocPageNum, "Table of Contents");
+            const tocContentArea = tocPage.querySelector('.content-area');
+            tocContentArea.innerHTML += `
+                <div class="absolute -top-10 -left-6 text-[10rem] font-black text-slate-100 opacity-50 select-none pointer-events-none">TOC</div>
+                <h2 class="text-4xl font-black text-slate-900 tracking-tight mb-12 relative z-10">Table of Contents</h2>
+                <div id="toc-list" class="space-y-4 relative z-10"></div>
+            `;
+            target.appendChild(tocPage);
+
+            // 3. ADD PRESENTATION LETTER DYNAMICALLY
+            const letter = document.createElement('div');
+            letter.dataset.forceBreak = "true";
+            letter.dataset.tocTitle = "Letter of Presentation";
+            letter.innerHTML = `
+                <h2 class="text-3xl font-black text-slate-900 tracking-tight mb-8">Letter of Presentation</h2>
+                <div class="glass-card p-10 rounded-3xl border border-white shadow-sm mb-12 bg-white">
+                    <p class="text-slate-700 font-medium mb-6 text-[16px] leading-relaxed">Dear Sir,</p>
+                    <p class="text-slate-700 font-medium mb-6 text-[16px] leading-relaxed">We are pleased to present this comprehensive proposal for the development and deployment of an Enterprise Travel Management Platform tailored specifically for your agency.</p>
+                    <p class="text-slate-700 font-medium mb-6 text-[16px] leading-relaxed">In today's rapidly digitizing travel industry, operational efficiency and superior customer experience are paramount. Our goal is to architect a digital ecosystem that centralizes your bookings, agent management, visa processing, and financial reconciliations into one seamless platform.</p>
+                    <p class="text-slate-700 font-medium mb-6 text-[16px] leading-relaxed">By automating routine tasks and providing both your B2B agents and B2C retail customers with an exceptional digital experience, BILALSADASUB will be positioned to scale aggressively while significantly reducing administrative overhead.</p>
+                    <p class="text-slate-700 font-medium mb-8 text-[16px] leading-relaxed">We look forward to the opportunity to partner with you and bring this vision to life.</p>
+                    <p class="text-slate-700 font-bold text-[16px]">Sincerely,</p>
+                    <p class="text-brand-purple font-black uppercase tracking-wide mt-2 text-[16px]">Aliyu Wada Umar</p>
+                    <p class="text-slate-500 text-[13px] font-medium uppercase tracking-wider">CEO, Traceroot Technology Solutions</p>
+                </div>
+            `;
+            source.insertBefore(letter, source.firstChild);
+
+            // 4. PAGINATE CONTENT
+            let currentPageNum = 2; // Page 0 is cover, 1 is TOC, content starts at 2
+            let currentPage = createInternalPage(currentPageNum, "Enterprise Proposal");
+            let contentArea = currentPage.querySelector('.content-area');
+            target.appendChild(currentPage);
+
+            const tocEntries = [];
+            const elements = Array.from(source.children);
+
+            for (let el of elements) {
+                // Should we force break?
+                if (el.dataset.forceBreak === "true" && contentArea.children.length > 1) { // > 1 because Header is child 0
+                    currentPageNum++;
+                    currentPage = createInternalPage(currentPageNum, "Enterprise Proposal");
+                    contentArea = currentPage.querySelector('.content-area');
+                    target.appendChild(currentPage);
+                }
+
+                if (el.dataset.tocTitle) {
+                    tocEntries.push({ title: el.dataset.tocTitle, page: currentPageNum });
+                }
+
+                contentArea.appendChild(el);
+
+                // Check overflow
+                if (contentArea.scrollHeight > contentArea.clientHeight && contentArea.children.length > 2) {
+                    // It overflowed! Revert the append
+                    contentArea.removeChild(el);
+
+                    // Create new page
+                    currentPageNum++;
+                    currentPage = createInternalPage(currentPageNum, "Enterprise Proposal");
+                    contentArea = currentPage.querySelector('.content-area');
+                    target.appendChild(currentPage);
+
+                    // Append to new page
+                    contentArea.appendChild(el);
+
+                    // Update TOC entry if it was just added
+                    if (el.dataset.tocTitle) {
+                        tocEntries[tocEntries.length - 1].page = currentPageNum;
+                    }
+                }
+            }
+
+            // 4. RENDER TOC
+            const tocList = document.getElementById('toc-list');
+            tocEntries.forEach(entry => {
+                const div = document.createElement('div');
+                div.className = 'flex items-center justify-between border-b border-slate-100 pb-2 mb-2';
+                div.innerHTML = `
+                    <p class="text-[16px] font-bold text-slate-800 uppercase tracking-wide">${entry.title}</p>
+                    <p class="font-black text-slate-400">Page ${(entry.page < 10 ? '0' : '') + entry.page}</p>
+                `;
+                tocList.appendChild(div);
+            });
+            
+            // Clean up source
+            source.remove();
+        };
+
+        function createInternalPage(pageNum, tag) {
+            const page = document.createElement('div');
+            page.className = 'physical-page';
+            
+            page.innerHTML = `
+                <div class="page-bg"></div>
+                <div class="content-area">
+                    <div class="flex justify-between items-center pb-6 mb-10 border-b border-slate-200 relative z-10">
+                        <h2 class="font-black text-slate-900 text-2xl tracking-tighter">BILALSADASUB</h2>
+                        <div class="text-right">
+                            <p class="text-[10px] uppercase tracking-widest text-brand-purple font-bold bg-indigo-50 px-3 py-1 rounded-full">${tag}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="absolute bottom-10 right-16 text-sm font-bold text-slate-400 tracking-widest z-20">${(pageNum < 10 ? '0' : '') + pageNum}</div>
+                ${pageNum > 1 ? `<div class="absolute -top-10 -left-6 text-[12rem] font-black text-slate-100 opacity-50 z-0 select-none pointer-events-none">${(pageNum < 10 ? '0' : '') + pageNum}</div>` : ''}
+            `;
+            return page;
+        }
+    </script>
+
+
+</body></html>

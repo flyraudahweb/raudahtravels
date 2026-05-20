@@ -1036,6 +1036,23 @@ export type ListPilgrimsParams = {
   offset?: number;
 };
 
+export type DeleteUser200 = {
+  success?: boolean;
+  deletedFrom?: string[];
+};
+
+export type ChangeUserRoleBody = {
+  role: string;
+  businessName?: string;
+  contactPerson?: string;
+  agentEmail?: string;
+  agentPhone?: string;
+};
+
+export type ChangeUserRole200 = {
+  message?: string;
+};
+
 export type DeleteStaff200 = {
   success: boolean;
 };

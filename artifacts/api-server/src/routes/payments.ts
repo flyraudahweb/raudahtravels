@@ -638,6 +638,8 @@ router.post("/payments/paystack/webhook", async (req, res) => {
       logger.error({ err, event: event.event }, "Webhook processing error");
     }
   });
+
+  return;
 });
 
 export default router;

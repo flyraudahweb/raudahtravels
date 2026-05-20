@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Starlink Network Deployment Proposal - Rimi Local Government</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Outfit', 'sans-serif'] },
+                    colors: { brand: { dark: '#0A0A0A', accent: '#38BDF8', purple: '#818CF8', pink: '#F472B6' } }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { 
+            -webkit-print-color-adjust: exact; 
+            print-color-adjust: exact; 
+            background-color: #F8FAFC; 
+            color: #1E293B;
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            padding: 2rem 0;
+        }
+        
+        .physical-page {
+            width: 794px;
+            height: 1123px;
+            margin: 0 auto 2rem auto;
+            background: white;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+            box-sizing: border-box;
+        }
+
+        .content-area {
+            position: relative;
+            z-index: 10;
+            padding: 80px 60px;
+            height: 1123px;
+            box-sizing: border-box;
+            overflow: hidden; /* Crucial for JS scrollHeight measuring */
+        }
+        
+        /* Abstract Backgrounds for Internal Pages */
+        .page-bg { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+        .page-bg::before {
+            content: ''; position: absolute; top: -20%; left: -10%; width: 60%; height: 60%;
+            background: linear-gradient(135deg, rgba(129, 140, 248, 0.15), rgba(56, 189, 248, 0.1));
+            border-radius: 50%; filter: blur(80px);
+        }
+        .page-bg::after {
+            content: ''; position: absolute; bottom: -20%; right: -10%; width: 60%; height: 60%;
+            background: linear-gradient(135deg, rgba(244, 114, 182, 0.1), rgba(129, 140, 248, 0.15));
+            border-radius: 50%; filter: blur(80px);
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.05);
+        }
+        
+        .gradient-text {
+            background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-image: linear-gradient(to right, #4F46E5, #06B6D4);
+        }
+
+        @media print {
+            body { padding: 0; background-color: white; }
+            .physical-page { margin: 0; box-shadow: none; page-break-after: always; }
+            @page { size: A4; margin: 0; }
+        }
+    </style>
+</head>
+<body class="antialiased selection:bg-brand-purple selection:text-white">
+
+    <!-- THE ENGINE RENDER TARGET -->
+    <div id="render-target"></div>
+
+    <!-- SOURCE CONTENT TO BE PAGINATED -->
+    <div id="source-content" style="display: none;">
+
+        <!-- 2. EXECUTIVE SUMMARY -->
+        <div data-force-break="true" data-toc-title="Executive Summary">
+            <h2 class="text-3xl font-black text-slate-900 tracking-tight mb-8">Executive Summary</h2>
+            <div class="glass-card p-10 rounded-3xl border border-white relative overflow-hidden mb-12">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-brand-accent/10 rounded-full blur-2xl"></div>
+                <h3 class="text-2xl font-bold mb-6 gradient-text">Modernizing Administrative Operations</h3>
+                <p class="text-[16px] text-slate-700 mb-10 relative z-10 font-medium">
+                    The modern governance landscape requires robust, reliable, and high-speed communication infrastructure. Rimi Local Government Secretariat currently faces significant operational bottlenecks due to poor connectivity. We present a <strong>comprehensive Starlink deployment plan</strong> engineered to eliminate these dead zones, connect your administrative offices, and ensure seamless communication across all departments.
+                </p>
+                <div class="grid md:grid-cols-3 gap-6 relative z-10">
+                    <div class="bg-white/80 backdrop-blur border border-white p-6 rounded-2xl shadow-sm">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center mb-4">
+                            <svg class="w-6 h-6 text-brand-purple" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                        </div>
+                        <h4 class="font-black text-slate-900 mb-2 tracking-wide">High-Speed Access</h4>
+                        <p class="text-[14px] text-slate-600 font-medium">Empower staff with low-latency, high-speed Starlink broadband to handle data-heavy administrative tasks.</p>
+                    </div>
+                    <div class="bg-white/80 backdrop-blur border border-white p-6 rounded-2xl shadow-sm">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-100 to-blue-100 flex items-center justify-center mb-4">
+                            <svg class="w-6 h-6 text-brand-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        </div>
+                        <h4 class="font-black text-slate-900 mb-2 tracking-wide">Maximum Coverage</h4>
+                        <p class="text-[14px] text-slate-600 font-medium">Indoor and outdoor access points ensure complete connectivity throughout the secretariat premises.</p>
+                    </div>
+                    <div class="bg-white/80 backdrop-blur border border-white p-6 rounded-2xl shadow-sm">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-pink-100 to-rose-100 flex items-center justify-center mb-4">
+                            <svg class="w-6 h-6 text-brand-pink" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                        </div>
+                        <h4 class="font-black text-slate-900 mb-2 tracking-wide">Reliable & Resilient</h4>
+                        <p class="text-[14px] text-slate-600 font-medium">Say goodbye to frequent downtimes. Starlink offers enterprise-grade uptime irrespective of local grid constraints.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. CURRENT CHALLENGES -->
+        <h2 data-toc-title="Current Connectivity Challenges" data-force-break="true" class="text-3xl font-black text-slate-900 tracking-tight mb-8">Current Connectivity Challenges</h2>
+        <p class="text-[16px] text-slate-700 mb-8 max-w-3xl font-medium border-l-4 border-brand-accent pl-6">
+            The absence of a reliable, high-speed network presents multiple operational challenges that stifle the productivity and responsive capabilities of the Secretariat.
+        </p>
+        
+        <div class="flex items-start gap-5 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm mb-4">
+            <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0 shadow-sm"><span class="text-slate-600 text-[16px]">⚠️</span></div>
+            <div><strong class="text-slate-900 block mb-1 text-sm font-black uppercase tracking-wide">Communication Delays</strong> <span class="text-slate-600 text-[14px] leading-relaxed font-medium">Difficulty in sending and receiving critical administrative files, leading to sluggish decision-making and delayed citizen services.</span></div>
+        </div>
+        <div class="flex items-start gap-5 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm mb-4">
+            <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0 shadow-sm"><span class="text-slate-600 text-[16px]">⚠️</span></div>
+            <div><strong class="text-slate-900 block mb-1 text-sm font-black uppercase tracking-wide">Information Silos</strong> <span class="text-slate-600 text-[14px] leading-relaxed font-medium">Without a unified network, departments struggle to share digital resources seamlessly, forcing reliance on manual and time-consuming processes.</span></div>
+        </div>
+        <div class="flex items-start gap-5 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm mb-12">
+            <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0 shadow-sm"><span class="text-slate-600 text-[16px]">⚠️</span></div>
+            <div><strong class="text-slate-900 block mb-1 text-sm font-black uppercase tracking-wide">Poor External Connectivity</strong> <span class="text-slate-600 text-[14px] leading-relaxed font-medium">Inefficient interaction with state and federal agencies, hindering compliance reporting and access to modern e-governance platforms.</span></div>
+        </div>
+
+        <!-- 4. INFRASTRUCTURE & UPLIFTMENT -->
+        <h2 data-toc-title="Network Upliftment & Impact" data-force-break="true" class="text-3xl font-black text-slate-900 tracking-tight mb-8">Network Upliftment & Impact</h2>
+        <div class="bg-slate-900 rounded-3xl p-8 text-white flex flex-col justify-center relative overflow-hidden shadow-2xl mb-8">
+            <div class="absolute top-0 right-0 w-32 h-32 bg-brand-accent rounded-full blur-[60px] opacity-40"></div>
+            <h3 class="text-xl font-bold mb-4 uppercase tracking-widest gradient-text">A Digitally Empowered Secretariat</h3>
+            <p class="text-white/80 mb-6 text-[14px] leading-relaxed font-medium">By deploying a state-of-the-art Starlink network alongside a strategically mapped Local Area Network (LAN) utilizing high-power access points, we will completely transform the Secretariat's operational capability.</p>
+            <div class="flex gap-2">
+                <div class="w-8 h-1.5 bg-brand-accent rounded-full"></div>
+                <div class="w-3 h-1.5 bg-brand-purple rounded-full"></div>
+                <div class="w-3 h-1.5 bg-brand-pink rounded-full"></div>
+            </div>
+        </div>
+        
+        <div class="grid sm:grid-cols-2 gap-4 mb-12">
+            <div class="bg-white/80 backdrop-blur p-5 rounded-2xl border border-white flex flex-col justify-center shadow-sm">
+                <h4 class="font-black text-slate-900 mb-1 text-sm uppercase tracking-wide">Instant E-Governance</h4><p class="text-[13px] text-slate-600 font-medium">Facilitate real-time access to state portals, email systems, and digital records.</p>
+            </div>
+            <div class="bg-white/80 backdrop-blur p-5 rounded-2xl border border-white flex flex-col justify-center shadow-sm">
+                <h4 class="font-black text-slate-900 mb-1 text-sm uppercase tracking-wide">Unified Departments</h4><p class="text-[13px] text-slate-600 font-medium">Provide all major offices with robust Wi-Fi, breaking down operational silos.</p>
+            </div>
+            <div class="bg-white/80 backdrop-blur p-5 rounded-2xl border border-white flex flex-col justify-center shadow-sm">
+                <h4 class="font-black text-slate-900 mb-1 text-sm uppercase tracking-wide">Cost & Time Efficiency</h4><p class="text-[13px] text-slate-600 font-medium">Reduce physical travel for document delivery; embrace virtual meetings and instant sharing.</p>
+            </div>
+            <div class="bg-white/80 backdrop-blur p-5 rounded-2xl border border-white flex flex-col justify-center shadow-sm">
+                <h4 class="font-black text-slate-900 mb-1 text-sm uppercase tracking-wide">Future-Proof Backbone</h4><p class="text-[13px] text-slate-600 font-medium">A gigabit LAN infrastructure ready to support future CCTV, VoIP, and smart office expansions.</p>
+            </div>
+        </div>
+
+        <!-- 5. FINANCIAL BREAKDOWN -->
+        <h2 data-toc-title="Financial Proposal & Equipment" data-force-break="true" class="text-3xl font-black text-slate-900 tracking-tight mb-8">Financial Proposal & Equipment Breakdown</h2>
+        <p class="text-slate-700 mb-10 text-[16px] font-medium">Below is the detailed cost analysis for the procurement, deployment, and configuration of the Starlink network and associated infrastructure.</p>
+        
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-8">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-slate-50 border-b border-slate-200">
+                        <th class="py-4 px-6 font-black text-slate-800 text-xs uppercase tracking-wider">Item Description</th>
+                        <th class="py-4 px-6 font-black text-slate-800 text-xs uppercase tracking-wider text-center">Qty</th>
+                        <th class="py-4 px-6 font-black text-slate-800 text-xs uppercase tracking-wider text-right">Unit Price (₦)</th>
+                        <th class="py-4 px-6 font-black text-slate-800 text-xs uppercase tracking-wider text-right">Total (₦)</th>
+                    </tr>
+                </thead>
+                <tbody class="text-[14px] text-slate-700 font-medium divide-y divide-slate-100">
+                    <tr>
+                        <td class="py-4 px-6">Starlink V4 Gen 3 Kit</td>
+                        <td class="py-4 px-6 text-center">1</td>
+                        <td class="py-4 px-6 text-right">580,000</td>
+                        <td class="py-4 px-6 text-right font-bold text-slate-900">580,000</td>
+                    </tr>
+                    <tr>
+                        <td class="py-4 px-6">Indoor High-Power Access Points <br><span class="text-xs text-slate-500 font-normal">For maximum office coverage</span></td>
+                        <td class="py-4 px-6 text-center">4</td>
+                        <td class="py-4 px-6 text-right">150,000</td>
+                        <td class="py-4 px-6 text-right font-bold text-slate-900">600,000</td>
+                    </tr>
+                    <tr>
+                        <td class="py-4 px-6">Outdoor Access Point</td>
+                        <td class="py-4 px-6 text-center">1</td>
+                        <td class="py-4 px-6 text-right">270,000</td>
+                        <td class="py-4 px-6 text-right font-bold text-slate-900">270,000</td>
+                    </tr>
+                    <tr>
+                        <td class="py-4 px-6">6-10 Port Ethernet Switch</td>
+                        <td class="py-4 px-6 text-center">1</td>
+                        <td class="py-4 px-6 text-right">80,000</td>
+                        <td class="py-4 px-6 text-right font-bold text-slate-900">80,000</td>
+                    </tr>
+                    <tr>
+                        <td class="py-4 px-6">Outdoor Gigabit LAN Cable (Roll)</td>
+                        <td class="py-4 px-6 text-center">1</td>
+                        <td class="py-4 px-6 text-right">130,000</td>
+                        <td class="py-4 px-6 text-right font-bold text-slate-900">130,000</td>
+                    </tr>
+                    <tr>
+                        <td class="py-4 px-6">Installation Accessories <br><span class="text-xs text-slate-500 font-normal">Pipes, connectors, brackets, clips</span></td>
+                        <td class="py-4 px-6 text-center">1</td>
+                        <td class="py-4 px-6 text-right">50,000</td>
+                        <td class="py-4 px-6 text-right font-bold text-slate-900">50,000</td>
+                    </tr>
+                    <tr class="bg-slate-50">
+                        <td class="py-4 px-6 font-bold text-brand-purple">Deployment & Configuration Cost</td>
+                        <td class="py-4 px-6 text-center">-</td>
+                        <td class="py-4 px-6 text-right">-</td>
+                        <td class="py-4 px-6 text-right font-bold text-brand-purple">300,000</td>
+                    </tr>
+                </tbody>
+                <tfoot>
+                    <tr class="bg-slate-900 text-white">
+                        <td colspan="3" class="py-5 px-6 font-black uppercase tracking-widest text-right text-[13px]">Grand Total (Setup & Deployment)</td>
+                        <td class="py-5 px-6 font-black text-right text-lg">₦2,010,000</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <div class="glass-card p-6 rounded-2xl border border-white shadow-sm flex gap-5 items-start mb-12">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center shrink-0">
+                <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            </div>
+            <div>
+                <h4 class="font-black text-[15px] text-slate-900 mb-1 uppercase tracking-wide">Recurrent Subscription</h4>
+                <p class="text-slate-600 text-[14px] font-medium">Please note that Starlink requires a monthly subscription fee of <strong class="text-slate-900">₦81,000</strong> to maintain active internet service.</p>
+            </div>
+        </div>
+
+        <!-- 6. CONCLUSION -->
+        <h2 data-toc-title="Implementation Plan" data-force-break="true" class="text-3xl font-black text-slate-900 tracking-tight mb-8">Implementation Plan</h2>
+        <div class="grid sm:grid-cols-2 gap-4 mb-16">
+            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm text-center">
+                <div class="text-3xl font-black text-slate-200 mb-2">1</div><h4 class="font-bold text-slate-900 text-xs mb-2 uppercase tracking-wide">Site Survey & Planning</h4>
+            </div>
+            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm text-center">
+                <div class="text-3xl font-black text-slate-200 mb-2">2</div><h4 class="font-bold text-slate-900 text-xs mb-2 uppercase tracking-wide">Equipment Procurement</h4>
+            </div>
+            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm text-center">
+                <div class="text-3xl font-black text-slate-200 mb-2">3</div><h4 class="font-bold text-slate-900 text-xs mb-2 uppercase tracking-wide">Physical Deployment</h4>
+            </div>
+            <div class="bg-gradient-to-b from-indigo-500 to-purple-600 p-5 rounded-2xl shadow-lg text-center text-white">
+                <div class="text-3xl font-black text-white/30 mb-2">4</div><h4 class="font-bold text-white text-xs mb-2 uppercase tracking-wide">Testing & Handover</h4>
+            </div>
+        </div>
+
+        <div class="border-t border-slate-200 pt-10 text-center pb-8" data-is-footer="true">
+            <h2 class="text-3xl font-black text-slate-900 mb-4 tracking-tight">Ready to connect the Secretariat?</h2>
+            <p class="text-slate-500 mb-8 text-[16px] font-medium max-w-xl mx-auto">This proposal provides the definitive solution for overcoming administrative connectivity challenges, guaranteeing unprecedented efficiency for Rimi Local Government.</p>
+            <div class="mt-8 pt-6 border-t border-slate-100 flex flex-col md:flex-row justify-center items-center gap-6 text-[11px] text-slate-500">
+                <strong class="text-slate-900 tracking-[0.2em] uppercase font-black">TRACEROOT TECHNOLOGY SOLUTIONS</strong>
+                <div class="hidden md:block w-1 h-1 rounded-full bg-slate-300"></div>
+                <div class="tracking-widest font-bold uppercase text-brand-purple">traceroot.io@gmail.com</div>
+                <div class="hidden md:block w-1 h-1 rounded-full bg-slate-300"></div>
+                <div class="tracking-widest font-bold uppercase text-brand-accent">09063412927</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ENGINE LOGIC -->
+    <script>
+        window.onload = function() {
+            const source = document.getElementById('source-content');
+            const target = document.getElementById('render-target');
+            
+            // Generate Dates immediately so heights are accurate
+            const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
+            document.querySelectorAll('.currentDateText').forEach(el => {
+                el.textContent = new Date().toLocaleDateString('en-US', dateOptions);
+            });
+
+            // 1. CREATE COVER PAGE (Static)
+            const coverPage = document.createElement('div');
+            coverPage.className = 'physical-page bg-brand-dark text-white p-16 flex flex-col justify-center relative';
+            coverPage.innerHTML = `
+                <div class="absolute inset-0 z-0">
+                    <div class="absolute top-[-20%] left-[-20%] w-[80%] h-[80%] bg-gradient-to-br from-indigo-600 via-purple-600 to-transparent rounded-full mix-blend-screen filter blur-[120px] opacity-50"></div>
+                    <div class="absolute bottom-[-20%] right-[-20%] w-[80%] h-[80%] bg-gradient-to-tl from-cyan-500 via-blue-600 to-transparent rounded-full mix-blend-screen filter blur-[120px] opacity-40"></div>
+                    <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGcgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDUpIiBmaWxsPSJub25lIj48cGF0aCBkPSJNMCA0MGw0MC00ME0wIDBsNDAgNDAiLz48L2c+PC9zdmc+')] opacity-20"></div>
+                </div>
+                <div class="relative z-10 w-full flex justify-between items-start border-b border-white/10 pb-8">
+                    <div class="flex items-center gap-4">
+                        <div class="w-14 h-14 bg-white rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(255,255,255,0.2)] overflow-hidden">
+                            <img src="traceroot_logo.jpg" alt="Traceroot Logo" class="w-full h-full object-cover">
+                        </div>
+                        <div>
+                            <h2 class="font-black text-2xl tracking-[0.15em] text-white mb-0.5 uppercase">TRACEROOT</h2>
+                            <p class="text-[10px] tracking-[0.25em] uppercase text-brand-accent font-bold">Technology Solutions</p>
+                        </div>
+                    </div>
+                    <div class="text-right text-xs text-white/70 space-y-2 font-medium tracking-widest uppercase">
+                        <p class="flex items-center justify-end gap-2">traceroot.io@gmail.com</p>
+                        <p class="flex items-center justify-end gap-2">09063412927</p>
+                    </div>
+                </div>
+                <div class="relative z-10 w-full max-w-5xl mx-auto flex-1 flex flex-col justify-center">
+                    <div class="mb-6 inline-flex items-center gap-3 bg-white/5 border border-white/10 backdrop-blur-md px-5 py-2.5 rounded-full w-max">
+                        <span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-accent opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-brand-accent"></span></span>
+                        <span class="text-white/90 text-xs font-bold tracking-[0.2em] uppercase">Enterprise Infrastructure Proposal</span>
+                    </div>
+                    <h1 class="text-6xl md:text-7xl font-black tracking-tighter mb-8 text-white leading-[1.1]">Starlink Network <br><span class="text-transparent bg-clip-text bg-gradient-to-r from-brand-accent via-indigo-400 to-brand-pink">Deployment</span></h1>
+                    <p class="text-xl text-white/70 font-light max-w-2xl leading-relaxed border-l-2 border-brand-accent/50 pl-6">A high-performance, enterprise-grade connectivity solution designed to elevate administrative operations and seamless communication across the Rimi Local Government Secretariat.</p>
+                </div>
+                <div class="relative z-10 w-full grid grid-cols-3 gap-8 pt-8 border-t border-white/10 bg-white/5 backdrop-blur-xl p-8 rounded-3xl">
+                    <div><p class="text-brand-accent text-[10px] tracking-widest uppercase font-bold mb-2">Prepared For</p><p class="text-lg md:text-xl font-black text-white tracking-wide">The Executive Chairman<br><span class="font-medium text-sm text-white/80">Rimi Local Government</span></p></div>
+                    <div><p class="text-brand-accent text-[10px] tracking-widest uppercase font-bold mb-2">Prepared By</p><p class="text-xl font-bold text-white mb-1">Aliyu Wada Umar</p><p class="text-[10px] text-brand-purple font-bold mb-2 tracking-[0.1em] uppercase">CEO, TRACEROOT TECHNOLOGY SOLUTIONS</p><p class="text-xs text-white/50 leading-relaxed font-light">Layout, Opposite Lugga mosque<br>Katsina</p></div>
+                    <div class="text-right flex flex-col justify-between"><div><p class="text-brand-accent text-[10px] tracking-widest uppercase font-bold mb-2">Date</p><p class="text-xl font-medium text-white tracking-wide">${new Date().toLocaleDateString('en-US', dateOptions)}</p></div></div>
+                </div>
+            `;
+            target.appendChild(coverPage);
+
+            // 2. CREATE TOC PAGE (Placeholder)
+            const tocPageNum = 1;
+            const tocPage = createInternalPage(tocPageNum, "Table of Contents");
+            const tocContentArea = tocPage.querySelector('.content-area');
+            tocContentArea.innerHTML += `
+                <div class="absolute -top-10 -left-6 text-[10rem] font-black text-slate-100 opacity-50 select-none pointer-events-none">TOC</div>
+                <h2 class="text-4xl font-black text-slate-900 tracking-tight mb-12 relative z-10">Table of Contents</h2>
+                <div id="toc-list" class="space-y-4 relative z-10"></div>
+            `;
+            target.appendChild(tocPage);
+
+            // 3. ADD PRESENTATION LETTER DYNAMICALLY
+            const letter = document.createElement('div');
+            letter.dataset.forceBreak = "true";
+            letter.dataset.tocTitle = "Letter of Presentation";
+            letter.innerHTML = `
+                <h2 class="text-3xl font-black text-slate-900 tracking-tight mb-8">Letter of Presentation</h2>
+                <div class="glass-card p-10 rounded-3xl border border-white shadow-sm mb-12 bg-white">
+                    <p class="text-slate-700 font-medium mb-6 text-[16px] leading-relaxed">Dear Sir,</p>
+                    <p class="text-slate-700 font-medium mb-6 text-[16px] leading-relaxed">We are pleased to submit this proposal for the deployment of a Starlink broadband network and a robust Local Area Network (LAN) architecture at the Rimi Local Government Secretariat.</p>
+                    <p class="text-slate-700 font-medium mb-6 text-[16px] leading-relaxed">Effective administration in the modern era relies heavily on seamless digital communication. We have observed that the current lack of a reliable, high-speed network at the secretariat significantly stifles productivity, creates information silos, and slows down essential government operations.</p>
+                    <p class="text-slate-700 font-medium mb-6 text-[16px] leading-relaxed">By integrating Starlink's cutting-edge satellite internet with high-capacity indoor and outdoor access points, we will eliminate connectivity dead zones and equip your administrative departments with the infrastructure required for instant e-governance and efficient public service delivery.</p>
+                    <p class="text-slate-700 font-medium mb-8 text-[16px] leading-relaxed">We are confident that this technological upliftment will transform the secretariat's daily operations. We look forward to partnering with Rimi Local Government to bring this vision to life.</p>
+                    <p class="text-slate-700 font-bold text-[16px]">Sincerely,</p>
+                    <p class="text-brand-purple font-black uppercase tracking-wide mt-2 text-[16px]">Aliyu Wada Umar</p>
+                    <p class="text-slate-500 text-[13px] font-medium uppercase tracking-wider">CEO, Traceroot Technology Solutions</p>
+                </div>
+            `;
+            source.insertBefore(letter, source.firstChild);
+
+            // 4. PAGINATE CONTENT
+            let currentPageNum = 2; // Page 0 is cover, 1 is TOC, content starts at 2
+            let currentPage = createInternalPage(currentPageNum, "Starlink Deployment Proposal");
+            let contentArea = currentPage.querySelector('.content-area');
+            target.appendChild(currentPage);
+
+            const tocEntries = [];
+            const elements = Array.from(source.children);
+
+            for (let el of elements) {
+                // Should we force break?
+                if (el.dataset.forceBreak === "true" && contentArea.children.length > 1) { // > 1 because Header is child 0
+                    currentPageNum++;
+                    currentPage = createInternalPage(currentPageNum, "Starlink Deployment Proposal");
+                    contentArea = currentPage.querySelector('.content-area');
+                    target.appendChild(currentPage);
+                }
+
+                if (el.dataset.tocTitle) {
+                    tocEntries.push({ title: el.dataset.tocTitle, page: currentPageNum });
+                }
+
+                contentArea.appendChild(el);
+
+                // Check overflow
+                if (contentArea.scrollHeight > contentArea.clientHeight && contentArea.children.length > 2) {
+                    // It overflowed! Revert the append
+                    contentArea.removeChild(el);
+
+                    // Create new page
+                    currentPageNum++;
+                    currentPage = createInternalPage(currentPageNum, "Starlink Deployment Proposal");
+                    contentArea = currentPage.querySelector('.content-area');
+                    target.appendChild(currentPage);
+
+                    // Append to new page
+                    contentArea.appendChild(el);
+
+                    // Update TOC entry if it was just added
+                    if (el.dataset.tocTitle) {
+                        tocEntries[tocEntries.length - 1].page = currentPageNum;
+                    }
+                }
+            }
+
+            // 4. RENDER TOC
+            const tocList = document.getElementById('toc-list');
+            tocEntries.forEach(entry => {
+                const div = document.createElement('div');
+                div.className = 'flex items-center justify-between border-b border-slate-100 pb-2 mb-2';
+                div.innerHTML = `
+                    <p class="text-[16px] font-bold text-slate-800 uppercase tracking-wide">${entry.title}</p>
+                    <p class="font-black text-slate-400">Page ${(entry.page < 10 ? '0' : '') + entry.page}</p>
+                `;
+                tocList.appendChild(div);
+            });
+            
+            // Clean up source
+            source.remove();
+        };
+
+        function createInternalPage(pageNum, tag) {
+            const page = document.createElement('div');
+            page.className = 'physical-page';
+            
+            page.innerHTML = `
+                <div class="page-bg"></div>
+                <div class="content-area">
+                    <div class="flex justify-between items-center pb-6 mb-10 border-b border-slate-200 relative z-10">
+                        <h2 class="font-black text-slate-900 text-2xl tracking-tighter">RIMI LOCAL GOVERNMENT</h2>
+                        <div class="text-right">
+                            <p class="text-[10px] uppercase tracking-widest text-brand-purple font-bold bg-indigo-50 px-3 py-1 rounded-full">${tag}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="absolute bottom-10 right-16 text-sm font-bold text-slate-400 tracking-widest z-20">${(pageNum < 10 ? '0' : '') + pageNum}</div>
+                ${pageNum > 1 ? `<div class="absolute -top-10 -left-6 text-[12rem] font-black text-slate-100 opacity-50 z-0 select-none pointer-events-none">${(pageNum < 10 ? '0' : '') + pageNum}</div>` : ''}
+            `;
+            return page;
+        }
+    </script>
+</body>
+</html>

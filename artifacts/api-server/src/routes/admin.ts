@@ -1,7 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
-import { sendEmail, sendAgentApprovalEmail } from "../utils/email.js";
+import { sendEmail, sendAgentApprovalEmail, sendStaffWelcomeEmail } from "../utils/email.js";
 import { createNotification } from "../utils/notify.js";
 
 import {
@@ -13,6 +13,7 @@ import {
   staffSupportSpecialtiesTable, agentApplicationsTable,
   agentPackageDiscountsTable, agentWalletsTable, walletTransactionsTable,
   adminOtpRequestsTable, contactMessagesTable,
+  notificationsTable, supportMessagesTable, loginSessionsTable, commissionsTable,
 } from "@workspace/db";
 import { eq, ilike, and, sql, or, desc, ne, gte, lte, inArray, isNull, isNotNull, lt, gt } from "drizzle-orm";
 import { createHash } from "crypto";
@@ -109,6 +110,221 @@ router.put("/admin/users/:id/status", async (req, res) => {
     .returning();
 
   return res.json({ ...updated, message: `User account status updated to "${accountStatus}".` });
+});
+
+// ── Delete User (Clerk + Neon atomic) ─────────────────────────────────────────
+
+router.delete("/admin/users/:id", async (req, res) => {
+  try {
+    const { userId: callerClerkId } = getAuth(req);
+    if (!callerClerkId) return res.status(401).json({ error: "Unauthorized" });
+    const caller = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, callerClerkId) });
+    if (!caller) return res.status(404).json({ error: "Caller profile not found" });
+
+    const targetId = req.params.id;
+    const target = await db.query.profilesTable.findFirst({ where: eq(profilesTable.id, targetId) });
+    if (!target) return res.status(404).json({ error: "User not found" });
+
+    // Guards
+    if (target.id === caller.id) {
+      return res.status(400).json({ error: "You cannot delete your own account." });
+    }
+    if (target.role === "super_admin" && caller.role !== "super_admin") {
+      return res.status(403).json({ error: "Only a super admin can delete another super admin." });
+    }
+    if (target.role === "super_admin") {
+      const superAdminCount = await db.select({ count: sql<number>`count(*)::int` })
+        .from(profilesTable).where(eq(profilesTable.role, "super_admin"));
+      if ((superAdminCount[0]?.count ?? 0) <= 1) {
+        return res.status(400).json({ error: "Cannot delete the last super admin account." });
+      }
+    }
+
+    // Step 1: Delete from Clerk FIRST
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (!clerkSecretKey) {
+      return res.status(500).json({ error: "Clerk secret key not configured" });
+    }
+
+    // Skip Clerk deletion for walk-in users (fake clerkUserId)
+    const isWalkIn = target.clerkUserId.startsWith("walkin-");
+    if (!isWalkIn) {
+      const clerkRes = await fetch(`https://api.clerk.com/v1/users/${target.clerkUserId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${clerkSecretKey}` },
+      });
+      // 404 = already deleted from Clerk, that's fine
+      if (!clerkRes.ok && clerkRes.status !== 404) {
+        const errBody = await clerkRes.text().catch(() => "Unknown error");
+        console.error("[user-delete] Clerk deletion failed:", clerkRes.status, errBody);
+        return res.status(502).json({ error: "Failed to delete user from authentication provider. Database was NOT modified." });
+      }
+    }
+
+    // Step 2: Database cleanup in a transaction
+    await db.transaction(async (tx) => {
+      // 2a: Nullify nullable FK references pointing to this user
+      await tx.update(bookingsTable).set({ registeredByStaffId: null }).where(eq(bookingsTable.registeredByStaffId, targetId));
+      await tx.update(paymentsTable).set({ verifiedBy: null }).where(eq(paymentsTable.verifiedBy, targetId));
+      await tx.update(supportTicketsTable).set({ assignedTo: null }).where(eq(supportTicketsTable.assignedTo, targetId));
+      await tx.update(staffPermissionsTable).set({ grantedBy: null }).where(eq(staffPermissionsTable.grantedBy, targetId));
+      await tx.update(staffMessagesTable).set({ receiverId: null }).where(eq(staffMessagesTable.receiverId, targetId));
+      await tx.update(bookingAmendmentRequestsTable).set({ reviewedBy: null }).where(eq(bookingAmendmentRequestsTable.reviewedBy, targetId));
+
+      // 2b: Delete owned rows (no cascade configured)
+      await tx.delete(notificationsTable).where(eq(notificationsTable.userId, targetId));
+      await tx.delete(userActivityTable).where(eq(userActivityTable.userId, targetId));
+      await tx.delete(staffPermissionsTable).where(eq(staffPermissionsTable.userId, targetId));
+      await tx.delete(staffSupportSpecialtiesTable).where(eq(staffSupportSpecialtiesTable.userId, targetId));
+      await tx.delete(staffMessagesTable).where(eq(staffMessagesTable.senderId, targetId));
+      await tx.delete(adminOtpRequestsTable).where(eq(adminOtpRequestsTable.adminId, targetId));
+      await tx.delete(loginSessionsTable).where(eq(loginSessionsTable.clerkUserId, target.clerkUserId));
+
+      // 2c: Support tickets — delete messages first, then tickets
+      const userTickets = await tx.select({ id: supportTicketsTable.id }).from(supportTicketsTable).where(eq(supportTicketsTable.userId, targetId));
+      if (userTickets.length > 0) {
+        const ticketIds = userTickets.map(t => t.id);
+        await tx.delete(supportMessagesTable).where(inArray(supportMessagesTable.ticketId, ticketIds));
+        await tx.delete(supportTicketsTable).where(eq(supportTicketsTable.userId, targetId));
+      }
+
+      // 2d: Handle agent data if user is an agent
+      const agent = await tx.query.agentsTable.findFirst({ where: eq(agentsTable.userId, targetId) });
+      if (agent) {
+        // Clean up agent-specific tables without cascade
+        await tx.delete(walletTransactionsTable).where(eq(walletTransactionsTable.agentId, agent.id));
+        await tx.delete(commissionsTable).where(eq(commissionsTable.agentId, agent.id));
+        await tx.delete(adminOtpRequestsTable).where(eq(adminOtpRequestsTable.agentId, agent.id));
+        await tx.delete(agentPackageDiscountsTable).where(eq(agentPackageDiscountsTable.agentId, agent.id));
+        // Nullify agent reference on bookings
+        await tx.update(bookingsTable).set({ agentId: null }).where(eq(bookingsTable.agentId, agent.id));
+        // Delete agent row (cascades to agentClientsTable + agentWalletsTable)
+        await tx.delete(agentsTable).where(eq(agentsTable.id, agent.id));
+      }
+
+      // 2e: Nullify financial record references (preserve bookings + payments)
+      await tx.update(bookingsTable).set({ userId: null }).where(eq(bookingsTable.userId, targetId));
+      await tx.update(paymentsTable).set({ userId: null }).where(eq(paymentsTable.userId, targetId));
+
+      // 2f: Delete amendment requests
+      await tx.delete(bookingAmendmentRequestsTable).where(eq(bookingAmendmentRequestsTable.userId, targetId));
+
+      // 2g: Finally delete the profile
+      await tx.delete(profilesTable).where(eq(profilesTable.id, targetId));
+    });
+
+    console.log(`[user-delete] Successfully deleted user ${targetId} (${target.email}) from Clerk and Neon`);
+    return res.json({ success: true, deletedFrom: ["clerk", "neon"] });
+  } catch (err: any) {
+    console.error("[user-delete] Unexpected error:", err);
+    return res.status(500).json({ error: err.message || "Failed to delete user" });
+  }
+});
+
+// ── Change User Role ──────────────────────────────────────────────────────────
+
+router.put("/admin/users/:id/role", async (req, res) => {
+  try {
+    const { userId: callerClerkId } = getAuth(req);
+    if (!callerClerkId) return res.status(401).json({ error: "Unauthorized" });
+    const caller = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, callerClerkId) });
+    if (!caller) return res.status(404).json({ error: "Caller profile not found" });
+
+    const { role, businessName, contactPerson, agentEmail, agentPhone } = req.body as {
+      role: string;
+      businessName?: string;
+      contactPerson?: string;
+      agentEmail?: string;
+      agentPhone?: string;
+    };
+
+    const validRoles = ["user", "agent", "staff", "admin", "super_admin", "moderator"];
+    if (!role || !validRoles.includes(role)) {
+      return res.status(400).json({ error: `Invalid role. Must be one of: ${validRoles.join(", ")}` });
+    }
+
+    const targetId = req.params.id;
+    const target = await db.query.profilesTable.findFirst({ where: eq(profilesTable.id, targetId) });
+    if (!target) return res.status(404).json({ error: "User not found" });
+
+    // Only super_admin can assign super_admin role
+    if (role === "super_admin" && caller.role !== "super_admin") {
+      return res.status(403).json({ error: "Only a super admin can assign the super_admin role." });
+    }
+
+    // Prevent demoting the last super_admin
+    if (target.role === "super_admin" && role !== "super_admin") {
+      const superAdminCount = await db.select({ count: sql<number>`count(*)::int` })
+        .from(profilesTable).where(eq(profilesTable.role, "super_admin"));
+      if ((superAdminCount[0]?.count ?? 0) <= 1) {
+        return res.status(400).json({ error: "Cannot demote the last super admin. Promote another user first." });
+      }
+    }
+
+    // Update role in database
+    const [updated] = await db.update(profilesTable)
+      .set({ role: role as any, updatedAt: new Date() })
+      .where(eq(profilesTable.id, targetId))
+      .returning();
+
+    // Sync role to Clerk public_metadata
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (clerkSecretKey && !target.clerkUserId.startsWith("walkin-")) {
+      try {
+        await fetch(`https://api.clerk.com/v1/users/${target.clerkUserId}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${clerkSecretKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ public_metadata: { role } }),
+        });
+      } catch (clerkErr: any) {
+        console.error("[role-update] Failed to sync role to Clerk:", clerkErr.message);
+        // Non-fatal: DB was updated, Clerk sync failed
+      }
+    }
+
+    // Handle agent promotion: create agent record if needed
+    let agentRecord = null;
+    if (role === "agent") {
+      const existingAgent = await db.query.agentsTable.findFirst({ where: eq(agentsTable.userId, targetId) });
+      if (!existingAgent) {
+        if (!businessName) {
+          return res.status(400).json({ error: "businessName is required when promoting to agent." });
+        }
+        const agentCode = `AGT-${randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+        const [newAgent] = await db.insert(agentsTable).values({
+          id: randomUUID(),
+          userId: targetId,
+          businessName: businessName,
+          contactPerson: contactPerson || updated.fullName || "",
+          email: agentEmail || updated.email,
+          phone: agentPhone || updated.phone || "",
+          agentCode,
+          status: "active",
+        }).returning();
+        agentRecord = newAgent;
+
+        // Create wallet for the new agent
+        await db.insert(agentWalletsTable).values({
+          id: randomUUID(),
+          agentId: newAgent.id,
+          balance: "0",
+        });
+      }
+    }
+
+    console.log(`[role-update] User ${targetId} (${target.email}) role changed: ${target.role} -> ${role}`);
+    return res.json({
+      ...updated,
+      ...(agentRecord ? { agent: agentRecord } : {}),
+      message: `Role updated to "${role}" successfully.`,
+    });
+  } catch (err: any) {
+    console.error("[role-update] Unexpected error:", err);
+    return res.status(500).json({ error: err.message || "Failed to update role" });
+  }
 });
 
 // ── Pilgrims ──────────────────────────────────────────────────────────────────
@@ -561,7 +777,7 @@ router.post("/admin/staff", async (req, res) => {
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
     if (!clerkSecretKey) return res.status(500).json({ error: "Clerk not configured" });
 
-    let clerkRes: Response;
+    let clerkRes: globalThis.Response;
     try {
       clerkRes = await fetch("https://api.clerk.com/v1/users", {
         method: "POST",
@@ -617,10 +833,25 @@ router.post("/admin/staff", async (req, res) => {
       );
     }
 
+    // Send welcome email (non-blocking — account creation succeeds even if email fails)
+    let emailWarning: string | undefined;
+    try {
+      await sendStaffWelcomeEmail({
+        name: fullName,
+        email,
+        role: role as string,
+        tempPassword: password,
+      });
+    } catch (emailErr: any) {
+      console.error("[staff-create] Welcome email failed (account was created):", emailErr.message);
+      emailWarning = "Account created but welcome email could not be sent.";
+    }
+
     return res.status(201).json({
       ...profile,
       permissions,
       specialties,
+      ...(emailWarning ? { warning: emailWarning } : {}),
     });
   } catch (err: any) {
     console.error("[staff-create] Unexpected error:", err);
@@ -630,24 +861,79 @@ router.post("/admin/staff", async (req, res) => {
 
 router.delete("/admin/staff/:id", async (req, res) => {
   try {
-    const { id } = req.params;
-    const profile = await db.query.profilesTable.findFirst({ where: eq(profilesTable.id, id) });
-    if (!profile) return res.status(404).json({ error: "Staff not found" });
+    const { userId: callerClerkId } = getAuth(req);
+    if (!callerClerkId) return res.status(401).json({ error: "Unauthorized" });
+    const caller = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, callerClerkId) });
+    if (!caller) return res.status(404).json({ error: "Caller profile not found" });
 
-    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
-    if (clerkSecretKey && profile.clerkUserId) {
-      try {
-        await fetch(`https://api.clerk.com/v1/users/${profile.clerkUserId}`, {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${clerkSecretKey}` },
-        });
-      } catch (e) { console.error("[staff-delete] Clerk delete failed (continuing):", e); }
+    const targetId = req.params.id;
+    const target = await db.query.profilesTable.findFirst({ where: eq(profilesTable.id, targetId) });
+    if (!target) return res.status(404).json({ error: "Staff not found" });
+
+    // Guards
+    if (target.id === caller.id) {
+      return res.status(400).json({ error: "You cannot delete your own account." });
+    }
+    if (target.role === "super_admin") {
+      return res.status(403).json({ error: "Cannot delete a super admin from the staff page." });
     }
 
-    await db.delete(staffPermissionsTable).where(eq(staffPermissionsTable.userId, id));
-    await db.delete(staffSupportSpecialtiesTable).where(eq(staffSupportSpecialtiesTable.userId, id));
-    await db.delete(profilesTable).where(eq(profilesTable.id, id));
+    // Step 1: Delete from Clerk FIRST — abort if it fails
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (!clerkSecretKey) {
+      return res.status(500).json({ error: "Clerk secret key not configured" });
+    }
 
+    const isWalkIn = target.clerkUserId.startsWith("walkin-");
+    if (!isWalkIn) {
+      const clerkRes = await fetch(`https://api.clerk.com/v1/users/${target.clerkUserId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${clerkSecretKey}` },
+      });
+      if (!clerkRes.ok && clerkRes.status !== 404) {
+        const errBody = await clerkRes.text().catch(() => "Unknown error");
+        console.error("[staff-delete] Clerk deletion failed:", clerkRes.status, errBody);
+        return res.status(502).json({ error: "Failed to delete user from authentication provider. Database was NOT modified." });
+      }
+    }
+
+    // Step 2: Database cleanup in a transaction
+    await db.transaction(async (tx) => {
+      // Nullify nullable FK references
+      await tx.update(bookingsTable).set({ registeredByStaffId: null }).where(eq(bookingsTable.registeredByStaffId, targetId));
+      await tx.update(paymentsTable).set({ verifiedBy: null }).where(eq(paymentsTable.verifiedBy, targetId));
+      await tx.update(supportTicketsTable).set({ assignedTo: null }).where(eq(supportTicketsTable.assignedTo, targetId));
+      await tx.update(staffPermissionsTable).set({ grantedBy: null }).where(eq(staffPermissionsTable.grantedBy, targetId));
+      await tx.update(staffMessagesTable).set({ receiverId: null }).where(eq(staffMessagesTable.receiverId, targetId));
+      await tx.update(bookingAmendmentRequestsTable).set({ reviewedBy: null }).where(eq(bookingAmendmentRequestsTable.reviewedBy, targetId));
+
+      // Delete owned rows
+      await tx.delete(notificationsTable).where(eq(notificationsTable.userId, targetId));
+      await tx.delete(userActivityTable).where(eq(userActivityTable.userId, targetId));
+      await tx.delete(staffPermissionsTable).where(eq(staffPermissionsTable.userId, targetId));
+      await tx.delete(staffSupportSpecialtiesTable).where(eq(staffSupportSpecialtiesTable.userId, targetId));
+      await tx.delete(staffMessagesTable).where(eq(staffMessagesTable.senderId, targetId));
+      await tx.delete(adminOtpRequestsTable).where(eq(adminOtpRequestsTable.adminId, targetId));
+      await tx.delete(loginSessionsTable).where(eq(loginSessionsTable.clerkUserId, target.clerkUserId));
+
+      // Support tickets
+      const userTickets = await tx.select({ id: supportTicketsTable.id }).from(supportTicketsTable).where(eq(supportTicketsTable.userId, targetId));
+      if (userTickets.length > 0) {
+        const ticketIds = userTickets.map(t => t.id);
+        await tx.delete(supportMessagesTable).where(inArray(supportMessagesTable.ticketId, ticketIds));
+        await tx.delete(supportTicketsTable).where(eq(supportTicketsTable.userId, targetId));
+      }
+
+      // Preserve financial records
+      await tx.update(bookingsTable).set({ userId: null }).where(eq(bookingsTable.userId, targetId));
+      await tx.update(paymentsTable).set({ userId: null }).where(eq(paymentsTable.userId, targetId));
+      await tx.delete(bookingAmendmentRequestsTable).where(eq(bookingAmendmentRequestsTable.userId, targetId));
+
+      // Delete profile
+      await tx.delete(profilesTable).where(eq(profilesTable.id, targetId));
+    });
+
+    console.log(`[staff-delete] Successfully deleted staff ${targetId} (${target.email}) from Clerk and Neon`);
     return res.json({ success: true });
   } catch (err: any) {
     console.error("[staff-delete] Error:", err);

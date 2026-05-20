@@ -115,7 +115,7 @@ router.get("/bookings", async (req, res) => {
   const userMap = Object.fromEntries(users.map(u => [u.id, u]));
 
   return res.json({
-    bookings: bookings.map(b => toBookingResponse(b, pkgMap[b.packageId], userMap[b.userId])),
+    bookings: bookings.map(b => toBookingResponse(b, b.packageId ? pkgMap[b.packageId] : undefined, b.userId ? userMap[b.userId] : undefined)),
     total: Number(total[0].count),
   });
 });

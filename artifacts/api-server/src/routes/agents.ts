@@ -29,7 +29,7 @@ function toAgentResponse(a: typeof agentsTable.$inferSelect) {
     commissionRate: Number(a.commissionRate),
     commissionType: a.commissionType,
     walletBalance: 0,
-    isVerified: a.isVerified,
+    isVerified: a.status === "active",
     status: a.status,
     createdAt: a.createdAt,
     user: null,

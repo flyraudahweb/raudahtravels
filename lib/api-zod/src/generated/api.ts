@@ -2160,6 +2160,37 @@ export const GetPilgrimResponse = zod
   );
 
 /**
+ * @summary Safely delete a user account
+ */
+export const DeleteUserParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const DeleteUserResponse = zod.object({
+  success: zod.boolean().optional(),
+  deletedFrom: zod.array(zod.string()).optional(),
+});
+
+/**
+ * @summary Change a user's role
+ */
+export const ChangeUserRoleParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ChangeUserRoleBody = zod.object({
+  role: zod.string(),
+  businessName: zod.string().optional(),
+  contactPerson: zod.string().optional(),
+  agentEmail: zod.string().optional(),
+  agentPhone: zod.string().optional(),
+});
+
+export const ChangeUserRoleResponse = zod.object({
+  message: zod.string().optional(),
+});
+
+/**
  * @summary List staff members (admin)
  */
 export const ListStaffResponse = zod.object({

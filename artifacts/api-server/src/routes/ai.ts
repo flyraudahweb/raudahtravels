@@ -34,7 +34,7 @@ async function getAiConfig(): Promise<{
 async function getLiveBizData() {
   const [totalRevRow] = await db.select({ total: sql<string>`COALESCE(SUM(amount),0)` }).from(paymentsTable).where(eq(paymentsTable.status, "verified"));
   const [pendingPayRow] = await db.select({ count: sql<number>`count(*)` }).from(paymentsTable).where(eq(paymentsTable.status, "pending"));
-  const [totalPilgrims] = await db.select({ count: sql<number>`count(*)` }).from(profilesTable).where(eq(profilesTable.role, "pilgrim"));
+  const [totalPilgrims] = await db.select({ count: sql<number>`count(*)` }).from(profilesTable).where(eq(profilesTable.role, "user"));
   const [totalAgents] = await db.select({ count: sql<number>`count(*)` }).from(agentsTable);
   const [activePackages] = await db.select({ count: sql<number>`count(*)` }).from(packagesTable).where(eq(packagesTable.isActive, true));
   const bookingsByStatus = await db.select({ status: bookingsTable.status, count: sql<number>`count(*)` }).from(bookingsTable).groupBy(bookingsTable.status);

@@ -33,6 +33,8 @@ import type {
   ApproveApplicationResponse,
   Booking,
   BookingListResponse,
+  ChangeUserRole200,
+  ChangeUserRoleBody,
   CommissionListResponse,
   CreateAgentDirectBody,
   CreateAgentDirectResponse,
@@ -46,6 +48,7 @@ import type {
   DashboardSummary,
   DeleteAgentPackageDiscount200,
   DeleteStaff200,
+  DeleteUser200,
   Document,
   DocumentListResponse,
   GetAnalyticsParams,
@@ -4873,6 +4876,177 @@ export function useGetPilgrim<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Safely delete a user account
+ */
+export const getDeleteUserUrl = (id: string) => {
+  return `/api/admin/users/${id}`;
+};
+
+export const deleteUser = async (
+  id: string,
+  options?: RequestInit,
+): Promise<DeleteUser200> => {
+  return customFetch<DeleteUser200>(getDeleteUserUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteUserMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteUser>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteUser>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deleteUser"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteUser>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteUser(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteUserMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteUser>>
+>;
+
+export type DeleteUserMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Safely delete a user account
+ */
+export const useDeleteUser = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteUser>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteUser>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeleteUserMutationOptions(options));
+};
+
+/**
+ * @summary Change a user's role
+ */
+export const getChangeUserRoleUrl = (id: string) => {
+  return `/api/admin/users/${id}/role`;
+};
+
+export const changeUserRole = async (
+  id: string,
+  changeUserRoleBody: ChangeUserRoleBody,
+  options?: RequestInit,
+): Promise<ChangeUserRole200> => {
+  return customFetch<ChangeUserRole200>(getChangeUserRoleUrl(id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(changeUserRoleBody),
+  });
+};
+
+export const getChangeUserRoleMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof changeUserRole>>,
+    TError,
+    { id: string; data: BodyType<ChangeUserRoleBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof changeUserRole>>,
+  TError,
+  { id: string; data: BodyType<ChangeUserRoleBody> },
+  TContext
+> => {
+  const mutationKey = ["changeUserRole"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof changeUserRole>>,
+    { id: string; data: BodyType<ChangeUserRoleBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return changeUserRole(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ChangeUserRoleMutationResult = NonNullable<
+  Awaited<ReturnType<typeof changeUserRole>>
+>;
+export type ChangeUserRoleMutationBody = BodyType<ChangeUserRoleBody>;
+export type ChangeUserRoleMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Change a user's role
+ */
+export const useChangeUserRole = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof changeUserRole>>,
+    TError,
+    { id: string; data: BodyType<ChangeUserRoleBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof changeUserRole>>,
+  TError,
+  { id: string; data: BodyType<ChangeUserRoleBody> },
+  TContext
+> => {
+  return useMutation(getChangeUserRoleMutationOptions(options));
+};
 
 /**
  * @summary List staff members (admin)

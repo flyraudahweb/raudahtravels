@@ -539,3 +539,66 @@ export async function sendAgentApprovalEmail(data: AgentApprovalData): Promise<b
   return sendEmail({ to: data.email, subject, html, text: textBody });
 }
 
+// ── Staff Welcome / Onboarding Email ─────────────────────────────────────────
+
+export interface StaffWelcomeData {
+  name: string;
+  email: string;
+  role: string;
+  tempPassword: string;
+  loginUrl?: string;
+}
+
+function buildStaffWelcomeEmail(data: StaffWelcomeData): string {
+  const loginUrl = data.loginUrl || "https://flyraudah.com.ng/sign-in";
+  const roleLabel = data.role === "admin" ? "Admin" : "Staff";
+  const content = `
+    <div style="text-align:center;margin-bottom:28px;">
+      <div style="display:inline-flex;align-items:center;justify-content:center;width:64px;height:64px;border-radius:16px;background:#DCFCE7;margin-bottom:16px;">
+        <span style="font-size:28px;">🎉</span>
+      </div>
+      <h1 style="margin:0 0 8px;color:#0F172A;font-size:22px;font-weight:800;">Welcome to the Team!</h1>
+      <p style="margin:0;color:#64748B;font-size:14px;">As-salamu alaykum, ${data.name}. You've been added as <strong style="color:#2D3199;">${roleLabel}</strong> on Raudah Travels.</p>
+    </div>
+    <div style="background:#F8FAFF;border:2px solid #C7CBF5;border-radius:16px;padding:24px;margin-bottom:24px;">
+      <p style="margin:0 0 16px;color:#2D3199;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;">Your Login Details</p>
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="padding:8px 0;border-bottom:1px solid #E2E8F0;color:#64748B;font-size:13px;font-weight:600;width:40%;">Role</td>
+          <td style="padding:8px 0;border-bottom:1px solid #E2E8F0;color:#2D3199;font-size:14px;font-weight:800;">${roleLabel}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;border-bottom:1px solid #E2E8F0;color:#64748B;font-size:13px;font-weight:600;">Email</td>
+          <td style="padding:8px 0;border-bottom:1px solid #E2E8F0;color:#0F172A;font-size:13px;font-weight:600;">${data.email}</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;color:#64748B;font-size:13px;font-weight:600;">Temporary Password</td>
+          <td style="padding:8px 0;color:#FF3B00;font-size:14px;font-weight:800;font-family:'Courier New',monospace;">${data.tempPassword}</td>
+        </tr>
+      </table>
+    </div>
+    <div style="background:#FFF7F5;border:1px solid #FFDDD5;border-radius:12px;padding:16px;margin-bottom:24px;">
+      <p style="margin:0;color:#FF3B00;font-size:12px;font-weight:700;">⚠️ Important</p>
+      <p style="margin:6px 0 0;color:#64748B;font-size:12px;line-height:1.6;">
+        Please change your password after your first login. Do <strong>not</strong> share your login credentials with anyone.
+      </p>
+    </div>
+    <div style="text-align:center;margin-bottom:28px;">
+      <a href="${loginUrl}" style="display:inline-block;background:linear-gradient(135deg,#2D3199 0%,#4C56B8 100%);color:#ffffff;font-size:14px;font-weight:800;padding:14px 40px;border-radius:12px;text-decoration:none;">Sign In to Dashboard</a>
+    </div>
+    <p style="color:#64748B;font-size:13px;line-height:1.6;text-align:center;margin:0;">
+      You now have access to the admin dashboard based on your assigned permissions.<br/><br/>
+      For support, contact us at <a href="mailto:support@flyraudah.com.ng" style="color:#2D3199;font-weight:600;">support@flyraudah.com.ng</a>
+    </p>`;
+  return emailWrapper(content);
+}
+
+export async function sendStaffWelcomeEmail(data: StaffWelcomeData): Promise<boolean> {
+  const roleLabel = data.role === "admin" ? "Admin" : "Staff";
+  return sendEmail({
+    to: data.email,
+    subject: `Welcome to Raudah Travels — Your ${roleLabel} Account is Ready`,
+    html: buildStaffWelcomeEmail(data),
+    text: `As-salamu alaykum ${data.name}, you've been added as ${roleLabel} on Raudah Travels. Login: ${data.email}, Temp Password: ${data.tempPassword}. Sign in at https://flyraudah.com.ng/sign-in and change your password after first login.`,
+  });
+}

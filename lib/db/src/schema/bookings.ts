@@ -27,7 +27,6 @@ export const bookingsTable = pgTable("bookings", {
   id: text("id").primaryKey().default("gen_random_uuid()"),
   reference: text("reference").unique(),
   userId: text("user_id")
-    .notNull()
     .references(() => profilesTable.id),
   packageId: text("package_id")
     .notNull()
@@ -134,7 +133,6 @@ export const bookingAmendmentRequestsTable = pgTable("booking_amendment_requests
     .notNull()
     .references(() => bookingsTable.id),
   userId: text("user_id")
-    .notNull()
     .references(() => profilesTable.id),
   requestedChanges: json("requested_changes"),
   status: text("status").notNull().default("pending"),
