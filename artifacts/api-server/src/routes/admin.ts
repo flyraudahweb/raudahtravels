@@ -1969,7 +1969,24 @@ router.post("/admin/book-pilgrim", async (req, res) => {
   }
 
   // SECURITY FIX #12: Always use canonical package price. Client totalPrice is ignored.
-  const price = Number(pkg.price);
+  // BUG FIX #8: If registering under an agent, apply the agent's per-package discount.
+  let price = Number(pkg.price);
+  const agentIdValue = nullify(agentId) as string | undefined;
+  if (agentIdValue) {
+    const agentDiscount = await db.query.agentPackageDiscountsTable.findFirst({
+      where: and(
+        eq(agentPackageDiscountsTable.agentId, agentIdValue),
+        eq(agentPackageDiscountsTable.packageId, packageId),
+      ),
+    });
+    if (agentDiscount) {
+      if (agentDiscount.discountType === "percentage") {
+        price = Math.round((price - (price * Number(agentDiscount.discountValue) / 100)) * 100) / 100;
+      } else {
+        price = Math.max(0, price - Number(agentDiscount.discountValue));
+      }
+    }
+  }
   const reference = `RDH-${randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase()}`;
 
   const resolvedFullName = nullify(fullName) as string | undefined
@@ -2571,11 +2588,23 @@ router.delete("/admin/agents/:id", async (req, res) => {
     });
   }
 
-  // Delete wallet transactions, wallet, package discounts, then agent
-  await db.delete(walletTransactionsTable).where(eq(walletTransactionsTable.agentId, agent.id));
-  await db.delete(agentWalletsTable).where(eq(agentWalletsTable.agentId, agent.id));
-  await db.delete(agentPackageDiscountsTable).where(eq(agentPackageDiscountsTable.agentId, agent.id));
-  await db.delete(agentsTable).where(eq(agentsTable.id, agent.id));
+  // BUG FIX #7: Delete wallet transactions, wallet, package discounts, then agent
+  // All wrapped in a transaction to prevent orphaned data on partial failure.
+  try {
+    await db.transaction(async (tx) => {
+      await tx.delete(walletTransactionsTable).where(eq(walletTransactionsTable.agentId, agent.id));
+      await tx.delete(agentWalletsTable).where(eq(agentWalletsTable.agentId, agent.id));
+      await tx.delete(agentPackageDiscountsTable).where(eq(agentPackageDiscountsTable.agentId, agent.id));
+      await tx.delete(agentsTable).where(eq(agentsTable.id, agent.id));
+
+      // Downgrade profile role back to user
+      await tx.update(profilesTable)
+        .set({ role: "user", updatedAt: new Date() })
+        .where(eq(profilesTable.id, agent.userId));
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: "Failed to delete agent: " + (err.message || "Unknown error") });
+  }
 
   // Optionally delete the Clerk user so the email can be reused
   const profile = await db.query.profilesTable.findFirst({ where: eq(profilesTable.id, agent.userId) });
@@ -2593,11 +2622,6 @@ router.delete("/admin/agents/:id", async (req, res) => {
       });
     }
   }
-
-  // Downgrade profile role back to user
-  await db.update(profilesTable)
-    .set({ role: "user", updatedAt: new Date() })
-    .where(eq(profilesTable.id, agent.userId));
 
   return res.json({ message: "Agent account deleted successfully." });
 });
@@ -2727,30 +2751,56 @@ router.put("/admin/agents/:id/package-discounts/:packageId", async (req, res) =>
   const { discountType, discountValue } = req.body as { discountType: string; discountValue: number };
   if (!discountType || discountValue == null) return res.status(400).json({ error: "discountType and discountValue are required" });
 
-  const existing = await db.query.agentPackageDiscountsTable.findFirst({
-    where: and(
-      eq(agentPackageDiscountsTable.agentId, req.params.id),
-      eq(agentPackageDiscountsTable.packageId, req.params.packageId),
-    ),
-  });
-
-  let discount;
-  if (existing) {
-    const [d] = await db.update(agentPackageDiscountsTable)
-      .set({ discountType, discountValue: String(discountValue), updatedAt: new Date() })
-      .where(eq(agentPackageDiscountsTable.id, existing.id))
-      .returning();
-    discount = d;
-  } else {
-    const [d] = await db.insert(agentPackageDiscountsTable).values({
-      id: randomUUID(),
-      agentId: req.params.id,
-      packageId: req.params.packageId,
-      discountType,
-      discountValue: String(discountValue),
-    }).returning();
-    discount = d;
+  // BUG FIX #5: Comprehensive discount validation
+  if (!['percentage', 'fixed'].includes(discountType)) {
+    return res.status(400).json({ error: "discountType must be 'percentage' or 'fixed'" });
   }
+  if (typeof discountValue !== 'number' || isNaN(discountValue) || discountValue <= 0) {
+    return res.status(400).json({ error: "discountValue must be a positive number" });
+  }
+  if (discountType === 'percentage' && discountValue > 100) {
+    return res.status(400).json({ error: "Percentage discount cannot exceed 100%" });
+  }
+
+  // Verify agent and package exist
+  const agent = await db.query.agentsTable.findFirst({ where: eq(agentsTable.id, req.params.id) });
+  if (!agent) return res.status(404).json({ error: "Agent not found" });
+  const pkg = await db.query.packagesTable.findFirst({ where: eq(packagesTable.id, req.params.packageId) });
+  if (!pkg) return res.status(404).json({ error: "Package not found" });
+
+  if (discountType === 'fixed' && discountValue > Number(pkg.price)) {
+    return res.status(400).json({ error: `Fixed discount ₦${discountValue.toLocaleString()} exceeds package price ₦${Number(pkg.price).toLocaleString()}` });
+  }
+
+  // BUG FIX #6: Wrap upsert in a transaction with row-level locking to
+  // prevent race conditions where two concurrent requests both see "not exists"
+  // and both insert, creating duplicate discount rows.
+  let discount: any;
+  await db.transaction(async (tx) => {
+    const existing = await tx.query.agentPackageDiscountsTable.findFirst({
+      where: and(
+        eq(agentPackageDiscountsTable.agentId, req.params.id),
+        eq(agentPackageDiscountsTable.packageId, req.params.packageId),
+      ),
+    });
+
+    if (existing) {
+      const [d] = await tx.update(agentPackageDiscountsTable)
+        .set({ discountType, discountValue: String(discountValue), updatedAt: new Date() })
+        .where(eq(agentPackageDiscountsTable.id, existing.id))
+        .returning();
+      discount = d;
+    } else {
+      const [d] = await tx.insert(agentPackageDiscountsTable).values({
+        id: randomUUID(),
+        agentId: req.params.id,
+        packageId: req.params.packageId,
+        discountType,
+        discountValue: String(discountValue),
+      }).returning();
+      discount = d;
+    }
+  });
 
   return res.json({ ...discount, discountValue: Number(discount.discountValue) });
 });

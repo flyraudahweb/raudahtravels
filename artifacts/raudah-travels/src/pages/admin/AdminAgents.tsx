@@ -407,17 +407,25 @@ function PackageDiscountsDialog({ agent, onClose }: { agent: any; onClose: () =>
 
   const handleAdd = () => {
     if (!form.packageId || !form.discountValue) return;
+    const val = parseFloat(form.discountValue);
+    // BUG FIX #16: Client-side discount validation
+    if (isNaN(val) || val <= 0) { toast({ title: "Discount value must be a positive number", variant: "destructive" }); return; }
+    if (form.discountType === "percentage" && val > 100) { toast({ title: "Percentage discount cannot exceed 100%", variant: "destructive" }); return; }
+    const selectedPkg = packages.find(p => p.id === form.packageId);
+    if (form.discountType === "fixed" && selectedPkg && val > selectedPkg.price) {
+      toast({ title: `Fixed discount exceeds package price (₦${selectedPkg.price.toLocaleString()})`, variant: "destructive" }); return;
+    }
     setDiscount.mutate({
       id: agent.id,
       packageId: form.packageId,
-      data: { discountType: form.discountType as any, discountValue: parseFloat(form.discountValue) },
+      data: { discountType: form.discountType as any, discountValue: val },
     }, {
       onSuccess: () => {
         setForm({ packageId: "", discountType: "percentage", discountValue: "" });
         qc.invalidateQueries({ queryKey: getGetAgentPackageDiscountsAdminQueryKey(agent.id) });
         toast({ title: "Discount set!" });
       },
-      onError: () => toast({ title: "Failed to set discount", variant: "destructive" }),
+      onError: (err: any) => toast({ title: err?.data?.error || "Failed to set discount", variant: "destructive" }),
     });
   };
 
@@ -428,17 +436,25 @@ function PackageDiscountsDialog({ agent, onClose }: { agent: any; onClose: () =>
 
   const handleSaveEdit = (packageId: string) => {
     if (!editForm.discountValue) return;
+    const val = parseFloat(editForm.discountValue);
+    // BUG FIX #16: Client-side discount validation for edits
+    if (isNaN(val) || val <= 0) { toast({ title: "Discount value must be a positive number", variant: "destructive" }); return; }
+    if (editForm.discountType === "percentage" && val > 100) { toast({ title: "Percentage discount cannot exceed 100%", variant: "destructive" }); return; }
+    const editPkg = discounts.find(d => d.packageId === packageId);
+    if (editForm.discountType === "fixed" && editPkg?.package && val > editPkg.package.price) {
+      toast({ title: `Fixed discount exceeds package price (₦${editPkg.package.price.toLocaleString()})`, variant: "destructive" }); return;
+    }
     setDiscount.mutate({
       id: agent.id,
       packageId,
-      data: { discountType: editForm.discountType as any, discountValue: parseFloat(editForm.discountValue) },
+      data: { discountType: editForm.discountType as any, discountValue: val },
     }, {
       onSuccess: () => {
         setEditingId(null);
         qc.invalidateQueries({ queryKey: getGetAgentPackageDiscountsAdminQueryKey(agent.id) });
         toast({ title: "Discount updated!" });
       },
-      onError: () => toast({ title: "Failed to update discount", variant: "destructive" }),
+      onError: (err: any) => toast({ title: err?.data?.error || "Failed to update discount", variant: "destructive" }),
     });
   };
 

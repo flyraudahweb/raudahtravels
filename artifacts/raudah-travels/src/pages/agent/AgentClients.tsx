@@ -168,20 +168,21 @@ export default function AgentClients() {
         const parsed = JSON.parse(draft);
         if (parsed.form) setForm(parsed.form);
         if (parsed.regStep) setRegStep(parsed.regStep);
+        if (parsed.phoneCode) setPhoneCode(parsed.phoneCode);
       }
     } catch (e) {}
     setIsRestored(true);
   }, []);
 
-  // Save draft on changes
+  // Save draft on changes (includes phoneCode)
   useEffect(() => {
     if (!isRestored) return;
     if (regStep === 6 || !dialogOpen) {
       localStorage.removeItem("agent_client_draft");
       return;
     }
-    localStorage.setItem("agent_client_draft", JSON.stringify({ form, regStep }));
-  }, [form, regStep, isRestored, dialogOpen]);
+    localStorage.setItem("agent_client_draft", JSON.stringify({ form, regStep, phoneCode }));
+  }, [form, regStep, phoneCode, isRestored, dialogOpen]);
 
   const cfg = useFormFieldConfig();
   const show = (name: string) => cfg(name).visible;
@@ -279,10 +280,13 @@ export default function AgentClients() {
         body: JSON.stringify(body),
       }).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || "Failed"); return d; }),
     onSuccess: async (data) => {
+      submittingRef.current = false;
       const finishLocal = () => {
         toast({ title: `✓ ${data.fullName || "Client"} registered`, description: `Ref: ${data.reference}` });
         setSessionCount(c => c + 1);
         qc.invalidateQueries({ queryKey: ["agent-clients"] });
+        // BUG FIX #9: Invalidate wallet cache so balance updates across all pages
+        qc.invalidateQueries({ queryKey: ["agent-wallet"] });
         setResult({ reference: data.reference });
         localStorage.removeItem("agent_client_draft");
         setRegStep(6);
@@ -322,17 +326,23 @@ export default function AgentClients() {
         finishLocal();
       }
     },
-    onError: (err: Error) => toast({ title: "Registration failed", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => { submittingRef.current = false; toast({ title: "Registration failed", description: err.message, variant: "destructive" }); },
   });
 
+  // BUG FIX #12: Double-submit guard ref
+  const submittingRef = useRef(false);
+
   const handleSubmit = () => {
+    // BUG FIX #12: Prevent double-submit on rapid clicks
+    if (submittingRef.current || registerMutation.isPending) return;
+    submittingRef.current = true;
     // Only submit when user is on the final payment step
-    if (!form.packageId) { toast({ title: "Select a package", variant: "destructive" }); return; }
-    if (req("firstName") && !form.firstName.trim()) { toast({ title: "First Name is required", variant: "destructive" }); return; }
-    if (req("lastName") && !form.lastName.trim()) { toast({ title: "Last Name is required", variant: "destructive" }); return; }
-    if (req("phone") && !form.phone.trim()) { toast({ title: "Phone number is required", variant: "destructive" }); return; }
+    if (!form.packageId) { submittingRef.current = false; toast({ title: "Select a package", variant: "destructive" }); return; }
+    if (req("firstName") && !form.firstName.trim()) { submittingRef.current = false; toast({ title: "First Name is required", variant: "destructive" }); return; }
+    if (req("lastName") && !form.lastName.trim()) { submittingRef.current = false; toast({ title: "Last Name is required", variant: "destructive" }); return; }
+    if (req("phone") && !form.phone.trim()) { submittingRef.current = false; toast({ title: "Phone number is required", variant: "destructive" }); return; }
     const warn = passportWarn(form.passportExpiry);
-    if (warn === "expired") { toast({ title: "Passport expired", description: "Cannot register with expired passport.", variant: "destructive" }); return; }
+    if (warn === "expired") { submittingRef.current = false; toast({ title: "Passport expired", description: "Cannot register with expired passport.", variant: "destructive" }); return; }
     registerMutation.mutate({
       packageId: form.packageId,
       civility: form.civility || undefined,
@@ -1175,8 +1185,8 @@ export default function AgentClients() {
                             previewType="file"
                             value={form.paymentProofUrl}
                             onChange={v => set("paymentProofUrl", v)}
-                            hint="Upload the receipt or screenshot"
                           />
+
                         </div>
                       )}
 

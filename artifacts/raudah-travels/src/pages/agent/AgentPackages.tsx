@@ -6,10 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CountdownBanner } from "@/components/CountdownBanner";
 import { PackageAvailability } from "@/components/PackageAvailability";
 
-function calcEarnings(price: number, commissionRate: number, commissionType: string) {
-  if (commissionType === "percentage") return price * commissionRate / 100;
-  return commissionRate;
-}
+
 
 export default function AgentPackages() {
   const { data, isLoading } = useListPackages({ available: true }, { query: { queryKey: getListPackagesQueryKey({ available: true }) } });
@@ -72,11 +69,28 @@ export default function AgentPackages() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {packages.map(pkg => {
             const packageDiscount = discountMap[pkg.id];
-            const effectiveRate = packageDiscount ? packageDiscount.discountValue : commissionRate;
-            const effectiveType = packageDiscount ? packageDiscount.discountType : commissionType;
-            const earnings = calcEarnings(pkg.price, effectiveRate, effectiveType);
-            const hasCommission = effectiveRate > 0;
+
+            // BUG FIX #13: Separate commission (display-only) from discount (actual price reduction).
+            // Only per-package discounts affect pricing. commissionRate is informational only.
             const hasSpecialDiscount = !!packageDiscount;
+
+            // Calculate actual discount (only from per-package discounts)
+            let discountAmount = 0;
+            if (packageDiscount) {
+              if (packageDiscount.discountType === "percentage") {
+                discountAmount = pkg.price * packageDiscount.discountValue / 100;
+              } else {
+                discountAmount = packageDiscount.discountValue;
+              }
+            }
+            const remittancePrice = pkg.price - discountAmount;
+
+            // Commission is display-only — how much the agent earns per booking
+            const hasCommission = commissionRate > 0;
+            const commissionEarnings = commissionType === "percentage"
+              ? pkg.price * commissionRate / 100
+              : commissionRate;
+
             const spotsLeft = pkg.maxCapacity - pkg.currentBookings;
             const fillPct = Math.round((pkg.currentBookings / pkg.maxCapacity) * 100);
             const isAlmostFull = fillPct >= 80;
@@ -89,7 +103,7 @@ export default function AgentPackages() {
                 {/* Top ribbon */}
                 {hasSpecialDiscount ? (
                   <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 flex items-center gap-2">
-                    <Tag className="w-3 h-3" /> Special commission rate for your account
+                    <Tag className="w-3 h-3" /> Special discount applied to your account
                   </div>
                 ) : isAlmostFull ? (
                   <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[10px] font-black uppercase tracking-widest px-4 py-2 flex items-center gap-2">
@@ -163,33 +177,47 @@ export default function AgentPackages() {
                       </div>
                     </div>
 
-                    {/* Agent discount block — only shown if this agent has a discount */}
-                    {hasCommission && (
+                    {/* Agent discount block — only shown when a real per-package discount exists */}
+                    {hasSpecialDiscount && (
                       <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-2">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5">
                             <Tag className="w-3 h-3 text-emerald-600 shrink-0" />
                             <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">
                               Your Discount
-                              {hasSpecialDiscount && <span className="ml-1 normal-case font-semibold text-emerald-600">(special rate)</span>}
                             </p>
                           </div>
                           <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
-                            {effectiveType === "percentage" ? `${effectiveRate}%` : `₦${Number(effectiveRate).toLocaleString()}`} off
+                            {packageDiscount.discountType === "percentage" ? `${packageDiscount.discountValue}%` : `₦${Number(packageDiscount.discountValue).toLocaleString()}`} off
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="text-[10px] text-emerald-700 font-semibold">Your remittance price</p>
-                            <p className="text-base font-black text-emerald-800">₦{(pkg.price - earnings).toLocaleString()}</p>
+                            <p className="text-base font-black text-emerald-800">₦{remittancePrice.toLocaleString()}</p>
                           </div>
                           <div className="text-right">
-                            <p className="text-[10px] text-emerald-700 font-semibold">Your earnings</p>
+                            <p className="text-[10px] text-emerald-700 font-semibold">You save</p>
                             <div className="flex items-center gap-1 justify-end">
                               <TrendingUp className="w-3 h-3 text-emerald-600" />
-                              <p className="text-base font-black text-emerald-700">₦{earnings.toLocaleString()}</p>
+                              <p className="text-base font-black text-emerald-700">₦{discountAmount.toLocaleString()}</p>
                             </div>
                           </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Commission info — display-only, does NOT affect pricing */}
+                    {hasCommission && !hasSpecialDiscount && (
+                      <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <TrendingUp className="w-3 h-3 text-[#2D3199] shrink-0" />
+                            <p className="text-[10px] font-black text-[#64748B] uppercase tracking-widest">Commission Earnings</p>
+                          </div>
+                          <span className="text-[10px] font-black text-[#2D3199] bg-[#EEF0FF] px-2 py-0.5 rounded-full">
+                            ₦{commissionEarnings.toLocaleString()} per booking
+                          </span>
                         </div>
                       </div>
                     )}

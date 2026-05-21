@@ -346,15 +346,35 @@ router.get("/agent/clients", async (req, res) => {
   const agent = await db.query.agentsTable.findFirst({ where: eq(agentsTable.userId, profile.id) });
   if (!agent) return res.status(404).json({ error: "Agent not found" });
 
-  const { search = "", packageId = "", status = "", limit = "200" } = req.query as Record<string, string>;
+  const { search = "", packageId = "", status = "", limit = "200", offset = "0" } = req.query as Record<string, string>;
   const conditions: ReturnType<typeof eq>[] = [eq(bookingsTable.agentId, agent.id)];
   if (status && status !== "all") conditions.push(eq(bookingsTable.status, status as any));
   if (packageId && packageId !== "all") conditions.push(eq(bookingsTable.packageId, packageId));
 
+  // Apply text search at DB level for accurate pagination
+  if (search.trim()) {
+    const q = `%${search.trim().toLowerCase()}%`;
+    conditions.push(
+      sql`(
+        LOWER(COALESCE(${bookingsTable.fullName}, '')) LIKE ${q}
+        OR LOWER(COALESCE(${bookingsTable.passportNumber}, '')) LIKE ${q}
+        OR LOWER(COALESCE(${bookingsTable.reference}, '')) LIKE ${q}
+        OR LOWER(COALESCE(${bookingsTable.phone}, '')) LIKE ${q}
+      )`
+    );
+  }
+
+  const where = and(...conditions);
+
+  // Get total count for pagination BEFORE applying limit/offset
+  const [{ count: totalCount }] = await db.select({ count: sql<number>`count(*)::int` })
+    .from(bookingsTable).where(where);
+
   const bookings = await db.select().from(bookingsTable)
-    .where(and(...conditions))
+    .where(where)
     .orderBy(desc(bookingsTable.createdAt))
-    .limit(parseInt(limit));
+    .limit(parseInt(limit))
+    .offset(parseInt(offset));
 
   const bookingIds = bookings.map(b => b.id);
   const packageIds = [...new Set(bookings.map(b => b.packageId).filter(Boolean))] as string[];
@@ -373,7 +393,7 @@ router.get("/agent/clients", async (req, res) => {
   const visaMap = Object.fromEntries(visas.map(v => [v.bookingId, v]));
   const pkgMap = Object.fromEntries(packages.map(p => [p.id, p]));
 
-  let result = bookings.map(b => ({
+  const result = bookings.map(b => ({
     id: b.id,
     reference: b.reference,
     status: b.status,
@@ -407,17 +427,7 @@ router.get("/agent/clients", async (req, res) => {
     createdAt: b.createdAt,
   }));
 
-  if (search.trim()) {
-    const q = search.toLowerCase();
-    result = result.filter(b =>
-      (b.fullName || "").toLowerCase().includes(q) ||
-      (b.passportNumber || "").toLowerCase().includes(q) ||
-      (b.reference || "").toLowerCase().includes(q) ||
-      (b.phone || "").toLowerCase().includes(q)
-    );
-  }
-
-  return res.json({ clients: result, total: result.length });
+  return res.json({ clients: result, total: totalCount ?? result.length });
 });
 
 // ── Agent — Register a client ─────────────────────────────────────────────────
@@ -593,92 +603,108 @@ router.post("/agent/register-client", async (req, res) => {
     });
   }
 
-  // ── Standard (non-wallet) Payment Flow ─────────────────────────────────
-  const [walkInUser] = await db.insert(profilesTable).values({
-    id: randomUUID(),
-    clerkUserId: `walkin-${walkinUuid}`,
-    email: (email as string | undefined) || `walkin-${walkinUuid}@raudah.internal`,
-    fullName: resolvedFullName || "Walk-in Client",
-    role: "user",
-  }).returning();
+  // ── Standard (non-wallet) Payment Flow (atomic) ────────────────────────
+  // BUG FIX: Wrap in a transaction for atomicity — if any step fails, all
+  // are rolled back. For online (Paystack) payments, capacity is NOT
+  // incremented here (it is incremented when payment is confirmed via
+  // webhook/verify) to prevent phantom inflation on cancelled payments.
+  const isOnlinePayment = paymentMethod === "online" || paymentMethod === "paystack";
+  let booking: any;
 
-  const [booking] = await db.insert(bookingsTable).values({
-    id: randomUUID(),
-    reference: bookingReference,
-    userId: walkInUser.id,
-    packageId,
-    agentId: agent.id,
-    status: "pending",
-    totalPrice: String(price),
-    amountPaid: String(clampedPaid),
-    pilgrimCount: 1,
-    fullName: resolvedFullName || undefined,
-    civility: nullify(civility),
-    firstName: nullify(firstName),
-    lastName: nullify(lastName),
-    passportNumber: nullify(passportNumber),
-    passportIssueDate: nullify(passportIssueDate),
-    passportExpiry: nullify(passportExpiry),
-    passportIssuingAuthority: nullify(passportIssuingAuthority),
-    passportCopyUrl: nullify(passportCopyUrl),
-    profilePhotoUrl: nullify(profilePhotoUrl),
-    dateOfBirth: nullify(dateOfBirth),
-    placeOfBirth: nullify(placeOfBirth),
-    gender: nullify(gender),
-    phone: nullify(phone),
-    email: nullify(email),
-    nationality: nullify(nationality) || "Nigerian",
-    ethnicGroup: nullify(ethnicGroup),
-    maritalStatus: nullify(maritalStatus),
-    levelOfStudy: nullify(levelOfStudy),
-    occupation: nullify(occupation),
-    address: nullify(address),
-    city: nullify(city),
-    country: nullify(country),
-    roomPreference: nullify(roomPreference) || "Double",
-    departureCity: nullify(departureCity),
-    specialRequests: nullify(specialRequests),
-    partner: nullify(partner),
-    underCover: nullify(underCover),
-    observation: nullify(observation),
-    emergencyContactName: nullify(emergencyContactName),
-    emergencyContactPhone: nullify(emergencyContactPhone),
-    emergencyContactRelationship: nullify(emergencyContactRelationship),
-    fathersName: nullify(fathersName),
-    mothersName: nullify(mothersName),
-    mahramName: nullify(mahramName),
-    mahramRelationship: nullify(mahramRelationship),
-    mahramPassport: nullify(mahramPassport),
-  }).returning();
+  try {
+    await db.transaction(async (tx) => {
+      const [walkInUser] = await tx.insert(profilesTable).values({
+        id: randomUUID(),
+        clerkUserId: `walkin-${walkinUuid}`,
+        email: (email as string | undefined) || `walkin-${walkinUuid}@raudah.internal`,
+        fullName: resolvedFullName || "Walk-in Client",
+        role: "user",
+      }).returning();
 
-  // Increment package capacity
-  await db.update(packagesTable)
-    .set({ currentBookings: sql`${packagesTable.currentBookings} + 1` })
-    .where(eq(packagesTable.id, packageId));
+      [booking] = await tx.insert(bookingsTable).values({
+        id: randomUUID(),
+        reference: bookingReference,
+        userId: walkInUser.id,
+        packageId,
+        agentId: agent.id,
+        status: "pending",
+        totalPrice: String(price),
+        amountPaid: String(clampedPaid),
+        pilgrimCount: 1,
+        fullName: resolvedFullName || undefined,
+        civility: nullify(civility),
+        firstName: nullify(firstName),
+        lastName: nullify(lastName),
+        passportNumber: nullify(passportNumber),
+        passportIssueDate: nullify(passportIssueDate),
+        passportExpiry: nullify(passportExpiry),
+        passportIssuingAuthority: nullify(passportIssuingAuthority),
+        passportCopyUrl: nullify(passportCopyUrl),
+        profilePhotoUrl: nullify(profilePhotoUrl),
+        dateOfBirth: nullify(dateOfBirth),
+        placeOfBirth: nullify(placeOfBirth),
+        gender: nullify(gender),
+        phone: nullify(phone),
+        email: nullify(email),
+        nationality: nullify(nationality) || "Nigerian",
+        ethnicGroup: nullify(ethnicGroup),
+        maritalStatus: nullify(maritalStatus),
+        levelOfStudy: nullify(levelOfStudy),
+        occupation: nullify(occupation),
+        address: nullify(address),
+        city: nullify(city),
+        country: nullify(country),
+        roomPreference: nullify(roomPreference) || "Double",
+        departureCity: nullify(departureCity),
+        specialRequests: nullify(specialRequests),
+        partner: nullify(partner),
+        underCover: nullify(underCover),
+        observation: nullify(observation),
+        emergencyContactName: nullify(emergencyContactName),
+        emergencyContactPhone: nullify(emergencyContactPhone),
+        emergencyContactRelationship: nullify(emergencyContactRelationship),
+        fathersName: nullify(fathersName),
+        mothersName: nullify(mothersName),
+        mahramName: nullify(mahramName),
+        mahramRelationship: nullify(mahramRelationship),
+        mahramPassport: nullify(mahramPassport),
+      }).returning();
 
-  if (clampedPaid > 0) {
-    await db.insert(paymentsTable).values({
-      id: randomUUID(),
-      bookingId: booking.id,
-      userId: walkInUser.id,
-      amount: String(clampedPaid),
-      method: paymentMethod || "cash",
-      status: "pending",
-      reference: paymentReference || `INIT-${booking.reference}`,
-      proofUrl: paymentProofUrl || null,
-      notes: "Initial payment during agent registration",
+      // Only increment capacity for non-online payments (online payments
+      // increment when confirmed via Paystack webhook/verify)
+      if (!isOnlinePayment) {
+        await tx.update(packagesTable)
+          .set({ currentBookings: sql`${packagesTable.currentBookings} + 1` })
+          .where(eq(packagesTable.id, packageId));
+      }
+
+      if (clampedPaid > 0) {
+        await tx.insert(paymentsTable).values({
+          id: randomUUID(),
+          bookingId: booking.id,
+          userId: walkInUser.id,
+          amount: String(clampedPaid),
+          method: paymentMethod || "cash",
+          status: "pending",
+          reference: paymentReference || `INIT-${booking.reference}`,
+          proofUrl: paymentProofUrl || null,
+          notes: "Initial payment during agent registration",
+        });
+      }
+
+      // Log activity for agent
+      await tx.insert(userActivityTable).values({
+        id: randomUUID(),
+        userId: profile.id,
+        eventType: "agent_client_registered",
+        packageId,
+        bookingId: booking.id,
+        metadata: { clientName: resolvedFullName, packageName: pkg.name, amount: clampedPaid, paymentMethod: paymentMethod || "cash", reference: bookingReference },
+      });
     });
+  } catch (err: any) {
+    return res.status(400).json({ error: err.message || "Registration failed" });
   }
-
-  // Log activity for agent
-  await db.insert(userActivityTable).values({
-    id: randomUUID(),
-    userId: profile.id,
-    eventType: "agent_client_registered",
-    packageId,
-    bookingId: booking.id,
-    metadata: { clientName: resolvedFullName, packageName: pkg.name, amount: clampedPaid, paymentMethod: paymentMethod || "cash", reference: bookingReference },
-  });
 
   return res.status(201).json({
     id: booking.id,

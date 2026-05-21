@@ -59,7 +59,7 @@ export default function AgentOverview() {
   const { data: overview, isLoading } = useGetAgentOverview({ query: { queryKey: getGetAgentOverviewQueryKey() } });
   const { data: agentProfile } = useGetAgentProfile({ query: { queryKey: getGetAgentProfileQueryKey() } });
   const { data: walletData } = useQuery<{ balance: number; transactions: WalletTx[] }>({
-    queryKey: ["agent-wallet-overview"],
+    queryKey: ["agent-wallet"],
     queryFn: () => fetch("/api/agents/wallet", { credentials: "include" }).then(r => r.json()),
     staleTime: 30000,
   });
