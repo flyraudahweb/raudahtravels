@@ -128,21 +128,32 @@ function StaffDialog({ open, onClose, member, onSaved }: StaffDialogProps) {
       if (isSaving) return;
       setIsSaving(true);
       try {
+        // Update permissions
         await fetch(`/api/admin/staff/${member.id}/permissions`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ permissions: Array.from(form.permissions) }),
         });
+        // Update specialties
         await fetch(`/api/admin/staff/${member.id}/specialties`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ specialties: Array.from(form.specialties) }),
         });
+        // Update role if changed
         if (form.role !== member.role) {
           await fetch(`/api/admin/staff/${member.id}/role`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ role: form.role }),
+          });
+        }
+        // Update fullName/email if changed (e.g. when user was promoted and data was missing)
+        if (form.fullName.trim() !== member.fullName || form.email.trim() !== member.email) {
+          await fetch(`/api/admin/staff/${member.id}/profile`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fullName: form.fullName.trim(), email: form.email.trim() }),
           });
         }
         toast({ title: "Staff member updated" });
@@ -203,7 +214,6 @@ function StaffDialog({ open, onClose, member, onSaved }: StaffDialogProps) {
                   value={form.fullName}
                   onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))}
                   placeholder="Amina Sani"
-                  disabled={isEdit}
                   className="rounded-xl border-[#DCE3F0] focus-visible:ring-[#2D3199]/20"
                 />
               </div>
@@ -214,7 +224,6 @@ function StaffDialog({ open, onClose, member, onSaved }: StaffDialogProps) {
                   value={form.email}
                   onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                   placeholder="amina@raudah.ng"
-                  disabled={isEdit}
                   className="rounded-xl border-[#DCE3F0] focus-visible:ring-[#2D3199]/20"
                 />
               </div>

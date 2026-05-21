@@ -1015,6 +1015,61 @@ router.put("/admin/staff/:id/role", async (req, res) => {
   }
 });
 
+// ── Staff profile update (fullName / email) ──────────────────────────────────
+
+router.put("/admin/staff/:id/profile", async (req, res) => {
+  try {
+    const { userId: callerClerkId } = getAuth(req);
+    if (!callerClerkId) return res.status(401).json({ error: "Unauthorized" });
+    const caller = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, callerClerkId) });
+    if (!caller || !["admin", "super_admin"].includes(caller.role)) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    const { fullName, email } = req.body as { fullName?: string; email?: string };
+    const updates: Record<string, any> = { updatedAt: new Date() };
+    if (fullName?.trim()) updates.fullName = fullName.trim();
+    if (email?.trim()) updates.email = email.trim();
+
+    if (!updates.fullName && !updates.email) {
+      return res.status(400).json({ error: "At least fullName or email is required" });
+    }
+
+    const [updated] = await db.update(profilesTable)
+      .set(updates)
+      .where(eq(profilesTable.id, req.params.id))
+      .returning();
+    if (!updated) return res.status(404).json({ error: "Staff member not found" });
+
+    // Sync name to Clerk if possible
+    const clerkSecretKey = process.env.CLERK_SECRET_KEY;
+    if (clerkSecretKey && !updated.clerkUserId.startsWith("walkin-")) {
+      try {
+        const body: Record<string, any> = {};
+        if (updates.fullName) {
+          const parts = updates.fullName.split(" ");
+          body.first_name = parts[0];
+          body.last_name = parts.slice(1).join(" ") || "";
+        }
+        if (Object.keys(body).length > 0) {
+          await fetch(`https://api.clerk.com/v1/users/${updated.clerkUserId}`, {
+            method: "PATCH",
+            headers: { Authorization: `Bearer ${clerkSecretKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+        }
+      } catch (clerkErr: any) {
+        console.error("[staff-profile] Clerk sync failed:", clerkErr.message);
+      }
+    }
+
+    return res.json(updated);
+  } catch (err: any) {
+    console.error("[staff-profile] Error:", err);
+    return res.status(500).json({ error: err.message || "Failed to update profile" });
+  }
+});
+
 // ── Analytics ─────────────────────────────────────────────────────────────────
 
 router.get("/admin/analytics", async (req, res) => {
