@@ -397,6 +397,8 @@ function PackageDiscountsDialog({ agent, onClose }: { agent: any; onClose: () =>
   const deleteDiscount = useDeleteAgentPackageDiscount();
 
   const [form, setForm] = useState({ packageId: "", discountType: "percentage", discountValue: "" });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ discountType: "percentage", discountValue: "" });
   const discounts = discountData?.discounts || [];
   const packages = pkgData?.packages || [];
 
@@ -419,6 +421,27 @@ function PackageDiscountsDialog({ agent, onClose }: { agent: any; onClose: () =>
     });
   };
 
+  const handleEdit = (d: any) => {
+    setEditingId(d.packageId);
+    setEditForm({ discountType: d.discountType, discountValue: String(d.discountValue) });
+  };
+
+  const handleSaveEdit = (packageId: string) => {
+    if (!editForm.discountValue) return;
+    setDiscount.mutate({
+      id: agent.id,
+      packageId,
+      data: { discountType: editForm.discountType as any, discountValue: parseFloat(editForm.discountValue) },
+    }, {
+      onSuccess: () => {
+        setEditingId(null);
+        qc.invalidateQueries({ queryKey: getGetAgentPackageDiscountsAdminQueryKey(agent.id) });
+        toast({ title: "Discount updated!" });
+      },
+      onError: () => toast({ title: "Failed to update discount", variant: "destructive" }),
+    });
+  };
+
   const handleDelete = (packageId: string) => {
     deleteDiscount.mutate({ id: agent.id, packageId }, {
       onSuccess: () => {
@@ -434,17 +457,16 @@ function PackageDiscountsDialog({ agent, onClose }: { agent: any; onClose: () =>
         <DialogHeader>
           <DialogTitle className="font-black">Package Discounts</DialogTitle>
           <DialogDescription>
-            Set individual package discounts for <strong>{agent.businessName}</strong>. These override the default commission rate for specific packages.
+            Set individual package discounts for <strong>{agent.businessName}</strong>. These discounts reduce the package price for this agent.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-5 py-2">
-          {/* Global commission info */}
+          {/* Default Package Discount info */}
           <div className="bg-[#EEF0FF] rounded-xl p-3 flex items-center justify-between">
-            <p className="text-xs font-bold text-[#2D3199]">Default Commission</p>
-            <span className="font-black text-[#2D3199]">
-              {agent.commissionType === "percentage" ? `${agent.commissionRate}%` : `₦${Number(agent.commissionRate).toLocaleString()}`}
-            </span>
+            <p className="text-xs font-bold text-[#2D3199]">Default Package Discount</p>
+            <span className="font-black text-[#2D3199]">0%</span>
           </div>
+          <p className="text-xs text-[#94A3B8] -mt-3">All packages have no discount by default. Add individual package discounts below.</p>
 
           {/* Existing discounts */}
           {isLoading ? (
@@ -453,19 +475,51 @@ function PackageDiscountsDialog({ agent, onClose }: { agent: any; onClose: () =>
             <div className="space-y-2">
               <p className="text-xs font-black text-[#94A3B8] uppercase tracking-wider">Applied Discounts</p>
               {discounts.map(d => (
-                <div key={d.id} className="flex items-center justify-between bg-[#F8FAFC] rounded-xl border border-[#DCE3F0] px-4 py-3">
-                  <div>
-                    <p className="font-bold text-[#0F172A] text-sm">{d.package?.name || "Package"}</p>
-                    <p className="text-xs text-[#94A3B8]">₦{(d.package?.price || 0).toLocaleString()} base price</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-black text-emerald-700 text-sm">
-                      {d.discountType === "percentage" ? `-${d.discountValue}%` : `-₦${d.discountValue.toLocaleString()}`}
-                    </span>
-                    <button onClick={() => handleDelete(d.packageId)} className="text-red-400 hover:text-red-600 transition-colors">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                <div key={d.id} className="bg-[#F8FAFC] rounded-xl border border-[#DCE3F0] px-4 py-3">
+                  {editingId === d.packageId ? (
+                    /* ── Inline edit mode ── */
+                    <div className="space-y-3">
+                      <p className="font-bold text-[#0F172A] text-sm">{d.package?.name || "Package"}</p>
+                      <div className="flex gap-2">
+                        {["percentage", "fixed"].map(t => (
+                          <button key={t} type="button" onClick={() => setEditForm(f => ({ ...f, discountType: t }))}
+                            className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                              editForm.discountType === t ? "bg-[#2D3199] border-[#2D3199] text-white" : "bg-white border-[#DCE3F0] text-[#64748B]"
+                            }`}>
+                            {t === "percentage" ? "% Off" : "₦ Off"}
+                          </button>
+                        ))}
+                      </div>
+                      <Input value={editForm.discountValue} onChange={e => setEditForm(f => ({ ...f, discountValue: e.target.value }))}
+                        type="number" min="0" placeholder={editForm.discountType === "percentage" ? "e.g. 5 (%)" : "e.g. 10000 (₦)"} />
+                      <div className="flex gap-2">
+                        <Button onClick={() => setEditingId(null)} variant="outline" size="sm" className="flex-1 rounded-lg text-xs">Cancel</Button>
+                        <Button onClick={() => handleSaveEdit(d.packageId)} disabled={setDiscount.isPending || !editForm.discountValue}
+                          size="sm" className="flex-1 bg-[#2D3199] text-white font-bold rounded-lg text-xs">
+                          {setDiscount.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* ── Display mode ── */
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-bold text-[#0F172A] text-sm">{d.package?.name || "Package"}</p>
+                        <p className="text-xs text-[#94A3B8]">₦{(d.package?.price || 0).toLocaleString()} base price</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-emerald-700 text-sm">
+                          {d.discountType === "percentage" ? `-${d.discountValue}%` : `-₦${d.discountValue.toLocaleString()}`}
+                        </span>
+                        <button onClick={() => handleEdit(d)} className="text-[#2D3199] hover:text-[#1C1F66] transition-colors" title="Edit discount">
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => handleDelete(d.packageId)} className="text-red-400 hover:text-red-600 transition-colors" title="Remove discount">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
