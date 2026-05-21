@@ -4,7 +4,7 @@ import {
   agentsTable, commissionsTable, profilesTable, bookingsTable,
   visaApplicationsTable, packagesTable, agentWalletsTable,
   walletTransactionsTable, agentApplicationsTable, agentPackageDiscountsTable,
-  paymentsTable,
+  paymentsTable, userActivityTable,
 } from "@workspace/db";
 import { getAuth } from "@clerk/express";
 import { eq, and, sql, desc } from "drizzle-orm";
@@ -252,6 +252,14 @@ router.post("/agents/apply", async (req, res) => {
     phone,
     status: "pending",
   }).returning();
+
+  // Log activity
+  await db.insert(userActivityTable).values({
+    id: randomUUID(),
+    userId: profile.id,
+    eventType: "agent_application_submitted",
+    metadata: { businessName: businessName ?? "Pending", contactPerson, email },
+  });
 
   return res.status(201).json(toAgentResponse(agent));
 });
@@ -558,6 +566,16 @@ router.post("/agent/register-client", async (req, res) => {
           reference: `BOOKING-${bookingReference}`,
           description: `Booking for ${resolvedFullName || "Client"} — ${pkg.name}`,
         });
+
+        // Log activity for agent
+        await tx.insert(userActivityTable).values({
+          id: randomUUID(),
+          userId: profile.id,
+          eventType: "agent_client_registered",
+          packageId,
+          bookingId: booking.id,
+          metadata: { clientName: resolvedFullName, packageName: pkg.name, amount: walletPaid, paymentMethod: "wallet", reference: bookingReference },
+        });
       });
     } catch (err: any) {
       return res.status(400).json({ error: err.message || "Wallet payment failed" });
@@ -646,6 +664,16 @@ router.post("/agent/register-client", async (req, res) => {
       notes: "Initial payment during agent registration",
     });
   }
+
+  // Log activity for agent
+  await db.insert(userActivityTable).values({
+    id: randomUUID(),
+    userId: profile.id,
+    eventType: "agent_client_registered",
+    packageId,
+    bookingId: booking.id,
+    metadata: { clientName: resolvedFullName, packageName: pkg.name, amount: clampedPaid, paymentMethod: paymentMethod || "cash", reference: bookingReference },
+  });
 
   return res.status(201).json({
     id: booking.id,

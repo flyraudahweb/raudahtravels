@@ -13,7 +13,7 @@ import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import {
-  UserCheck, CheckCircle2, XCircle, Building2, BadgeCheck, Plus,
+  UserCheck, CheckCircle2, XCircle, Building2, BadgeCheck, Plus, UserPlus,
   Wallet, TrendingUp, Percent, DollarSign, Tag, Trash2, Edit3,
   Eye, EyeOff, Loader2, ChevronDown, Clock, RefreshCw, Users, CreditCard, Phone, Mail, MapPin, X, ChevronRight, Download,
   ShieldBan, ShieldCheck, Ban, AlertTriangle, ChevronLeft,
@@ -968,6 +968,8 @@ function AgentActivityList({ agents }: { agents: any[] }) {
 }
 
 function ActivityIcon({ type }: { type: string }) {
+  if (type.includes("client_registered")) return <UserPlus className="w-5 h-5 text-[#2D3199]" />;
+  if (type.includes("application")) return <UserCheck className="w-5 h-5 text-[#2D3199]" />;
   if (type.includes("payment")) return <DollarSign className="w-5 h-5 text-[#2D3199]" />;
   if (type.includes("booking") || type.includes("pilgrim")) return <Users className="w-5 h-5 text-[#2D3199]" />;
   return <RefreshCw className="w-5 h-5 text-[#2D3199]" />;
