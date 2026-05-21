@@ -1480,6 +1480,8 @@ router.get("/admin/activity", async (req, res) => {
 
 router.get("/admin/agents-activity", async (req, res) => {
   const { agentId, limit = "50", offset = "0" } = req.query as Record<string, string>;
+  const pLimit = Math.min(Math.max(1, parseInt(limit) || 50), 200);
+  const pOffset = Math.max(0, parseInt(offset) || 0);
 
   // 1. Get agent mapping
   const agents = await db.select({
@@ -1491,34 +1493,52 @@ router.get("/admin/agents-activity", async (req, res) => {
   const targetAgentIds = agentId && agentId !== "all" ? [agentId] : agents.map(a => a.id);
   const targetUserIds = agents.filter(a => targetAgentIds.includes(a.id)).map(a => a.userId);
 
-  // 2. Fetch User Activities for these agents
+  // 2. Fetch ONLY the page of User Activities (with SQL limit/offset)
   let userActivities: any[] = [];
+  let userTotal = 0;
   if (targetUserIds.length > 0) {
-    userActivities = await db.select({
-      id: userActivityTable.id,
-      userId: userActivityTable.userId,
-      eventType: userActivityTable.eventType,
-      metadata: userActivityTable.metadata,
-      createdAt: userActivityTable.createdAt,
-    })
-    .from(userActivityTable)
-    .where(inArray(userActivityTable.userId, targetUserIds));
+    const [userRows, userCountRow] = await Promise.all([
+      db.select({
+        id: userActivityTable.id,
+        userId: userActivityTable.userId,
+        eventType: userActivityTable.eventType,
+        metadata: userActivityTable.metadata,
+        createdAt: userActivityTable.createdAt,
+      })
+      .from(userActivityTable)
+      .where(inArray(userActivityTable.userId, targetUserIds))
+      .orderBy(desc(userActivityTable.createdAt)),
+      db.select({ count: sql<number>`count(*)` })
+        .from(userActivityTable)
+        .where(inArray(userActivityTable.userId, targetUserIds)),
+    ]);
+    userActivities = userRows;
+    userTotal = Number(userCountRow[0]?.count || 0);
   }
 
-  // 3. Fetch Wallet Transactions for these agents
+  // 3. Fetch ALL Wallet Transactions (needed to interleave with activities)
   let walletActivities: any[] = [];
+  let walletTotal = 0;
   if (targetAgentIds.length > 0) {
-    walletActivities = await db.select({
-      id: walletTransactionsTable.id,
-      agentId: walletTransactionsTable.agentId,
-      amount: walletTransactionsTable.amount,
-      type: walletTransactionsTable.type,
-      reference: walletTransactionsTable.reference,
-      description: walletTransactionsTable.description,
-      createdAt: walletTransactionsTable.createdAt,
-    })
-    .from(walletTransactionsTable)
-    .where(inArray(walletTransactionsTable.agentId, targetAgentIds));
+    const [walletRows, walletCountRow] = await Promise.all([
+      db.select({
+        id: walletTransactionsTable.id,
+        agentId: walletTransactionsTable.agentId,
+        amount: walletTransactionsTable.amount,
+        type: walletTransactionsTable.type,
+        reference: walletTransactionsTable.reference,
+        description: walletTransactionsTable.description,
+        createdAt: walletTransactionsTable.createdAt,
+      })
+      .from(walletTransactionsTable)
+      .where(inArray(walletTransactionsTable.agentId, targetAgentIds))
+      .orderBy(desc(walletTransactionsTable.createdAt)),
+      db.select({ count: sql<number>`count(*)` })
+        .from(walletTransactionsTable)
+        .where(inArray(walletTransactionsTable.agentId, targetAgentIds)),
+    ]);
+    walletActivities = walletRows;
+    walletTotal = Number(walletCountRow[0]?.count || 0);
   }
 
   // 4. Combine & Format
@@ -1556,8 +1576,6 @@ router.get("/admin/agents-activity", async (req, res) => {
   combined.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   
   const total = combined.length;
-  const pLimit = parseInt(limit);
-  const pOffset = parseInt(offset);
   const paginated = combined.slice(pOffset, pOffset + pLimit);
 
   return res.json({

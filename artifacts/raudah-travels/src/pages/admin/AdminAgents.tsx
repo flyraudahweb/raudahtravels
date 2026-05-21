@@ -882,6 +882,9 @@ function AgentActivityList({ agents }: { agents: any[] }) {
 
   const activities = data?.activities || [];
   const totalPages = data?.totalPages || 1;
+  const total = data?.total || 0;
+  const rangeStart = total > 0 ? (page - 1) * PAGE_SIZE + 1 : 0;
+  const rangeEnd = Math.min(page * PAGE_SIZE, total);
 
   return (
     <div className="bg-white rounded-2xl border border-[#DCE3F0] overflow-hidden flex flex-col min-h-[400px]">
@@ -889,6 +892,9 @@ function AgentActivityList({ agents }: { agents: any[] }) {
         <div className="flex items-center gap-2">
           <RefreshCw className="w-4 h-4 text-[#2D3199]" />
           <p className="font-bold text-[#0F172A] text-sm">Unified Activity Logs</p>
+          {total > 0 && (
+            <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-[#2D3199] text-white">{total}</span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <label className="text-xs font-bold text-[#64748B]">Filter Agent:</label>
@@ -909,7 +915,7 @@ function AgentActivityList({ agents }: { agents: any[] }) {
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <Clock className="w-10 h-10 text-[#CBD5E1] mb-3" />
             <p className="font-bold text-[#64748B]">No activity recorded</p>
-            <p className="text-xs text-[#94A3B8] mt-1">Try changing the agent filter</p>
+            <p className="text-xs text-[#94A3B8] mt-1">Agent activities will appear here as they register clients and use their wallets</p>
           </div>
         ) : (
           <div className="divide-y divide-[#F1F5F9]">
@@ -939,12 +945,12 @@ function AgentActivityList({ agents }: { agents: any[] }) {
                   {a._type === "wallet" ? (
                     <p className="text-xs text-[#64748B]">
                       {a.txType === "credit" ? "Credited " : "Debited "}
-                      <span className="font-bold text-[#0F172A]">₦{Number(a.amount).toLocaleString()}</span>
-                      {a.description ? ` - ${a.description}` : ""}
+                      <span className="font-bold text-[#0F172A]">₦{Math.abs(Number(a.amount)).toLocaleString()}</span>
+                      {a.description ? ` — ${a.description}` : ""}
                     </p>
                   ) : (
                     <p className="text-xs text-[#64748B]">
-                      {a.metadata?.message || "System event triggered"}
+                      {formatActivityDetail(a.eventType, a.metadata)}
                     </p>
                   )}
                 </div>
@@ -954,13 +960,19 @@ function AgentActivityList({ agents }: { agents: any[] }) {
         )}
       </div>
 
-      {totalPages > 1 && (
+      {/* Always show pagination footer when there's data */}
+      {total > 0 && (
         <div className="p-4 border-t border-[#F1F5F9] bg-[#FAFBFF] flex items-center justify-between">
-          <span className="text-xs font-bold text-[#64748B]">Page {page} of {totalPages}</span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setPage(p => p - 1)} disabled={page <= 1} className="h-8 text-xs">Prev</Button>
-            <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={page >= totalPages} className="h-8 text-xs">Next</Button>
-          </div>
+          <span className="text-xs text-[#64748B]">
+            Showing <span className="font-bold text-[#0F172A]">{rangeStart}–{rangeEnd}</span> of <span className="font-bold text-[#0F172A]">{total.toLocaleString()}</span> records
+          </span>
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setPage(p => p - 1)} disabled={page <= 1} className="h-8 text-xs">← Prev</Button>
+              <span className="text-xs font-bold text-[#0F172A] px-1">{page} / {totalPages}</span>
+              <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={page >= totalPages} className="h-8 text-xs">Next →</Button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -977,6 +989,34 @@ function ActivityIcon({ type }: { type: string }) {
 
 function formatEventName(t: string) {
   return t.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function formatActivityDetail(eventType: string, metadata: any): string {
+  if (!metadata) return "Activity recorded";
+  const m = metadata as Record<string, any>;
+
+  switch (eventType) {
+    case "agent_client_registered":
+      return `Registered ${m.clientName || "client"} for ${m.packageName || "package"}${m.amount ? ` — ₦${Number(m.amount).toLocaleString()} via ${m.paymentMethod || "payment"}` : ""}`;
+    case "agent_application_submitted":
+      return `Application submitted — ${m.businessName || "Business"}${m.contactPerson ? ` (${m.contactPerson})` : ""}`;
+    case "wallet_topup":
+      return `Wallet top-up: ₦${Number(m.amount || 0).toLocaleString()} for ${m.agentName || "agent"}`;
+    case "payment_verified":
+    case "payment_success":
+      return `Payment of ₦${Number(m.amount || 0).toLocaleString()} verified${m.targetName ? ` for ${m.targetName}` : ""}`;
+    case "payment_rejected":
+    case "payment_failed":
+      return `Payment of ₦${Number(m.amount || 0).toLocaleString()} ${eventType === "payment_rejected" ? "rejected" : "failed"}${m.targetName ? ` for ${m.targetName}` : ""}`;
+    case "pilgrim_registered":
+      return `Pilgrim registered: ${m.targetName || "Unknown"}${m.reference ? ` (${m.reference})` : ""}${m.actorName ? ` by ${m.actorName}` : ""}`;
+    case "booking_confirmed":
+      return `Booking confirmed: ${m.targetName || "Unknown"}${m.reference ? ` (${m.reference})` : ""}`;
+    case "booking_cancelled":
+      return `Booking cancelled: ${m.targetName || "Unknown"}${m.reference ? ` (${m.reference})` : ""}`;
+    default:
+      return m.message || m.targetName || m.clientName || m.businessName || "Activity recorded";
+  }
 }
 
 
