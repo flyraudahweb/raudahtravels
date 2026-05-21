@@ -145,6 +145,12 @@ router.post("/bookings", async (req, res) => {
   if (pkg.status && pkg.status !== "active") return res.status(400).json({ error: "Package is not currently available" });
 
   const count = Math.max(1, Number(pilgrimCount) || 1);
+
+  // Capacity check — prevent overbooking
+  if (pkg.capacity && ((pkg.currentBookings || 0) + count) > pkg.capacity) {
+    return res.status(409).json({ error: "Package is fully booked — no more capacity available" });
+  }
+
   // Price is always computed server-side from the canonical package price
   const totalPrice = Number(pkg.price) * count;
   const reference = `RDH-${randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;

@@ -451,6 +451,11 @@ router.post("/agent/register-client", async (req, res) => {
   if (!pkg) return res.status(404).json({ error: "Package not found" });
   if (pkg.status && pkg.status !== "active") return res.status(400).json({ error: "Package is not currently available" });
 
+  // Capacity check — prevent overbooking
+  if (pkg.capacity && (pkg.currentBookings || 0) >= pkg.capacity) {
+    return res.status(409).json({ error: "Package is fully booked — no more capacity available" });
+  }
+
   const walkinUuid = randomUUID();
   const resolvedFullName = [civility, firstName, lastName].filter(Boolean).join(" ");
 

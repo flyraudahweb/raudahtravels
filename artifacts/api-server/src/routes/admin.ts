@@ -1922,6 +1922,11 @@ router.post("/admin/book-pilgrim", async (req, res) => {
   const pkg = await db.query.packagesTable.findFirst({ where: eq(packagesTable.id, packageId) });
   if (!pkg) return res.status(404).json({ error: "Package not found" });
 
+  // Capacity check — prevent overbooking
+  if (pkg.capacity && (pkg.currentBookings || 0) >= pkg.capacity) {
+    return res.status(409).json({ error: "Package is fully booked — no more capacity available" });
+  }
+
   // Resolve the staff member who is performing this registration
   let staffProfileId: string | undefined;
   try {
@@ -2014,7 +2019,7 @@ router.post("/admin/book-pilgrim", async (req, res) => {
   }).returning();
 
   await db.update(packagesTable)
-    .set({ currentBookings: (pkg.currentBookings || 0) + 1 })
+    .set({ currentBookings: sql`${packagesTable.currentBookings} + 1` })
     .where(eq(packagesTable.id, packageId));
 
   if (markVerified) {
