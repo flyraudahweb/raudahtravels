@@ -14,6 +14,9 @@ import PackageDetail from "@/pages/public/PackageDetail";
 import BecomeAgent from "@/pages/public/BecomeAgent";
 import About from "@/pages/public/About";
 import Contact from "@/pages/public/Contact";
+import Privacy from "@/pages/public/Privacy";
+import Terms from "@/pages/public/Terms";
+import FAQ from "@/pages/public/FAQ";
 import SignInPage from "@/pages/auth/SignInPage";
 import SignUpPage from "@/pages/auth/SignUpPage";
 import ForgotPasswordPage from "@/pages/auth/ForgotPasswordPage";
@@ -101,6 +104,9 @@ function AppRoutes() {
       <Route path="/become-agent" component={BecomeAgent} />
       <Route path="/about" component={About} />
       <Route path="/contact" component={Contact} />
+      <Route path="/privacy" component={Privacy} />
+      <Route path="/terms" component={Terms} />
+      <Route path="/faq" component={FAQ} />
 
       <Route path="/sign-in/*?" component={SignInPage} />
       <Route path="/sign-up/*?" component={SignUpPage} />

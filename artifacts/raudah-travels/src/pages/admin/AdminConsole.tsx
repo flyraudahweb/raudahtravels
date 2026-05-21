@@ -199,7 +199,7 @@ function MobileNavItem({ href, label, icon: Icon, exact }: {
   );
 }
 
-function AdminMoreSheet({ open, onClose, navGroups }: { open: boolean; onClose: () => void; navGroups: NavGroupDef[] }) {
+function AdminMoreSheet({ open, onClose, navGroups, signOut }: { open: boolean; onClose: () => void; navGroups: NavGroupDef[]; signOut: (opts?: any) => void }) {
   return (
     <Sheet open={open} onOpenChange={v => !v && onClose()}>
       <SheetContent side="bottom" className="rounded-t-3xl p-0 border-0" style={{ maxHeight: "80vh" }}>
@@ -511,7 +511,7 @@ export default function AdminConsole() {
           </div>
         </nav>
 
-        <AdminMoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} navGroups={NAV_GROUPS} />
+        <AdminMoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} navGroups={NAV_GROUPS} signOut={signOut} />
       </div>
     </SidebarCtx.Provider>
   );

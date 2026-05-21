@@ -85,7 +85,7 @@ const MOBILE_NAV = [
   { href: "/dashboard/profile", label: "Profile", icon: User },
 ];
 
-function PilgrimMoreSheet({ open, onClose, unreadCount }: { open: boolean; onClose: () => void; unreadCount: number }) {
+function PilgrimMoreSheet({ open, onClose, unreadCount, signOut }: { open: boolean; onClose: () => void; unreadCount: number; signOut: (opts?: any) => void }) {
   const mobileSet = new Set(MOBILE_NAV.map(n => n.href));
   return (
     <Sheet open={open} onOpenChange={v => !v && onClose()}>
@@ -144,6 +144,7 @@ function PilgrimMoreSheet({ open, onClose, unreadCount }: { open: boolean; onClo
     </Sheet>
   );
 }
+
 
 function MobileNavItem({ href, label, icon: Icon, exact }: { href: string; label: string; icon: typeof LayoutDashboard; exact?: boolean }) {
   const [isExact] = useRoute(href);
@@ -388,7 +389,7 @@ export default function UserDashboard() {
         </div>
       </nav>
 
-      <PilgrimMoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} unreadCount={unreadCount} />
+      <PilgrimMoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} unreadCount={unreadCount} signOut={signOut} />
       </div>
   );
 }

@@ -46,7 +46,26 @@ export default function PackageDetail() {
 
   if (isLoading) return <div className="min-h-[100dvh] flex flex-col bg-background"><Navbar /><main className="flex-1 container mx-auto p-8"><div className="h-96 animate-pulse bg-muted rounded-xl" /></main><Footer /></div>;
 
-  if (error || !pkg) return <div className="min-h-[100dvh] flex flex-col bg-background"><Navbar /><main className="flex-1 container mx-auto p-8 text-center text-red-500"><AlertCircle className="w-12 h-12 mx-auto mb-4" />Package not found or error loading details.</main><Footer /></div>;
+  if (error || !pkg) return (
+    <div className="min-h-[100dvh] flex flex-col bg-white">
+      <Navbar />
+      <main className="flex-1 flex flex-col items-center justify-center p-8 pt-32">
+        <div className="max-w-md text-center">
+          <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertCircle className="w-10 h-10" />
+          </div>
+          <h1 className="text-3xl font-black text-[#0F172A] mb-4">Package Not Found</h1>
+          <p className="text-[#64748B] mb-8">
+            The package you are looking for does not exist or may have been removed.
+          </p>
+          <Button asChild size="lg" className="bg-[#2D3199] hover:bg-[#25297F] text-white rounded-full shadow-brand px-8">
+            <Link href="/packages">View All Packages</Link>
+          </Button>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
 
   const spacesAvailable = pkg.maxCapacity - pkg.currentBookings;
 

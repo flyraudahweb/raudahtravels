@@ -10,7 +10,7 @@ interface WalletTx { id: string; type: string; amount: number; description?: str
 
 function printWalletReceipt(tx: WalletTx, agentBalance: number) {
   const isCredit = ["topup", "commission"].includes(tx.type);
-  const typeLabel = tx.type === "topup" ? "Wallet Top-Up" : tx.type === "commission" ? "Commission Credit" : tx.type === "debit" ? "Debit" : "Payment";
+  const typeLabel = tx.type === "topup" ? "Wallet Top-Up" : tx.type === "commission" ? "Commission Credit" : tx.type === "debit" ? "Debit" : tx.type === "booking_payment" ? "Booking Payment" : "Payment";
   const date = new Date(tx.createdAt).toLocaleString("en-NG", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
   const w = window.open("", "_blank", "width=480,height=640");
   if (!w) return;
@@ -35,7 +35,7 @@ function printWalletReceipt(tx: WalletTx, agentBalance: number) {
 <div style="text-align:center;margin-bottom:12px;">
   <div style="display:inline-block;padding:6px 16px;border-radius:999px;font-size:11px;font-weight:900;text-transform:uppercase;background:${isCredit ? "#D1FAE5" : "#FEE2E2"};color:${isCredit ? "#065F46" : "#991B1B"};">${isCredit ? "CREDIT" : "DEBIT"}</div>
 </div>
-<div class="amount">${isCredit ? "+" : "−"}₦${tx.amount.toLocaleString()}</div>
+<div class="amount">${isCredit ? "+" : "−"}₦${Math.abs(tx.amount).toLocaleString()}</div>
 <div class="row"><span class="label">Transaction Type</span><span class="val">${typeLabel}</span></div>
 <div class="row"><span class="label">Date &amp; Time</span><span class="val">${date}</span></div>
 ${tx.description ? `<div class="row"><span class="label">Description</span><span class="val">${tx.description}</span></div>` : ""}
@@ -200,7 +200,7 @@ export default function AgentOverview() {
               <p className="text-[10px] font-black uppercase tracking-widest text-white/50 mb-3">Recent Transactions</p>
               {recentTxs.map(tx => {
                 const isCredit = ["topup", "commission"].includes(tx.type);
-                const typeLabel = tx.type === "topup" ? "Top-up" : tx.type === "commission" ? "Commission" : tx.type === "debit" ? "Debit" : "Payment";
+                const typeLabel = tx.type === "topup" ? "Top-up" : tx.type === "commission" ? "Commission" : tx.type === "debit" ? "Debit" : tx.type === "booking_payment" ? "Booking" : "Payment";
                 return (
                   <div key={tx.id} className="flex items-center justify-between bg-white/10 rounded-xl px-4 py-2.5">
                     <div className="flex items-center gap-3 min-w-0">
@@ -214,7 +214,7 @@ export default function AgentOverview() {
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <p className={`text-sm font-black tabular-nums ${isCredit ? "text-emerald-300" : "text-red-300"}`}>
-                        {isCredit ? "+" : "−"}₦{tx.amount.toLocaleString()}
+                        {isCredit ? "+" : "−"}₦{Math.abs(tx.amount).toLocaleString()}
                       </p>
                       <button onClick={() => printWalletReceipt(tx, walletData?.balance ?? 0)}
                         title="Print receipt"

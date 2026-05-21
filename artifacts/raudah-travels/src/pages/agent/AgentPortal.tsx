@@ -54,10 +54,11 @@ function MobileNavItem({ href, label, icon: Icon, exact }: { href: string; label
   );
 }
 
-function AgentMoreSheet({ open, onClose, navItems, mobileNavSet }: {
+function AgentMoreSheet({ open, onClose, navItems, mobileNavSet, signOut }: {
   open: boolean; onClose: () => void;
   navItems: { href: string; label: string; icon: typeof LayoutDashboard; exact?: boolean }[];
   mobileNavSet: Set<string>;
+  signOut: (opts?: any) => void;
 }) {
   const extras = navItems.filter(item => !mobileNavSet.has(item.href));
   return (
@@ -312,7 +313,7 @@ export default function AgentPortal() {
         </div>
       </nav>
 
-      <AgentMoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} navItems={navItems} mobileNavSet={mobileNavSet} />
+      <AgentMoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} navItems={navItems} mobileNavSet={mobileNavSet} signOut={signOut} />
     </div>
   );
 }

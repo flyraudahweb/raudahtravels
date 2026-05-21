@@ -123,7 +123,7 @@ interface Package { id: string; name: string; type: string; price: number; maxCa
 const BLANK_FORM = {
   packageId: "", civility: "", firstName: "", lastName: "",
   passportNumber: "", passportIssueDate: "", passportExpiry: "", passportIssuingAuthority: "",
-  passportCopyUrl: "", profilePhotoUrl: "",
+  passportCopyUrl: "", profilePhotoUrl: "", visaNumber: "",
   dateOfBirth: "", placeOfBirth: "", gender: "", phone: "", email: "", nationality: "Nigerian",
   ethnicGroup: "", maritalStatus: "", levelOfStudy: "", occupation: "",
   country: "Nigeria", city: "", address: "",
@@ -257,6 +257,20 @@ export default function AgentClients() {
   }, [searchStr, packages]);
   const selectedPkg = packages.find(p => p.id === form.packageId);
 
+  // Compute agent's effective price after admin-applied discount
+  const selectedDiscount = selectedPkg ? discountMap[selectedPkg.id] : undefined;
+  const effectivePrice = selectedPkg ? (() => {
+    let p = selectedPkg.price;
+    if (selectedDiscount) {
+      if (selectedDiscount.discountType === "percentage") {
+        p = Math.round((p - (p * selectedDiscount.discountValue / 100)) * 100) / 100;
+      } else {
+        p = Math.max(0, p - selectedDiscount.discountValue);
+      }
+    }
+    return p;
+  })() : 0;
+
   const registerMutation = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       fetch("/api/agent/register-client", {
@@ -276,7 +290,7 @@ export default function AgentClients() {
 
       if (form.paymentMethod === "online") {
         try {
-          const amount = selectedPkg?.price ?? 0;
+          const amount = effectivePrice;
           const res = await fetch("/api/payments/paystack/initialize", {
             method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
             body: JSON.stringify({ bookingId: data.id, amount, email: form.email || "admin@raudah.com" }),
@@ -347,7 +361,7 @@ export default function AgentClients() {
       partner: form.partner || undefined,
       underCover: form.underCover || undefined,
       observation: form.observation || undefined,
-      amountPaid: form.paymentMethod === "online" ? 0 : form.paymentMethod === "wallet" ? (selectedPkg?.price || 0) : (form.amountPaid ? Number(form.amountPaid) : undefined),
+      amountPaid: form.paymentMethod === "online" ? 0 : form.paymentMethod === "wallet" ? effectivePrice : (form.amountPaid ? Number(form.amountPaid) : undefined),
       paymentMethod: form.paymentMethod === "online" ? "paystack" : form.paymentMethod,
       paymentReference: form.paymentReference || undefined,
       paymentProofUrl: form.paymentProofUrl || undefined,
@@ -1069,7 +1083,7 @@ export default function AgentClients() {
                             {form.civility && `${form.civility} `}{form.firstName} {form.lastName}
                           </p>
                         </div>
-                        <p className="font-black text-[#2D3199] text-xl">₦{Number(selectedPkg.price).toLocaleString()}</p>
+                        <p className="font-black text-[#2D3199] text-xl">₦{effectivePrice.toLocaleString()}{selectedDiscount ? <span className="text-xs text-emerald-600 ml-1 font-bold">({selectedDiscount.discountType === "percentage" ? `${selectedDiscount.discountValue}% off` : `₦${selectedDiscount.discountValue.toLocaleString()} off`})</span> : null}</p>
                       </div>
                     </div>
                   )}
@@ -1085,13 +1099,13 @@ export default function AgentClients() {
                         </div>
                       )}
                       <div onClick={() => {
-                        if (walletBalance >= (selectedPkg?.price || 0)) {
+                        if (walletBalance >= effectivePrice) {
                           setForm(f => ({ ...f, paymentMethod: "wallet" }));
                         }
                       }}
-                        className={`cursor-pointer rounded-xl border-2 p-3 text-sm font-semibold text-center transition-all ${walletBalance < (selectedPkg?.price || 0) ? "opacity-50 cursor-not-allowed border-[#E2E8F0] bg-gray-50 text-gray-400" : form.paymentMethod === "wallet" ? "border-[#2D3199] bg-[#EEF0FF] text-[#2D3199]" : "border-[#DCE3F0] text-[#64748B] hover:border-[#2D3199]/30"}`}>
+                        className={`cursor-pointer rounded-xl border-2 p-3 text-sm font-semibold text-center transition-all ${walletBalance < effectivePrice ? "opacity-50 cursor-not-allowed border-[#E2E8F0] bg-gray-50 text-gray-400" : form.paymentMethod === "wallet" ? "border-[#2D3199] bg-[#EEF0FF] text-[#2D3199]" : "border-[#DCE3F0] text-[#64748B] hover:border-[#2D3199]/30"}`}>
                         🏦 Wallet
-                        <span className="block text-[10px] mt-0.5 font-normal opacity-70">{walletBalance >= (selectedPkg?.price || 0) ? "Instant Deduct" : "Insuff. Balance"}</span>
+                        <span className="block text-[10px] mt-0.5 font-normal opacity-70">{walletBalance >= effectivePrice ? "Instant Deduct" : "Insuff. Balance"}</span>
                       </div>
                       <div onClick={() => setForm(f => ({ ...f, paymentMethod: "cash" }))}
                         className={`cursor-pointer rounded-xl border-2 p-3 text-sm font-semibold text-center transition-all ${form.paymentMethod === "cash" ? "border-[#2D3199] bg-[#EEF0FF] text-[#2D3199]" : "border-[#DCE3F0] text-[#64748B] hover:border-[#2D3199]/30"}`}>
@@ -1118,11 +1132,11 @@ export default function AgentClients() {
                       
                       {selectedPkg && form.amountPaid && Number(form.amountPaid) > 0 && (
                         <div className="p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-xs space-y-1">
-                          <div className="flex justify-between text-[#64748B]"><span>Total Price:</span> <span>₦{selectedPkg.price.toLocaleString()}</span></div>
+                          <div className="flex justify-between text-[#64748B]"><span>Total Price:</span> <span>₦{effectivePrice.toLocaleString()}</span></div>
                           <div className="flex justify-between text-emerald-600 font-bold"><span>Amount Paid:</span> <span>₦{Number(form.amountPaid).toLocaleString()}</span></div>
                           <div className="flex justify-between text-[#0F172A] font-black border-t border-[#E2E8F0] pt-1 mt-1">
                             <span>Balance Remaining:</span> 
-                            <span>₦{Math.max(0, selectedPkg.price - Number(form.amountPaid)).toLocaleString()}</span>
+                            <span>₦{Math.max(0, effectivePrice - Number(form.amountPaid)).toLocaleString()}</span>
                           </div>
                         </div>
                       )}
@@ -1182,9 +1196,9 @@ export default function AgentClients() {
                   {form.paymentMethod === "wallet" && (
                     <div className="bg-[#EEF0FF] border border-[#2D3199]/20 rounded-xl p-4 text-sm">
                       <p className="font-bold text-[#2D3199] mb-1">🏦 Wallet Payment</p>
-                      <p className="text-[#64748B]">₦{(selectedPkg?.price || 0).toLocaleString()} will be automatically deducted from your wallet balance to confirm this booking.</p>
+                      <p className="text-[#64748B]">₦{effectivePrice.toLocaleString()} will be automatically deducted from your wallet balance to confirm this booking.</p>
                       <p className="text-[#2D3199] font-bold mt-2 pt-2 border-t border-[#2D3199]/10">
-                        Remaining Balance: ₦{Math.max(0, walletBalance - (selectedPkg?.price || 0)).toLocaleString()}
+                        Remaining Balance: ₦{Math.max(0, walletBalance - effectivePrice).toLocaleString()}
                       </p>
                     </div>
                   )}

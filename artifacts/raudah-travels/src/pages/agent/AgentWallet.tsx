@@ -9,7 +9,7 @@ import {
 
 function printReceipt(t: WalletTransaction, balance: number) {
   const isCredit = ["topup", "commission"].includes(t.type);
-  const typeLabel = t.type === "topup" ? "Wallet Top-Up" : t.type === "commission" ? "Commission Credit" : t.type === "debit" ? "Debit" : t.type === "withdrawal" ? "Withdrawal" : "Payment";
+  const typeLabel = t.type === "topup" ? "Wallet Top-Up" : t.type === "commission" ? "Commission Credit" : t.type === "debit" ? "Debit" : t.type === "withdrawal" ? "Withdrawal" : t.type === "booking_payment" ? "Booking Payment" : "Payment";
   const date = new Date(t.createdAt).toLocaleString("en-NG", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
   const w = window.open("", "_blank", "width=480,height=680");
   if (!w) return;
@@ -32,7 +32,7 @@ function printReceipt(t: WalletTransaction, balance: number) {
   <div class="sub">Agent Wallet Receipt</div>
 </div>
 <div style="text-align:center;"><div class="badge">${isCredit ? "CREDIT" : "DEBIT"}</div></div>
-<div class="amount">${isCredit ? "+" : "−"}₦${t.amount.toLocaleString()}</div>
+<div class="amount">${isCredit ? "+" : "−"}₦${Math.abs(t.amount).toLocaleString()}</div>
 <div class="row"><span class="label">Transaction Type</span><span class="val">${typeLabel}</span></div>
 <div class="row"><span class="label">Date &amp; Time</span><span class="val">${date}</span></div>
 ${t.description ? `<div class="row"><span class="label">Description</span><span class="val">${t.description}</span></div>` : ""}
@@ -57,6 +57,7 @@ const TYPE_CFG: Record<string, { label: string; color: string; icon: typeof Arro
   debit:      { label: "Debit",       color: "text-red-500",     icon: ArrowUpRight,  dir: "out" },
   withdrawal: { label: "Withdrawal",  color: "text-red-500",     icon: ArrowUpRight,  dir: "out" },
   payment:    { label: "Payment",     color: "text-[#2D3199]",   icon: ArrowUpRight,  dir: "out" },
+  booking_payment: { label: "Booking Payment", color: "text-[#2D3199]", icon: ArrowUpRight, dir: "out" },
 };
 
 const STATUS_CFG: Record<string, { label: string; icon: typeof Clock }> = {
@@ -75,8 +76,8 @@ export default function AgentWallet() {
   const balance = data?.balance ?? 0;
   const transactions = data?.transactions ?? [];
 
-  const totalIn  = transactions.filter(t => TYPE_CFG[t.type]?.dir === "in").reduce((s, t) => s + t.amount, 0);
-  const totalOut = transactions.filter(t => TYPE_CFG[t.type]?.dir === "out").reduce((s, t) => s + t.amount, 0);
+  const totalIn  = transactions.filter(t => (TYPE_CFG[t.type]?.dir ?? "in") === "in").reduce((s, t) => s + Math.abs(t.amount), 0);
+  const totalOut = transactions.filter(t => (TYPE_CFG[t.type]?.dir ?? "in") === "out").reduce((s, t) => s + Math.abs(t.amount), 0);
 
   const fmtCurrency = (n: number) =>
     n >= 1_000_000 ? `₦${(n / 1_000_000).toFixed(2)}M`
@@ -207,7 +208,7 @@ export default function AgentWallet() {
                       </p>
                     </div>
                     <p className={`font-black text-base tabular-nums ${isCredit ? "text-emerald-600" : "text-red-500"}`}>
-                      {isCredit ? "+" : "−"}₦{t.amount.toLocaleString()}
+                      {isCredit ? "+" : "−"}₦{Math.abs(t.amount).toLocaleString()}
                     </p>
                     <button
                       onClick={() => printReceipt(t, balance)}

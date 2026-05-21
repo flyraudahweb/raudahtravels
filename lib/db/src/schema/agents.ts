@@ -79,6 +79,7 @@ export const walletTransactionsTable = pgTable("wallet_transactions", {
     .references(() => agentsTable.id),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   type: text("type").notNull(),
+  status: text("status").notNull().default("completed"),
   reference: text("reference").unique(),
   description: text("description"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

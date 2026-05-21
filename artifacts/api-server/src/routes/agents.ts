@@ -446,8 +446,24 @@ router.post("/agent/register-client", async (req, res) => {
   const walkinUuid = randomUUID();
   const resolvedFullName = [civility, firstName, lastName].filter(Boolean).join(" ");
 
-  // SECURITY: Price is always the canonical package price — never trust client-supplied price
-  const price = Number(pkg.price);
+  // SECURITY: Start from canonical package price — never trust client-supplied price
+  let price = Number(pkg.price);
+
+  // Apply agent-specific package discount (set by admin)
+  const agentDiscount = await db.query.agentPackageDiscountsTable.findFirst({
+    where: and(
+      eq(agentPackageDiscountsTable.agentId, agent.id),
+      eq(agentPackageDiscountsTable.packageId, packageId),
+    ),
+  });
+  if (agentDiscount) {
+    const dv = Number(agentDiscount.discountValue);
+    if (agentDiscount.discountType === "percentage") {
+      price = Math.round((price - (price * dv / 100)) * 100) / 100;
+    } else {
+      price = Math.max(0, price - dv);
+    }
+  }
 
   // SECURITY: Clamp amountPaid to [0, price]. An agent cannot claim more was paid than the
   // package costs, and cannot supply a negative value to inflate the balance later.
@@ -462,7 +478,7 @@ router.post("/agent/register-client", async (req, res) => {
 
   // ── Wallet Payment Flow (atomic, race-condition-proof) ─────────────────
   if (paymentMethod === "wallet") {
-    const walletPaid = Math.min(price, price); // always pay full price from wallet
+    const walletPaid = price; // Deduct the (potentially discounted) price from wallet
 
     let booking: any;
     let finalWalletBalance = 0;
