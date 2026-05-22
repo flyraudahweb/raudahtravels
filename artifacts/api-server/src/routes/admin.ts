@@ -109,6 +109,9 @@ router.put("/admin/users/:id/status", async (req, res) => {
     .where(eq(profilesTable.id, req.params.id))
     .returning();
 
+  // Activity log
+  try { const { userId: _clk } = getAuth(req); if (_clk) { const _c = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, _clk) }); if (_c) await db.insert(userActivityTable).values({ id: randomUUID(), userId: _c.id, eventType: "user_status_changed", metadata: { actorName: _c.fullName, actorRole: _c.role, targetName: user.fullName || user.email, oldStatus: user.accountStatus, newStatus: accountStatus } }); } } catch (_) { /* non-blocking */ }
+
   return res.json({ ...updated, message: `User account status updated to "${accountStatus}".` });
 });
 
@@ -213,6 +216,9 @@ router.delete("/admin/users/:id", async (req, res) => {
       await tx.delete(profilesTable).where(eq(profilesTable.id, targetId));
     });
 
+    // Activity log (logged under caller since target is deleted)
+    try { await db.insert(userActivityTable).values({ id: randomUUID(), userId: caller.id, eventType: "user_deleted", metadata: { actorName: caller.fullName, actorRole: caller.role, targetName: target.fullName || target.email, targetRole: target.role } }); } catch (_) { /* non-blocking */ }
+
     console.log(`[user-delete] Successfully deleted user ${targetId} (${target.email}) from Clerk and Neon`);
     return res.json({ success: true, deletedFrom: ["clerk", "neon"] });
   } catch (err: any) {
@@ -314,6 +320,9 @@ router.put("/admin/users/:id/role", async (req, res) => {
         });
       }
     }
+
+    // Activity log
+    try { await db.insert(userActivityTable).values({ id: randomUUID(), userId: caller.id, eventType: "role_changed", metadata: { actorName: caller.fullName, actorRole: caller.role, targetName: target.fullName || target.email, oldRole: target.role, newRole: role } }); } catch (_) { /* non-blocking */ }
 
     console.log(`[role-update] User ${targetId} (${target.email}) role changed: ${target.role} -> ${role}`);
     return res.json({
@@ -847,6 +856,9 @@ router.post("/admin/staff", async (req, res) => {
       emailWarning = "Account created but welcome email could not be sent.";
     }
 
+    // Activity log
+    try { const { userId: _clk } = getAuth(req); if (_clk) { const _c = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, _clk) }); if (_c) await db.insert(userActivityTable).values({ id: randomUUID(), userId: _c.id, eventType: "staff_created", metadata: { actorName: _c.fullName, actorRole: _c.role, targetName: fullName, targetEmail: email, assignedRole: role } }); } } catch (_) { /* non-blocking */ }
+
     return res.status(201).json({
       ...profile,
       permissions,
@@ -933,6 +945,9 @@ router.delete("/admin/staff/:id", async (req, res) => {
       await tx.delete(profilesTable).where(eq(profilesTable.id, targetId));
     });
 
+    // Activity log
+    try { await db.insert(userActivityTable).values({ id: randomUUID(), userId: caller.id, eventType: "staff_deleted", metadata: { actorName: caller.fullName, actorRole: caller.role, targetName: target.fullName || target.email, targetRole: target.role } }); } catch (_) { /* non-blocking */ }
+
     console.log(`[staff-delete] Successfully deleted staff ${targetId} (${target.email}) from Clerk and Neon`);
     return res.json({ success: true });
   } catch (err: any) {
@@ -953,6 +968,9 @@ router.put("/admin/staff/:id/permissions", async (req, res) => {
         permissions.map(p => ({ id: randomUUID(), userId, permission: p }))
       );
     }
+
+    // Activity log
+    try { const { userId: _clk } = getAuth(req); if (_clk) { const _c = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, _clk) }); const _t = await db.query.profilesTable.findFirst({ where: eq(profilesTable.id, userId) }); if (_c) await db.insert(userActivityTable).values({ id: randomUUID(), userId: _c.id, eventType: "staff_permissions_updated", metadata: { actorName: _c.fullName, actorRole: _c.role, targetName: _t?.fullName || userId, permissions } }); } } catch (_) { /* non-blocking */ }
 
     return res.json({ success: true });
   } catch (err: any) {
@@ -1386,20 +1404,28 @@ router.put("/admin/settings/:key", async (req, res) => {
     where: eq(siteSettingsTable.key, req.params.key),
   });
 
+  let result: any;
+  let statusCode = 200;
   if (existing) {
     const [updated] = await db.update(siteSettingsTable)
       .set({ value, updatedAt: new Date() })
       .where(eq(siteSettingsTable.key, req.params.key))
       .returning();
-    return res.json(updated);
+    result = updated;
   } else {
     const [created] = await db.insert(siteSettingsTable).values({
       id: randomUUID(),
       key: req.params.key,
       value,
     }).returning();
-    return res.status(201).json(created);
+    result = created;
+    statusCode = 201;
   }
+
+  // Activity log
+  try { const { userId: _clk } = getAuth(req); if (_clk) { const _c = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, _clk) }); if (_c) await db.insert(userActivityTable).values({ id: randomUUID(), userId: _c.id, eventType: "settings_updated", metadata: { actorName: _c.fullName, actorRole: _c.role, settingKey: req.params.key } }); } } catch (_) { /* non-blocking */ }
+
+  return res.status(statusCode).json(result);
 });
 
 // ── Booking Form Fields ───────────────────────────────────────────────────────
@@ -1432,6 +1458,9 @@ router.post("/admin/booking-form-fields", async (req, res) => {
     isSystem: false,
     enabled: true,
   }).returning();
+  // Activity log
+  try { const { userId: _clk } = getAuth(req); if (_clk) { const _c = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, _clk) }); if (_c) await db.insert(userActivityTable).values({ id: randomUUID(), userId: _c.id, eventType: "booking_form_updated", metadata: { actorName: _c.fullName, actorRole: _c.role, action: "created", fieldLabel: label } }); } } catch (_) { /* non-blocking */ }
+
   return res.status(201).json(field);
 });
 
@@ -1450,6 +1479,9 @@ router.put("/admin/booking-form-fields/:id", async (req, res) => {
     .where(eq(bookingFormFieldsTable.id, req.params.id))
     .returning();
   if (!field) return res.status(404).json({ error: "Field not found" });
+  // Activity log
+  try { const { userId: _clk } = getAuth(req); if (_clk) { const _c = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, _clk) }); if (_c) await db.insert(userActivityTable).values({ id: randomUUID(), userId: _c.id, eventType: "booking_form_updated", metadata: { actorName: _c.fullName, actorRole: _c.role, action: "updated", fieldId: req.params.id } }); } } catch (_) { /* non-blocking */ }
+
   return res.json(field);
 });
 
@@ -1473,9 +1505,11 @@ router.get("/admin/activity", async (req, res) => {
   }
 
   // Category shortcut: map to multiple event types
-  const STAFF_EVENTS = ["pilgrim_registered","payment_verified","payment_rejected","booking_confirmed","booking_cancelled","amendment_approved","amendment_rejected","booking_status_changed"];
+  const STAFF_EVENTS = ["pilgrim_registered","payment_verified","payment_rejected","booking_confirmed","booking_cancelled","amendment_approved","amendment_rejected","booking_status_changed","visa_status_changed","booking_completed","booking_pending"];
   const PAYMENT_EVENTS = ["payment_attempt","payment_success","payment_failed","payment_received","payment_verified","payment_rejected"];
   const PILGRIM_EVENTS = ["package_view","booking_start","booking_created","payment_attempt"];
+  const ADMIN_EVENTS = ["role_changed","user_status_changed","user_deleted","staff_created","staff_deleted","staff_permissions_updated","package_created","package_updated","package_deleted","agent_approved","agent_rejected","agent_discount_applied","booking_form_updated","settings_updated"];
+  const AGENT_EVENTS = ["agent_application_submitted","agent_client_registered","wallet_topup","wallet_transaction"];
 
   if (category === "staff") {
     conditions.push(sql`${userActivityTable.eventType} = ANY(ARRAY[${sql.raw(STAFF_EVENTS.map(e => `'${e}'`).join(","))}])`);
@@ -1483,6 +1517,10 @@ router.get("/admin/activity", async (req, res) => {
     conditions.push(sql`${userActivityTable.eventType} = ANY(ARRAY[${sql.raw(PAYMENT_EVENTS.map(e => `'${e}'`).join(","))}])`);
   } else if (category === "pilgrim") {
     conditions.push(sql`${userActivityTable.eventType} = ANY(ARRAY[${sql.raw(PILGRIM_EVENTS.map(e => `'${e}'`).join(","))}])`);
+  } else if (category === "admin") {
+    conditions.push(sql`${userActivityTable.eventType} = ANY(ARRAY[${sql.raw(ADMIN_EVENTS.map(e => `'${e}'`).join(","))}])`);
+  } else if (category === "agent") {
+    conditions.push(sql`${userActivityTable.eventType} = ANY(ARRAY[${sql.raw(AGENT_EVENTS.map(e => `'${e}'`).join(","))}])`);
   }
 
   if (dateFrom) conditions.push(gte(userActivityTable.createdAt, new Date(dateFrom)));
@@ -1855,6 +1893,9 @@ router.put("/admin/visa/:id", async (req, res) => {
       }
     } catch (_) { /* non-blocking */ }
   }
+
+  // Activity log
+  try { const { userId: _clk } = getAuth(req); if (_clk) { const _c = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, _clk) }); if (_c && u.status) await db.insert(userActivityTable).values({ id: randomUUID(), userId: _c.id, eventType: "visa_status_changed", metadata: { actorName: _c.fullName, actorRole: _c.role, newStatus: u.status, visaId: req.params.id } }); } } catch (_) { /* non-blocking */ }
 
   return res.json(visa);
 });
@@ -2408,6 +2449,9 @@ router.put("/admin/agent-applications/:id/approve", async (req, res) => {
     }).catch(() => {});
   });
 
+    // Activity log
+    try { const { userId: _clk } = getAuth(req); if (_clk) { const _c = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, _clk) }); if (_c) await db.insert(userActivityTable).values({ id: randomUUID(), userId: _c.id, eventType: "agent_approved", metadata: { actorName: _c.fullName, actorRole: _c.role, agentBusinessName: agent.businessName } }); } } catch (_) { /* non-blocking */ }
+
     return res.json({
       agent: { ...agent, walletBalance: 0 },
       tempPassword: password,
@@ -2431,6 +2475,10 @@ router.put("/admin/agent-applications/:id/reject", async (req, res) => {
       .where(eq(agentApplicationsTable.id, id))
       .returning();
     if (!updated) return res.status(404).json({ error: "Application not found" });
+
+    // Activity log
+    try { const { userId: _clk } = getAuth(req); if (_clk) { const _c = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, _clk) }); if (_c) await db.insert(userActivityTable).values({ id: randomUUID(), userId: _c.id, eventType: "agent_rejected", metadata: { actorName: _c.fullName, actorRole: _c.role, applicationId: id, reason: reason || null } }); } } catch (_) { /* non-blocking */ }
+
     return res.json({ success: true });
   } catch (err: any) {
     console.error("[agent-reject] Error:", err);
@@ -2618,6 +2666,9 @@ router.put("/admin/agents/:id/status", async (req, res) => {
     .set({ status: status as any, updatedAt: new Date() })
     .where(eq(agentsTable.id, req.params.id))
     .returning();
+
+  // Activity log
+  try { const { userId: _clk } = getAuth(req); if (_clk) { const _c = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, _clk) }); if (_c) await db.insert(userActivityTable).values({ id: randomUUID(), userId: _c.id, eventType: "user_status_changed", metadata: { actorName: _c.fullName, actorRole: _c.role, targetName: agent.businessName, oldStatus: agent.status, newStatus: status } }); } } catch (_) { /* non-blocking */ }
 
   return res.json({
     ...updated,
@@ -2856,6 +2907,9 @@ router.put("/admin/agents/:id/package-discounts/:packageId", async (req, res) =>
       discount = d;
     }
   });
+
+  // Activity log
+  try { const { userId: _clk } = getAuth(req); if (_clk) { const _c = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, _clk) }); if (_c) await db.insert(userActivityTable).values({ id: randomUUID(), userId: _c.id, eventType: "agent_discount_applied", metadata: { actorName: _c.fullName, actorRole: _c.role, agentName: agent.businessName, packageName: pkg.name, discountType, discountValue } }); } } catch (_) { /* non-blocking */ }
 
   return res.json({ ...discount, discountValue: Number(discount.discountValue) });
 });

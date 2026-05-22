@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   History, Search, Phone, Mail, User, CreditCard, CheckCircle2, XCircle,
   Eye, ShoppingCart, Pencil, AlertTriangle, UserPlus, RefreshCw, ChevronDown, ChevronUp,
-  Calendar, Filter,
+  Calendar, Filter, Shield, ShieldAlert, Trash2, Tag, Settings,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -41,8 +41,10 @@ const EVENT_CONFIG: Record<string, { label: string; Icon: any; color: string; bg
   booking_cancelled:    { label: "Booking Cancelled",     Icon: XCircle,       color: "text-red-600",     bg: "bg-red-50",     category: "staff" },
   booking_completed:    { label: "Booking Completed",     Icon: CheckCircle2,  color: "text-blue-600",    bg: "bg-blue-50",    category: "staff" },
   booking_pending:      { label: "Booking Set Pending",   Icon: History,       color: "text-amber-600",   bg: "bg-amber-50",   category: "staff" },
+  booking_status_changed: { label: "Booking Status Changed", Icon: History,    color: "text-amber-600",   bg: "bg-amber-50",   category: "staff" },
   amendment_approved:   { label: "Amendment Approved",    Icon: CheckCircle2,  color: "text-teal-600",    bg: "bg-teal-50",    category: "staff" },
   amendment_rejected:   { label: "Amendment Rejected",    Icon: XCircle,       color: "text-rose-600",    bg: "bg-rose-50",    category: "staff" },
+  visa_status_changed:  { label: "Visa Status Changed",   Icon: Pencil,        color: "text-sky-600",     bg: "bg-sky-50",     category: "staff" },
   // Payment events
   payment_attempt:      { label: "Payment Attempt",       Icon: CreditCard,    color: "text-purple-600",  bg: "bg-purple-50",  category: "payments" },
   payment_success:      { label: "Payment Success",       Icon: CheckCircle2,  color: "text-emerald-600", bg: "bg-emerald-50", category: "payments" },
@@ -52,13 +54,35 @@ const EVENT_CONFIG: Record<string, { label: string; Icon: any; color: string; bg
   package_view:         { label: "Package Viewed",        Icon: Eye,           color: "text-blue-600",    bg: "bg-blue-50",    category: "pilgrim" },
   booking_start:        { label: "Booking Started",       Icon: ShoppingCart,  color: "text-amber-600",   bg: "bg-amber-50",   category: "pilgrim" },
   booking_created:      { label: "Booking Created",       Icon: ShoppingCart,  color: "text-indigo-600",  bg: "bg-indigo-50",  category: "pilgrim" },
+  // Agent activity
+  agent_application_submitted: { label: "Agent Application",      Icon: UserPlus,    color: "text-orange-600", bg: "bg-orange-50",  category: "agent" },
+  agent_client_registered:     { label: "Agent Client Registered", Icon: UserPlus,   color: "text-teal-600",   bg: "bg-teal-50",    category: "agent" },
+  wallet_topup:                { label: "Wallet Top-up",          Icon: CreditCard,  color: "text-green-600",  bg: "bg-green-50",   category: "agent" },
+  wallet_transaction:          { label: "Wallet Transaction",     Icon: CreditCard,  color: "text-cyan-600",   bg: "bg-cyan-50",    category: "agent" },
+  // Admin actions
+  role_changed:              { label: "Role Changed",           Icon: Shield,       color: "text-violet-600", bg: "bg-violet-50",  category: "admin" },
+  user_status_changed:       { label: "User Status Changed",    Icon: ShieldAlert,  color: "text-amber-600",  bg: "bg-amber-50",   category: "admin" },
+  user_deleted:              { label: "User Deleted",           Icon: Trash2,       color: "text-red-600",    bg: "bg-red-50",     category: "admin" },
+  staff_created:             { label: "Staff Created",          Icon: UserPlus,     color: "text-blue-600",   bg: "bg-blue-50",    category: "admin" },
+  staff_deleted:             { label: "Staff Removed",          Icon: Trash2,       color: "text-red-600",    bg: "bg-red-50",     category: "admin" },
+  staff_permissions_updated: { label: "Permissions Updated",    Icon: Shield,       color: "text-indigo-600", bg: "bg-indigo-50",  category: "admin" },
+  package_created:           { label: "Package Created",        Icon: ShoppingCart,  color: "text-green-600",  bg: "bg-green-50",   category: "admin" },
+  package_updated:           { label: "Package Updated",        Icon: Pencil,       color: "text-blue-600",   bg: "bg-blue-50",    category: "admin" },
+  package_deleted:           { label: "Package Deleted",        Icon: Trash2,       color: "text-red-600",    bg: "bg-red-50",     category: "admin" },
+  agent_approved:            { label: "Agent Approved",         Icon: CheckCircle2, color: "text-emerald-600",bg: "bg-emerald-50", category: "admin" },
+  agent_rejected:            { label: "Agent Rejected",         Icon: XCircle,      color: "text-red-600",    bg: "bg-red-50",     category: "admin" },
+  agent_discount_applied:    { label: "Discount Applied",       Icon: Tag,          color: "text-purple-600", bg: "bg-purple-50",  category: "admin" },
+  booking_form_updated:      { label: "Booking Form Updated",   Icon: Pencil,       color: "text-slate-600",  bg: "bg-slate-50",   category: "admin" },
+  settings_updated:          { label: "Settings Updated",       Icon: Settings,     color: "text-gray-600",   bg: "bg-gray-50",    category: "admin" },
 };
 
 const CATEGORIES = [
-  { id: "all",      label: "All Activity",    count_key: null },
-  { id: "staff",    label: "Staff Actions",   count_key: "staff" },
-  { id: "payments", label: "Payment Events",  count_key: "payments" },
-  { id: "pilgrim",  label: "Pilgrim Activity",count_key: "pilgrim" },
+  { id: "all",      label: "All Activity",     count_key: null },
+  { id: "staff",    label: "Staff Actions",    count_key: "staff" },
+  { id: "admin",    label: "Admin Actions",    count_key: "admin" },
+  { id: "agent",    label: "Agent Activity",   count_key: "agent" },
+  { id: "payments", label: "Payment Events",   count_key: "payments" },
+  { id: "pilgrim",  label: "Pilgrim Activity", count_key: "pilgrim" },
 ];
 
 async function fetchActivity(params: Record<string, string>): Promise<{ activities: Activity[]; total: number }> {
