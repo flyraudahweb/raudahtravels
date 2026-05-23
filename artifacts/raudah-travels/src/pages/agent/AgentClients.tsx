@@ -190,10 +190,13 @@ export default function AgentClients() {
   const lbl  = (name: string, label: string) => <>{label}{req(name) && <span className="text-red-500 ml-0.5 font-black normal-case">*</span>}</>;
 
   const { data, isLoading } = useQuery<{ clients: AgentClient[]; total: number }>({
-    queryKey: ["agent-clients", page],
+    queryKey: ["agent-clients", page, search, statusFilter],
     queryFn: () => {
       const offset = (page - 1) * pageSize;
-      return fetch(`/api/agent/clients?limit=${pageSize}&offset=${offset}`, { credentials: "include" }).then(r => r.json());
+      const params = new URLSearchParams({ limit: String(pageSize), offset: String(offset) });
+      if (search.trim()) params.set("search", search.trim());
+      if (statusFilter && statusFilter !== "all") params.set("status", statusFilter);
+      return fetch(`/api/agent/clients?${params}`, { credentials: "include" }).then(r => r.json());
     },
     staleTime: 15000,
   });
@@ -308,7 +311,7 @@ export default function AgentClients() {
           
           const popup = new (window as any).PaystackPop();
           popup.resumeTransaction(pdata.accessCode, {
-            onSuccess: () => finishLocal(),
+            onSuccess: (transaction: any) => finishLocal(),
             onCancel: () => {
               fetch(`/api/bookings/${data.id}`, { method: "DELETE", credentials: "include" }).catch(() => {});
               toast({ title: "Payment cancelled", description: "The payment window was closed and the pending booking has been discarded." });
@@ -371,6 +374,9 @@ export default function AgentClients() {
       partner: form.partner || undefined,
       underCover: form.underCover || undefined,
       observation: form.observation || undefined,
+      visaNumber: form.visaNumber || undefined,
+      passportCopyUrl: form.passportCopyUrl || undefined,
+      profilePhotoUrl: form.profilePhotoUrl || undefined,
       amountPaid: form.paymentMethod === "online" ? 0 : form.paymentMethod === "wallet" ? effectivePrice : (form.amountPaid ? Number(form.amountPaid) : undefined),
       paymentMethod: form.paymentMethod === "online" ? "paystack" : form.paymentMethod,
       paymentReference: form.paymentReference || undefined,
@@ -394,7 +400,7 @@ export default function AgentClients() {
   });
 
   const stats = {
-    total: allClients.length,
+    total: data?.total || allClients.length,
     confirmed: allClients.filter(c => c.status === "confirmed").length,
     pending: allClients.filter(c => c.status === "pending").length,
     visaApproved: allClients.filter(c => c.visa?.status === "approved").length,
@@ -969,7 +975,7 @@ export default function AgentClients() {
                         <Input value={form.ethnicGroup} onChange={e => set("ethnicGroup", e.target.value)} placeholder="e.g. Hausa" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
                       </div>
                     )}
-                    {show("roomType") && (
+                    {(show("roomType") || show("roomPreference")) && (
                       <div className="space-y-1.5">
                         <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("roomType", "Room Preference")}</Label>
                         <Select value={form.roomPreference} onValueChange={v => set("roomPreference", v)}>

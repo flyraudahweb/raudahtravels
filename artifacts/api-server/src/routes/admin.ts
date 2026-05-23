@@ -2033,14 +2033,6 @@ router.post("/admin/book-pilgrim", async (req, res) => {
     mahramName, mahramRelationship, mahramPassport,
   } = req.body;
 
-  const pkg = await db.query.packagesTable.findFirst({ where: eq(packagesTable.id, packageId) });
-  if (!pkg) return res.status(404).json({ error: "Package not found" });
-
-  // Capacity check — prevent overbooking
-  if (pkg.capacity && (pkg.currentBookings || 0) >= pkg.capacity) {
-    return res.status(409).json({ error: "Package is fully booked — no more capacity available" });
-  }
-
   // Resolve the staff member who is performing this registration
   let staffProfileId: string | undefined;
   try {
@@ -2051,139 +2043,165 @@ router.post("/admin/book-pilgrim", async (req, res) => {
     }
   } catch (_) { /* non-blocking */ }
 
-  let userId = req.body.userId;
-  if (!userId) {
-    const walkinUuid = randomUUID();
-    const [newProfile] = await db.insert(profilesTable).values({
-      id: randomUUID(),
-      clerkUserId: `walkin-${walkinUuid}`,
-      email: `walkin-${walkinUuid}@raudah.internal`,
-      fullName: fullName || "Walk-in Pilgrim",
-      role: "user",
-    }).returning();
-    userId = newProfile.id;
-  }
-
   // SECURITY FIX #12: Always use canonical package price. Client totalPrice is ignored.
   // BUG FIX #8: If registering under an agent, apply the agent's per-package discount.
-  let price = Number(pkg.price);
   const agentIdValue = nullify(agentId) as string | undefined;
-  if (agentIdValue) {
-    const agentDiscount = await db.query.agentPackageDiscountsTable.findFirst({
-      where: and(
-        eq(agentPackageDiscountsTable.agentId, agentIdValue),
-        eq(agentPackageDiscountsTable.packageId, packageId),
-      ),
-    });
-    if (agentDiscount) {
-      if (agentDiscount.discountType === "percentage") {
-        price = Math.round((price - (price * Number(agentDiscount.discountValue) / 100)) * 100) / 100;
-      } else {
-        price = Math.max(0, price - Number(agentDiscount.discountValue));
-      }
-    }
-  }
+
   const reference = `RDH-${randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase()}`;
 
   const resolvedFullName = nullify(fullName) as string | undefined
     || [nullify(firstName), nullify(lastName)].filter(Boolean).join(" ")
     || undefined;
 
-  const [booking] = await db.insert(bookingsTable).values({
-    id: randomUUID(),
-    reference,
-    userId,
-    packageId,
-    packageDateId:                 nullify(packageDateId) as string | undefined,
-    agentId:                       nullify(agentId) as string | undefined,
-    registeredByStaffId:           staffProfileId || undefined,
-    status: markVerified ? "confirmed" : "pending",
-    totalPrice: String(price),
-    amountPaid: markVerified ? String(amountPaid || price) : String(amountPaid || 0),
-    pilgrimCount: 1,
-    // name / civility
-    civility:                      nullify(civility) as string | undefined,
-    firstName:                     nullify(firstName) as string | undefined,
-    lastName:                      nullify(lastName) as string | undefined,
-    fullName:                      resolvedFullName,
-    // passport
-    passportNumber:                nullify(passportNumber) as string | undefined,
-    passportIssueDate:             nullify(passportIssueDate) as string | undefined,
-    passportExpiry:                nullify(passportExpiry) as string | undefined,
-    passportIssuingAuthority:      nullify(passportIssuingAuthority) as string | undefined,
-    passportCopyUrl:               nullify(passportCopyUrl) as string | undefined,
-    profilePhotoUrl:               nullify(profilePhotoUrl) as string | undefined,
-    // personal
-    dateOfBirth:                   nullify(dateOfBirth) as string | undefined,
-    placeOfBirth:                  nullify(placeOfBirth) as string | undefined,
-    gender:                        nullify(gender) as string | undefined,
-    nationality:                   nullify(nationality) as string | undefined,
-    ethnicGroup:                   nullify(ethnicGroup) as string | undefined,
-    maritalStatus:                 nullify(maritalStatus) as string | undefined,
-    levelOfStudy:                  nullify(levelOfStudy) as string | undefined,
-    visaNumber:                    nullify(visaNumber) as string | undefined,
-    observation:                   nullify(observation) as string | undefined,
-    // partner / cover
-    partner:                       nullify(partner) as string | undefined,
-    underCover:                    nullify(underCover) as string | undefined,
-    // contact & address
-    phone:                         nullify(phone) as string | undefined,
-    email:                         nullify(email) as string | undefined,
-    country:                       nullify(country) as string | undefined,
-    city:                          nullify(city) as string | undefined,
-    address:                       nullify(address) as string | undefined,
-    // travel
-    departureCity:                 nullify(departureCity) as string | undefined,
-    roomPreference:                nullify(roomPreference) as string | undefined,
-    specialRequests:               nullify(specialRequests) as string | undefined,
-    // emergency
-    emergencyContactName:          nullify(emergencyContactName) as string | undefined,
-    emergencyContactPhone:         nullify(emergencyContactPhone) as string | undefined,
-    emergencyContactRelationship:  nullify(emergencyContactRelationship) as string | undefined,
-    // health / family
-    meningitisVaccineDate:         nullify(meningitisVaccineDate) as string | undefined,
-    fathersName:                   nullify(fathersName) as string | undefined,
-    mothersName:                   nullify(mothersName) as string | undefined,
-    mahramName:                    nullify(mahramName) as string | undefined,
-    mahramRelationship:            nullify(mahramRelationship) as string | undefined,
-    mahramPassport:                nullify(mahramPassport) as string | undefined,
-  }).returning();
+  let booking: any;
 
-  await db.update(packagesTable)
-    .set({ currentBookings: sql`${packagesTable.currentBookings} + 1` })
-    .where(eq(packagesTable.id, packageId));
+  try {
+    await db.transaction(async (tx) => {
+      // BUG FIX #4: Row-level lock on the package to prevent overbooking race condition
+      const lockResult = await tx.execute(
+        sql`SELECT * FROM packages WHERE id = ${packageId} FOR UPDATE`
+      );
+      const pkgRow = (lockResult as any).rows?.[0] ?? (Array.isArray(lockResult) ? lockResult[0] : null);
+      if (!pkgRow) throw new Error("Package not found");
 
-  if (markVerified) {
-    const existingVisa = await db.query.visaApplicationsTable.findFirst({
-      where: eq(visaApplicationsTable.bookingId, booking.id),
-    });
-    if (!existingVisa) {
-      await db.insert(visaApplicationsTable).values({
+      // Capacity check — with row lock, this is now race-condition-proof
+      if (pkgRow.capacity && (pkgRow.current_bookings || 0) >= pkgRow.capacity) {
+        throw new Error("Package is fully booked — no more capacity available");
+      }
+
+      let price = Number(pkgRow.price);
+      if (agentIdValue) {
+        const agentDiscount = await tx.query.agentPackageDiscountsTable.findFirst({
+          where: and(
+            eq(agentPackageDiscountsTable.agentId, agentIdValue),
+            eq(agentPackageDiscountsTable.packageId, packageId),
+          ),
+        });
+        if (agentDiscount) {
+          if (agentDiscount.discountType === "percentage") {
+            price = Math.round((price - (price * Number(agentDiscount.discountValue) / 100)) * 100) / 100;
+          } else {
+            price = Math.max(0, price - Number(agentDiscount.discountValue));
+          }
+        }
+      }
+
+      let userId = req.body.userId;
+      if (!userId) {
+        const walkinUuid = randomUUID();
+        const [newProfile] = await tx.insert(profilesTable).values({
+          id: randomUUID(),
+          clerkUserId: `walkin-${walkinUuid}`,
+          email: `walkin-${walkinUuid}@raudah.internal`,
+          fullName: fullName || "Walk-in Pilgrim",
+          role: "user",
+        }).returning();
+        userId = newProfile.id;
+      }
+
+      [booking] = await tx.insert(bookingsTable).values({
         id: randomUUID(),
-        bookingId: booking.id,
-        pilgrimName: booking.fullName ?? null,
-        passportNumber: booking.passportNumber ?? null,
-        status: "pending",
-      });
-    }
-  }
+        reference,
+        userId,
+        packageId,
+        packageDateId:                 nullify(packageDateId) as string | undefined,
+        agentId:                       nullify(agentId) as string | undefined,
+        registeredByStaffId:           staffProfileId || undefined,
+        status: markVerified ? "confirmed" : "pending",
+        totalPrice: String(price),
+        amountPaid: markVerified ? String(amountPaid || price) : String(amountPaid || 0),
+        pilgrimCount: 1,
+        // name / civility
+        civility:                      nullify(civility) as string | undefined,
+        firstName:                     nullify(firstName) as string | undefined,
+        lastName:                      nullify(lastName) as string | undefined,
+        fullName:                      resolvedFullName,
+        // passport
+        passportNumber:                nullify(passportNumber) as string | undefined,
+        passportIssueDate:             nullify(passportIssueDate) as string | undefined,
+        passportExpiry:                nullify(passportExpiry) as string | undefined,
+        passportIssuingAuthority:      nullify(passportIssuingAuthority) as string | undefined,
+        passportCopyUrl:               nullify(passportCopyUrl) as string | undefined,
+        profilePhotoUrl:               nullify(profilePhotoUrl) as string | undefined,
+        // personal
+        dateOfBirth:                   nullify(dateOfBirth) as string | undefined,
+        placeOfBirth:                  nullify(placeOfBirth) as string | undefined,
+        gender:                        nullify(gender) as string | undefined,
+        nationality:                   nullify(nationality) as string | undefined,
+        ethnicGroup:                   nullify(ethnicGroup) as string | undefined,
+        maritalStatus:                 nullify(maritalStatus) as string | undefined,
+        levelOfStudy:                  nullify(levelOfStudy) as string | undefined,
+        visaNumber:                    nullify(visaNumber) as string | undefined,
+        observation:                   nullify(observation) as string | undefined,
+        // partner / cover
+        partner:                       nullify(partner) as string | undefined,
+        underCover:                    nullify(underCover) as string | undefined,
+        // contact & address
+        phone:                         nullify(phone) as string | undefined,
+        email:                         nullify(email) as string | undefined,
+        country:                       nullify(country) as string | undefined,
+        city:                          nullify(city) as string | undefined,
+        address:                       nullify(address) as string | undefined,
+        // travel
+        departureCity:                 nullify(departureCity) as string | undefined,
+        roomPreference:                nullify(roomPreference) as string | undefined,
+        specialRequests:               nullify(specialRequests) as string | undefined,
+        // emergency
+        emergencyContactName:          nullify(emergencyContactName) as string | undefined,
+        emergencyContactPhone:         nullify(emergencyContactPhone) as string | undefined,
+        emergencyContactRelationship:  nullify(emergencyContactRelationship) as string | undefined,
+        // health / family
+        meningitisVaccineDate:         nullify(meningitisVaccineDate) as string | undefined,
+        fathersName:                   nullify(fathersName) as string | undefined,
+        mothersName:                   nullify(mothersName) as string | undefined,
+        mahramName:                    nullify(mahramName) as string | undefined,
+        mahramRelationship:            nullify(mahramRelationship) as string | undefined,
+        mahramPassport:                nullify(mahramPassport) as string | undefined,
+      }).returning();
 
-  const initialAmountPaid = Number(booking.amountPaid);
-  if (initialAmountPaid > 0) {
-    await db.insert(paymentsTable).values({
-      id: randomUUID(),
-      bookingId: booking.id,
-      userId: booking.userId,
-      amount: String(initialAmountPaid),
-      method: paymentMethod || "cash",
-      status: markVerified ? "verified" : "pending",
-      reference: paymentReference || `INIT-${booking.reference}`,
-      proofUrl: paymentProofUrl || null,
-      notes: "Initial payment during registration",
+      await tx.update(packagesTable)
+        .set({ currentBookings: sql`${packagesTable.currentBookings} + 1` })
+        .where(eq(packagesTable.id, packageId));
+
+      if (markVerified) {
+        const existingVisa = await tx.query.visaApplicationsTable.findFirst({
+          where: eq(visaApplicationsTable.bookingId, booking.id),
+        });
+        if (!existingVisa) {
+          await tx.insert(visaApplicationsTable).values({
+            id: randomUUID(),
+            bookingId: booking.id,
+            pilgrimName: booking.fullName ?? null,
+            passportNumber: booking.passportNumber ?? null,
+            status: "pending",
+          });
+        }
+      }
+
+      const initialAmountPaid = Number(booking.amountPaid);
+      if (initialAmountPaid > 0) {
+        await tx.insert(paymentsTable).values({
+          id: randomUUID(),
+          bookingId: booking.id,
+          userId: booking.userId,
+          amount: String(initialAmountPaid),
+          method: paymentMethod || "cash",
+          status: markVerified ? "verified" : "pending",
+          reference: paymentReference || `INIT-${booking.reference}`,
+          proofUrl: paymentProofUrl || null,
+          notes: "Initial payment during registration",
+        });
+      }
     });
+  } catch (err: any) {
+    // Capacity-full is a 409, other errors are 400
+    if (err.message?.includes("fully booked")) {
+      return res.status(409).json({ error: err.message });
+    }
+    return res.status(400).json({ error: err.message || "Registration failed" });
   }
 
-  // Log staff action
+  // Log staff action (outside transaction — non-blocking, should not cause rollback)
   try {
     const { userId: clerkUserId } = getAuth(req);
     if (clerkUserId) {

@@ -301,6 +301,7 @@ export default function AdminBookPilgrim() {
         if (parsed.travel) setTravel(parsed.travel);
         if (parsed.payment) setPayment(parsed.payment);
         if (parsed.step) setStep(parsed.step);
+        if (parsed.phoneCode) setPhoneCode(parsed.phoneCode);
       }
     } catch (e) {
       // ignore
@@ -316,8 +317,8 @@ export default function AdminBookPilgrim() {
       localStorage.removeItem("admin_pilgrim_draft");
       return;
     }
-    localStorage.setItem("admin_pilgrim_draft", JSON.stringify({ packageId, pilgrim, travel, payment, step }));
-  }, [packageId, pilgrim, travel, payment, step, isRestored]);
+    localStorage.setItem("admin_pilgrim_draft", JSON.stringify({ packageId, pilgrim, travel, payment, step, phoneCode }));
+  }, [packageId, pilgrim, travel, payment, step, phoneCode, isRestored]);
 
   const { data: pkgData } = useQuery({ queryKey: ["packages-for-booking"], queryFn: fetchPackages });
   
@@ -374,9 +375,9 @@ export default function AdminBookPilgrim() {
   const showIdentitySection   = show("civility") || show("gender") || show("firstName") || show("lastName") || show("dateOfBirth") || show("placeOfBirth") || show("nationality") || show("ethnicGroup");
   const showAdditionalSection = show("maritalStatus") || show("levelOfStudy") || show("partner") || show("underCover") || show("observation");
 
-  const handlePaystackPayment = async (bookingId: string) => {
+  const handlePaystackPayment = async (bookingId: string, serverBooking?: { totalPrice?: string }) => {
     try {
-      const amount = selectedPkg?.price ?? 0;
+      const amount = (Number(serverBooking?.totalPrice) || selectedPkg?.price) ?? 0;
       const res = await fetch("/api/payments/paystack/initialize", {
         method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify({ bookingId, amount, email: pilgrim.email || "admin@raudah.com" }),
@@ -409,7 +410,7 @@ export default function AdminBookPilgrim() {
     mutationFn: bookPilgrim,
     onSuccess: async (data) => {
       if (payment.method === "online") {
-        await handlePaystackPayment(data.booking.id);
+        await handlePaystackPayment(data.booking.id, data.booking);
       } else {
         localStorage.removeItem("admin_pilgrim_draft");
         setResult({ reference: data.reference });

@@ -444,7 +444,7 @@ router.post("/agent/register-client", async (req, res) => {
   const {
     packageId, civility, firstName, lastName,
     passportNumber, passportIssueDate, passportExpiry, passportIssuingAuthority,
-    passportCopyUrl, profilePhotoUrl,
+    passportCopyUrl, profilePhotoUrl, visaNumber,
     dateOfBirth, placeOfBirth, gender, phone, email, nationality,
     ethnicGroup, maritalStatus, levelOfStudy, occupation,
     address, city, country, roomPreference, departureCity, specialRequests,
@@ -519,6 +519,15 @@ router.post("/agent/register-client", async (req, res) => {
           throw new Error(`Insufficient wallet balance. Available: ₦${currentBalance.toLocaleString()}, Required: ₦${walletPaid.toLocaleString()}`);
         }
 
+        // BUG FIX #4: Row-level lock on package to prevent overbooking race condition
+        const pkgLock = await tx.execute(
+          sql`SELECT capacity, current_bookings FROM packages WHERE id = ${packageId} FOR UPDATE`
+        );
+        const pkgRow = (pkgLock as any).rows?.[0] ?? (Array.isArray(pkgLock) ? pkgLock[0] : null);
+        if (pkgRow?.capacity && (pkgRow.current_bookings || 0) >= pkgRow.capacity) {
+          throw new Error("Package is fully booked — no more capacity available");
+        }
+
         // Create walk-in user
         const [walkInUser] = await tx.insert(profilesTable).values({
           id: randomUUID(),
@@ -546,6 +555,7 @@ router.post("/agent/register-client", async (req, res) => {
           country: nullify(country), roomPreference: nullify(roomPreference) || "Double",
           departureCity: nullify(departureCity), specialRequests: nullify(specialRequests),
           partner: nullify(partner), underCover: nullify(underCover), observation: nullify(observation),
+          visaNumber: nullify(visaNumber),
           emergencyContactName: nullify(emergencyContactName),
           emergencyContactPhone: nullify(emergencyContactPhone),
           emergencyContactRelationship: nullify(emergencyContactRelationship),
@@ -613,6 +623,15 @@ router.post("/agent/register-client", async (req, res) => {
 
   try {
     await db.transaction(async (tx) => {
+      // BUG FIX #4: Row-level lock on package to prevent overbooking race condition
+      const pkgLock = await tx.execute(
+        sql`SELECT capacity, current_bookings FROM packages WHERE id = ${packageId} FOR UPDATE`
+      );
+      const pkgRow = (pkgLock as any).rows?.[0] ?? (Array.isArray(pkgLock) ? pkgLock[0] : null);
+      if (pkgRow?.capacity && (pkgRow.current_bookings || 0) >= pkgRow.capacity) {
+        throw new Error("Package is fully booked — no more capacity available");
+      }
+
       const [walkInUser] = await tx.insert(profilesTable).values({
         id: randomUUID(),
         clerkUserId: `walkin-${walkinUuid}`,
@@ -660,6 +679,7 @@ router.post("/agent/register-client", async (req, res) => {
         partner: nullify(partner),
         underCover: nullify(underCover),
         observation: nullify(observation),
+        visaNumber: nullify(visaNumber),
         emergencyContactName: nullify(emergencyContactName),
         emergencyContactPhone: nullify(emergencyContactPhone),
         emergencyContactRelationship: nullify(emergencyContactRelationship),
