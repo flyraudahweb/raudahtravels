@@ -469,39 +469,18 @@ router.post("/agent/register-client", async (req, res) => {
   const walkinUuid = randomUUID();
   const resolvedFullName = [civility, firstName, lastName].filter(Boolean).join(" ");
 
-  // SECURITY: Start from canonical package price — never trust client-supplied price
-  let price = Number(pkg.price);
-
-  // Apply agent-specific package discount (set by admin)
-  const agentDiscount = await db.query.agentPackageDiscountsTable.findFirst({
-    where: and(
-      eq(agentPackageDiscountsTable.agentId, agent.id),
-      eq(agentPackageDiscountsTable.packageId, packageId),
-    ),
-  });
-  if (agentDiscount) {
-    const dv = Number(agentDiscount.discountValue);
-    if (agentDiscount.discountType === "percentage") {
-      price = Math.round((price - (price * dv / 100)) * 100) / 100;
-    } else {
-      price = Math.max(0, price - dv);
-    }
-  }
-
-  // SECURITY: Clamp amountPaid to [0, price]. An agent cannot claim more was paid than the
-  // package costs, and cannot supply a negative value to inflate the balance later.
+  // SECURITY: Validate amountPaid early (actual clamping happens inside transaction after discount is resolved)
   const rawPaid = amountPaid != null ? Number(amountPaid) : 0;
   if (isNaN(rawPaid) || rawPaid < 0) {
     return res.status(400).json({ error: "amountPaid must be a non-negative number" });
   }
-  const clampedPaid = Math.min(rawPaid, price);
 
   const nullify = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v) as string | undefined;
   const bookingReference = `RDH-${randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase()}`;
 
   // ── Wallet Payment Flow (atomic, race-condition-proof) ─────────────────
   if (paymentMethod === "wallet") {
-    const walletPaid = price; // Deduct the (potentially discounted) price from wallet
+    let walletPaid = 0;
 
     let booking: any;
     let finalWalletBalance = 0;
@@ -515,9 +494,6 @@ router.post("/agent/register-client", async (req, res) => {
         const walletRow = (lockResult as any).rows?.[0] ?? (Array.isArray(lockResult) ? lockResult[0] : null);
         if (!walletRow) throw new Error("Wallet not found. Please contact admin to set up your wallet.");
         const currentBalance = Number((walletRow as any).balance);
-        if (currentBalance < walletPaid) {
-          throw new Error(`Insufficient wallet balance. Available: ₦${currentBalance.toLocaleString()}, Required: ₦${walletPaid.toLocaleString()}`);
-        }
 
         // BUG FIX #4: Row-level lock on package to prevent overbooking race condition
         const pkgLock = await tx.execute(
@@ -526,6 +502,29 @@ router.post("/agent/register-client", async (req, res) => {
         const pkgRow = (pkgLock as any).rows?.[0] ?? (Array.isArray(pkgLock) ? pkgLock[0] : null);
         if (pkgRow?.capacity && (pkgRow.current_bookings || 0) >= pkgRow.capacity) {
           throw new Error("Package is fully booked — no more capacity available");
+        }
+
+        // SECURITY: Calculate price inside transaction for atomicity with discount
+        let price = Number(pkg.price);
+        const agentDiscount = await tx.query.agentPackageDiscountsTable.findFirst({
+          where: and(
+            eq(agentPackageDiscountsTable.agentId, agent.id),
+            eq(agentPackageDiscountsTable.packageId, packageId),
+          ),
+        });
+        if (agentDiscount) {
+          const dv = Number(agentDiscount.discountValue);
+          if (agentDiscount.discountType === "percentage") {
+            price = Math.round((price - (price * dv / 100)) * 100) / 100;
+          } else {
+            price = Math.max(0, price - dv);
+          }
+        }
+        walletPaid = price;
+
+        // Check wallet balance against actual discounted price
+        if (currentBalance < walletPaid) {
+          throw new Error(`Insufficient wallet balance. Available: ₦${currentBalance.toLocaleString()}, Required: ₦${walletPaid.toLocaleString()}`);
         }
 
         // Create walk-in user
@@ -646,6 +645,24 @@ router.post("/agent/register-client", async (req, res) => {
       if (pkgRow?.capacity && (pkgRow.current_bookings || 0) >= pkgRow.capacity) {
         throw new Error("Package is fully booked — no more capacity available");
       }
+
+      // SECURITY: Calculate price inside transaction for atomicity with discount
+      let price = Number(pkg.price);
+      const agentDiscount = await tx.query.agentPackageDiscountsTable.findFirst({
+        where: and(
+          eq(agentPackageDiscountsTable.agentId, agent.id),
+          eq(agentPackageDiscountsTable.packageId, packageId),
+        ),
+      });
+      if (agentDiscount) {
+        const dv = Number(agentDiscount.discountValue);
+        if (agentDiscount.discountType === "percentage") {
+          price = Math.round((price - (price * dv / 100)) * 100) / 100;
+        } else {
+          price = Math.max(0, price - dv);
+        }
+      }
+      const clampedPaid = Math.min(rawPaid, price);
 
       const [walkInUser] = await tx.insert(profilesTable).values({
         id: randomUUID(),

@@ -290,6 +290,8 @@ export default function AgentClients() {
         qc.invalidateQueries({ queryKey: ["agent-clients"] });
         // BUG FIX #9: Invalidate wallet cache so balance updates across all pages
         qc.invalidateQueries({ queryKey: ["agent-wallet"] });
+        // Invalidate packages cache so capacity bar updates immediately
+        qc.invalidateQueries({ queryKey: ["packages-active"] });
         setResult({ reference: data.reference });
         localStorage.removeItem("agent_client_draft");
         setRegStep(6);
@@ -387,17 +389,7 @@ export default function AgentClients() {
   const allClients = data?.clients || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / pageSize);
-  const clients = allClients.filter(c => {
-    if (statusFilter !== "all" && c.status !== statusFilter) return false;
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      return (c.fullName || "").toLowerCase().includes(q) ||
-        (c.passportNumber || "").toLowerCase().includes(q) ||
-        (c.reference || "").toLowerCase().includes(q) ||
-        (c.phone || "").toLowerCase().includes(q);
-    }
-    return true;
-  });
+  const clients = allClients;
 
   const stats = {
     total: data?.total || allClients.length,
