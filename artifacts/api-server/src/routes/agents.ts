@@ -601,6 +601,21 @@ router.post("/agent/register-client", async (req, res) => {
           bookingId: booking.id,
           metadata: { clientName: resolvedFullName, packageName: pkg.name, amount: walletPaid, paymentMethod: "wallet", reference: bookingReference },
         });
+
+        // Create commission record for this booking
+        const commRate = Number(agent.commissionRate);
+        if (commRate > 0) {
+          const commissionAmount = agent.commissionType === "percentage"
+            ? Math.round(price * commRate / 100 * 100) / 100
+            : commRate;
+          await tx.insert(commissionsTable).values({
+            id: randomUUID(),
+            agentId: agent.id,
+            bookingId: booking.id,
+            amount: String(commissionAmount),
+            status: "pending",
+          });
+        }
       });
     } catch (err: any) {
       return res.status(400).json({ error: err.message || "Wallet payment failed" });
@@ -721,6 +736,21 @@ router.post("/agent/register-client", async (req, res) => {
         bookingId: booking.id,
         metadata: { clientName: resolvedFullName, packageName: pkg.name, amount: clampedPaid, paymentMethod: paymentMethod || "cash", reference: bookingReference },
       });
+
+      // Create commission record for this booking
+      const commRate = Number(agent.commissionRate);
+      if (commRate > 0) {
+        const commissionAmount = agent.commissionType === "percentage"
+          ? Math.round(price * commRate / 100 * 100) / 100
+          : commRate;
+        await tx.insert(commissionsTable).values({
+          id: randomUUID(),
+          agentId: agent.id,
+          bookingId: booking.id,
+          amount: String(commissionAmount),
+          status: "pending",
+        });
+      }
     });
   } catch (err: any) {
     return res.status(400).json({ error: err.message || "Registration failed" });

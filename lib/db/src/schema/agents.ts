@@ -37,7 +37,7 @@ export const agentsTable = pgTable("agents", {
   email: text("email"),
   phone: text("phone"),
   agentCode: text("agent_code").unique(),
-  commissionRate: numeric("commission_rate", { precision: 5, scale: 2 }).notNull().default("0"),
+  commissionRate: numeric("commission_rate", { precision: 12, scale: 2 }).notNull().default("0"),
   commissionType: text("commission_type").default("percentage"),
   status: agentStatusEnum("status").notNull().default("pending"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

@@ -2659,13 +2659,30 @@ router.post("/admin/agents/create", async (req, res) => {
 // ── Agent Commission Update ───────────────────────────────────────────────────
 
 router.put("/admin/agents/:id/commission", async (req, res) => {
-  const { commissionRate, commissionType } = req.body as { commissionRate: number; commissionType: string };
-  const [agent] = await db.update(agentsTable)
-    .set({ commissionRate: String(commissionRate), commissionType, updatedAt: new Date() })
-    .where(eq(agentsTable.id, req.params.id))
-    .returning();
-  if (!agent) return res.status(404).json({ error: "Agent not found" });
-  return res.json({ ...agent, commissionRate: Number(agent.commissionRate) });
+  try {
+    const { commissionRate, commissionType } = req.body as { commissionRate: number; commissionType: string };
+
+    // Validate commission values
+    if (commissionRate == null || typeof commissionRate !== "number" || isNaN(commissionRate) || commissionRate < 0) {
+      return res.status(400).json({ error: "commissionRate must be a non-negative number" });
+    }
+    if (!["percentage", "fixed"].includes(commissionType)) {
+      return res.status(400).json({ error: "commissionType must be 'percentage' or 'fixed'" });
+    }
+    if (commissionType === "percentage" && commissionRate > 100) {
+      return res.status(400).json({ error: "Percentage commission cannot exceed 100%" });
+    }
+
+    const [agent] = await db.update(agentsTable)
+      .set({ commissionRate: String(commissionRate), commissionType, updatedAt: new Date() })
+      .where(eq(agentsTable.id, req.params.id))
+      .returning();
+    if (!agent) return res.status(404).json({ error: "Agent not found" });
+    return res.json({ ...agent, commissionRate: Number(agent.commissionRate) });
+  } catch (err: any) {
+    console.error("[agent-commission-update] Error:", err);
+    return res.status(500).json({ error: err.message || "Failed to update commission" });
+  }
 });
 
 // ── Agent Status Update (suspend / unsuspend / block / unblock) ───────────────
