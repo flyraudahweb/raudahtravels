@@ -619,6 +619,7 @@ export default function AdminStaff() {
       )}
 
       <StaffDialog
+        key={editMember?.id || "new"}
         open={inviteOpen || !!editMember}
         onClose={() => { setInviteOpen(false); setEditMember(null); }}
         member={editMember}
