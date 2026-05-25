@@ -16,6 +16,7 @@ import dashboardRouter from "./dashboard";
 import adminRouter from "./admin";
 import aiRouter from "./ai";
 import backupRouter from "./backup";
+import uploadRouter from "./upload";
 
 const router: IRouter = Router();
 
@@ -140,5 +141,6 @@ router.use(documentsRouter);
 router.use(dashboardRouter);
 router.use(adminRouter);
 router.use(backupRouter);
+router.use(uploadRouter);
 
 export default router;

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { uploadFile } from "@/lib/upload";
 import { useRoute, useLocation } from "wouter";
 import { useGetPackage, getGetPackageQueryKey, useCreateBooking, useCreatePayment } from "@workspace/api-client-react";
 import { useUser } from "@clerk/react";
@@ -61,14 +62,7 @@ const PHONE_CODES = [
 const MARITAL_STATUS   = ["Single", "Married", "Divorced", "Widowed"];
 const LEVEL_OF_STUDY   = ["None", "Primary", "Secondary", "Tertiary", "Postgraduate"];
 
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
+
 
 function passportExpiryWarning(expiry: string): { type: "expired" | "soon" } | null {
   if (!expiry) return null;
@@ -113,20 +107,35 @@ function PassportExpiryAlert({ expiry }: { expiry: string }) {
 }
 
 function FileUploadBox({
-  label, accept, value, onChange, previewType = "image", hint,
+  label, accept, value, onChange, previewType = "image", hint, folder = "documents",
 }: {
   label: string; accept: string; value: string; onChange: (v: string) => void;
   previewType?: "image" | "file"; hint?: string;
+  folder?: "passports" | "photos" | "receipts" | "documents";
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const b64 = await readFileAsBase64(file);
-    onChange(b64);
+    if (file.size > 3 * 1024 * 1024) {
+      alert(`File too large (${(file.size / 1024).toFixed(0)}KB). Maximum size is 3MB.`);
+      e.target.value = "";
+      return;
+    }
+    setUploading(true);
+    try {
+      const url = await uploadFile(file, folder);
+      onChange(url);
+    } catch (err: any) {
+      alert(err.message || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+    e.target.value = "";
   };
-  const isImage = value && value.startsWith("data:image");
-  const isPdf   = value && value.startsWith("data:application/pdf");
+  const isImage = value && (value.startsWith("data:image") || /\.(jpg|jpeg|png|webp)$/i.test(value));
+  const isPdf   = value && (value.startsWith("data:application/pdf") || /\.pdf$/i.test(value));
 
   return (
     <div>
@@ -154,10 +163,11 @@ function FileUploadBox({
           </div>
         ) : (
           <button type="button" onClick={() => inputRef.current?.click()}
+            disabled={uploading}
             className="w-full rounded-lg border-2 border-dashed border-muted-foreground/25 hover:border-primary/40 bg-muted/30 hover:bg-primary/5 transition-all p-4 flex flex-col items-center gap-2">
             <Upload className="w-5 h-5 text-muted-foreground/50" />
-            <span className="text-xs font-medium text-muted-foreground">Click to upload</span>
-            <span className="text-[10px] text-muted-foreground/60">{accept.includes("pdf") ? "JPG, PNG or PDF" : "JPG or PNG"}</span>
+            <span className="text-xs font-medium text-muted-foreground">{uploading ? "Uploading..." : "Click to upload"}</span>
+            <span className="text-[10px] text-muted-foreground/60">{accept.includes("pdf") ? "JPG, PNG or PDF" : "JPG or PNG"} · Max 3MB</span>
           </button>
         )}
         <input ref={inputRef} type="file" accept={accept} onChange={handleFile} className="hidden" />
@@ -631,6 +641,7 @@ export default function BookingWizard() {
                       value={passportForm.passportCopyUrl}
                       onChange={v => setPassportForm(f => ({ ...f, passportCopyUrl: v }))}
                       hint="Upload a scan or photo of your passport"
+                      folder="passports"
                     />
                   )}
                   {show("profilePhotoUrl") && (
@@ -640,6 +651,7 @@ export default function BookingWizard() {
                       value={personalForm.profilePhotoUrl}
                       onChange={v => setPersonalForm(f => ({ ...f, profilePhotoUrl: v }))}
                       hint="Clear face photo for your ID"
+                      folder="photos"
                     />
                   )}
                 </div>
@@ -956,6 +968,7 @@ export default function BookingWizard() {
                       value={payForm.paymentProofUrl}
                       onChange={v => setPayForm(f => ({ ...f, paymentProofUrl: v }))}
                       hint="Upload your transfer receipt"
+                      folder="receipts"
                     />
                   </div>
                 </div>

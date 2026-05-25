@@ -17,13 +17,14 @@ import app from "./app";
 import { logger } from "./lib/logger";
 
 import { ensureDefaultData } from "./utils/init-db";
+import { ensureBucket } from "./lib/r2";
 
 const port = Number(process.env["PORT"]) || 8080;
 
-ensureDefaultData()
-  .then(() => {
-    logger.info("Default data initialization successful.");
-  })
+Promise.all([
+  ensureDefaultData().then(() => logger.info("Default data initialization successful.")),
+  ensureBucket(),
+])
   .catch((err) => {
     logger.error({ err }, "Failed to initialize default database data (possibly unmigrated schema). Proceeding to start server anyway.");
   })

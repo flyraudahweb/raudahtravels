@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import ReactCrop, { type Crop, type PercentCrop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
+import { uploadFile } from "@/lib/upload";
 
 interface BBox {
   ymin: number;
@@ -224,6 +225,7 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
   // Manual Crop State
   const [pendingCrop, setPendingCrop] = useState<{ imageUrl: string; result: PassportScanResult; bbox?: BBox | null } | null>(null);
   const [crop, setCrop] = useState<Crop>();
+  const [isUploadingCrop, setIsUploadingCrop] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
 
   const reset = () => {
@@ -560,24 +562,37 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
             </Button>
             <Button
               type="button"
-              onClick={() => {
+              disabled={isUploadingCrop}
+              onClick={async () => {
                 if (pendingCrop && imgRef.current && crop) {
                   try {
+                    setIsUploadingCrop(true);
                     const b64 = generateCroppedImage(imgRef.current, crop);
-                    setProfilePicUrl(b64);
-                    onProfilePhoto?.(b64);
+                    
+                    // Convert base64 to File object
+                    const res = await fetch(b64);
+                    const blob = await res.blob();
+                    const file = new File([blob], "profile.jpg", { type: "image/jpeg" });
+                    
+                    // Upload to R2
+                    const url = await uploadFile(file, "photos");
+                    
+                    setProfilePicUrl(url);
+                    onProfilePhoto?.(url);
                   } catch (err) {
-                    console.error("Crop error", err);
+                    console.error("Crop/upload error", err);
+                  } finally {
+                    setIsUploadingCrop(false);
+                    onExtracted(pendingCrop.result);
+                    setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
+                    setStatus("done");
+                    setPendingCrop(null);
                   }
-                  onExtracted(pendingCrop.result);
-                  setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
-                  setStatus("done");
-                  setPendingCrop(null);
                 }
               }}
               className="rounded-xl bg-[#2D3199] hover:bg-[#1C1F66] text-white font-black h-11 px-6 shadow-md"
             >
-              Confirm Crop
+              {isUploadingCrop ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Uploading...</> : "Confirm Crop"}
             </Button>
           </DialogFooter>
         </DialogContent>

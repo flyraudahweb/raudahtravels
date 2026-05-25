@@ -457,6 +457,11 @@ router.post("/agent/register-client", async (req, res) => {
   if (!packageId) return res.status(400).json({ error: "packageId is required" });
   if (!firstName && !lastName) return res.status(400).json({ error: "At least a first or last name is required" });
 
+  // Validate proof size: R2 URLs are short paths, but legacy base64 could be huge
+  if (paymentProofUrl && typeof paymentProofUrl === "string" && paymentProofUrl.startsWith("data:") && paymentProofUrl.length > 300_000) {
+    return res.status(400).json({ error: "Payment proof file is too large. Please upload via the file uploader." });
+  }
+
   const pkg = await db.query.packagesTable.findFirst({ where: eq(packagesTable.id, packageId) });
   if (!pkg) return res.status(404).json({ error: "Package not found" });
   if (pkg.status && pkg.status !== "active") return res.status(400).json({ error: "Package is not currently available" });

@@ -10,17 +10,7 @@ import { Label } from "@/components/ui/label";
 import { FileText, Upload, Plus, Eye } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-
-const MAX_FILE_BYTES = 5 * 1024 * 1024;
-
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
+import { uploadFile } from "@/lib/upload";
 
 const typeIcons: Record<string, string> = { passport: "🛂", visa: "🗂", ticket: "✈", voucher: "📋" };
 const statusConfig: Record<string, { label: string; color: string }> = {
@@ -44,17 +34,17 @@ export default function DashboardDocuments() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > MAX_FILE_BYTES) {
-      toast({ title: "File too large", description: "Please choose a file under 5 MB.", variant: "destructive" });
+    if (file.size > 3 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Please choose a file under 3 MB.", variant: "destructive" });
       e.target.value = "";
       return;
     }
     setFileLoading(true);
     try {
-      const base64 = await readFileAsBase64(file);
-      setForm((f) => ({ ...f, fileName: file.name, url: base64 }));
-    } catch {
-      toast({ title: "Could not read file", description: "Please try again.", variant: "destructive" });
+      const url = await uploadFile(file, "documents");
+      setForm((f) => ({ ...f, fileName: file.name, url }));
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message || "Please try again.", variant: "destructive" });
       e.target.value = "";
     } finally {
       setFileLoading(false);
@@ -130,7 +120,7 @@ export default function DashboardDocuments() {
                 {form.fileName && !fileLoading && (
                   <p className="text-xs text-emerald-600 mt-1 font-medium truncate">✓ {form.fileName}</p>
                 )}
-                <p className="text-xs text-muted-foreground mt-1">PDF, JPG or PNG — max 5 MB</p>
+                <p className="text-xs text-muted-foreground mt-1">PDF, JPG or PNG — max 3 MB</p>
               </div>
               <Button
                 type="submit"

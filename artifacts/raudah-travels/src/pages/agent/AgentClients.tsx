@@ -16,28 +16,34 @@ import {
 } from "lucide-react";
 import PassportScanner from "@/components/PassportScanner";
 import { useFormFieldConfig } from "@/hooks/useFormFieldConfig";
+import { uploadFile } from "@/lib/upload";
 
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-function FileUploadBox({ label, accept, value, onChange, previewType = "image" }: {
+function FileUploadBox({ label, accept, value, onChange, previewType = "image", folder = "documents" }: {
   label: string; accept: string; value: string; onChange: (v: string) => void; previewType?: "image" | "file";
+  folder?: "passports" | "photos" | "receipts" | "documents";
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const b64 = await readFileAsBase64(file);
-    onChange(b64);
+    if (file.size > 3 * 1024 * 1024) {
+      alert(`File too large (${(file.size / 1024).toFixed(0)}KB). Maximum size is 3MB.`);
+      e.target.value = "";
+      return;
+    }
+    setUploading(true);
+    try {
+      const url = await uploadFile(file, folder);
+      onChange(url);
+    } catch (err: any) {
+      alert(err.message || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
     e.target.value = "";
   };
-  const isImage = value && value.startsWith("data:image");
+  const isImage = value && (value.startsWith("data:image") || /\.(jpg|jpeg|png|webp)$/i.test(value));
   return (
     <div>
       <label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">{label}</label>
@@ -59,10 +65,13 @@ function FileUploadBox({ label, accept, value, onChange, previewType = "image" }
             </div>
           </div>
         ) : (
-          <button type="button" onClick={() => inputRef.current?.click()}
+          <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading}
             className="w-full rounded-xl border-2 border-dashed border-[#DCE3F0] hover:border-[#2D3199]/40 bg-[#F8FAFC] hover:bg-[#EEF0FF] transition-all p-4 flex flex-col items-center gap-1.5 text-center">
-            <Upload className="w-5 h-5 text-[#94A3B8]" />
-            <span className="text-xs font-semibold text-[#64748B]">Click to upload</span>
+            {uploading ? (
+              <><Loader2 className="w-5 h-5 text-[#2D3199] animate-spin" /><span className="text-xs font-semibold text-[#2D3199]">Uploading...</span></>
+            ) : (
+              <><Upload className="w-5 h-5 text-[#94A3B8]" /><span className="text-xs font-semibold text-[#64748B]">Click to upload</span><span className="text-[10px] text-[#94A3B8]">Max 3MB</span></>
+            )}
           </button>
         )}
         <input ref={inputRef} type="file" accept={accept} onChange={handleFile} className="hidden" />
@@ -861,6 +870,7 @@ export default function AgentClients() {
                       value={form.passportCopyUrl}
                       onChange={v => set("passportCopyUrl", v)}
                       previewType="image"
+                      folder="passports"
                     />
                   )}
                   {show("profilePhotoUrl") && (
@@ -870,6 +880,7 @@ export default function AgentClients() {
                       value={form.profilePhotoUrl}
                       onChange={v => set("profilePhotoUrl", v)}
                       previewType="image"
+                      folder="photos"
                     />
                   )}
                 </div>
@@ -1183,6 +1194,7 @@ export default function AgentClients() {
                             previewType="file"
                             value={form.paymentProofUrl}
                             onChange={v => set("paymentProofUrl", v)}
+                            folder="receipts"
                           />
 
                         </div>

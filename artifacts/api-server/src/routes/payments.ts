@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { paymentsTable, profilesTable, bookingsTable, visaApplicationsTable, siteSettingsTable, userActivityTable, packagesTable, agentsTable } from "@workspace/db";
+import { paymentsTable, profilesTable, bookingsTable, visaApplicationsTable, siteSettingsTable, userActivityTable, packagesTable, agentsTable, agentWalletsTable, walletTransactionsTable } from "@workspace/db";
 import { createNotification } from "../utils/notify.js";
 import { getAuth } from "@clerk/express";
 import { eq, and, sql, desc } from "drizzle-orm";
@@ -157,9 +157,14 @@ router.post("/payments", async (req, res) => {
   if (!bookingId || !amount || !method) return res.status(400).json({ error: "bookingId, amount, method required" });
 
   // Validate method is a known enum value
-  const ALLOWED_METHODS = ["bank_transfer", "cash", "pos", "paystack", "ussd"];
+  const ALLOWED_METHODS = ["bank_transfer", "cash", "paystack", "ussd", "wallet"];
   if (!ALLOWED_METHODS.includes(method)) {
     return res.status(400).json({ error: `Invalid payment method. Must be one of: ${ALLOWED_METHODS.join(", ")}` });
+  }
+
+  // Validate proof size: R2 URLs are short paths, but legacy base64 could be huge
+  if (proofUrl && typeof proofUrl === "string" && proofUrl.startsWith("data:") && proofUrl.length > 300_000) {
+    return res.status(400).json({ error: "Payment proof file is too large. Please upload via the file uploader." });
   }
 
   // Validate amount is a positive number
@@ -237,14 +242,14 @@ router.put("/payments/:id/verify", async (req, res) => {
 
     if (status === "verified" && p.bookingId) {
       // SECURITY FIX #7: Accumulate amountPaid instead of overwriting.
-      // This correctly handles partial/installment payments.
+      // PARTIAL PAYMENT FIX: Only transition to 'confirmed' when fully paid.
       const [booking] = await tx.update(bookingsTable)
         .set({
-          status: "confirmed",
           amountPaid: sql`${bookingsTable.amountPaid} + ${p.amount}`,
+          status: sql`CASE WHEN (${bookingsTable.amountPaid} + ${p.amount}::numeric) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed' ELSE ${bookingsTable.status} END`,
           updatedAt: new Date(),
         })
-        .where(and(eq(bookingsTable.id, p.bookingId), sql`status != 'confirmed'`))
+        .where(eq(bookingsTable.id, p.bookingId))
         .returning();
       if (booking) confirmedBooking = booking;
     }
@@ -253,7 +258,11 @@ router.put("/payments/:id/verify", async (req, res) => {
   if (!payment) return res.status(404).json({ error: "Payment not found or already processed" });
 
   if (confirmedBooking) {
-    await ensureVisaApplication(confirmedBooking.id, confirmedBooking.fullName, confirmedBooking.passportNumber);
+    // Only create visa application when booking becomes fully paid
+    const isFullyPaid = Number(confirmedBooking.amountPaid) >= Number(confirmedBooking.totalPrice);
+    if (isFullyPaid) {
+      await ensureVisaApplication(confirmedBooking.id, confirmedBooking.fullName, confirmedBooking.passportNumber);
+    }
     setImmediate(() => sendBookingReceipt(
       confirmedBooking!.id,
       Number(payment!.amount),
@@ -266,10 +275,12 @@ router.put("/payments/:id/verify", async (req, res) => {
   if (payment.userId) {
     const amt = `₦${Number(payment.amount).toLocaleString()}`;
     if (status === "verified") {
+      const isNowConfirmed = confirmedBooking && Number(confirmedBooking.amountPaid) >= Number(confirmedBooking.totalPrice);
+      const balance = confirmedBooking ? Number(confirmedBooking.totalPrice) - Number(confirmedBooking.amountPaid) : 0;
       setImmediate(() => createNotification(
         payment!.userId!,
         "Payment Verified ✓",
-        `Your payment of ${amt} has been verified. ${confirmedBooking ? "Your booking is now confirmed!" : ""}`.trim(),
+        `Your payment of ${amt} has been verified. ${isNowConfirmed ? "Your booking is now confirmed!" : balance > 0 ? `Outstanding balance: ₦${balance.toLocaleString()}` : ""}`.trim(),
         "payment",
       ));
     } else if (status === "rejected") {
@@ -454,19 +465,24 @@ router.post("/payments/paystack/verify", async (req, res) => {
     if (!p) return; // already processed
     updatedPayment = p;
 
-    // Confirm booking (idempotent — only updates if not already confirmed)
+    // PARTIAL PAYMENT FIX: Only transition to 'confirmed' when fully paid.
     if (bookingId) {
+      const paymentAmount = String(tx.amount / 100);
       const [booking] = await trx.update(bookingsTable)
         .set({
-          status: "confirmed",
-          amountPaid: sql`${bookingsTable.amountPaid} + ${String(tx.amount / 100)}`,
+          amountPaid: sql`${bookingsTable.amountPaid} + ${paymentAmount}::numeric`,
+          status: sql`CASE WHEN (${bookingsTable.amountPaid} + ${paymentAmount}::numeric) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed' ELSE ${bookingsTable.status} END`,
           updatedAt: new Date(),
         })
-        .where(and(eq(bookingsTable.id, bookingId), sql`status != 'confirmed'`))
+        .where(eq(bookingsTable.id, bookingId))
         .returning();
       if (booking) {
         confirmedBooking = booking;
-        await ensureVisaApplication(booking.id, booking.fullName, booking.passportNumber);
+        // Only create visa application when booking becomes fully paid
+        const isFullyPaid = Number(booking.amountPaid) >= Number(booking.totalPrice);
+        if (isFullyPaid) {
+          await ensureVisaApplication(booking.id, booking.fullName, booking.passportNumber);
+        }
       }
     }
   });
@@ -570,18 +586,22 @@ router.post("/payments/paystack/webhook", async (req, res) => {
 
           const bookingId = metadata?.bookingId ?? payment.bookingId;
           if (bookingId) {
-            // Accumulate (not overwrite) amountPaid; only transition non-confirmed bookings
+            // PARTIAL PAYMENT FIX: Only transition to 'confirmed' when fully paid.
             const [booking] = await tx.update(bookingsTable)
               .set({
-                status: "confirmed",
                 amountPaid: sql`${bookingsTable.amountPaid} + ${payment.amount}`,
+                status: sql`CASE WHEN (${bookingsTable.amountPaid} + ${payment.amount}::numeric) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed' ELSE ${bookingsTable.status} END`,
                 updatedAt: new Date(),
               })
-              .where(and(eq(bookingsTable.id, bookingId), sql`status != 'confirmed'`))
+              .where(eq(bookingsTable.id, bookingId))
               .returning();
             if (booking) {
               confirmedBooking = booking;
-              await ensureVisaApplication(booking.id, booking.fullName, booking.passportNumber);
+              // Only create visa application when booking becomes fully paid
+              const isFullyPaid = Number(booking.amountPaid) >= Number(booking.totalPrice);
+              if (isFullyPaid) {
+                await ensureVisaApplication(booking.id, booking.fullName, booking.passportNumber);
+              }
             }
           }
         });
@@ -640,6 +660,333 @@ router.post("/payments/paystack/webhook", async (req, res) => {
   });
 
   return;
+});
+
+// ── Admin: Record top-up payment for a booking ────────────────────────────────
+
+router.post("/payments/admin-record", async (req, res) => {
+  const { userId: clerkUserId } = getAuth(req);
+  if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
+  const actorProfile = await getProfileByClerkId(clerkUserId);
+  if (!actorProfile) return res.status(404).json({ error: "Profile not found" });
+  const isAdmin = ["admin", "super_admin", "staff"].includes(actorProfile.role);
+
+  // Also allow agents — they'll be verified against their booking below
+  let actorAgent: typeof agentsTable.$inferSelect | null = null;
+  if (!isAdmin) {
+    actorAgent = await db.query.agentsTable.findFirst({ where: eq(agentsTable.userId, actorProfile.id) });
+    if (!actorAgent || actorAgent.status !== "active") {
+      return res.status(403).json({ error: "Admin or active agent access required" });
+    }
+  }
+
+  const { bookingId, amount, method, reference, proofUrl, notes, markVerified } = req.body;
+  if (!bookingId || !amount || !method) return res.status(400).json({ error: "bookingId, amount, method required" });
+
+  const ALLOWED_METHODS = ["bank_transfer", "cash", "paystack", "ussd", "wallet"];
+  if (!ALLOWED_METHODS.includes(method)) {
+    return res.status(400).json({ error: `Invalid payment method. Must be one of: ${ALLOWED_METHODS.join(", ")}` });
+  }
+
+  // Validate proof size: R2 URLs are short paths, but legacy base64 could be huge
+  if (proofUrl && typeof proofUrl === "string" && proofUrl.startsWith("data:") && proofUrl.length > 300_000) {
+    return res.status(400).json({ error: "Payment proof file is too large. Please upload via the file uploader." });
+  }
+
+  const parsedAmount = parseFloat(String(amount));
+  if (isNaN(parsedAmount) || parsedAmount <= 0) {
+    return res.status(400).json({ error: "Amount must be a positive number" });
+  }
+
+  const booking = await db.query.bookingsTable.findFirst({ where: eq(bookingsTable.id, bookingId) });
+  if (!booking) return res.status(404).json({ error: "Booking not found" });
+
+  // Agent ownership check: agents can only record payments for their own bookings
+  if (actorAgent && booking.agentId !== actorAgent.id) {
+    return res.status(403).json({ error: "You can only record payments for your own client bookings" });
+  }
+
+  const outstandingBalance = Number(booking.totalPrice) - Number(booking.amountPaid);
+  if (outstandingBalance <= 0) {
+    return res.status(400).json({ error: "This booking is already fully paid" });
+  }
+  if (parsedAmount > outstandingBalance + 0.01) {
+    return res.status(400).json({
+      error: `Amount ₦${parsedAmount.toLocaleString()} exceeds the outstanding balance of ₦${outstandingBalance.toLocaleString()}`,
+    });
+  }
+
+  // Determine verification: admin can choose, agent wallet auto-verifies, other agent methods don't
+  const isWalletPayment = method === "wallet" && !!actorAgent;
+  const shouldVerify = isAdmin ? !!markVerified : isWalletPayment;
+
+  // Wallet balance check (agent wallet payments only)
+  if (isWalletPayment) {
+    const wallet = await db.query.agentWalletsTable.findFirst({ where: eq(agentWalletsTable.agentId, actorAgent!.id) });
+    const walletBalance = Number(wallet?.balance || 0);
+    if (walletBalance < parsedAmount) {
+      return res.status(400).json({
+        error: `Insufficient wallet balance. Available: ₦${walletBalance.toLocaleString()}, Required: ₦${parsedAmount.toLocaleString()}`,
+      });
+    }
+  }
+
+  let payment: typeof paymentsTable.$inferSelect | undefined;
+  let updatedBooking: typeof bookingsTable.$inferSelect | undefined;
+
+  await db.transaction(async (tx) => {
+    // For wallet payments, lock the wallet row to prevent race conditions
+    if (isWalletPayment && actorAgent) {
+      const lockResult = await tx.execute(
+        sql`SELECT * FROM agent_wallets WHERE agent_id = ${actorAgent.id} FOR UPDATE`
+      );
+      const walletRow = (lockResult as any).rows?.[0] ?? (Array.isArray(lockResult) ? lockResult[0] : null);
+      if (!walletRow) throw new Error("Wallet not found");
+      const currentBalance = Number((walletRow as any).balance);
+      if (currentBalance < parsedAmount) throw new Error("Insufficient wallet balance");
+
+      // Debit wallet
+      await tx.update(agentWalletsTable)
+        .set({ balance: sql`balance - ${parsedAmount}`, updatedAt: new Date() })
+        .where(eq(agentWalletsTable.agentId, actorAgent.id));
+
+      // Record wallet transaction
+      await tx.insert(walletTransactionsTable).values({
+        id: randomUUID(),
+        agentId: actorAgent.id,
+        amount: String(-parsedAmount),
+        type: "booking_payment",
+        reference: `TOPUP-${randomUUID().slice(0, 8).toUpperCase()}`,
+        description: `Top-up payment for ${booking.fullName || "Client"} — Ref: ${booking.reference}`,
+      });
+    }
+
+    const [p] = await tx.insert(paymentsTable).values({
+      id: randomUUID(),
+      bookingId,
+      userId: booking.userId,
+      amount: String(parsedAmount),
+      method,
+      status: shouldVerify ? "verified" : "pending",
+      reference: reference || `TOPUP-${randomUUID().slice(0, 8).toUpperCase()}`,
+      proofUrl: proofUrl || null,
+      notes: notes || (isWalletPayment ? `Wallet top-up by agent (${actorAgent!.businessName})` : "Top-up payment recorded by admin"),
+      verifiedBy: shouldVerify ? actorProfile.id : null,
+      verifiedAt: shouldVerify ? new Date() : null,
+    }).returning();
+    payment = p;
+
+    if (shouldVerify) {
+      // Accumulate amountPaid; only transition to 'confirmed' when fully paid
+      const [b] = await tx.update(bookingsTable)
+        .set({
+          amountPaid: sql`${bookingsTable.amountPaid} + ${String(parsedAmount)}::numeric`,
+          status: sql`CASE WHEN (${bookingsTable.amountPaid} + ${String(parsedAmount)}::numeric) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed' ELSE ${bookingsTable.status} END`,
+          updatedAt: new Date(),
+        })
+        .where(eq(bookingsTable.id, bookingId))
+        .returning();
+      if (b) {
+        updatedBooking = b;
+        const isFullyPaid = Number(b.amountPaid) >= Number(b.totalPrice);
+        if (isFullyPaid) {
+          await ensureVisaApplication(b.id, b.fullName, b.passportNumber);
+        }
+      }
+    }
+  });
+
+  // Notifications
+  if (payment && booking.userId) {
+    const amt = `₦${parsedAmount.toLocaleString()}`;
+    const isNowConfirmed = updatedBooking && Number(updatedBooking.amountPaid) >= Number(updatedBooking.totalPrice);
+    const balance = updatedBooking ? Number(updatedBooking.totalPrice) - Number(updatedBooking.amountPaid) : outstandingBalance - parsedAmount;
+    if (markVerified) {
+      setImmediate(() => createNotification(
+        booking.userId!,
+        "Payment Recorded & Verified ✓",
+        `A payment of ${amt} has been recorded and verified. ${isNowConfirmed ? "Your booking is now confirmed!" : balance > 0 ? `Outstanding balance: ₦${balance.toLocaleString()}` : ""}`.trim(),
+        "payment",
+      ));
+    } else {
+      setImmediate(() => createNotification(
+        booking.userId!,
+        "Payment Recorded",
+        `A payment of ${amt} has been recorded and is pending verification.`,
+        "payment",
+      ));
+    }
+  }
+
+  // Send receipt if verified & confirmed
+  if (updatedBooking && payment) {
+    setImmediate(() => sendBookingReceipt(updatedBooking!.id, parsedAmount, payment!.reference ?? undefined, method));
+  }
+
+  // Activity log
+  try {
+    await db.insert(userActivityTable).values({
+      id: randomUUID(),
+      userId: actorProfile.id,
+      eventType: markVerified ? "payment_verified" : "payment_recorded",
+      bookingId,
+      metadata: {
+        actorName: actorProfile.fullName,
+        actorRole: actorProfile.role,
+        amount: parsedAmount,
+        reference: payment?.reference,
+        targetName: booking.fullName,
+        targetPhone: booking.phone,
+      },
+    });
+  } catch (_) { /* non-blocking */ }
+
+  return res.status(201).json({
+    payment: payment ? toPaymentResponse(payment) : null,
+    booking: updatedBooking ? {
+      id: updatedBooking.id,
+      status: updatedBooking.status,
+      totalPrice: Number(updatedBooking.totalPrice),
+      amountPaid: Number(updatedBooking.amountPaid),
+      balance: Number(updatedBooking.totalPrice) - Number(updatedBooking.amountPaid),
+    } : null,
+  });
+});
+
+// ── Outstanding balances / debtors list ───────────────────────────────────────
+
+router.get("/payments/outstanding", async (req, res) => {
+  const { userId: clerkUserId } = getAuth(req);
+  if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
+  const profile = await getProfileByClerkId(clerkUserId);
+  if (!profile) return res.status(404).json({ error: "Profile not found" });
+  const isAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
+  if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+
+  const { search, limit = "50", offset = "0" } = req.query as Record<string, string>;
+
+  const conditions: any[] = [
+    sql`${bookingsTable.amountPaid}::numeric < ${bookingsTable.totalPrice}::numeric`,
+    sql`${bookingsTable.status} != 'cancelled'`,
+  ];
+
+  if (search) {
+    const q = `%${search}%`;
+    conditions.push(
+      sql`(${bookingsTable.fullName} ILIKE ${q} OR ${bookingsTable.reference} ILIKE ${q} OR ${bookingsTable.phone} ILIKE ${q} OR ${bookingsTable.passportNumber} ILIKE ${q})`,
+    );
+  }
+
+  const where = and(...conditions);
+
+  const rows = await db.select({
+    booking: {
+      id: bookingsTable.id,
+      reference: bookingsTable.reference,
+      fullName: bookingsTable.fullName,
+      phone: bookingsTable.phone,
+      status: bookingsTable.status,
+      totalPrice: bookingsTable.totalPrice,
+      amountPaid: bookingsTable.amountPaid,
+      createdAt: bookingsTable.createdAt,
+      userId: bookingsTable.userId,
+    },
+    packageName: packagesTable.name,
+    packageType: packagesTable.type,
+    agentName: agentsTable.businessName,
+  })
+    .from(bookingsTable)
+    .leftJoin(packagesTable, eq(bookingsTable.packageId, packagesTable.id))
+    .leftJoin(agentsTable, eq(bookingsTable.agentId, agentsTable.id))
+    .where(where)
+    .orderBy(sql`(${bookingsTable.totalPrice}::numeric - ${bookingsTable.amountPaid}::numeric) DESC`)
+    .limit(parseInt(limit))
+    .offset(parseInt(offset));
+
+  const [{ count }] = await db.select({ count: sql<number>`count(*)` })
+    .from(bookingsTable)
+    .where(where);
+
+  // Compute totals
+  const [totals] = await db.select({
+    totalOutstanding: sql<string>`COALESCE(SUM(${bookingsTable.totalPrice}::numeric - ${bookingsTable.amountPaid}::numeric), 0)`,
+    totalOwed: sql<string>`COALESCE(SUM(${bookingsTable.totalPrice}::numeric), 0)`,
+    totalPaid: sql<string>`COALESCE(SUM(${bookingsTable.amountPaid}::numeric), 0)`,
+  })
+    .from(bookingsTable)
+    .where(where);
+
+  const bookings = rows.map(r => ({
+    ...r.booking,
+    totalPrice: Number(r.booking.totalPrice),
+    amountPaid: Number(r.booking.amountPaid),
+    balance: Number(r.booking.totalPrice) - Number(r.booking.amountPaid),
+    packageName: r.packageName,
+    packageType: r.packageType,
+    agentName: r.agentName,
+  }));
+
+  return res.json({
+    bookings,
+    total: Number(count),
+    summary: {
+      totalOutstanding: Number(totals.totalOutstanding),
+      totalOwed: Number(totals.totalOwed),
+      totalPaid: Number(totals.totalPaid),
+      count: Number(count),
+    },
+  });
+});
+
+// ── Payment history for a booking ─────────────────────────────────────────────
+
+router.get("/payments/booking/:bookingId", async (req, res) => {
+  const { userId: clerkUserId } = getAuth(req);
+  if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
+  const profile = await getProfileByClerkId(clerkUserId);
+  if (!profile) return res.status(404).json({ error: "Profile not found" });
+
+  const { bookingId } = req.params;
+  const booking = await db.query.bookingsTable.findFirst({ where: eq(bookingsTable.id, bookingId) });
+  if (!booking) return res.status(404).json({ error: "Booking not found" });
+
+  // Allow admin/staff, booking owner, or booking's agent
+  const isAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
+  const isOwner = booking.userId === profile.id;
+  let isAgent = false;
+  if (booking.agentId) {
+    const agent = await db.query.agentsTable.findFirst({ where: eq(agentsTable.userId, profile.id) });
+    isAgent = agent?.id === booking.agentId;
+  }
+  if (!isAdmin && !isOwner && !isAgent) return res.status(403).json({ error: "Forbidden" });
+
+  const payments = await db.select()
+    .from(paymentsTable)
+    .where(eq(paymentsTable.bookingId, bookingId))
+    .orderBy(desc(paymentsTable.createdAt));
+
+  return res.json({
+    payments: payments.map(p => ({
+      id: p.id,
+      amount: Number(p.amount),
+      method: p.method,
+      status: p.status,
+      reference: p.reference,
+      proofUrl: p.proofUrl,
+      notes: p.notes,
+      createdAt: p.createdAt,
+      verifiedAt: p.verifiedAt,
+    })),
+    booking: {
+      id: booking.id,
+      reference: booking.reference,
+      fullName: booking.fullName,
+      totalPrice: Number(booking.totalPrice),
+      amountPaid: Number(booking.amountPaid),
+      balance: Number(booking.totalPrice) - Number(booking.amountPaid),
+      status: booking.status,
+    },
+  });
 });
 
 export default router;

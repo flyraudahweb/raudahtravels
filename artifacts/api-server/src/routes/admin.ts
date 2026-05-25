@@ -2033,6 +2033,11 @@ router.post("/admin/book-pilgrim", async (req, res) => {
     mahramName, mahramRelationship, mahramPassport,
   } = req.body;
 
+  // Validate proof size: R2 URLs are short paths, but legacy base64 could be huge
+  if (paymentProofUrl && typeof paymentProofUrl === "string" && paymentProofUrl.startsWith("data:") && paymentProofUrl.length > 300_000) {
+    return res.status(400).json({ error: "Payment proof file is too large. Please upload via the file uploader." });
+  }
+
   // Resolve the staff member who is performing this registration
   let staffProfileId: string | undefined;
   try {
@@ -2107,7 +2112,8 @@ router.post("/admin/book-pilgrim", async (req, res) => {
         packageDateId:                 nullify(packageDateId) as string | undefined,
         agentId:                       nullify(agentId) as string | undefined,
         registeredByStaffId:           staffProfileId || undefined,
-        status: markVerified ? "confirmed" : "pending",
+        // PARTIAL PAYMENT FIX: Only confirm booking when fully paid
+        status: markVerified && (Number(amountPaid) || price) >= price ? "confirmed" : "pending",
         totalPrice: String(price),
         amountPaid: markVerified ? String(amountPaid || price) : String(amountPaid || 0),
         pilgrimCount: 1,
@@ -2163,7 +2169,9 @@ router.post("/admin/book-pilgrim", async (req, res) => {
         .set({ currentBookings: sql`${packagesTable.currentBookings} + 1` })
         .where(eq(packagesTable.id, packageId));
 
-      if (markVerified) {
+      // Only create visa application when booking is fully paid
+      const isFullyPaid = Number(booking.amountPaid) >= price;
+      if (markVerified && isFullyPaid) {
         const existingVisa = await tx.query.visaApplicationsTable.findFirst({
           where: eq(visaApplicationsTable.bookingId, booking.id),
         });

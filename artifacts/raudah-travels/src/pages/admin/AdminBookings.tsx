@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   BookOpen, CalendarDays, Users, Edit2, CheckCircle2, Clock, XCircle,
   Award, Search, ChevronDown, ChevronUp, CreditCard, SlidersHorizontal,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, Plus,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -65,6 +65,15 @@ export default function AdminBookings() {
   const [editStatus, setEditStatus] = useState<"pending" | "confirmed" | "cancelled" | "completed">("confirmed");
   const [editNotes, setEditNotes] = useState("");
 
+  // Record Payment dialog state
+  const [recordPayBookingId, setRecordPayBookingId] = useState<string | null>(null);
+  const [recordPayAmount, setRecordPayAmount] = useState("");
+  const [recordPayMethod, setRecordPayMethod] = useState("cash");
+  const [recordPayRef, setRecordPayRef] = useState("");
+  const [recordPayNotes, setRecordPayNotes] = useState("");
+  const [recordPayVerify, setRecordPayVerify] = useState(true);
+  const [recordPayLoading, setRecordPayLoading] = useState(false);
+
   // Fetch all bookings with a large limit so admin sees everything
   const { data, isLoading } = useListBookings(
     { limit: 500 } as Record<string, unknown>,
@@ -120,6 +129,47 @@ export default function AdminBookings() {
     setEditingId(b.id);
     setEditStatus(b.status as typeof editStatus);
     setEditNotes(b.notes || "");
+  };
+
+  const openRecordPay = (b: typeof allBookings[0]) => {
+    const bal = b.totalPrice - b.amountPaid;
+    setRecordPayBookingId(b.id);
+    setRecordPayAmount(bal.toString());
+    setRecordPayMethod("cash");
+    setRecordPayRef("");
+    setRecordPayNotes("");
+    setRecordPayVerify(true);
+  };
+
+  const handleRecordPay = async () => {
+    if (!recordPayBookingId) return;
+    setRecordPayLoading(true);
+    try {
+      const res = await fetch("/api/payments/admin-record", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          bookingId: recordPayBookingId,
+          amount: parseFloat(recordPayAmount),
+          method: recordPayMethod,
+          reference: recordPayRef || undefined,
+          notes: recordPayNotes || undefined,
+          markVerified: recordPayVerify,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: "Failed to record payment" }));
+        throw new Error(err.message || "Failed to record payment");
+      }
+      toast({ title: "Payment recorded successfully" });
+      qc.invalidateQueries({ queryKey: getListBookingsQueryKey({ limit: 500 }) });
+      setRecordPayBookingId(null);
+    } catch (e: any) {
+      toast({ title: e.message || "Failed to record payment", variant: "destructive" });
+    } finally {
+      setRecordPayLoading(false);
+    }
   };
 
   // Generate page numbers to show (up to 7 slots with ellipsis)
@@ -347,11 +397,17 @@ export default function AdminBookings() {
                           <p className="text-sm text-[#334155]">{b.notes}</p>
                         </div>
                       )}
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
                         <button onClick={() => openEdit(b)}
                           className="flex items-center gap-2 px-4 py-2 bg-[#2D3199] hover:bg-[#1C1F66] text-white text-xs font-bold rounded-xl transition-colors">
                           <Edit2 className="w-3.5 h-3.5" /> Update Status
                         </button>
+                        {balance > 0 && (
+                          <button onClick={() => openRecordPay(b)}
+                            className="flex items-center gap-2 px-4 py-2 bg-[#FF3B00] hover:bg-[#CC2E00] text-white text-xs font-bold rounded-xl transition-colors">
+                            <Plus className="w-3.5 h-3.5" /> Record Payment
+                          </button>
+                        )}
                         {balance > 0 && b.status === "pending" && (
                           <div className="flex items-center gap-2 px-4 py-2 bg-[#FFF5F2] border border-[#FECDBA] text-[#C2410C] text-xs font-bold rounded-xl">
                             <CreditCard className="w-3.5 h-3.5" /> ₦{balance.toLocaleString()} outstanding
@@ -462,6 +518,103 @@ export default function AdminBookings() {
               {updateBooking.isPending ? "Saving…" : "Save Changes"}
             </button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Record Payment dialog */}
+      <Dialog open={!!recordPayBookingId} onOpenChange={o => { if (!o) setRecordPayBookingId(null); }}>
+        <DialogContent className="sm:max-w-md rounded-3xl p-0 overflow-hidden">
+          {(() => {
+            const rpBooking = allBookings.find(bk => bk.id === recordPayBookingId);
+            const rpBalance = rpBooking ? rpBooking.totalPrice - rpBooking.amountPaid : 0;
+            return (
+              <>
+                <DialogHeader className="px-6 pt-6 pb-4 border-b border-[#F1F5F9]">
+                  <DialogTitle className="font-black text-[#0F172A]">Record Payment</DialogTitle>
+                  {rpBooking && (
+                    <div className="mt-1.5 space-y-0.5">
+                      <p className="text-sm text-[#334155] font-semibold">{rpBooking.user?.fullName || "Pilgrim"}</p>
+                      <p className="text-xs text-[#94A3B8] font-mono truncate">Ref: {rpBooking.id}</p>
+                      <p className="text-xs font-bold text-[#FF3B00]">Balance: ₦{rpBalance.toLocaleString()}</p>
+                    </div>
+                  )}
+                </DialogHeader>
+                <div className="px-6 py-5 space-y-4">
+                  {/* Amount */}
+                  <div>
+                    <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Amount (₦)</Label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={recordPayAmount}
+                      onChange={e => setRecordPayAmount(e.target.value)}
+                      className="w-full mt-1.5 px-3 py-2.5 text-sm rounded-xl border border-[#DCE3F0] bg-white focus:outline-none focus:ring-2 focus:ring-[#2D3199]/20 focus:border-[#2D3199] font-bold text-[#0F172A]"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  {/* Payment Method */}
+                  <div>
+                    <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Payment Method</Label>
+                    <Select value={recordPayMethod} onValueChange={setRecordPayMethod}>
+                      <SelectTrigger className="mt-1.5 rounded-xl border-[#DCE3F0]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">Cash</SelectItem>
+                        <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {/* Reference */}
+                  <div>
+                    <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Reference <span className="text-[#94A3B8] normal-case font-normal">(optional)</span></Label>
+                    <input
+                      type="text"
+                      value={recordPayRef}
+                      onChange={e => setRecordPayRef(e.target.value)}
+                      className="w-full mt-1.5 px-3 py-2.5 text-sm rounded-xl border border-[#DCE3F0] bg-white focus:outline-none focus:ring-2 focus:ring-[#2D3199]/20 focus:border-[#2D3199] text-[#334155]"
+                      placeholder="e.g. transaction ID or receipt number"
+                    />
+                  </div>
+                  {/* Notes */}
+                  <div>
+                    <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Notes <span className="text-[#94A3B8] normal-case font-normal">(optional)</span></Label>
+                    <Textarea
+                      value={recordPayNotes}
+                      onChange={e => setRecordPayNotes(e.target.value)}
+                      className="mt-1.5 rounded-xl border-[#DCE3F0] resize-none"
+                      placeholder="Any additional details…"
+                      rows={2}
+                    />
+                  </div>
+                  {/* Mark as Verified */}
+                  <label className="flex items-center gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={recordPayVerify}
+                      onChange={e => setRecordPayVerify(e.target.checked)}
+                      className="w-4 h-4 rounded border-[#DCE3F0] text-[#2D3199] focus:ring-[#2D3199]/20"
+                    />
+                    <span className="text-sm font-semibold text-[#334155]">Mark as Verified</span>
+                  </label>
+                </div>
+                <div className="px-6 pb-5 flex gap-3">
+                  <button onClick={() => setRecordPayBookingId(null)}
+                    className="flex-1 py-2.5 rounded-xl border border-[#DCE3F0] text-[#64748B] text-sm font-bold hover:bg-[#F8FAFC] transition-colors">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleRecordPay}
+                    disabled={recordPayLoading || !recordPayAmount || parseFloat(recordPayAmount) <= 0}
+                    className="flex-1 py-2.5 rounded-xl bg-[#FF3B00] hover:bg-[#CC2E00] text-white text-sm font-bold transition-colors disabled:opacity-50"
+                  >
+                    {recordPayLoading ? "Recording…" : "Record Payment"}
+                  </button>
+                </div>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

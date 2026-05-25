@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { uploadFile } from "@/lib/upload";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,14 +83,7 @@ async function bookPilgrim(data: any): Promise<{ booking: any; reference: string
   return r.json();
 }
 
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
+
 
 function StepIndicator({ current }: { current: number }) {
   return (
@@ -121,22 +115,35 @@ function StepIndicator({ current }: { current: number }) {
 }
 
 function FileUploadBox({
-  label, accept, value, onChange, previewType = "image",
+  label, accept, value, onChange, previewType = "image", folder = "documents",
 }: {
-  label: string; accept: string; value: string; onChange: (v: string) => void; previewType?: "image" | "file";
+  label: string; accept: string; value: string; onChange: (v: string) => void; previewType?: "image" | "file"; folder?: "passports" | "photos" | "receipts" | "documents";
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const b64 = await readFileAsBase64(file);
-    onChange(b64);
+    if (file.size > 3 * 1024 * 1024) {
+      alert(`File too large (${(file.size / 1024).toFixed(0)}KB). Maximum size is 3MB.`);
+      e.target.value = "";
+      return;
+    }
+    setUploading(true);
+    try {
+      const url = await uploadFile(file, folder);
+      onChange(url);
+    } catch (err: any) {
+      alert(err.message || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
     e.target.value = "";
   };
 
-  const isImage = value && value.startsWith("data:image");
-  const isPdf   = value && value.startsWith("data:application/pdf");
+  const isImage = value && (value.startsWith("data:image") || /\.(jpg|jpeg|png|webp)$/i.test(value));
+  const isPdf   = value && (value.startsWith("data:application/pdf") || /\.pdf$/i.test(value));
 
   return (
     <div>
@@ -191,8 +198,8 @@ function FileUploadBox({
             className="w-full rounded-xl border-2 border-dashed border-[#DCE3F0] hover:border-[#2D3199]/40 bg-[#F8FAFC] hover:bg-[#EEF0FF] transition-all p-5 flex flex-col items-center gap-2 text-center"
           >
             <Upload className="w-6 h-6 text-[#94A3B8]" />
-            <span className="text-xs font-semibold text-[#64748B]">Click to upload</span>
-            <span className="text-[10px] text-[#94A3B8]">{accept.includes("pdf") ? "JPG, PNG or PDF" : "JPG or PNG"}</span>
+            <span className="text-xs font-semibold text-[#64748B]">{uploading ? "Uploading…" : "Click to upload"}</span>
+            <span className="text-[10px] text-[#94A3B8]">{accept.includes("pdf") ? "JPG, PNG or PDF" : "JPG or PNG"} · Max 3MB</span>
           </button>
         )}
         <input ref={inputRef} type="file" accept={accept} onChange={handleFile} className="hidden" />
@@ -673,6 +680,7 @@ export default function AdminBookPilgrim() {
                   value={pilgrim.passportCopyUrl}
                   onChange={set("passportCopyUrl")}
                   previewType="image"
+                  folder="passports"
                 />
               )}
               {show("profilePhotoUrl") && (
@@ -682,6 +690,7 @@ export default function AdminBookPilgrim() {
                   value={pilgrim.profilePhotoUrl}
                   onChange={set("profilePhotoUrl")}
                   previewType="image"
+                  folder="photos"
                 />
               )}
             </div>
@@ -971,7 +980,7 @@ export default function AdminBookPilgrim() {
                       previewType="file"
                       value={payment.paymentProofUrl}
                       onChange={v => setPayment(p => ({ ...p, paymentProofUrl: v }))}
-                      hint="Upload the receipt or screenshot"
+                      folder="receipts"
                     />
                   </div>
                 )}
@@ -983,13 +992,27 @@ export default function AdminBookPilgrim() {
                     placeholder={selectedPkg ? String(selectedPkg.price) : "0"}
                     className="mt-1 rounded-xl font-mono" />
                 </div>
+                {selectedPkg && payment.amountPaid && Number(payment.amountPaid) > 0 && Number(payment.amountPaid) < Number(selectedPkg.price) && payment.method !== "online" && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                    <p className="text-sm text-amber-700 font-semibold">
+                      💡 Partial Payment: ₦{Number(payment.amountPaid).toLocaleString()} of ₦{Number(selectedPkg.price).toLocaleString()} — Booking will remain pending until balance is cleared.
+                    </p>
+                    <p className="text-sm text-amber-700 mt-1">
+                      Balance remaining: ₦{(Number(selectedPkg.price) - Number(payment.amountPaid)).toLocaleString()}
+                    </p>
+                  </div>
+                )}
                 <div className="flex items-center gap-3 p-4 bg-emerald-50 rounded-xl border border-emerald-200">
                   <input type="checkbox" checked={payment.markVerified}
                     onChange={e => setPayment(p => ({ ...p, markVerified: e.target.checked }))}
                     id="markVerified" className="w-4 h-4 accent-emerald-600" />
                   <label htmlFor="markVerified" className="flex-1 cursor-pointer">
                     <span className="text-sm font-bold text-emerald-700 block">Mark as Verified & Confirmed</span>
-                    <span className="text-xs text-emerald-600">Automatically confirm booking and verify payment</span>
+                    <span className="text-xs text-emerald-600">
+                      {selectedPkg && payment.amountPaid && Number(payment.amountPaid) > 0 && Number(payment.amountPaid) < Number(selectedPkg.price)
+                        ? "Verify this deposit — Booking will remain pending until balance is cleared"
+                        : "Automatically confirm booking and verify payment"}
+                    </span>
                   </label>
                 </div>
               </>
