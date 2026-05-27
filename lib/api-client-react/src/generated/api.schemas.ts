@@ -209,6 +209,46 @@ export interface CreateBookingBody {
   fullName?: string | null;
   passportNumber?: string | null;
   phone?: string | null;
+  // Extended pilgrim fields (accepted by backend via ...safePilgrimFields)
+  civility?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  passportIssueDate?: string | null;
+  passportExpiry?: string | null;
+  passportIssuingAuthority?: string | null;
+  passportCopyUrl?: string | null;
+  profilePhotoUrl?: string | null;
+  visaNumber?: string | null;
+  dateOfBirth?: string | null;
+  gender?: string | null;
+  nationality?: string | null;
+  placeOfBirth?: string | null;
+  ethnicGroup?: string | null;
+  maritalStatus?: string | null;
+  levelOfStudy?: string | null;
+  occupation?: string | null;
+  observation?: string | null;
+  partner?: string | null;
+  underCover?: string | null;
+  email?: string | null;
+  country?: string | null;
+  city?: string | null;
+  address?: string | null;
+  roomPreference?: string | null;
+  roomSurcharge?: number;
+  departureCity?: string | null;
+  specialRequests?: string | null;
+  pilgrimType?: string;
+  parentBookingId?: string | null;
+  batchId?: string | null;
+  fathersName?: string | null;
+  mothersName?: string | null;
+  mahramName?: string | null;
+  mahramRelationship?: string | null;
+  mahramPassport?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
+  emergencyContactRelationship?: string | null;
 }
 
 export type UpdateBookingBodyStatus =

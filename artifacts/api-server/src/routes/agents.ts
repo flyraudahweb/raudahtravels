@@ -452,6 +452,8 @@ router.post("/agent/register-client", async (req, res) => {
     emergencyContactName, emergencyContactPhone, emergencyContactRelationship,
     fathersName, mothersName, mahramName, mahramRelationship, mahramPassport,
     paymentMethod, amountPaid, paymentReference, paymentProofUrl,
+    // New: room surcharge, pilgrim type, batch support
+    roomSurcharge: clientRoomSurcharge, pilgrimType, parentBookingId, batchId,
   } = req.body;
 
   if (!packageId) return res.status(400).json({ error: "packageId is required" });
@@ -511,6 +513,9 @@ router.post("/agent/register-client", async (req, res) => {
 
         // SECURITY: Calculate price inside transaction for atomicity with discount
         let price = Number(pkg.price);
+        // Apply room surcharge
+        const surcharge = Math.max(0, Number(clientRoomSurcharge) || 0);
+        price += surcharge;
         const agentDiscount = await tx.query.agentPackageDiscountsTable.findFirst({
           where: and(
             eq(agentPackageDiscountsTable.agentId, agent.id),
@@ -566,6 +571,8 @@ router.post("/agent/register-client", async (req, res) => {
           fathersName: nullify(fathersName), mothersName: nullify(mothersName),
           mahramName: nullify(mahramName), mahramRelationship: nullify(mahramRelationship),
           mahramPassport: nullify(mahramPassport),
+          roomSurcharge: String(surcharge), pilgrimType: pilgrimType || "adult",
+          parentBookingId: nullify(parentBookingId), batchId: nullify(batchId),
         }).returning();
 
         // Increment package capacity
@@ -653,6 +660,9 @@ router.post("/agent/register-client", async (req, res) => {
 
       // SECURITY: Calculate price inside transaction for atomicity with discount
       let price = Number(pkg.price);
+      // Apply room surcharge
+      const surcharge = Math.max(0, Number(clientRoomSurcharge) || 0);
+      price += surcharge;
       const agentDiscount = await tx.query.agentPackageDiscountsTable.findFirst({
         where: and(
           eq(agentPackageDiscountsTable.agentId, agent.id),
@@ -725,6 +735,10 @@ router.post("/agent/register-client", async (req, res) => {
         mahramName: nullify(mahramName),
         mahramRelationship: nullify(mahramRelationship),
         mahramPassport: nullify(mahramPassport),
+        roomSurcharge: String(surcharge),
+        pilgrimType: pilgrimType || "adult",
+        parentBookingId: nullify(parentBookingId),
+        batchId: nullify(batchId),
       }).returning();
 
       // Only increment capacity for non-online payments (online payments

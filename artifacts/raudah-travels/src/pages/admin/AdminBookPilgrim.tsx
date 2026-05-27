@@ -9,11 +9,14 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   CheckCircle2, ChevronRight, ChevronLeft, UserPlus, Package, User,
   CreditCard, BookOpen, Phone, Camera, FileText, Upload, X, AlertTriangle, Search,
+  WifiOff, Wifi, Baby, AlertCircle, Loader2,
 } from "lucide-react";
 import PassportScanner from "@/components/PassportScanner";
+import BatchPassportUpload, { type BatchPilgrim } from "@/components/BatchPassportUpload";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
-import { useFormFieldConfig } from "@/hooks/useFormFieldConfig";
+import { useFormFieldConfig, validateRequiredFields } from "@/hooks/useFormFieldConfig";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
 declare global {
   interface Window {
@@ -295,7 +298,15 @@ export default function AdminBookPilgrim() {
   const [pkgSearch, setPkgSearch] = useState("");
   const [phoneCode, setPhoneCode] = useState("+234");
   const [isRestored, setIsRestored] = useState(false);
+  const [pilgrimType, setPilgrimType] = useState<"adult" | "child" | "infant">("adult");
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchPilgrims, setBatchPilgrims] = useState<BatchPilgrim[]>([]);
+  const [batchStep, setBatchStep] = useState<"upload" | "review">("upload");
+  const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
+  const [batchProgress, setBatchProgress] = useState(0);
+  const [batchResults, setBatchResults] = useState<{ name: string; success: boolean; reference?: string; error?: string }[]>([]);
   const paystackScriptLoaded = useRef(false);
+  const { isOnline, wasOffline } = useOnlineStatus();
 
   // Restore draft on mount
   useEffect(() => {
@@ -309,6 +320,7 @@ export default function AdminBookPilgrim() {
         if (parsed.payment) setPayment(parsed.payment);
         if (parsed.step) setStep(parsed.step);
         if (parsed.phoneCode) setPhoneCode(parsed.phoneCode);
+        if (parsed.pilgrimType) setPilgrimType(parsed.pilgrimType);
       }
     } catch (e) {
       // ignore
@@ -324,8 +336,8 @@ export default function AdminBookPilgrim() {
       localStorage.removeItem("admin_pilgrim_draft");
       return;
     }
-    localStorage.setItem("admin_pilgrim_draft", JSON.stringify({ packageId, pilgrim, travel, payment, step, phoneCode }));
-  }, [packageId, pilgrim, travel, payment, step, phoneCode, isRestored]);
+    localStorage.setItem("admin_pilgrim_draft", JSON.stringify({ packageId, pilgrim, travel, payment, step, phoneCode, pilgrimType }));
+  }, [packageId, pilgrim, travel, payment, step, phoneCode, isRestored, pilgrimType]);
 
   const { data: pkgData } = useQuery({ queryKey: ["packages-for-booking"], queryFn: fetchPackages });
   
@@ -416,6 +428,8 @@ export default function AdminBookPilgrim() {
   const bookMutation = useMutation({
     mutationFn: bookPilgrim,
     onSuccess: async (data) => {
+      // Skip automatic navigation during batch submission — batch handler manages its own flow
+      if (isBatchSubmitting) return;
       if (payment.method === "online") {
         await handlePaystackPayment(data.booking.id, data.booking);
       } else {
@@ -424,7 +438,9 @@ export default function AdminBookPilgrim() {
         setStep(6);
       }
     },
-    onError: () => toast({ title: "Failed to create booking", variant: "destructive" }),
+    onError: () => {
+      if (!isBatchSubmitting) toast({ title: "Failed to create booking", variant: "destructive" });
+    },
   });
 
   const handleFinish = () => {
@@ -445,6 +461,7 @@ export default function AdminBookPilgrim() {
       markVerified: payment.method === "online" ? false : payment.markVerified,
       amountPaid: payment.method === "online" ? 0 : (payment.amountPaid ? Number(payment.amountPaid) : undefined),
       totalPrice: selectedPkg?.price,
+      pilgrimType,
     });
   };
 
@@ -453,8 +470,11 @@ export default function AdminBookPilgrim() {
       toast({ title: "Please select a package", variant: "destructive" }); return;
     }
     if (step === 2) {
-      if (req("passportNumber") && !pilgrim.passportNumber) { toast({ title: "Passport number is required", variant: "destructive" }); return; }
-      if (req("passportExpiry") && !pilgrim.passportExpiry) { toast({ title: "Passport expiry date is required", variant: "destructive" }); return; }
+      const { valid, missingFields } = validateRequiredFields(cfg, pilgrim,
+        ["passportNumber", "passportIssueDate", "passportExpiry", "passportIssuingAuthority", "passportCopyUrl"]);
+      if (!valid) {
+        toast({ title: "Required fields missing", description: missingFields.map(f => f.label).join(", "), variant: "destructive" }); return;
+      }
       if (pilgrim.passportExpiry) {
         const expiryCheck = passportExpiryWarning(pilgrim.passportExpiry);
         if (expiryCheck) {
@@ -468,12 +488,18 @@ export default function AdminBookPilgrim() {
       }
     }
     if (step === 3) {
-      if (req("firstName") && !pilgrim.firstName) { toast({ title: "First name is required", variant: "destructive" }); return; }
-      if (req("lastName") && !pilgrim.lastName) { toast({ title: "Last name is required", variant: "destructive" }); return; }
-      if (req("gender") && !pilgrim.gender) { toast({ title: "Sex is required", variant: "destructive" }); return; }
+      const { valid, missingFields } = validateRequiredFields(cfg, pilgrim,
+        ["firstName", "lastName", "dateOfBirth", "gender", "nationality", "placeOfBirth"]);
+      if (!valid) {
+        toast({ title: "Required fields missing", description: missingFields.map(f => f.label).join(", "), variant: "destructive" }); return;
+      }
     }
-    if (step === 4 && req("phone") && !pilgrim.phone) {
-      toast({ title: "Phone number is required", variant: "destructive" }); return;
+    if (step === 4) {
+      const { valid, missingFields } = validateRequiredFields(cfg, pilgrim,
+        ["phone", "email", "country", "city", "address"]);
+      if (!valid) {
+        toast({ title: "Required fields missing", description: missingFields.map(f => f.label).join(", "), variant: "destructive" }); return;
+      }
     }
     setStep(s => s + 1);
   };
@@ -484,31 +510,58 @@ export default function AdminBookPilgrim() {
     setPilgrim(DEFAULT_PILGRIM);
     setTravel({ departureCity: "", roomPreference: "Double", specialRequests: "" });
     setPayment({ method: "cash", markVerified: true, amountPaid: "", paymentReference: "", paymentProofUrl: "" });
+    setPilgrimType("adult");
+    setBatchMode(false); setBatchPilgrims([]); setBatchStep("upload");
+    setIsBatchSubmitting(false); setBatchProgress(0); setBatchResults([]);
   };
 
   const registerAnother = () => {
     // Keep packageId and payment, but reset personal details
     setResult(null);
     setPilgrim(DEFAULT_PILGRIM);
+    setPilgrimType("adult");
     setStep(2);
   };
 
-  if (result) {
+  if (result || batchResults.length > 0) {
+    const isBatch = batchResults.length > 0;
+    const successes = batchResults.filter(r => r.success);
+    const failures = batchResults.filter(r => !r.success);
     return (
       <div className="max-w-lg mx-auto text-center space-y-6 py-12" data-testid="page-admin-book-pilgrim">
         <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto">
           <CheckCircle2 className="w-10 h-10 text-emerald-600" />
         </div>
         <div>
-          <h2 className="text-2xl font-black text-[#0F172A]">Booking Created!</h2>
-          <p className="text-[#64748B] mt-1">The pilgrim has been successfully registered</p>
+          <h2 className="text-2xl font-black text-[#0F172A]">
+            {isBatch ? `${successes.length} Booking${successes.length !== 1 ? "s" : ""} Created!` : "Booking Created!"}
+          </h2>
+          <p className="text-[#64748B] mt-1">
+            {isBatch
+              ? `${successes.length} of ${batchResults.length} pilgrim(s) registered successfully`
+              : "The pilgrim has been successfully registered"}
+          </p>
         </div>
-        <div className="bg-[#F0F2FF] rounded-2xl p-6">
-          <p className="text-xs font-bold text-[#2D3199] uppercase tracking-widest mb-2">Reference Number</p>
-          <p className="text-3xl font-black text-[#0F172A] font-mono">{result.reference}</p>
-        </div>
+        {isBatch ? (
+          <div className="bg-[#F0F2FF] rounded-2xl p-4 space-y-2 text-left">
+            <p className="text-xs font-bold text-[#2D3199] uppercase tracking-widest mb-2">Batch Results</p>
+            {batchResults.map((r, i) => (
+              <div key={i} className={`flex items-center gap-2 text-sm ${r.success ? "text-emerald-700" : "text-red-600"}`}>
+                {r.success ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> : <AlertTriangle className="w-4 h-4 flex-shrink-0" />}
+                <span className="font-medium">{r.name}</span>
+                {r.reference && <span className="ml-auto font-mono text-xs text-[#64748B]">{r.reference}</span>}
+                {r.error && <span className="ml-auto text-xs">{r.error}</span>}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-[#F0F2FF] rounded-2xl p-6">
+            <p className="text-xs font-bold text-[#2D3199] uppercase tracking-widest mb-2">Reference Number</p>
+            <p className="text-3xl font-black text-[#0F172A] font-mono">{result!.reference}</p>
+          </div>
+        )}
         <div className="flex flex-col sm:flex-row gap-3">
-          {payment.method !== "online" && (
+          {!isBatch && payment.method !== "online" && (
             <Button variant="outline" onClick={registerAnother} className="flex-1 rounded-xl border-[#DCE3F0]">
               <UserPlus className="w-4 h-4 mr-2" />
               Register Another for this Package
@@ -534,12 +587,39 @@ export default function AdminBookPilgrim() {
       </div>
 
       <div className="bg-white rounded-2xl border border-[#DCE3F0] p-6">
+        {/* Offline/Online status */}
+        {!isOnline && (
+          <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+            <WifiOff className="w-4 h-4 text-amber-600 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-amber-800">No internet connection</p>
+              <p className="text-xs text-amber-600">Your progress is saved locally. Submit when connection is restored.</p>
+            </div>
+          </div>
+        )}
+        {wasOffline && isOnline && (
+          <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+            <Wifi className="w-4 h-4 text-green-600 flex-shrink-0" />
+            <p className="text-sm font-medium text-green-800">Connection restored ✓</p>
+          </div>
+        )}
         <StepIndicator current={step} />
 
         {/* ── Step 1: Package ──────────────────────────────────────── */}
         {step === 1 && (
           <div className="space-y-4">
             <h2 className="font-black text-[#0F172A] text-lg">Select Package</h2>
+            {/* Registration mode toggle */}
+            <div className="flex rounded-xl bg-[#F1F5F9] p-1 gap-1">
+              <button type="button" onClick={() => setBatchMode(false)}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${!batchMode ? "bg-white text-[#2D3199] shadow-sm" : "text-[#64748B] hover:text-[#0F172A]"}`}>
+                👤 Single Pilgrim
+              </button>
+              <button type="button" onClick={() => setBatchMode(true)}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${batchMode ? "bg-white text-[#2D3199] shadow-sm" : "text-[#64748B] hover:text-[#0F172A]"}`}>
+                👥 Batch Registration (up to 10)
+              </button>
+            </div>
 
             {packages.length === 0 ? (
               <div className="text-center py-8 text-[#94A3B8]">
@@ -610,8 +690,121 @@ export default function AdminBookPilgrim() {
           </div>
         )}
 
-        {/* ── Step 2: Passport ──────────────────────────────────────── */}
-        {step === 2 && (
+        {/* ── Step 2: Passport (or Batch Upload) ──────────────────── */}
+        {step === 2 && batchMode && (
+          <div className="space-y-4">
+            <h2 className="font-black text-[#0F172A] text-lg">Batch Passport Upload</h2>
+            <p className="text-sm text-[#64748B]">
+              Upload passport images for multiple pilgrims. AI will extract details from each passport automatically.
+            </p>
+            {batchStep === "upload" && (
+              <BatchPassportUpload
+                maxPilgrims={10}
+                onBatchReady={(pilgrims) => {
+                  setBatchPilgrims(pilgrims);
+                  setBatchStep("review");
+                }}
+                onCancel={() => {
+                  setBatchMode(false);
+                  setStep(1);
+                }}
+              />
+            )}
+            {batchStep === "review" && batchPilgrims.length > 0 && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                <p className="text-sm font-bold text-emerald-700 mb-2">
+                  ✓ {batchPilgrims.length} pilgrim(s) ready for booking
+                </p>
+                <p className="text-xs text-emerald-600">
+                  Each pilgrim will be registered as a separate booking under the selected package: <strong>{selectedPkg?.name}</strong>.
+                  {selectedPkg && ` Total: ₦${(Number(selectedPkg.price) * batchPilgrims.length).toLocaleString()}`}
+                </p>
+                {isBatchSubmitting && (
+                  <div className="mt-3">
+                    <div className="flex items-center gap-2 text-sm font-bold text-[#2D3199]">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Creating booking {batchProgress}/{batchPilgrims.length}...
+                    </div>
+                    <div className="w-full bg-[#E2E8F0] rounded-full h-2 mt-2">
+                      <div className="bg-[#2D3199] h-2 rounded-full transition-all" style={{ width: `${(batchProgress / batchPilgrims.length) * 100}%` }} />
+                    </div>
+                  </div>
+                )}
+                <div className="mt-3 flex gap-2">
+                  <Button type="button" variant="outline" onClick={() => setBatchStep("upload")}
+                    disabled={isBatchSubmitting}
+                    className="rounded-xl text-xs font-bold h-9">
+                    ← Back to Edit
+                  </Button>
+                  <Button type="button" onClick={async () => {
+                    if (isBatchSubmitting) return;
+                    setIsBatchSubmitting(true);
+                    setBatchProgress(0);
+                    const batchId = crypto.randomUUID();
+                    const results: { name: string; success: boolean; reference?: string; error?: string }[] = [];
+                    for (let i = 0; i < batchPilgrims.length; i++) {
+                      const p = batchPilgrims[i];
+                      setBatchProgress(i + 1);
+                      // Auto-detect pilgrimType from DOB
+                      let detectedType: "adult" | "child" | "infant" = "adult";
+                      if (p.dateOfBirth) {
+                        const birth = new Date(p.dateOfBirth);
+                        const now = new Date();
+                        const ageMonths = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
+                        if (ageMonths <= 23) detectedType = "infant";
+                        else if (ageMonths <= 11 * 12) detectedType = "child";
+                      }
+                      try {
+                        const data = await bookMutation.mutateAsync({
+                          packageId,
+                          firstName: p.firstName,
+                          lastName: p.lastName,
+                          fullName: `${p.firstName} ${p.lastName}`.trim(),
+                          passportNumber: p.passportNumber,
+                          passportIssueDate: p.passportIssueDate,
+                          passportExpiry: p.passportExpiry,
+                          passportIssuingAuthority: p.passportIssuingAuthority,
+                          dateOfBirth: p.dateOfBirth,
+                          gender: p.gender,
+                          nationality: p.nationality,
+                          passportCopyUrl: p.passportCopyUrl,
+                          profilePhotoUrl: p.profilePhotoUrl,
+                          phone: "", email: "",
+                          country: "Nigeria", city: "",
+                          roomPreference: "Double",
+                          paymentMethod: payment.method === "online" ? "cash" : payment.method,
+                          amountPaid: 0,
+                          pilgrimType: detectedType,
+                          batchId,
+                        });
+                        results.push({ name: `${p.firstName} ${p.lastName}`, success: true, reference: data.reference });
+                      } catch (err: any) {
+                        results.push({ name: `${p.firstName} ${p.lastName}`, success: false, error: err.message || "Failed" });
+                      }
+                    }
+                    setIsBatchSubmitting(false);
+                    const successes = results.filter(r => r.success);
+                    const failures = results.filter(r => !r.success);
+                    if (successes.length > 0) {
+                      localStorage.removeItem("admin_pilgrim_draft");
+                      setBatchResults(results);
+                      setStep(6);
+                    }
+                    if (failures.length > 0) {
+                      toast({ title: `${failures.length} booking(s) failed`, description: failures.map(f => f.name).join(", "), variant: "destructive" });
+                    }
+                  }}
+                    disabled={isBatchSubmitting}
+                    className="bg-[#FF3B00] hover:bg-[#CC2E00] text-white rounded-xl text-xs font-black h-9 gap-1">
+                    <UserPlus className="w-3.5 h-3.5" />
+                    Create {batchPilgrims.length} Booking{batchPilgrims.length > 1 ? "s" : ""}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        {step === 2 && !batchMode && (
           <div className="space-y-4">
             <h2 className="font-black text-[#0F172A] text-lg mb-4">Passport Details</h2>
 
@@ -742,9 +935,41 @@ export default function AdminBookPilgrim() {
               {show("dateOfBirth") && (
                 <div>
                   <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">{lbl("dateOfBirth", "Date of Birth")}</Label>
-                  <Input type="date" value={pilgrim.dateOfBirth} onChange={setInput("dateOfBirth")} className="mt-1 rounded-xl" />
+                  <Input type="date" value={pilgrim.dateOfBirth} onChange={e => {
+                    setPilgrim(p => ({ ...p, dateOfBirth: e.target.value }));
+                    // Auto-detect pilgrim type from DOB
+                    if (e.target.value) {
+                      const birth = new Date(e.target.value);
+                      const now = new Date();
+                      let years = now.getFullYear() - birth.getFullYear();
+                      const m = now.getMonth() - birth.getMonth();
+                      if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) years--;
+                      if (years < 2) setPilgrimType("infant");
+                      else if (years < 12) setPilgrimType("child");
+                      else setPilgrimType("adult");
+                    }
+                  }} className="mt-1 rounded-xl" />
                 </div>
               )}
+              {/* Pilgrim Type (auto-detected from DOB or manual) */}
+              <div>
+                <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Pilgrim Type</Label>
+                <div className="grid grid-cols-3 gap-2 mt-1">
+                  {([["adult", "Adult", "👤"], ["child", "Child (2-11)", "🧒"], ["infant", "Infant (0-1)", "👶"]] as const).map(([val, label, icon]) => (
+                    <button key={val} type="button" onClick={() => setPilgrimType(val)}
+                      className={`p-2 rounded-xl border-2 text-center text-xs font-bold transition-all ${
+                        pilgrimType === val ? "border-[#2D3199] bg-[#EEF0FF] text-[#2D3199]" : "border-[#DCE3F0] text-[#64748B] hover:border-[#2D3199]/30"
+                      }`}>
+                      {icon} {label}
+                    </button>
+                  ))}
+                </div>
+                {pilgrimType !== "adult" && (
+                  <p className="text-xs text-amber-600 mt-1 font-semibold">
+                    ⚠ {pilgrimType === "infant" ? "Infants" : "Children"} will be registered as a separate booking.
+                  </p>
+                )}
+              </div>
               {show("placeOfBirth") && (
                 <div>
                   <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">{lbl("placeOfBirth", "Place of Birth")}</Label>
@@ -985,12 +1210,40 @@ export default function AdminBookPilgrim() {
                   </div>
                 )}
 
+                {/* Structured payment amount options */}
                 <div>
-                  <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Amount Paid (₦)</Label>
-                  <Input type="number" value={payment.amountPaid}
-                    onChange={e => setPayment(p => ({ ...p, amountPaid: e.target.value }))}
-                    placeholder={selectedPkg ? String(selectedPkg.price) : "0"}
-                    className="mt-1 rounded-xl font-mono" />
+                  <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider mb-2 block">Payment Amount</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { key: "full", label: "Full Payment", amount: selectedPkg ? String(selectedPkg.price) : "0" },
+                      { key: "500000", label: "Minimum Deposit", amount: "500000" },
+                      { key: "1000000", label: "₦1,000,000", amount: "1000000" },
+                      { key: "custom", label: "Custom Amount", amount: "" },
+                    ].map(opt => (
+                      <button key={opt.key} type="button"
+                        onClick={() => setPayment(p => ({ ...p, amountPaid: opt.amount }))}
+                        className={`p-3 rounded-xl border-2 text-left transition-all ${
+                          payment.amountPaid === opt.amount ? "border-[#2D3199] bg-[#EEF0FF]" : "border-[#DCE3F0] hover:border-[#2D3199]/30"
+                        }`}>
+                        <span className="text-xs font-bold text-[#0F172A] block">{opt.label}</span>
+                        {opt.amount && <span className="text-[10px] text-[#64748B]">₦{Number(opt.amount).toLocaleString()}</span>}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Custom amount input fallback */}
+                  {!["", String(selectedPkg?.price || "0"), "500000", "1000000"].includes(payment.amountPaid) && (
+                    <div className="mt-2">
+                      <Input type="number" value={payment.amountPaid}
+                        onChange={e => setPayment(p => ({ ...p, amountPaid: e.target.value }))}
+                        placeholder="Enter amount" className="rounded-xl font-mono" min={0} />
+                    </div>
+                  )}
+                  {payment.amountPaid && (
+                    <div className="bg-[#F0F2FF] rounded-xl p-3 mt-2 flex justify-between items-center">
+                      <span className="text-xs font-bold text-[#64748B]">Amount to record</span>
+                      <span className="text-lg font-black text-[#2D3199]">₦{Number(payment.amountPaid || 0).toLocaleString()}</span>
+                    </div>
+                  )}
                 </div>
                 {selectedPkg && payment.amountPaid && Number(payment.amountPaid) > 0 && Number(payment.amountPaid) < Number(selectedPkg.price) && payment.method !== "online" && (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">

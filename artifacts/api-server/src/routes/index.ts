@@ -40,6 +40,7 @@ router.get("/public/settings", async (_req, res) => {
     const PUBLIC_KEYS = new Set([
       "contact_info", "social_links", "trust_badges", "landing_video_url",
       "leadership_team", "landing_stats", "about_stats",
+      "room_surcharges", "child_infant_pricing",
     ]);
     const rows = await db.query.siteSettingsTable.findMany();
     const result: Record<string, unknown> = {};

@@ -221,9 +221,15 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
   const [errorInfo, setErrorInfo] = useState<ErrorInfo | null>(null);
   const [profilePicUrl, setProfilePicUrl] = useState<string | null>(null);
   const [extractedName, setExtractedName] = useState<string | null>(null);
+  const [lastPassportImage, setLastPassportImage] = useState<string | null>(null);
 
   // Manual Crop State
+  // cropOrigin tracks where the crop dialog was opened from:
+  //   'ai'    – normal AI extraction flow (default)
+  //   'error' – user chose "Crop Photo Manually" from the error state
+  //   'recrop'– user clicked "Re-crop Photo" from the done state
   const [pendingCrop, setPendingCrop] = useState<{ imageUrl: string; result: PassportScanResult; bbox?: BBox | null } | null>(null);
+  const [cropOrigin, setCropOrigin] = useState<'ai' | 'error' | 'recrop'>('ai');
   const [crop, setCrop] = useState<Crop>();
   const [isUploadingCrop, setIsUploadingCrop] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -233,7 +239,19 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
     setErrorInfo(null);
     setProfilePicUrl(null);
     setExtractedName(null);
+    setLastPassportImage(null);
     if (inputRef.current) inputRef.current.value = "";
+  };
+
+  /** Open the crop dialog manually (error-state or re-crop from done). */
+  const openManualCrop = (origin: 'error' | 'recrop') => {
+    if (!lastPassportImage) return;
+    setCropOrigin(origin);
+    setPendingCrop({
+      imageUrl: lastPassportImage,
+      result: {},                              // empty – won't overwrite existing form data
+      bbox: { xmin: 0.03, ymin: 0.07, xmax: 0.31, ymax: 0.68 }, // default passport photo region
+    });
   };
 
   const dismiss = () => {
@@ -250,6 +268,7 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
     setErrorInfo(null);
     setProfilePicUrl(null);
     setExtractedName(null);
+    setLastPassportImage(null);
 
     try {
       const base64 = await new Promise<string>((resolve, reject) => {
@@ -261,6 +280,11 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
+
+      // Save the image data URL so we can re-open the crop dialog later,
+      // even if AI extraction fails.
+      const passportDataUrl = `data:${file.type};base64,${base64}`;
+      setLastPassportImage(passportDataUrl);
 
       const res = await fetch("/api/passport/extract", {
         method: "POST",
@@ -305,6 +329,7 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
       result.passportImageDataUrl = passportImageDataUrl;
 
       if (onProfilePhoto) {
+        setCropOrigin('ai');
         setPendingCrop({
           imageUrl: passportImageDataUrl,
           result,
@@ -458,13 +483,24 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
               {" "}Review and correct any details below.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            className="shrink-0 text-xs text-[#2D3199] font-semibold hover:underline flex items-center gap-1"
-          >
-            <RefreshCw className="w-3 h-3" /> Re-scan
-          </button>
+          <div className="flex flex-col gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="text-xs text-[#2D3199] font-semibold hover:underline flex items-center gap-1"
+            >
+              <RefreshCw className="w-3 h-3" /> Re-scan
+            </button>
+            {onProfilePhoto && lastPassportImage && (
+              <button
+                type="button"
+                onClick={() => openManualCrop('recrop')}
+                className="text-xs text-[#64748B] font-semibold hover:underline flex items-center gap-1"
+              >
+                <CropIcon className="w-3 h-3" /> Re-crop Photo
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -478,7 +514,7 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
               <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">{errorInfo.detail}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {errorInfo.canRetry && (
               <Button
                 type="button"
@@ -488,6 +524,17 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
                 className="rounded-xl gap-1.5 border-[#2D3199] text-[#2D3199] hover:bg-[#EEF0FF] text-xs"
               >
                 <RefreshCw className="w-3.5 h-3.5" /> Retry Scan
+              </Button>
+            )}
+            {onProfilePhoto && lastPassportImage && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => openManualCrop('error')}
+                className="rounded-xl gap-1.5 border-[#64748B] text-[#64748B] hover:bg-[#F1F5F9] text-xs"
+              >
+                <CropIcon className="w-3.5 h-3.5" /> Crop Photo Manually
               </Button>
             )}
             <button
@@ -504,9 +551,16 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
       {/* Manual Cropping Dialog */}
       <Dialog open={!!pendingCrop} onOpenChange={(open) => {
         if (!open && pendingCrop) {
-          onExtracted(pendingCrop.result);
-          setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
-          setStatus("done");
+          // Only push AI-extracted data when the crop was opened from the normal AI flow
+          if (cropOrigin === 'ai') {
+            onExtracted(pendingCrop.result);
+            setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
+            setStatus("done");
+          } else if (cropOrigin === 'error') {
+            // From error state with no AI data — go back to idle
+            setStatus("idle");
+          }
+          // 'recrop' — keep status as 'done', don't push empty result
           setPendingCrop(null);
         }
       }}>
@@ -550,9 +604,14 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
               variant="outline"
               onClick={() => {
                 if (pendingCrop) {
-                  onExtracted(pendingCrop.result);
-                  setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
-                  setStatus("done");
+                  if (cropOrigin === 'ai') {
+                    onExtracted(pendingCrop.result);
+                    setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
+                    setStatus("done");
+                  } else if (cropOrigin === 'error') {
+                    setStatus("idle");
+                  }
+                  // 'recrop' — keep status as 'done'
                   setPendingCrop(null);
                 }
               }}
@@ -583,9 +642,15 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
                     console.error("Crop/upload error", err);
                   } finally {
                     setIsUploadingCrop(false);
-                    onExtracted(pendingCrop.result);
-                    setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
-                    setStatus("done");
+                    if (cropOrigin === 'ai') {
+                      onExtracted(pendingCrop.result);
+                      setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
+                      setStatus("done");
+                    } else if (cropOrigin === 'error') {
+                      // No AI data was extracted — go to idle so user can fill manually
+                      setStatus("idle");
+                    }
+                    // 'recrop' — keep status as 'done', photo already updated via onProfilePhoto
                     setPendingCrop(null);
                   }
                 }

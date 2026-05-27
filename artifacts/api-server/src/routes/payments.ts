@@ -202,6 +202,91 @@ router.post("/payments", async (req, res) => {
   return res.status(201).json(toPaymentResponse(payment));
 });
 
+// ── Outstanding balances / debtors list ───────────────────────────────────────
+
+router.get("/payments/outstanding", async (req, res) => {
+  const { userId: clerkUserId } = getAuth(req);
+  if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
+  const profile = await getProfileByClerkId(clerkUserId);
+  if (!profile) return res.status(404).json({ error: "Profile not found" });
+  const isAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
+  if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+
+  const { search, limit = "50", offset = "0" } = req.query as Record<string, string>;
+
+  const conditions: any[] = [
+    sql`${bookingsTable.amountPaid}::numeric < ${bookingsTable.totalPrice}::numeric`,
+    sql`${bookingsTable.status} != 'cancelled'`,
+  ];
+
+  if (search) {
+    const q = `%${search}%`;
+    conditions.push(
+      sql`(${bookingsTable.fullName} ILIKE ${q} OR ${bookingsTable.reference} ILIKE ${q} OR ${bookingsTable.phone} ILIKE ${q} OR ${bookingsTable.passportNumber} ILIKE ${q})`,
+    );
+  }
+
+  const where = and(...conditions);
+
+  const rows = await db.select({
+    booking: {
+      id: bookingsTable.id,
+      reference: bookingsTable.reference,
+      fullName: bookingsTable.fullName,
+      phone: bookingsTable.phone,
+      status: bookingsTable.status,
+      totalPrice: bookingsTable.totalPrice,
+      amountPaid: bookingsTable.amountPaid,
+      createdAt: bookingsTable.createdAt,
+      userId: bookingsTable.userId,
+    },
+    packageName: packagesTable.name,
+    packageType: packagesTable.type,
+    agentName: agentsTable.businessName,
+  })
+    .from(bookingsTable)
+    .leftJoin(packagesTable, eq(bookingsTable.packageId, packagesTable.id))
+    .leftJoin(agentsTable, eq(bookingsTable.agentId, agentsTable.id))
+    .where(where)
+    .orderBy(sql`(${bookingsTable.totalPrice}::numeric - ${bookingsTable.amountPaid}::numeric) DESC`)
+    .limit(parseInt(limit))
+    .offset(parseInt(offset));
+
+  const [{ count }] = await db.select({ count: sql<number>`count(*)` })
+    .from(bookingsTable)
+    .where(where);
+
+  // Compute totals
+  const [totals] = await db.select({
+    totalOutstanding: sql<string>`COALESCE(SUM(${bookingsTable.totalPrice}::numeric - ${bookingsTable.amountPaid}::numeric), 0)`,
+    totalOwed: sql<string>`COALESCE(SUM(${bookingsTable.totalPrice}::numeric), 0)`,
+    totalPaid: sql<string>`COALESCE(SUM(${bookingsTable.amountPaid}::numeric), 0)`,
+  })
+    .from(bookingsTable)
+    .where(where);
+
+  const bookings = rows.map(r => ({
+    ...r.booking,
+    totalPrice: Number(r.booking.totalPrice),
+    amountPaid: Number(r.booking.amountPaid),
+    balance: Number(r.booking.totalPrice) - Number(r.booking.amountPaid),
+    packageName: r.packageName,
+    packageType: r.packageType,
+    agentName: r.agentName,
+  }));
+
+  return res.json({
+    bookings,
+    total: Number(count),
+    summary: {
+      totalOutstanding: Number(totals.totalOutstanding),
+      totalOwed: Number(totals.totalOwed),
+      totalPaid: Number(totals.totalPaid),
+      count: Number(count),
+    },
+  });
+});
+
 router.get("/payments/:id", async (req, res) => {
   const { userId: clerkUserId } = getAuth(req);
   if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
@@ -853,90 +938,7 @@ router.post("/payments/admin-record", async (req, res) => {
   });
 });
 
-// ── Outstanding balances / debtors list ───────────────────────────────────────
 
-router.get("/payments/outstanding", async (req, res) => {
-  const { userId: clerkUserId } = getAuth(req);
-  if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
-  const profile = await getProfileByClerkId(clerkUserId);
-  if (!profile) return res.status(404).json({ error: "Profile not found" });
-  const isAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
-  if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
-
-  const { search, limit = "50", offset = "0" } = req.query as Record<string, string>;
-
-  const conditions: any[] = [
-    sql`${bookingsTable.amountPaid}::numeric < ${bookingsTable.totalPrice}::numeric`,
-    sql`${bookingsTable.status} != 'cancelled'`,
-  ];
-
-  if (search) {
-    const q = `%${search}%`;
-    conditions.push(
-      sql`(${bookingsTable.fullName} ILIKE ${q} OR ${bookingsTable.reference} ILIKE ${q} OR ${bookingsTable.phone} ILIKE ${q} OR ${bookingsTable.passportNumber} ILIKE ${q})`,
-    );
-  }
-
-  const where = and(...conditions);
-
-  const rows = await db.select({
-    booking: {
-      id: bookingsTable.id,
-      reference: bookingsTable.reference,
-      fullName: bookingsTable.fullName,
-      phone: bookingsTable.phone,
-      status: bookingsTable.status,
-      totalPrice: bookingsTable.totalPrice,
-      amountPaid: bookingsTable.amountPaid,
-      createdAt: bookingsTable.createdAt,
-      userId: bookingsTable.userId,
-    },
-    packageName: packagesTable.name,
-    packageType: packagesTable.type,
-    agentName: agentsTable.businessName,
-  })
-    .from(bookingsTable)
-    .leftJoin(packagesTable, eq(bookingsTable.packageId, packagesTable.id))
-    .leftJoin(agentsTable, eq(bookingsTable.agentId, agentsTable.id))
-    .where(where)
-    .orderBy(sql`(${bookingsTable.totalPrice}::numeric - ${bookingsTable.amountPaid}::numeric) DESC`)
-    .limit(parseInt(limit))
-    .offset(parseInt(offset));
-
-  const [{ count }] = await db.select({ count: sql<number>`count(*)` })
-    .from(bookingsTable)
-    .where(where);
-
-  // Compute totals
-  const [totals] = await db.select({
-    totalOutstanding: sql<string>`COALESCE(SUM(${bookingsTable.totalPrice}::numeric - ${bookingsTable.amountPaid}::numeric), 0)`,
-    totalOwed: sql<string>`COALESCE(SUM(${bookingsTable.totalPrice}::numeric), 0)`,
-    totalPaid: sql<string>`COALESCE(SUM(${bookingsTable.amountPaid}::numeric), 0)`,
-  })
-    .from(bookingsTable)
-    .where(where);
-
-  const bookings = rows.map(r => ({
-    ...r.booking,
-    totalPrice: Number(r.booking.totalPrice),
-    amountPaid: Number(r.booking.amountPaid),
-    balance: Number(r.booking.totalPrice) - Number(r.booking.amountPaid),
-    packageName: r.packageName,
-    packageType: r.packageType,
-    agentName: r.agentName,
-  }));
-
-  return res.json({
-    bookings,
-    total: Number(count),
-    summary: {
-      totalOutstanding: Number(totals.totalOutstanding),
-      totalOwed: Number(totals.totalOwed),
-      totalPaid: Number(totals.totalPaid),
-      count: Number(count),
-    },
-  });
-});
 
 // ── Payment history for a booking ─────────────────────────────────────────────
 

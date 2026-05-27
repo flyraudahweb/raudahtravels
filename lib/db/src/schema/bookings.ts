@@ -23,6 +23,12 @@ export const bookingStatusEnum = pgEnum("booking_status", [
   "completed",
 ]);
 
+export const pilgrimTypeEnum = pgEnum("pilgrim_type", [
+  "adult",
+  "child",
+  "infant",
+]);
+
 export const bookingsTable = pgTable("bookings", {
   id: text("id").primaryKey().default("gen_random_uuid()"),
   reference: text("reference").unique(),
@@ -89,9 +95,12 @@ export const bookingsTable = pgTable("bookings", {
   emergencyContactPhone: text("emergency_contact_phone"),
   emergencyContactRelationship: text("emergency_contact_relationship"),
 
+  // Room pricing
+  roomPreference: text("room_preference"),
+  roomSurcharge: numeric("room_surcharge", { precision: 12, scale: 2 }).default("0"),
+
   // Travel preferences
   departureCity: text("departure_city"),
-  roomPreference: text("room_preference"),
   specialRequests: text("special_requests"),
 
   // Admin fields
@@ -103,6 +112,13 @@ export const bookingsTable = pgTable("bookings", {
 
   // ID Tag number (sequential, assigned at booking confirmation)
   idNumber: integer("id_number"),
+
+  // Pilgrim type (adult, child, infant) and parent linkage
+  pilgrimType: pilgrimTypeEnum("pilgrim_type").default("adult"),
+  parentBookingId: text("parent_booking_id"),
+
+  // Bulk registration batch grouping
+  batchId: text("batch_id"),
 
   // Registration tracking
   registeredByStaffId: text("registered_by_staff_id").references(() => profilesTable.id),

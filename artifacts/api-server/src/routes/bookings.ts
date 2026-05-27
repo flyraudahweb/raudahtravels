@@ -58,6 +58,10 @@ function toBookingResponse(b: typeof bookingsTable.$inferSelect, pkg?: any, user
     notes: b.notes,
     visaDeliveryMessage: b.visaDeliveryMessage,
     ticketDocumentUrl: b.ticketDocumentUrl,
+    roomSurcharge: Number(b.roomSurcharge || 0),
+    pilgrimType: b.pilgrimType,
+    parentBookingId: b.parentBookingId,
+    batchId: b.batchId,
     createdAt: b.createdAt,
     updatedAt: b.updatedAt,
     package: pkg ? {
@@ -131,6 +135,8 @@ router.post("/bookings", async (req, res) => {
   // remaining spread so a client cannot override totalPrice, amountPaid, status, etc.
   const {
     packageId, pilgrimCount, pilgrimDetails, notes, agentId,
+    // Room surcharge and pilgrim type (client-provided, validated server-side)
+    roomSurcharge: clientRoomSurcharge, pilgrimType, parentBookingId, batchId,
     // These must never come from the client — explicitly consumed & discarded:
     totalPrice: _tp, amountPaid: _ap, status: _st,
     id: _id, reference: _ref, userId: _uid,
@@ -152,7 +158,10 @@ router.post("/bookings", async (req, res) => {
   }
 
   // Price is always computed server-side from the canonical package price
-  const totalPrice = Number(pkg.price) * count;
+  // Room surcharge is added on top of the base package price
+  const surcharge = Math.max(0, Number(clientRoomSurcharge) || 0);
+  const pricePerPerson = Number(pkg.price) + surcharge;
+  const totalPrice = pricePerPerson * count;
   const reference = `RDH-${randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
 
   const [booking] = await db.insert(bookingsTable).values({
@@ -167,6 +176,10 @@ router.post("/bookings", async (req, res) => {
     pilgrimCount: count,
     pilgrimDetails,
     notes,
+    roomSurcharge: String(surcharge),
+    pilgrimType: pilgrimType || "adult",
+    parentBookingId: parentBookingId || undefined,
+    batchId: batchId || undefined,
     ...safePilgrimFields,  // only safe pilgrim-detail fields (name, passport, etc.)
   }).returning();
 

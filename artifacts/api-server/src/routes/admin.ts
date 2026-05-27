@@ -2031,6 +2031,9 @@ router.post("/admin/book-pilgrim", async (req, res) => {
     // health / family
     meningitisVaccineDate, fathersName, mothersName,
     mahramName, mahramRelationship, mahramPassport,
+    // New: room surcharge, pilgrim type, batch support
+    roomSurcharge: clientRoomSurcharge,
+    pilgrimType, parentBookingId, batchId,
   } = req.body;
 
   // Validate proof size: R2 URLs are short paths, but legacy base64 could be huge
@@ -2075,6 +2078,10 @@ router.post("/admin/book-pilgrim", async (req, res) => {
       }
 
       let price = Number(pkgRow.price);
+      // Apply room surcharge if provided
+      const surcharge = Number(clientRoomSurcharge) || 0;
+      price += surcharge;
+
       if (agentIdValue) {
         const agentDiscount = await tx.query.agentPackageDiscountsTable.findFirst({
           where: and(
@@ -2163,6 +2170,11 @@ router.post("/admin/book-pilgrim", async (req, res) => {
         mahramName:                    nullify(mahramName) as string | undefined,
         mahramRelationship:            nullify(mahramRelationship) as string | undefined,
         mahramPassport:                nullify(mahramPassport) as string | undefined,
+        // room surcharge, pilgrim type, batch
+        roomSurcharge:                 String(surcharge),
+        pilgrimType:                   pilgrimType || "adult",
+        parentBookingId:               nullify(parentBookingId) as string | undefined,
+        batchId:                       nullify(batchId) as string | undefined,
       }).returning();
 
       await tx.update(packagesTable)

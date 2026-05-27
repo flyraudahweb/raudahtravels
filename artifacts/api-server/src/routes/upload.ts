@@ -3,7 +3,7 @@ import multer from "multer";
 import { randomUUID } from "crypto";
 import path from "path";
 import { getAuth } from "@clerk/express";
-import { uploadToR2, getFromR2 } from "../lib/r2";
+import { uploadToR2, getFromR2, isR2Configured } from "../lib/r2";
 import { logger } from "../lib/logger";
 
 const router = Router();
@@ -71,6 +71,13 @@ router.post("/files/upload", (req, res, next) => {
       return;
     }
 
+    // Check R2 configuration before attempting upload
+    if (!isR2Configured()) {
+      logger.error('R2 storage is not configured. Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY environment variables.');
+      res.status(503).json({ error: 'File storage is temporarily unavailable. Please contact support.' });
+      return;
+    }
+
     // Generate unique key: folder/uuid-timestamp.ext
     const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
     const key = `${folder}/${randomUUID()}-${Date.now()}${ext}`;
@@ -84,9 +91,12 @@ router.post("/files/upload", (req, res, next) => {
 
     res.json({ url, key });
     return;
-  } catch (err) {
-    logger.error({ err }, "File upload failed");
-    res.status(500).json({ error: "File upload failed. Please try again." });
+  } catch (err: any) {
+    logger.error({ err, fileSize: req.file?.size, fileType: req.file?.mimetype, folder: req.body.folder }, 'File upload failed');
+    const message = err?.name === 'CredentialsProviderError' || err?.Code === 'InvalidAccessKeyId'
+      ? 'File storage credentials are invalid. Please contact support.'
+      : 'File upload failed. Please try again.';
+    res.status(500).json({ error: message });
     return;
   }
 });

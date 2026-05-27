@@ -18,6 +18,10 @@ export const r2Client = new S3Client({
 
 export const BUCKET_NAME = R2_BUCKET_NAME;
 
+export function isR2Configured(): boolean {
+  return !!(R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_ACCOUNT_ID);
+}
+
 /**
  * Ensure the bucket exists — creates it if not found.
  * Called once on server startup.

@@ -1,5 +1,8 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import * as XLSX from "xlsx";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -9,6 +12,7 @@ import {
   Users, Search, ChevronRight, BookOpen, Phone, CreditCard, Calendar,
   MapPin, Download, FileText, Globe, UserCheck, X, Filter, Plane, Home, User,
   Mail, Badge, Clock, Shield, Heart, AlertCircle, CheckCircle2, Printer,
+  Plus, Loader2,
 } from "lucide-react";
 
 const statusStyle: Record<string, string> = {
@@ -140,8 +144,69 @@ const VISA_SM: Record<string, { label: string; color: string; bg: string; border
 
 function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClose: () => void }) {
   const [tab, setTab] = useState<"overview" | "personal" | "travel" | "family">("overview");
+  const { toast } = useToast();
+  const qc = useQueryClient();
   const paid = paymentStatus(pilgrim);
   const sc = statusConfig[pilgrim.status] ?? statusConfig.pending;
+
+  // Record Payment state
+  const [showRecordPay, setShowRecordPay] = useState(false);
+  const [rpAmount, setRpAmount] = useState("");
+  const [rpMethod, setRpMethod] = useState("cash");
+  const [rpRef, setRpRef] = useState("");
+  const [rpNotes, setRpNotes] = useState("");
+  const [rpVerify, setRpVerify] = useState(true);
+  const [rpLoading, setRpLoading] = useState(false);
+
+  const openRecordPay = () => {
+    const bal = Math.max(0, pilgrim.totalPrice - pilgrim.amountPaid);
+    setRpAmount(bal.toString());
+    setRpMethod("cash");
+    setRpRef("");
+    setRpNotes("");
+    setRpVerify(true);
+    setShowRecordPay(true);
+  };
+
+  const handleRecordPay = async () => {
+    if (rpLoading) return;
+    const amt = parseFloat(rpAmount);
+    if (isNaN(amt) || amt <= 0) {
+      toast({ title: "Enter a valid amount", variant: "destructive" });
+      return;
+    }
+    setRpLoading(true);
+    try {
+      const res = await fetch("/api/payments/admin-record", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          bookingId: pilgrim.id,
+          amount: amt,
+          method: rpMethod,
+          reference: rpRef || undefined,
+          notes: rpNotes || undefined,
+          markVerified: rpVerify,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed to record payment" }));
+        throw new Error(err.error || err.message || "Failed to record payment");
+      }
+      toast({ title: "Payment recorded successfully" });
+      // Invalidate all relevant caches so every page stays in sync
+      qc.invalidateQueries({ queryKey: ["admin-pilgrims"] });
+      qc.invalidateQueries({ queryKey: ["payments"] });
+      qc.invalidateQueries({ queryKey: ["bookings"] });
+      setShowRecordPay(false);
+      onClose(); // Close detail to force refresh
+    } catch (e: any) {
+      toast({ title: e.message || "Failed to record payment", variant: "destructive" });
+    } finally {
+      setRpLoading(false);
+    }
+  };
 
   const { data: visaData } = useQuery({
     queryKey: ["pilgrim-visa-detail", pilgrim.id],
@@ -168,6 +233,7 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
   ] as const;
 
   return (
+    <>
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="sm:max-w-3xl max-h-[92vh] overflow-hidden rounded-3xl p-0 flex flex-col">
         <DialogTitle className="sr-only">Pilgrim Profile — {pilgrim.fullName}</DialogTitle>
@@ -393,6 +459,14 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
                   </div>
                 </div>
 
+                {/* Record Payment button */}
+                {pilgrim.totalPrice - pilgrim.amountPaid > 0 && (
+                  <button onClick={openRecordPay}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#FF3B00] hover:bg-[#CC2E00] text-white text-sm font-bold rounded-2xl transition-colors shadow-sm">
+                    <Plus className="w-4 h-4" /> Record Payment · ₦{Math.max(0, pilgrim.totalPrice - pilgrim.amountPaid).toLocaleString()} outstanding
+                  </button>
+                )}
+
                 {/* Visa note */}
                 {pilgrim.visaDeliveryMessage && (
                   <div className="bg-white rounded-2xl border border-[#E2E8F0] p-4 shadow-sm">
@@ -570,6 +644,73 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
         </div>
       </DialogContent>
     </Dialog>
+
+      {/* ── Record Payment Dialog ── */}
+      <Dialog open={showRecordPay} onOpenChange={setShowRecordPay}>
+        <DialogContent className="sm:max-w-md rounded-3xl p-0 overflow-hidden">
+          <div className="px-6 pt-6 pb-4 border-b border-[#F1F5F9]">
+            <DialogTitle className="font-black text-[#0F172A]">Record Payment</DialogTitle>
+            <div className="mt-1.5 space-y-0.5">
+              <p className="text-sm text-[#334155] font-semibold">{resolveDisplayName(pilgrim)}</p>
+              {pilgrim.reference && <p className="text-xs text-[#94A3B8] font-mono">Ref: {pilgrim.reference}</p>}
+              <p className="text-xs font-bold text-[#FF3B00]">Balance: ₦{Math.max(0, pilgrim.totalPrice - pilgrim.amountPaid).toLocaleString()}</p>
+            </div>
+          </div>
+          <div className="px-6 py-5 space-y-4">
+            <div>
+              <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Amount (₦)</Label>
+              <input type="number" min="0" step="0.01" value={rpAmount}
+                onChange={e => setRpAmount(e.target.value)}
+                className="w-full mt-1.5 px-3 py-2.5 text-sm rounded-xl border border-[#DCE3F0] bg-white focus:outline-none focus:ring-2 focus:ring-[#2D3199]/20 focus:border-[#2D3199] font-bold text-[#0F172A]"
+                placeholder="0.00" />
+            </div>
+            <div>
+              <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Payment Method</Label>
+              <Select value={rpMethod} onValueChange={setRpMethod}>
+                <SelectTrigger className="mt-1.5 rounded-xl border-[#DCE3F0]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Reference <span className="text-[#94A3B8] normal-case font-normal">(optional)</span></Label>
+              <input type="text" value={rpRef}
+                onChange={e => setRpRef(e.target.value)}
+                className="w-full mt-1.5 px-3 py-2.5 text-sm rounded-xl border border-[#DCE3F0] bg-white focus:outline-none focus:ring-2 focus:ring-[#2D3199]/20 focus:border-[#2D3199] text-[#334155]"
+                placeholder="e.g. transaction ID or receipt number" />
+            </div>
+            <div>
+              <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Notes <span className="text-[#94A3B8] normal-case font-normal">(optional)</span></Label>
+              <Textarea value={rpNotes}
+                onChange={e => setRpNotes(e.target.value)}
+                className="mt-1.5 rounded-xl border-[#DCE3F0] resize-none"
+                placeholder="Any additional details…" rows={2} />
+            </div>
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <input type="checkbox" checked={rpVerify}
+                onChange={e => setRpVerify(e.target.checked)}
+                className="w-4 h-4 rounded border-[#DCE3F0] text-[#2D3199] focus:ring-[#2D3199]/20" />
+              <span className="text-sm font-semibold text-[#334155]">Mark as Verified</span>
+            </label>
+          </div>
+          <div className="px-6 pb-5 flex gap-3">
+            <button onClick={() => setShowRecordPay(false)}
+              className="flex-1 py-2.5 rounded-xl border border-[#DCE3F0] text-[#64748B] text-sm font-bold hover:bg-[#F8FAFC] transition-colors">
+              Cancel
+            </button>
+            <button onClick={handleRecordPay}
+              disabled={rpLoading || !rpAmount || parseFloat(rpAmount) <= 0}
+              className="flex-1 py-2.5 rounded-xl bg-[#FF3B00] hover:bg-[#CC2E00] text-white text-sm font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+              {rpLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Recording…</> : <><Plus className="w-4 h-4" /> Record Payment</>}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

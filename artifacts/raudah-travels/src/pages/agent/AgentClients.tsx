@@ -13,9 +13,12 @@ import {
   Users, UserPlus, Search, FileText, Plane, BookOpen, CheckCircle2,
   Clock, XCircle, Phone, BookMarked, X, ChevronDown, ChevronUp, AlertTriangle,
   Package, Loader2, ChevronLeft, ChevronRight, CreditCard, User, Upload,
+  WifiOff, Wifi, AlertCircle,
 } from "lucide-react";
 import PassportScanner from "@/components/PassportScanner";
-import { useFormFieldConfig } from "@/hooks/useFormFieldConfig";
+import BatchPassportUpload, { type BatchPilgrim } from "@/components/BatchPassportUpload";
+import { useFormFieldConfig, validateRequiredFields } from "@/hooks/useFormFieldConfig";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { uploadFile } from "@/lib/upload";
 
 function FileUploadBox({ label, accept, value, onChange, previewType = "image", folder = "documents" }: {
@@ -162,6 +165,13 @@ export default function AgentClients() {
   const [sessionCount, setSessionCount] = useState(0);
   const [form, setForm] = useState({ ...BLANK_FORM });
   const [phoneCode, setPhoneCode] = useState("+234");
+  const [pilgrimType, setPilgrimType] = useState<"adult" | "child" | "infant">("adult");
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchPilgrims, setBatchPilgrims] = useState<BatchPilgrim[]>([]);
+  const [batchStep, setBatchStep] = useState<"upload" | "review">("upload");
+  const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
+  const [batchProgress, setBatchProgress] = useState(0);
+  const [batchResults, setBatchResults] = useState<{ name: string; success: boolean; reference?: string; error?: string }[]>([]);
   const [page, setPage] = useState(1);
   const pageSize = 20;
   const lastPkgRef = useRef("");
@@ -178,6 +188,7 @@ export default function AgentClients() {
         if (parsed.form) setForm(parsed.form);
         if (parsed.regStep) setRegStep(parsed.regStep);
         if (parsed.phoneCode) setPhoneCode(parsed.phoneCode);
+        if (parsed.pilgrimType) setPilgrimType(parsed.pilgrimType);
       }
     } catch (e) {}
     setIsRestored(true);
@@ -190,8 +201,8 @@ export default function AgentClients() {
       localStorage.removeItem("agent_client_draft");
       return;
     }
-    localStorage.setItem("agent_client_draft", JSON.stringify({ form, regStep, phoneCode }));
-  }, [form, regStep, phoneCode, isRestored, dialogOpen]);
+    localStorage.setItem("agent_client_draft", JSON.stringify({ form, regStep, phoneCode, pilgrimType }));
+  }, [form, regStep, phoneCode, isRestored, dialogOpen, pilgrimType]);
 
   const cfg = useFormFieldConfig();
   const show = (name: string) => cfg(name).visible;
@@ -225,6 +236,7 @@ export default function AgentClients() {
   const walletBalance = walletData?.balance ?? 0;
 
   const paystackScriptLoaded = useRef(false);
+  const { isOnline, wasOffline } = useOnlineStatus();
   useEffect(() => {
     if (!paystackScriptLoaded.current) {
       const script = document.createElement("script");
@@ -293,6 +305,8 @@ export default function AgentClients() {
       }).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || "Failed"); return d; }),
     onSuccess: async (data) => {
       submittingRef.current = false;
+      // Skip automatic navigation during batch submission
+      if (isBatchSubmitting) return;
       const finishLocal = () => {
         toast({ title: `✓ ${data.fullName || "Client"} registered`, description: `Ref: ${data.reference}` });
         setSessionCount(c => c + 1);
@@ -340,7 +354,7 @@ export default function AgentClients() {
         finishLocal();
       }
     },
-    onError: (err: Error) => { submittingRef.current = false; toast({ title: "Registration failed", description: err.message, variant: "destructive" }); },
+    onError: (err: Error) => { submittingRef.current = false; if (!isBatchSubmitting) toast({ title: "Registration failed", description: err.message, variant: "destructive" }); },
   });
 
   // BUG FIX #12: Double-submit guard ref
@@ -392,6 +406,7 @@ export default function AgentClients() {
       paymentMethod: form.paymentMethod === "online" ? "paystack" : form.paymentMethod,
       paymentReference: form.paymentReference || undefined,
       paymentProofUrl: form.paymentProofUrl || undefined,
+      pilgrimType,
     });
   };
 
@@ -748,11 +763,38 @@ export default function AgentClients() {
             </div>
           </div>
 
-          <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+           <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+            {/* Offline/Online status */}
+            {!isOnline && (
+              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <WifiOff className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-amber-800">No internet connection</p>
+                  <p className="text-xs text-amber-600">Your progress is saved locally. Submit when connection is restored.</p>
+                </div>
+              </div>
+            )}
+            {wasOffline && isOnline && (
+              <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg p-3">
+                <Wifi className="w-4 h-4 text-green-600 flex-shrink-0" />
+                <p className="text-sm font-medium text-green-800">Connection restored ✓</p>
+              </div>
+            )}
             
             {/* ── STEP 1: PACKAGE ── */}
             {regStep === 1 && (
               <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
+                {/* Mode toggle */}
+                <div className="flex rounded-xl bg-[#F1F5F9] p-1 gap-1">
+                  <button type="button" onClick={() => setBatchMode(false)}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex-1 ${!batchMode ? "bg-white text-[#2D3199] shadow-sm" : "text-[#64748B]"}`}>
+                    👤 Single Client
+                  </button>
+                  <button type="button" onClick={() => setBatchMode(true)}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex-1 ${batchMode ? "bg-white text-[#2D3199] shadow-sm" : "text-[#64748B]"}`}>
+                    👥 Batch (up to 10)
+                  </button>
+                </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide flex items-center gap-1">
                     <Package className="w-3.5 h-3.5" /> Select Package <span className="text-red-500">*</span>
@@ -797,8 +839,129 @@ export default function AgentClients() {
               </div>
             )}
 
-            {/* ── STEP 2: PASSPORT ── */}
-            {regStep === 2 && (
+            {/* ── STEP 2: PASSPORT (or Batch Upload) ── */}
+            {regStep === 2 && batchMode && (
+              <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
+                {batchStep === "upload" && (
+                  <BatchPassportUpload
+                    maxPilgrims={10}
+                    onBatchReady={(pilgrims) => {
+                      setBatchPilgrims(pilgrims);
+                      setBatchStep("review");
+                    }}
+                    onCancel={() => {
+                      setBatchMode(false);
+                      setRegStep(1);
+                    }}
+                  />
+                )}
+                {batchStep === "review" && batchPilgrims.length > 0 && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                    <p className="text-sm font-bold text-emerald-700 mb-2">
+                      ✓ {batchPilgrims.length} client(s) ready for registration
+                    </p>
+                    <p className="text-xs text-emerald-600">
+                      Each client gets a separate booking under <strong>{selectedPkg?.name}</strong>.
+                      {selectedPkg && ` Your price: ₦${(effectivePrice * batchPilgrims.length).toLocaleString()}`}
+                    </p>
+                    {isBatchSubmitting && (
+                      <div className="mt-3">
+                        <div className="flex items-center gap-2 text-sm font-bold text-[#2D3199]">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Registering client {batchProgress}/{batchPilgrims.length}...
+                        </div>
+                        <div className="w-full bg-[#E2E8F0] rounded-full h-2 mt-2">
+                          <div className="bg-[#2D3199] h-2 rounded-full transition-all" style={{ width: `${(batchProgress / batchPilgrims.length) * 100}%` }} />
+                        </div>
+                      </div>
+                    )}
+                    <div className="mt-3 flex gap-2">
+                      <Button type="button" variant="outline" onClick={() => setBatchStep("upload")}
+                        disabled={isBatchSubmitting}
+                        className="rounded-xl text-xs font-bold h-9">
+                        ← Back to Edit
+                      </Button>
+                      <Button type="button" onClick={async () => {
+                        if (isBatchSubmitting) return;
+                        // Wallet balance check for batch
+                        if (form.paymentMethod === "wallet") {
+                          const totalCost = effectivePrice * batchPilgrims.length;
+                          const balance = walletData?.balance ?? 0;
+                          if (balance < totalCost) {
+                            toast({ title: "Insufficient wallet balance", description: `Need ₦${totalCost.toLocaleString()} but wallet has ₦${balance.toLocaleString()}`, variant: "destructive" });
+                            return;
+                          }
+                        }
+                        setIsBatchSubmitting(true);
+                        setBatchProgress(0);
+                        const batchId = crypto.randomUUID();
+                        const results: { name: string; success: boolean; reference?: string; error?: string }[] = [];
+                        for (let i = 0; i < batchPilgrims.length; i++) {
+                          const p = batchPilgrims[i];
+                          setBatchProgress(i + 1);
+                          // Auto-detect pilgrimType from DOB
+                          let detectedType: "adult" | "child" | "infant" = "adult";
+                          if (p.dateOfBirth) {
+                            const birth = new Date(p.dateOfBirth);
+                            const now = new Date();
+                            const ageMonths = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
+                            if (ageMonths <= 23) detectedType = "infant";
+                            else if (ageMonths <= 11 * 12) detectedType = "child";
+                          }
+                          try {
+                            const data = await registerMutation.mutateAsync({
+                              packageId: form.packageId,
+                              firstName: p.firstName,
+                              lastName: p.lastName,
+                              fullName: `${p.firstName} ${p.lastName}`.trim(),
+                              passportNumber: p.passportNumber,
+                              passportIssueDate: p.passportIssueDate,
+                              passportExpiry: p.passportExpiry,
+                              passportIssuingAuthority: p.passportIssuingAuthority,
+                              dateOfBirth: p.dateOfBirth,
+                              gender: p.gender,
+                              nationality: p.nationality,
+                              passportCopyUrl: p.passportCopyUrl,
+                              profilePhotoUrl: p.profilePhotoUrl,
+                              phone: "", email: "",
+                              country: "Nigeria", city: "",
+                              roomPreference: "Double",
+                              paymentMethod: form.paymentMethod === "online" ? "cash" : form.paymentMethod,
+                              amountPaid: form.paymentMethod === "wallet" ? effectivePrice : 0,
+                              pilgrimType: detectedType,
+                              batchId,
+                            });
+                            results.push({ name: `${p.firstName} ${p.lastName}`, success: true, reference: data.reference });
+                          } catch (err: any) {
+                            results.push({ name: `${p.firstName} ${p.lastName}`, success: false, error: err.message || "Failed" });
+                          }
+                        }
+                        setIsBatchSubmitting(false);
+                        const successes = results.filter(r => r.success);
+                        const failures = results.filter(r => !r.success);
+                        if (successes.length > 0) {
+                          localStorage.removeItem("agent_client_draft");
+                          setBatchResults(results);
+                          qc.invalidateQueries({ queryKey: ["agent-clients"] });
+                          qc.invalidateQueries({ queryKey: ["agent-wallet"] });
+                          qc.invalidateQueries({ queryKey: ["packages-active"] });
+                          setRegStep(6);
+                        }
+                        if (failures.length > 0) {
+                          toast({ title: `${failures.length} registration(s) failed`, description: failures.map(f => f.name).join(", "), variant: "destructive" });
+                        }
+                      }}
+                        disabled={isBatchSubmitting}
+                        className="bg-[#FF3B00] hover:bg-[#D63200] text-white rounded-xl text-xs font-black h-9 gap-1">
+                        <UserPlus className="w-3.5 h-3.5" />
+                        Register {batchPilgrims.length} Client{batchPilgrims.length > 1 ? "s" : ""}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {regStep === 2 && !batchMode && (
               <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
                 <div className="bg-[#EEF0FF] border border-[#2D3199]/20 p-4 rounded-xl">
                   <h3 className="text-sm font-black text-[#1C1F66] flex items-center gap-2 mb-2">
@@ -920,7 +1083,19 @@ export default function AgentClients() {
                     {show("dateOfBirth") && (
                       <div className="space-y-1.5">
                         <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("dateOfBirth", "Date of Birth")}</Label>
-                        <Input type="date" value={form.dateOfBirth} onChange={e => set("dateOfBirth", e.target.value)} className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                        <Input type="date" value={form.dateOfBirth} onChange={e => {
+                          set("dateOfBirth", e.target.value);
+                          if (e.target.value) {
+                            const birth = new Date(e.target.value);
+                            const now = new Date();
+                            let years = now.getFullYear() - birth.getFullYear();
+                            const mo = now.getMonth() - birth.getMonth();
+                            if (mo < 0 || (mo === 0 && now.getDate() < birth.getDate())) years--;
+                            if (years < 2) setPilgrimType("infant");
+                            else if (years < 12) setPilgrimType("child");
+                            else setPilgrimType("adult");
+                          }
+                        }} className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
                       </div>
                     )}
                     {show("gender") && (
@@ -933,7 +1108,26 @@ export default function AgentClients() {
                       </div>
                     )}
                   </div>
-                </div>
+                  </div>
+                  {/* Pilgrim Type selector */}
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">Pilgrim Type</Label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([["adult", "Adult", "👤"], ["child", "Child (2-11)", "🧒"], ["infant", "Infant (0-1)", "👶"]] as const).map(([val, label, icon]) => (
+                        <button key={val} type="button" onClick={() => setPilgrimType(val)}
+                          className={`p-2 rounded-xl border-2 text-center text-[10px] font-bold transition-all ${
+                            pilgrimType === val ? "border-[#2D3199] bg-[#EEF0FF] text-[#2D3199]" : "border-[#DCE3F0] text-[#64748B] hover:border-[#2D3199]/30"
+                          }`}>
+                          {icon} {label}
+                        </button>
+                      ))}
+                    </div>
+                    {pilgrimType !== "adult" && (
+                      <p className="text-[10px] text-amber-600 font-semibold">
+                        ⚠ {pilgrimType === "infant" ? "Infants" : "Children"} will be registered as a separate booking.
+                      </p>
+                    )}
+                  </div>
 
                 {/* Other Info */}
                 <div className="space-y-4">
@@ -1142,11 +1336,31 @@ export default function AgentClients() {
                   {form.paymentMethod !== "online" && form.paymentMethod !== "wallet" && (
                     <>
                       <div className="space-y-1.5">
-                        <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide">Amount Paid (₦) <span className="text-red-500">*</span></Label>
-                        <div className="relative">
-                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#64748B] font-bold">₦</span>
-                          <Input type="number" value={form.amountPaid} onChange={e => set("amountPaid", e.target.value)} placeholder={selectedPkg ? String(selectedPkg.price) : "0"} className="pl-8 rounded-xl border-[#E2E8F0] h-12 text-lg font-black text-[#0F172A] bg-white" />
+                        <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide">Payment Amount</Label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {[
+                            { key: "full", label: "Full Payment", amount: String(effectivePrice) },
+                            { key: "500000", label: "Minimum Deposit", amount: "500000" },
+                            { key: "1000000", label: "₦1,000,000", amount: "1000000" },
+                            { key: "custom", label: "Custom Amount", amount: "" },
+                          ].map(opt => (
+                            <button key={opt.key} type="button"
+                              onClick={() => set("amountPaid", opt.amount)}
+                              className={`p-3 rounded-xl border-2 text-left transition-all ${
+                                form.amountPaid === opt.amount ? "border-[#2D3199] bg-[#EEF0FF]" : "border-[#DCE3F0] hover:border-[#2D3199]/30"
+                              }`}>
+                              <span className="text-xs font-bold text-[#0F172A] block">{opt.label}</span>
+                              {opt.amount && <span className="text-[10px] text-[#64748B]">₦{Number(opt.amount).toLocaleString()}</span>}
+                            </button>
+                          ))}
                         </div>
+                        {/* Custom amount input */}
+                        {!["", String(effectivePrice), "500000", "1000000"].includes(form.amountPaid) && (
+                          <div className="mt-2 relative">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#64748B] font-bold">₦</span>
+                            <Input type="number" value={form.amountPaid} onChange={e => set("amountPaid", e.target.value)} placeholder="Enter amount" className="pl-8 rounded-xl border-[#E2E8F0] h-12 text-lg font-black text-[#0F172A] bg-white" min={0} />
+                          </div>
+                        )}
                       </div>
                       
                       {selectedPkg && form.amountPaid && Number(form.amountPaid) > 0 && (
@@ -1233,13 +1447,35 @@ export default function AgentClients() {
                   <CheckCircle2 className="w-8 h-8 text-emerald-600" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-black text-[#0F172A]">Registration Complete</h3>
-                  <p className="text-sm text-[#64748B] mt-1">Client has been successfully added to your list.</p>
+                  <h3 className="text-xl font-black text-[#0F172A]">
+                    {batchResults.length > 0
+                      ? `${batchResults.filter(r => r.success).length} Registration${batchResults.filter(r => r.success).length !== 1 ? "s" : ""} Complete`
+                      : "Registration Complete"}
+                  </h3>
+                  <p className="text-sm text-[#64748B] mt-1">
+                    {batchResults.length > 0
+                      ? `${batchResults.filter(r => r.success).length} of ${batchResults.length} client(s) added successfully.`
+                      : "Client has been successfully added to your list."}
+                  </p>
                 </div>
-                <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 inline-block">
-                  <p className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider mb-1">Reference Number</p>
-                  <p className="font-mono text-2xl font-black text-[#2D3199]">{result?.reference}</p>
-                </div>
+                {batchResults.length > 0 ? (
+                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 text-left space-y-2">
+                    <p className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider mb-1">Batch Results</p>
+                    {batchResults.map((r, i) => (
+                      <div key={i} className={`flex items-center gap-2 text-sm ${r.success ? "text-emerald-700" : "text-red-600"}`}>
+                        {r.success ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> : <AlertTriangle className="w-4 h-4 flex-shrink-0" />}
+                        <span className="font-medium">{r.name}</span>
+                        {r.reference && <span className="ml-auto font-mono text-xs text-[#64748B]">{r.reference}</span>}
+                        {r.error && <span className="ml-auto text-xs">{r.error}</span>}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-4 inline-block">
+                    <p className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider mb-1">Reference Number</p>
+                    <p className="font-mono text-2xl font-black text-[#2D3199]">{result?.reference}</p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1254,6 +1490,9 @@ export default function AgentClients() {
                     <Button type="button" onClick={() => {
                       setResult(null);
                       setForm(f => ({ ...BLANK_FORM, packageId: f.packageId, paymentMethod: f.paymentMethod }));
+                      setPilgrimType("adult");
+                      setBatchMode(false); setBatchPilgrims([]); setBatchStep("upload");
+                      setIsBatchSubmitting(false); setBatchProgress(0); setBatchResults([]);
                       setRegStep(2);
                     }} className="w-full sm:w-auto bg-[#2D3199] hover:bg-[#1C1F66] text-white rounded-xl font-black h-12 px-6 shadow-md">
                       <UserPlus className="w-4 h-4 mr-2" /> Register Another Client
@@ -1275,10 +1514,29 @@ export default function AgentClients() {
                   {regStep < 5 ? (
                     <Button type="button" onClick={() => {
                       if (regStep === 1 && !form.packageId) { toast({ title: "Select a package", variant: "destructive" }); return; }
-                      if (regStep === 3 && ((req("firstName") && !form.firstName.trim()) || (req("lastName") && !form.lastName.trim()))) { toast({ title: "First or Last name is required", variant: "destructive" }); return; }
-                      if (regStep === 4 && req("phone") && !form.phone.trim()) { toast({ title: "Phone number is required", variant: "destructive" }); return; }
+                      if (regStep === 2) {
+                        const { valid, missingFields } = validateRequiredFields(cfg, form,
+                          ["passportNumber", "passportIssueDate", "passportExpiry"]);
+                        if (!valid) {
+                          toast({ title: "Required fields missing", description: missingFields.map(f => f.label).join(", "), variant: "destructive" }); return;
+                        }
+                      }
+                      if (regStep === 3) {
+                        const { valid, missingFields } = validateRequiredFields(cfg, form,
+                          ["firstName", "lastName", "dateOfBirth", "gender", "nationality"]);
+                        if (!valid) {
+                          toast({ title: "Required fields missing", description: missingFields.map(f => f.label).join(", "), variant: "destructive" }); return;
+                        }
+                      }
+                      if (regStep === 4) {
+                        const { valid, missingFields } = validateRequiredFields(cfg, form,
+                          ["phone", "email", "country", "city"]);
+                        if (!valid) {
+                          toast({ title: "Required fields missing", description: missingFields.map(f => f.label).join(", "), variant: "destructive" }); return;
+                        }
+                      }
                       setRegStep(s => s + 1);
-                    }} className="w-full sm:w-auto bg-[#2D3199] hover:bg-[#1C1F66] text-white rounded-xl font-black h-12 px-8 shadow-md">
+                    }} disabled={!isOnline} className="w-full sm:w-auto bg-[#2D3199] hover:bg-[#1C1F66] text-white rounded-xl font-black h-12 px-8 shadow-md">
                       Next Step <ChevronRight className="w-4 h-4 ml-2" />
                     </Button>
                   ) : (

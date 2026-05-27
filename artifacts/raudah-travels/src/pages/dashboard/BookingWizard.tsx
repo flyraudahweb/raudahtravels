@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { uploadFile } from "@/lib/upload";
 import { useRoute, useLocation } from "wouter";
 import { useGetPackage, getGetPackageQueryKey, useCreateBooking, useCreatePayment } from "@workspace/api-client-react";
@@ -12,13 +12,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   CheckCircle2, ChevronLeft, ChevronRight, CalendarDays, Users, Star,
   CreditCard, Building2, Banknote, Upload, FileText, X, AlertTriangle,
+  WifiOff, Wifi, Baby, UserPlus, AlertCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { PackageAvailability } from "@/components/PackageAvailability";
 import { useQuery } from "@tanstack/react-query";
-import { useFormFieldConfig } from "@/hooks/useFormFieldConfig";
+import { useFormFieldConfig, validateRequiredFields } from "@/hooks/useFormFieldConfig";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import PassportScanner from "@/components/PassportScanner";
 
 const STEPS = ["Package", "Passport", "Personal Info", "Contact", "Payment & Review"];
@@ -201,6 +204,18 @@ export default function BookingWizard() {
   const primaryBank = bankData?.accounts?.[0];
   const bankAccounts = bankData?.accounts || [];
 
+  // Fetch room surcharges from settings
+  const { data: settingsData } = useQuery<Record<string, any>>({
+    queryKey: ["public-settings-room"],
+    queryFn: () => fetch("/api/public/settings").then(r => r.json()),
+    staleTime: 60000,
+  });
+  const roomSurcharges: Record<string, number> = (() => {
+    const raw = settingsData?.room_surcharges;
+    if (raw && typeof raw === "object") return raw as Record<string, number>;
+    return { single: 0, double: 0, triple: 0, quad: 0 };
+  })();
+
   const createBooking = useCreateBooking();
   const createPayment = useCreatePayment();
 
@@ -244,6 +259,31 @@ export default function BookingWizard() {
   const [phoneCode, setPhoneCode] = useState("+234");
   const [isRestored, setIsRestored] = useState(false);
   const paystackScriptLoaded = useRef(false);
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+
+  // Payment amount selection (for bank_transfer / cash only)
+  const [paymentOption, setPaymentOption] = useState<"full" | "500000" | "1000000" | "custom">("full");
+  const [customPaymentAmount, setCustomPaymentAmount] = useState("");
+
+  // Child / Infant entries
+  const [childEntries, setChildEntries] = useState<Array<{
+    id: string;
+    type: "child" | "infant";
+    firstName: string;
+    lastName: string;
+    dateOfBirth: string;
+    gender: string;
+    nationality: string;
+    passportNumber: string;
+    passportIssueDate: string;
+    passportExpiry: string;
+    passportCopyUrl: string;
+    profilePhotoUrl: string;
+  }>>([]);
+
+  // Online/offline detection
+  const { isOnline, wasOffline } = useOnlineStatus();
 
   useEffect(() => {
     try {
@@ -255,6 +295,9 @@ export default function BookingWizard() {
         if (parsed.contactForm) setContactForm(parsed.contactForm);
         if (parsed.payForm) setPayForm(parsed.payForm);
         if (parsed.step) setStep(parsed.step);
+        if (parsed.childEntries) setChildEntries(parsed.childEntries);
+        if (parsed.paymentOption) setPaymentOption(parsed.paymentOption);
+        if (parsed.customPaymentAmount) setCustomPaymentAmount(parsed.customPaymentAmount);
       }
     } catch (e) {}
     setIsRestored(true);
@@ -267,9 +310,10 @@ export default function BookingWizard() {
       return;
     }
     localStorage.setItem("user_booking_draft", JSON.stringify({
-      passportForm, personalForm, contactForm, payForm, step
+      passportForm, personalForm, contactForm, payForm, step,
+      childEntries, paymentOption, customPaymentAmount,
     }));
-  }, [passportForm, personalForm, contactForm, payForm, step, done, isRestored]);
+  }, [passportForm, personalForm, contactForm, payForm, step, done, isRestored, childEntries, paymentOption, customPaymentAmount]);
 
   useEffect(() => {
     if (!paystackScriptLoaded.current) {
@@ -287,9 +331,67 @@ export default function BookingWizard() {
     }
   }, [paystackEnabled]);
 
-  // Always charge the full package price
-  const fullAmount = pkg ? pkg.price * payForm.pilgrimCount : 0;
+  // ── Child/Infant helpers ──────────────────────────────────────────
+  const CHILD_PRICE = 2350000;
+  const INFANT_PRICE = 1200000;
+
+  function getAgeFromDOB(dob: string): { years: number; months: number } | null {
+    if (!dob) return null;
+    const birth = new Date(dob);
+    const now = new Date();
+    let years = now.getFullYear() - birth.getFullYear();
+    let months = now.getMonth() - birth.getMonth();
+    if (months < 0) { years--; months += 12; }
+    if (now.getDate() < birth.getDate()) months--;
+    return { years, months: years * 12 + months };
+  }
+
+  function detectPilgrimType(dob: string): "adult" | "child" | "infant" {
+    const age = getAgeFromDOB(dob);
+    if (!age) return "adult";
+    if (age.months <= 23) return "infant";
+    if (age.years <= 11) return "child";
+    return "adult";
+  }
+
+  const getChildPrice = (type: "child" | "infant") => type === "infant" ? INFANT_PRICE : CHILD_PRICE;
+
+  const addChildEntry = (type: "child" | "infant") => {
+    setChildEntries(prev => [...prev, {
+      id: crypto.randomUUID(),
+      type,
+      firstName: "", lastName: "", dateOfBirth: "", gender: "",
+      nationality: "Nigerian", passportNumber: "",
+      passportIssueDate: "", passportExpiry: "",
+      passportCopyUrl: "", profilePhotoUrl: "",
+    }]);
+  };
+
+  const removeChildEntry = (id: string) => setChildEntries(prev => prev.filter(c => c.id !== id));
+
+  const updateChildEntry = (id: string, updates: Partial<typeof childEntries[0]>) => {
+    setChildEntries(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+  };
+
+  // ── Price calculations ────────────────────────────────────────────
+  const roomSurcharge = roomSurcharges[contactForm.roomType?.toLowerCase() || "quad"] || 0;
+  const adultPrice = pkg ? (pkg.price + roomSurcharge) : 0;
+  const childrenTotal = childEntries.reduce((sum, c) => sum + getChildPrice(c.type), 0);
+  const fullAmount = (adultPrice * payForm.pilgrimCount) + childrenTotal;
   const fullName = [personalForm.firstName, personalForm.lastName].filter(Boolean).join(" ") || user?.fullName || "";
+
+  // Payment amount based on selection (Paystack always full, bank/cash can be partial)
+  const getPaymentAmount = (): number => {
+    if (payForm.method === "online") return fullAmount;
+    switch (paymentOption) {
+      case "full": return fullAmount;
+      case "500000": return Math.min(500000, fullAmount);
+      case "1000000": return Math.min(1000000, fullAmount);
+      case "custom": return Math.max(500000, Math.min(Number(customPaymentAmount) || 500000, fullAmount));
+      default: return fullAmount;
+    }
+  };
+  const paymentAmount = getPaymentAmount();
 
   const cfg = useFormFieldConfig();
   const show = (name: string) => cfg(name).visible;
@@ -297,17 +399,42 @@ export default function BookingWizard() {
   const lbl  = (name: string, label: string) => req(name) ? `${label} *` : label;
 
   const handleNext = () => {
-    if (step === 1 && passportForm.passportExpiry) {
-      const w = passportExpiryWarning(passportForm.passportExpiry);
-      if (w) {
-        toast({
-          title: w.type === "expired" ? "Passport is expired" : "Passport expiring too soon",
-          description: "The pilgrim's passport must be renewed before registration can continue.",
-          variant: "destructive",
-        });
+    // Step-level field validation
+    if (step === 1) {
+      const { valid, missingFields } = validateRequiredFields(cfg, passportForm,
+        ["passportNumber", "passportIssueDate", "passportExpiry", "passportIssuingAuthority", "passportCopyUrl"]);
+      if (!valid) {
+        setValidationErrors(missingFields.map(f => f.label));
+        toast({ title: "Required fields missing", description: missingFields.map(f => f.label).join(", "), variant: "destructive" });
+        return;
+      }
+      if (passportForm.passportExpiry) {
+        const w = passportExpiryWarning(passportForm.passportExpiry);
+        if (w) {
+          toast({ title: w.type === "expired" ? "Passport is expired" : "Passport expiring too soon", description: "The pilgrim's passport must be renewed before registration can continue.", variant: "destructive" });
+          return;
+        }
+      }
+    }
+    if (step === 2) {
+      const { valid, missingFields } = validateRequiredFields(cfg, personalForm,
+        ["firstName", "lastName", "dateOfBirth", "gender", "nationality", "placeOfBirth"]);
+      if (!valid) {
+        setValidationErrors(missingFields.map(f => f.label));
+        toast({ title: "Required fields missing", description: missingFields.map(f => f.label).join(", "), variant: "destructive" });
         return;
       }
     }
+    if (step === 3) {
+      const { valid, missingFields } = validateRequiredFields(cfg, contactForm,
+        ["phone", "email", "country", "city", "address"]);
+      if (!valid) {
+        setValidationErrors(missingFields.map(f => f.label));
+        toast({ title: "Required fields missing", description: missingFields.map(f => f.label).join(", "), variant: "destructive" });
+        return;
+      }
+    }
+    setValidationErrors([]);
     setStep(s => s + 1);
   };
 
@@ -326,7 +453,7 @@ export default function BookingWizard() {
         await handlePaystackPayment(createdBookingIdRef.current);
       } else {
         createPayment.mutate(
-          { data: { bookingId: createdBookingIdRef.current, amount: fullAmount, method: payForm.method, reference: payForm.reference, proofUrl: payForm.paymentProofUrl } },
+          { data: { bookingId: createdBookingIdRef.current, amount: paymentAmount, method: payForm.method, reference: payForm.reference, proofUrl: payForm.paymentProofUrl } },
           {
             onSuccess: () => { setDoneMethod(payForm.method); setDone(true); setProcessing(false); },
             onError: () => { setDoneMethod(payForm.method); setDone(true); setProcessing(false); },
@@ -336,6 +463,9 @@ export default function BookingWizard() {
       return;
     }
 
+    // Auto-detect pilgrimType from DOB
+    const mainPilgrimType = personalForm.dateOfBirth ? detectPilgrimType(personalForm.dateOfBirth) : "adult";
+
     createBooking.mutate(
       {
         data: {
@@ -344,18 +474,86 @@ export default function BookingWizard() {
           pilgrimDetails,
           notes: contactForm.specialRequests,
           fullName,
-          passportNumber: passportForm.passportNumber,
+          // Passport fields (from passportForm)
+          passportNumber: passportForm.passportNumber || undefined,
+          passportIssueDate: passportForm.passportIssueDate || undefined,
+          passportExpiry: passportForm.passportExpiry || undefined,
+          passportIssuingAuthority: passportForm.passportIssuingAuthority || undefined,
+          passportCopyUrl: passportForm.passportCopyUrl || undefined,
+          visaNumber: passportForm.visaNumber || undefined,
+          // Personal fields (from personalForm)
+          civility: personalForm.civility || undefined,
+          firstName: personalForm.firstName || undefined,
+          lastName: personalForm.lastName || undefined,
+          dateOfBirth: personalForm.dateOfBirth || undefined,
+          gender: personalForm.gender || undefined,
+          nationality: personalForm.nationality || undefined,
+          placeOfBirth: personalForm.placeOfBirth || undefined,
+          ethnicGroup: personalForm.ethnicGroup || undefined,
+          maritalStatus: personalForm.maritalStatus || undefined,
+          levelOfStudy: personalForm.levelOfStudy || undefined,
+          observation: personalForm.observation || undefined,
+          profilePhotoUrl: personalForm.profilePhotoUrl || undefined,
+          partner: personalForm.partner || undefined,
+          underCover: personalForm.underCover || undefined,
+          // Contact fields (from contactForm)
           phone: contactForm.phone ? `${phoneCode}${contactForm.phone}` : "",
+          email: contactForm.email || undefined,
+          country: contactForm.country || undefined,
+          city: contactForm.city || undefined,
+          address: contactForm.address || undefined,
+          roomPreference: contactForm.roomType || "quad",
+          departureCity: contactForm.departureCity || undefined,
+          // Room surcharge & pilgrim type
+          roomSurcharge: roomSurcharge || 0,
+          pilgrimType: mainPilgrimType,
         },
       },
       {
         onSuccess: async (booking) => {
           createdBookingIdRef.current = booking.id;
+
+          // Create separate bookings for each child/infant
+          if (childEntries.length > 0) {
+            const batchId = crypto.randomUUID();
+            for (const child of childEntries) {
+              try {
+                await createBooking.mutateAsync({
+                  data: {
+                    packageId: pkg!.id,
+                    pilgrimCount: 1,
+                    fullName: `${child.firstName} ${child.lastName}`.trim(),
+                    firstName: child.firstName || undefined,
+                    lastName: child.lastName || undefined,
+                    dateOfBirth: child.dateOfBirth || undefined,
+                    gender: child.gender || undefined,
+                    nationality: child.nationality || undefined,
+                    passportNumber: child.passportNumber || undefined,
+                    passportIssueDate: child.passportIssueDate || undefined,
+                    passportExpiry: child.passportExpiry || undefined,
+                    passportCopyUrl: child.passportCopyUrl || undefined,
+                    profilePhotoUrl: child.profilePhotoUrl || undefined,
+                    phone: contactForm.phone ? `${phoneCode}${contactForm.phone}` : "",
+                    email: contactForm.email || undefined,
+                    country: contactForm.country || undefined,
+                    city: contactForm.city || undefined,
+                    roomPreference: contactForm.roomType || "quad",
+                    pilgrimType: child.type,
+                    parentBookingId: booking.id,
+                    batchId,
+                  },
+                });
+              } catch (err) {
+                console.error(`Failed to create booking for child: ${child.firstName}`, err);
+              }
+            }
+          }
+
           if (payForm.method === "online") {
             await handlePaystackPayment(booking.id);
           } else {
             createPayment.mutate(
-              { data: { bookingId: booking.id, amount: fullAmount, method: payForm.method, reference: payForm.reference, proofUrl: payForm.paymentProofUrl } },
+              { data: { bookingId: booking.id, amount: paymentAmount, method: payForm.method, reference: payForm.reference, proofUrl: payForm.paymentProofUrl } },
               {
                 onSuccess: () => { setDoneMethod(payForm.method); setDone(true); setProcessing(false); },
                 onError: () => { setDoneMethod(payForm.method); setDone(true); setProcessing(false); },
@@ -517,6 +715,31 @@ export default function BookingWizard() {
 
       <Card>
         <CardContent className="p-6">
+          {/* Offline/Online detection banner */}
+          {!isOnline && (
+            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+              <WifiOff className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-amber-800">No internet connection</p>
+                <p className="text-xs text-amber-600">Your progress is saved locally. It will be submitted when connection is restored.</p>
+              </div>
+            </div>
+          )}
+          {wasOffline && isOnline && (
+            <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+              <Wifi className="w-4 h-4 text-green-600 flex-shrink-0" />
+              <p className="text-sm font-medium text-green-800">Connection restored ✓</p>
+            </div>
+          )}
+          {validationErrors.length > 0 && (
+            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+              <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-red-800">Please fill in required fields:</p>
+                <p className="text-xs text-red-600">{validationErrors.join(", ")}</p>
+              </div>
+            </div>
+          )}
 
           {/* ── Step 0: Package summary ───────────────────────────── */}
           {step === 0 && (
@@ -870,12 +1093,15 @@ export default function BookingWizard() {
                     <Select value={contactForm.roomType} onValueChange={v => setContactForm(f => ({ ...f, roomType: v }))}>
                       <SelectTrigger><SelectValue placeholder="Select room type" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="quad">Quad (4 persons)</SelectItem>
-                        <SelectItem value="triple">Triple (3 persons)</SelectItem>
-                        <SelectItem value="double">Double (2 persons)</SelectItem>
-                        <SelectItem value="single">Single (1 person)</SelectItem>
+                        <SelectItem value="quad">Quad (4 persons) — Included</SelectItem>
+                        <SelectItem value="triple">Triple (3 persons){roomSurcharges.triple ? ` (+₦${roomSurcharges.triple.toLocaleString()})` : ""}</SelectItem>
+                        <SelectItem value="double">Double (2 persons){roomSurcharges.double ? ` (+₦${roomSurcharges.double.toLocaleString()})` : ""}</SelectItem>
+                        <SelectItem value="single">Single (1 person){roomSurcharges.single ? ` (+₦${roomSurcharges.single.toLocaleString()})` : ""}</SelectItem>
                       </SelectContent>
                     </Select>
+                    {roomSurcharge > 0 && (
+                      <p className="text-xs text-amber-600 mt-1">Room surcharge: +₦{roomSurcharge.toLocaleString()} per person</p>
+                    )}
                   </div>
                 )}
                 <div className="sm:col-span-2">
@@ -884,6 +1110,99 @@ export default function BookingWizard() {
                     onChange={e => setContactForm(f => ({ ...f, specialRequests: e.target.value }))}
                     placeholder="Dietary requirements, wheelchair access, medical needs…" rows={2} />
                 </div>
+              </div>
+              {/* ── Child / Infant Registration ──────────────────── */}
+              <div className="border-t pt-4 mt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="text-sm font-semibold">Travelling with Children?</h3>
+                    <p className="text-xs text-muted-foreground">Add children or infants to this booking</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => addChildEntry("child")}>
+                      <UserPlus className="w-3.5 h-3.5 mr-1" /> Child
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => addChildEntry("infant")}>
+                      <Baby className="w-3.5 h-3.5 mr-1" /> Infant
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mb-3">Child (≤11 years): ₦{CHILD_PRICE.toLocaleString()} · Infant (0-23 months): ₦{INFANT_PRICE.toLocaleString()}</p>
+                {childEntries.map((child, idx) => {
+                  const detectedType = child.dateOfBirth ? detectPilgrimType(child.dateOfBirth) : child.type;
+                  const actualType = detectedType === "adult" ? child.type : detectedType;
+                  return (
+                    <div key={child.id} className="bg-muted/30 rounded-lg border p-4 mb-3">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Badge variant={actualType === "infant" ? "secondary" : "outline"}>
+                            {actualType === "infant" ? "👶 Infant" : "🧒 Child"} #{idx + 1}
+                          </Badge>
+                          <span className="text-xs font-semibold text-primary">₦{getChildPrice(actualType as "child" | "infant").toLocaleString()}</span>
+                        </div>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => removeChildEntry(child.id)}>
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      <PassportScanner
+                        compact
+                        onExtracted={(data) => {
+                          updateChildEntry(child.id, {
+                            firstName: data.firstName || child.firstName,
+                            lastName: data.lastName || child.lastName,
+                            dateOfBirth: data.dateOfBirth || child.dateOfBirth,
+                            gender: data.gender || child.gender,
+                            nationality: data.nationality || child.nationality,
+                            passportNumber: data.passportNumber || child.passportNumber,
+                            passportIssueDate: data.passportIssueDate || child.passportIssueDate,
+                            passportExpiry: data.passportExpiry || child.passportExpiry,
+                          });
+                        }}
+                        onProfilePhoto={(url) => updateChildEntry(child.id, { profilePhotoUrl: url })}
+                      />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                        <div>
+                          <Label className="text-xs">First Name *</Label>
+                          <Input value={child.firstName} onChange={e => updateChildEntry(child.id, { firstName: e.target.value })} placeholder="First name" />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Last Name *</Label>
+                          <Input value={child.lastName} onChange={e => updateChildEntry(child.id, { lastName: e.target.value })} placeholder="Last name" />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Date of Birth *</Label>
+                          <Input type="date" value={child.dateOfBirth} onChange={e => {
+                            const newDob = e.target.value;
+                            const detected = detectPilgrimType(newDob);
+                            updateChildEntry(child.id, { dateOfBirth: newDob, type: detected === "adult" ? child.type : detected as "child" | "infant" });
+                          }} />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Gender</Label>
+                          <Select value={child.gender} onValueChange={v => updateChildEntry(child.id, { gender: v })}>
+                            <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="male">Male</SelectItem>
+                              <SelectItem value="female">Female</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-xs">Passport Number</Label>
+                          <Input value={child.passportNumber} onChange={e => updateChildEntry(child.id, { passportNumber: e.target.value })} placeholder="Passport number" className="font-mono" />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Nationality</Label>
+                          <Select value={child.nationality} onValueChange={v => updateChildEntry(child.id, { nationality: v })}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>{NATIONALITIES.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">Phone and email will use parent's contact information.</p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -901,6 +1220,20 @@ export default function BookingWizard() {
                 <div className="flex justify-between"><span className="text-muted-foreground">Price per person</span>
                   {isFetching ? <Skeleton className="h-5 w-28" /> : <span>₦{pkg.price.toLocaleString()}</span>}
                 </div>
+                {roomSurcharge > 0 && (
+                  <div className="flex justify-between text-amber-700"><span>Room surcharge ({contactForm.roomType})</span><span>+₦{roomSurcharge.toLocaleString()} × {payForm.pilgrimCount}</span></div>
+                )}
+                {childEntries.length > 0 && (
+                  <>
+                    <div className="border-t border-border pt-1 mt-1" />
+                    {childEntries.map((c, i) => (
+                      <div key={c.id} className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">{c.type === "infant" ? "👶 Infant" : "🧒 Child"}: {c.firstName || `#${i+1}`} {c.lastName}</span>
+                        <span>₦{getChildPrice(c.type).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </>
+                )}
                 <div className="flex justify-between font-bold border-t border-border pt-2 mt-1">
                   <span>Total Amount Due</span>
                   {isFetching ? <Skeleton className="h-5 w-28" /> : <span className="text-primary">₦{fullAmount.toLocaleString()}</span>}
@@ -931,6 +1264,43 @@ export default function BookingWizard() {
                 </div>
               </div>
 
+              {/* ── Payment Amount Options (bank_transfer / cash) ── */}
+              {(payForm.method === "bank_transfer" || payForm.method === "cash") && (
+                <div className="space-y-3">
+                  <Label className="block">Payment Amount</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { key: "full" as const, label: "Full Payment", amount: fullAmount },
+                      { key: "500000" as const, label: "Minimum Deposit", amount: 500000 },
+                      { key: "1000000" as const, label: "₦1,000,000", amount: 1000000 },
+                      { key: "custom" as const, label: "Custom Amount", amount: null as number | null },
+                    ].map(opt => (
+                      <button key={opt.key} type="button"
+                        onClick={() => setPaymentOption(opt.key)}
+                        className={`p-3 rounded-lg border-2 text-left transition-all ${paymentOption === opt.key ? "border-primary bg-primary/5" : "border-muted hover:border-primary/30"}`}>
+                        <span className="text-sm font-semibold block">{opt.label}</span>
+                        {opt.amount && <span className="text-xs text-muted-foreground">₦{opt.amount.toLocaleString()}</span>}
+                      </button>
+                    ))}
+                  </div>
+                  {paymentOption === "custom" && (
+                    <div>
+                      <Label className="text-xs">Enter Amount (minimum ₦500,000)</Label>
+                      <Input type="number" value={customPaymentAmount}
+                        onChange={e => setCustomPaymentAmount(e.target.value)}
+                        placeholder="Enter amount" min={500000} />
+                      {Number(customPaymentAmount) > 0 && Number(customPaymentAmount) < 500000 && (
+                        <p className="text-xs text-red-500 mt-1">Minimum payment is ₦500,000</p>
+                      )}
+                    </div>
+                  )}
+                  <div className="bg-primary/5 rounded-lg p-3 flex justify-between items-center">
+                    <span className="text-sm font-medium">Amount to Pay</span>
+                    <span className="text-lg font-bold text-primary">₦{paymentAmount.toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
+
               {payForm.method === "bank_transfer" && (
                 <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-sm space-y-4">
                   <div>
@@ -940,7 +1310,7 @@ export default function BookingWizard() {
                         {bankAccounts.map(b => (
                           <div key={b.id} className="bg-white p-3 rounded border border-primary/10">
                             <p className="font-bold text-foreground">{b.bankName}</p>
-                            <p className="font-mono text-primary font-bold">{b.accountNumber} {b.sortCode ? `· ${b.sortCode}` : ""}</p>
+                            <p className="font-mono text-primary font-bold">{b.accountNumber} {(b as any).sortCode ? `· ${(b as any).sortCode}` : ""}</p>
                             <p className="text-xs text-muted-foreground">{b.accountName}</p>
                           </div>
                         ))}
@@ -953,7 +1323,6 @@ export default function BookingWizard() {
                       </div>
                     )}
                   </div>
-                  <p className="text-muted-foreground mt-1">Amount: ₦{fullAmount.toLocaleString()}</p>
                   <div className="mt-3">
                     <Label htmlFor="payRef">Transaction Reference (optional)</Label>
                     <Input id="payRef" value={payForm.reference}
@@ -962,7 +1331,7 @@ export default function BookingWizard() {
                   </div>
                   <div className="mt-3">
                     <FileUploadBox
-                      label="Proof of Payment (Optional)"
+                      label="Proof of Payment"
                       accept="image/*,application/pdf"
                       previewType="file"
                       value={payForm.paymentProofUrl}
@@ -976,13 +1345,13 @@ export default function BookingWizard() {
               {payForm.method === "online" && (
                 <div className="bg-accent/5 border border-accent/20 rounded-lg p-4 text-sm">
                   <p className="font-semibold text-accent mb-1">Pay securely with Paystack</p>
-                  <p className="text-muted-foreground">Your payment is processed securely by Paystack. Once confirmed, visa processing begins automatically.</p>
+                  <p className="text-muted-foreground">Full payment of ₦{fullAmount.toLocaleString()} will be processed securely by Paystack. Once confirmed, visa processing begins automatically.</p>
                 </div>
               )}
               {payForm.method === "cash" && (
                 <div className="bg-muted/50 border rounded-lg p-4 text-sm">
                   <p className="font-semibold mb-1">Cash Payment</p>
-                  <p className="text-muted-foreground">Visit our office to pay ₦{fullAmount.toLocaleString()} in cash.</p>
+                  <p className="text-muted-foreground">Visit our office to pay ₦{paymentAmount.toLocaleString()} in cash.</p>
                 </div>
               )}
             </div>
@@ -995,12 +1364,12 @@ export default function BookingWizard() {
           <ChevronLeft className="w-4 h-4 mr-1" /> Back
         </Button>
         {step < STEPS.length - 1 ? (
-          <Button onClick={handleNext} className="bg-primary">
-            Continue <ChevronRight className="w-4 h-4 ml-1" />
+          <Button onClick={handleNext} className="bg-primary" disabled={!isOnline}>
+            {!isOnline ? "No Connection" : <>Continue <ChevronRight className="w-4 h-4 ml-1" /></>}
           </Button>
         ) : (
           <Button
-            onClick={handleSubmit}
+            onClick={() => setShowConfirmDialog(true)}
             className={`min-w-36 ${payForm.method === "online" ? "bg-accent hover:bg-accent/90 text-accent-foreground" : "bg-primary"}`}
             disabled={processing}
           >
@@ -1008,6 +1377,42 @@ export default function BookingWizard() {
           </Button>
         )}
       </div>
+
+      {/* Booking Confirmation Dialog */}
+      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Your Booking</DialogTitle>
+            <DialogDescription>Please review the details below before proceeding.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between"><span className="text-muted-foreground">Pilgrim</span><span className="font-medium">{fullName || "\u2014"}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Package</span><span className="font-medium">{pkg.name}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Payment Method</span><span className="font-medium capitalize">{payForm.method === "online" ? "Paystack (Online)" : payForm.method.replace("_", " ")}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Total</span><span className="font-bold">{"\u20a6"}{fullAmount.toLocaleString()}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Amount to Pay</span><span className="font-bold text-primary">{"\u20a6"}{paymentAmount.toLocaleString()}</span></div>
+            {childEntries.length > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Children/Infants</span><span>{childEntries.length}</span></div>}
+            {paymentAmount < fullAmount && (
+              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded p-2 mt-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <p className="text-xs text-amber-700">You're making a partial payment. The remaining balance is due before departure.</p>
+              </div>
+            )}
+            {payForm.method === "bank_transfer" && !payForm.paymentProofUrl && (
+              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded p-2 mt-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <p className="text-xs text-amber-700">No payment receipt uploaded. You can upload it later from your dashboard.</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>Cancel</Button>
+            <Button onClick={() => { setShowConfirmDialog(false); handleSubmit(); }} disabled={processing}>
+              {processing ? "Processing..." : "Confirm & Submit"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
