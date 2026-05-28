@@ -40,6 +40,7 @@ interface VisaProvider {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+  awaiting_payment: { label: "Awaiting Payment", color: "text-purple-700", bg: "bg-purple-50 border-purple-200" },
   pending:   { label: "Pending",   color: "text-orange-700", bg: "bg-orange-50 border-orange-200" },
   submitted: { label: "Submitted", color: "text-blue-700",   bg: "bg-blue-50 border-blue-200" },
   approved:  { label: "Approved",  color: "text-green-700",  bg: "bg-green-50 border-green-200" },
@@ -253,8 +254,9 @@ export default function AdminVisaManagement() {
       </div>
 
       {/* Stats Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {([
+          { key: "awaiting_payment", label: "Awaiting Pmt", emoji: "💸", accent: "#9333ea" },
           { key: "pending",   label: "Pending",   emoji: "⏳", accent: "#FF3B00" },
           { key: "submitted", label: "Submitted",  emoji: "📤", accent: "#2D3199" },
           { key: "approved",  label: "Approved",   emoji: "✅", accent: "#16a34a" },
@@ -288,6 +290,7 @@ export default function AdminVisaManagement() {
             <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
               className="px-3 py-2 text-sm border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-[#2D3199]/30">
               <option value="all">All Statuses</option>
+              <option value="awaiting_payment">Awaiting Payment</option>
               <option value="pending">Pending</option>
               <option value="submitted">Submitted</option>
               <option value="approved">Approved</option>
@@ -513,6 +516,7 @@ export default function AdminVisaManagement() {
                 <select value={updateForm.status}
                   onChange={e => setUpdateForm(f => ({ ...f, status: e.target.value }))}
                   className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2D3199]/30 focus:border-[#2D3199]">
+                  <option value="awaiting_payment">Awaiting Payment</option>
                   <option value="pending">Pending</option>
                   <option value="submitted">Submitted to Embassy</option>
                   <option value="approved">Approved</option>

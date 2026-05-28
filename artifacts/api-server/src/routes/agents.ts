@@ -599,6 +599,20 @@ router.post("/agent/register-client", async (req, res) => {
           .set({ currentBookings: sql`${packagesTable.currentBookings} + 1` })
           .where(eq(packagesTable.id, packageId));
 
+        // Generate idNumber and Visa Application for fully paid booking
+        await tx.execute(sql`
+          UPDATE bookings 
+          SET id_number = nextval('bookings_id_number_seq') 
+          WHERE id = ${booking.id} AND id_number IS NULL
+        `);
+        await tx.insert(visaApplicationsTable).values({
+          id: randomUUID(),
+          bookingId: booking.id,
+          pilgrimName: booking.fullName ?? null,
+          passportNumber: booking.passportNumber ?? null,
+          status: "pending",
+        });
+
         // Create verified payment record
         await tx.insert(paymentsTable).values({
           id: randomUUID(), bookingId: booking.id, userId: walkInUser.id,
@@ -786,6 +800,14 @@ router.post("/agent/register-client", async (req, res) => {
           .set({ currentBookings: sql`${packagesTable.currentBookings} + 1` })
           .where(eq(packagesTable.id, packageId));
       }
+
+      await tx.insert(visaApplicationsTable).values({
+        id: randomUUID(),
+        bookingId: booking.id,
+        pilgrimName: booking.fullName ?? null,
+        passportNumber: booking.passportNumber ?? null,
+        status: "awaiting_payment",
+      });
 
       if (clampedPaid > 0) {
         await tx.insert(paymentsTable).values({

@@ -1789,7 +1789,7 @@ router.post("/admin/upload", _upload.fields([{ name: "visa", maxCount: 1 }, { na
 router.get("/admin/visa-stats", async (_req, res) => {
   const rows = await db.select({ status: visaApplicationsTable.status, count: sql<number>`count(*)::int` })
     .from(visaApplicationsTable).groupBy(visaApplicationsTable.status);
-  const out: Record<string, number> = { pending: 0, submitted: 0, approved: 0, rejected: 0 };
+  const out: Record<string, number> = { awaiting_payment: 0, pending: 0, submitted: 0, approved: 0, rejected: 0 };
   rows.forEach(r => { out[r.status] = r.count; });
   return res.json(out);
 });
@@ -2208,19 +2208,19 @@ router.post("/admin/book-pilgrim", async (req, res) => {
           SET id_number = nextval('bookings_id_number_seq') 
           WHERE id = ${booking.id} AND id_number IS NULL
         `);
+      }
 
-        const existingVisa = await tx.query.visaApplicationsTable.findFirst({
-          where: eq(visaApplicationsTable.bookingId, booking.id),
+      const existingVisa = await tx.query.visaApplicationsTable.findFirst({
+        where: eq(visaApplicationsTable.bookingId, booking.id),
+      });
+      if (!existingVisa) {
+        await tx.insert(visaApplicationsTable).values({
+          id: randomUUID(),
+          bookingId: booking.id,
+          pilgrimName: booking.fullName ?? null,
+          passportNumber: booking.passportNumber ?? null,
+          status: (markVerified && isFullyPaid) ? "pending" : "awaiting_payment",
         });
-        if (!existingVisa) {
-          await tx.insert(visaApplicationsTable).values({
-            id: randomUUID(),
-            bookingId: booking.id,
-            pilgrimName: booking.fullName ?? null,
-            passportNumber: booking.passportNumber ?? null,
-            status: "pending",
-          });
-        }
       }
 
       const initialAmountPaid = Number(booking.amountPaid);

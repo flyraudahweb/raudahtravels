@@ -65,7 +65,7 @@ async function sendBookingReceipt(bookingId: string, amount: number, reference?:
   }
 }
 
-async function ensureVisaApplication(bookingId: string, pilgrimName?: string | null, passportNumber?: string | null) {
+async function ensureVisaApplication(bookingId: string, pilgrimName?: string | null, passportNumber?: string | null, isFullyPaid?: boolean) {
   const existing = await db.query.visaApplicationsTable.findFirst({
     where: eq(visaApplicationsTable.bookingId, bookingId),
   });
@@ -75,8 +75,12 @@ async function ensureVisaApplication(bookingId: string, pilgrimName?: string | n
       bookingId,
       pilgrimName: pilgrimName ?? null,
       passportNumber: passportNumber ?? null,
-      status: "pending",
+      status: isFullyPaid ? "pending" : "awaiting_payment",
     });
+  } else if (isFullyPaid && existing.status === "awaiting_payment") {
+    await db.update(visaApplicationsTable)
+      .set({ status: "pending" })
+      .where(eq(visaApplicationsTable.id, existing.id));
   }
 }
 
@@ -352,7 +356,7 @@ router.put("/payments/:id/verify", async (req, res) => {
         SET id_number = nextval('bookings_id_number_seq') 
         WHERE id = ${confirmedBooking.id} AND id_number IS NULL
       `);
-      await ensureVisaApplication(confirmedBooking.id, confirmedBooking.fullName, confirmedBooking.passportNumber);
+      await ensureVisaApplication(confirmedBooking.id, confirmedBooking.fullName, confirmedBooking.passportNumber, true);
     }
     setImmediate(() => sendBookingReceipt(
       confirmedBooking!.id,
@@ -578,7 +582,7 @@ router.post("/payments/paystack/verify", async (req, res) => {
             SET id_number = nextval('bookings_id_number_seq') 
             WHERE id = ${booking.id} AND id_number IS NULL
           `);
-          await ensureVisaApplication(booking.id, booking.fullName, booking.passportNumber);
+          await ensureVisaApplication(booking.id, booking.fullName, booking.passportNumber, true);
         }
       }
     }
@@ -703,7 +707,7 @@ router.post("/payments/paystack/webhook", async (req, res) => {
                   SET id_number = nextval('bookings_id_number_seq') 
                   WHERE id = ${booking.id} AND id_number IS NULL
                 `);
-                await ensureVisaApplication(booking.id, booking.fullName, booking.passportNumber);
+                await ensureVisaApplication(booking.id, booking.fullName, booking.passportNumber, true);
               }
             }
           }
@@ -893,7 +897,7 @@ router.post("/payments/admin-record", async (req, res) => {
         updatedBooking = b;
         const isFullyPaid = Number(b.amountPaid) >= Number(b.totalPrice);
         if (isFullyPaid) {
-          await ensureVisaApplication(b.id, b.fullName, b.passportNumber);
+          await ensureVisaApplication(b.id, b.fullName, b.passportNumber, true);
         }
       }
     }

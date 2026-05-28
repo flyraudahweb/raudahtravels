@@ -12,7 +12,7 @@ async function getProfileByClerkId(clerkUserId: string) {
   return db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, clerkUserId) });
 }
 
-async function ensureVisaApplication(bookingId: string, pilgrimName?: string, passportNumber?: string) {
+async function ensureVisaApplication(bookingId: string, pilgrimName?: string, passportNumber?: string, isFullyPaid?: boolean) {
   const existing = await db.query.visaApplicationsTable.findFirst({
     where: eq(visaApplicationsTable.bookingId, bookingId),
   });
@@ -22,8 +22,12 @@ async function ensureVisaApplication(bookingId: string, pilgrimName?: string, pa
       bookingId,
       pilgrimName: pilgrimName ?? null,
       passportNumber: passportNumber ?? null,
-      status: "pending",
+      status: isFullyPaid ? "pending" : "awaiting_payment",
     });
+  } else if (isFullyPaid && existing.status === "awaiting_payment") {
+    await db.update(visaApplicationsTable)
+      .set({ status: "pending" })
+      .where(eq(visaApplicationsTable.id, existing.id));
   }
 }
 
@@ -201,6 +205,9 @@ router.post("/bookings", async (req, res) => {
     .set({ currentBookings: sql`${packagesTable.currentBookings} + ${count}` })
     .where(eq(packagesTable.id, packageId));
 
+  // Always create an awaiting_payment visa application for new bookings
+  await ensureVisaApplication(booking.id, booking.fullName ?? undefined, booking.passportNumber ?? undefined, false);
+
   return res.status(201).json(toBookingResponse(booking));
 });
 
@@ -262,7 +269,7 @@ router.put("/bookings/:id", async (req, res) => {
       SET id_number = nextval('bookings_id_number_seq') 
       WHERE id = ${booking.id} AND id_number IS NULL
     `);
-    await ensureVisaApplication(booking.id, booking.fullName ?? undefined, booking.passportNumber ?? undefined);
+    await ensureVisaApplication(booking.id, booking.fullName ?? undefined, booking.passportNumber ?? undefined, true);
   }
 
   // Notify pilgrim when admin changes booking status
