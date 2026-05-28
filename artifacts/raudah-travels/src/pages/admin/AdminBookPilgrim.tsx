@@ -811,6 +811,13 @@ export default function AdminBookPilgrim() {
                         </div>
                       )}
                       <div className="grid grid-cols-2 gap-3">
+                        {show("civility") && (
+                          <div className="col-span-2"><label className="text-[10px] font-bold text-[#64748B] uppercase">Title</label>
+                            <select className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.civility} onChange={e => updateAP({ civility: e.target.value })}>
+                              <option value="">—</option>
+                              {["Mr", "Mrs", "Miss", "Alhaji", "Hajiya", "Imam", "Dr", "Prof"].map(c => <option key={c} value={c}>{c}</option>)}
+                            </select></div>
+                        )}
                         <div><label className="text-[10px] font-bold text-[#64748B] uppercase">First Name *</label>
                           <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.firstName} onChange={e => updateAP({ firstName: e.target.value })} /></div>
                         <div><label className="text-[10px] font-bold text-[#64748B] uppercase">Last Name *</label>
@@ -821,30 +828,107 @@ export default function AdminBookPilgrim() {
                           <select className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.gender} onChange={e => updateAP({ gender: e.target.value })}>
                             <option value="">Select…</option><option value="male">Male</option><option value="female">Female</option>
                           </select></div>
-                        <div><label className="text-[10px] font-bold text-[#64748B] uppercase">Passport No.</label>
-                          <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm font-mono" value={ap.passportNumber} onChange={e => updateAP({ passportNumber: e.target.value })} /></div>
-                        <div><label className="text-[10px] font-bold text-[#64748B] uppercase">Passport Expiry</label>
-                          <input type="date" className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.passportExpiry} onChange={e => updateAP({ passportExpiry: e.target.value })} /></div>
-                        <div><label className="text-[10px] font-bold text-[#64748B] uppercase">Phone</label>
-                          <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.phone} onChange={e => updateAP({ phone: e.target.value })} placeholder="080…" /></div>
-                        <div><label className="text-[10px] font-bold text-[#64748B] uppercase">Email</label>
-                          <input type="email" className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.email} onChange={e => updateAP({ email: e.target.value })} /></div>
-                        <div><label className="text-[10px] font-bold text-[#64748B] uppercase">City</label>
-                          <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.city} onChange={e => updateAP({ city: e.target.value })} /></div>
-                        <div><label className="text-[10px] font-bold text-[#64748B] uppercase">Occupation</label>
-                          <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.occupation} onChange={e => updateAP({ occupation: e.target.value })} /></div>
-                        <div className="col-span-2"><label className="text-[10px] font-bold text-[#64748B] uppercase">Address</label>
-                          <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.address} onChange={e => updateAP({ address: e.target.value })} placeholder="Full residential address" /></div>
-                        <div className="col-span-2">
-                          <label className="text-[10px] font-bold text-[#64748B] uppercase">Room Preference</label>
-                          <select className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.roomPreference} onChange={e => updateAP({ roomPreference: e.target.value })}>
-                            {["Single","Double","Triple","Quad","Quint"].map(r => {
-                              const extra = roomSurcharges[r.toLowerCase()] || 0;
-                              return <option key={r} value={r}>{r}{extra > 0 ? ` (+₦${extra.toLocaleString()})` : ""}</option>;
-                            })}
-                          </select>
-                          {roomSurcharge > 0 && <p className="text-xs text-amber-600 mt-1 font-semibold">⚠ {ap.roomPreference} room surcharge: +₦{roomSurcharge.toLocaleString()}</p>}
-                        </div>
+                        {show("maritalStatus") && (
+                          <div><label className="text-[10px] font-bold text-[#64748B] uppercase">Marital Status</label>
+                            <select className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.maritalStatus} onChange={e => updateAP({ maritalStatus: e.target.value })}>
+                              <option value="">—</option>
+                              {["Single", "Married", "Divorced", "Widowed"].map(s => <option key={s} value={s}>{s}</option>)}
+                            </select></div>
+                        )}
+                        {show("nationality") && (
+                          <div><label className="text-[10px] font-bold text-[#64748B] uppercase">Nationality</label>
+                            <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.nationality} onChange={e => updateAP({ nationality: e.target.value })} placeholder="Nigerian" /></div>
+                        )}
+                        {show("placeOfBirth") && (
+                          <div><label className="text-[10px] font-bold text-[#64748B] uppercase">Place of Birth</label>
+                            <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.placeOfBirth} onChange={e => updateAP({ placeOfBirth: e.target.value })} placeholder="City / State" /></div>
+                        )}
+                        {show("ethnicGroup") && (
+                          <div><label className="text-[10px] font-bold text-[#64748B] uppercase">Ethnic Group</label>
+                            <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.ethnicGroup} onChange={e => updateAP({ ethnicGroup: e.target.value })} placeholder="e.g. Hausa" /></div>
+                        )}
+                        {show("levelOfStudy") && (
+                          <div className="col-span-2"><label className="text-[10px] font-bold text-[#64748B] uppercase">Level of Study</label>
+                            <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.levelOfStudy} onChange={e => updateAP({ levelOfStudy: e.target.value })} placeholder="e.g. BSc, MSc…" /></div>
+                        )}
+                        
+                        <div className="col-span-2"><p className="text-[10px] font-black text-[#2D3199] border-b border-[#2D3199]/10 pb-1 mt-2 mb-1">Passport Details</p></div>
+                        {show("passportNumber") && (
+                          <div><label className="text-[10px] font-bold text-[#64748B] uppercase">Passport No.</label>
+                            <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm font-mono" value={ap.passportNumber} onChange={e => updateAP({ passportNumber: e.target.value })} /></div>
+                        )}
+                        {show("passportExpiry") && (
+                          <div><label className="text-[10px] font-bold text-[#64748B] uppercase">Passport Expiry</label>
+                            <input type="date" className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.passportExpiry} onChange={e => updateAP({ passportExpiry: e.target.value })} /></div>
+                        )}
+                        {show("passportIssueDate") && (
+                          <div><label className="text-[10px] font-bold text-[#64748B] uppercase">Date of Issue</label>
+                            <input type="date" className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.passportIssueDate} onChange={e => updateAP({ passportIssueDate: e.target.value })} /></div>
+                        )}
+                        {show("passportIssuingAuthority") && (
+                          <div><label className="text-[10px] font-bold text-[#64748B] uppercase">Issuing Authority</label>
+                            <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.passportIssuingAuthority} onChange={e => updateAP({ passportIssuingAuthority: e.target.value })} placeholder="e.g. Immigration" /></div>
+                        )}
+                        {show("visaNumber") && (
+                          <div className="col-span-2"><label className="text-[10px] font-bold text-[#64748B] uppercase">N° Visa</label>
+                            <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm font-mono" value={ap.visaNumber} onChange={e => updateAP({ visaNumber: e.target.value })} placeholder="Visa number" /></div>
+                        )}
+
+                        <div className="col-span-2"><p className="text-[10px] font-black text-[#2D3199] border-b border-[#2D3199]/10 pb-1 mt-2 mb-1">Contacts & Address</p></div>
+                        {show("phone") && (
+                          <div><label className="text-[10px] font-bold text-[#64748B] uppercase">Phone</label>
+                            <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.phone} onChange={e => updateAP({ phone: e.target.value })} placeholder="080…" /></div>
+                        )}
+                        {show("email") && (
+                          <div><label className="text-[10px] font-bold text-[#64748B] uppercase">Email</label>
+                            <input type="email" className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.email} onChange={e => updateAP({ email: e.target.value })} /></div>
+                        )}
+                        {show("country") && (
+                          <div><label className="text-[10px] font-bold text-[#64748B] uppercase">Country</label>
+                            <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.country} onChange={e => updateAP({ country: e.target.value })} placeholder="Nigeria" /></div>
+                        )}
+                        {show("city") && (
+                          <div><label className="text-[10px] font-bold text-[#64748B] uppercase">City</label>
+                            <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.city} onChange={e => updateAP({ city: e.target.value })} /></div>
+                        )}
+                        {show("occupation") && (
+                          <div className="col-span-2"><label className="text-[10px] font-bold text-[#64748B] uppercase">Occupation</label>
+                            <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.occupation} onChange={e => updateAP({ occupation: e.target.value })} placeholder="e.g. Teacher" /></div>
+                        )}
+                        {show("address") && (
+                          <div className="col-span-2"><label className="text-[10px] font-bold text-[#64748B] uppercase">Address</label>
+                            <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.address} onChange={e => updateAP({ address: e.target.value })} placeholder="Full residential address" /></div>
+                        )}
+
+                        <div className="col-span-2"><p className="text-[10px] font-black text-[#2D3199] border-b border-[#2D3199]/10 pb-1 mt-2 mb-1">Preferences & Other</p></div>
+                        {show("roomPreference") && (
+                          <div className="col-span-2">
+                            <label className="text-[10px] font-bold text-[#64748B] uppercase">Room Preference</label>
+                            <select className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.roomPreference} onChange={e => updateAP({ roomPreference: e.target.value })}>
+                              {["Single","Double","Triple","Quad","Quint"].map(r => {
+                                const extra = roomSurcharges[r.toLowerCase()] || 0;
+                                return <option key={r} value={r}>{r}{extra > 0 ? ` (+₦${extra.toLocaleString()})` : ""}</option>;
+                              })}
+                            </select>
+                            {roomSurcharge > 0 && <p className="text-xs text-amber-600 mt-1 font-semibold">⚠ {ap.roomPreference} room surcharge: +₦{roomSurcharge.toLocaleString()}</p>}
+                          </div>
+                        )}
+                        {show("departureCity") && (
+                          <div className="col-span-2"><label className="text-[10px] font-bold text-[#64748B] uppercase">Departure City</label>
+                            <select className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.departureCity} onChange={e => updateAP({ departureCity: e.target.value })}>
+                              <option value="">Select…</option>
+                              {["Lagos", "Abuja", "Kano", "Port Harcourt", "Ibadan", "Enugu"].map(c => <option key={c} value={c}>{c}</option>)}
+                            </select></div>
+                        )}
+                        {show("underCover") && (
+                          <div className="col-span-2"><label className="text-[10px] font-bold text-[#64748B] uppercase">Under Cover</label>
+                            <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.underCover} onChange={e => updateAP({ underCover: e.target.value })} placeholder="e.g. RAUDAH FUNTUA" /></div>
+                        )}
+                        {show("observation") && (
+                          <div className="col-span-2"><label className="text-[10px] font-bold text-[#64748B] uppercase">Observation</label>
+                            <textarea rows={2} className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm resize-none" value={ap.observation} onChange={e => updateAP({ observation: e.target.value })} placeholder="Any notes…" /></div>
+                        )}
+
                         {detType !== "adult" && (
                           <div className="col-span-2 bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
                             <p className="text-xs font-black text-amber-700 uppercase">{detType === "infant" ? "👶 Infant" : "🧒 Child"} — Separate Booking</p>
