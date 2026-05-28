@@ -204,7 +204,7 @@ export default function BookingWizard() {
   const primaryBank = bankData?.accounts?.[0];
   const bankAccounts = bankData?.accounts || [];
 
-  // Fetch room surcharges from settings
+  // Fetch room surcharges and child/infant pricing from settings
   const { data: settingsData } = useQuery<Record<string, any>>({
     queryKey: ["public-settings-room"],
     queryFn: () => fetch("/api/public/settings").then(r => r.json()),
@@ -214,6 +214,11 @@ export default function BookingWizard() {
     const raw = settingsData?.room_surcharges;
     if (raw && typeof raw === "object") return raw as Record<string, number>;
     return { single: 0, double: 0, triple: 0, quad: 0 };
+  })();
+  const childInfantPricing = (() => {
+    const raw = settingsData?.child_infant_pricing;
+    if (raw && typeof raw === "object") return raw as { childPrice?: number; infantPrice?: number };
+    return { childPrice: 1200000, infantPrice: 1200000 };
   })();
 
   const createBooking = useCreateBooking();
@@ -266,6 +271,10 @@ export default function BookingWizard() {
   const [paymentOption, setPaymentOption] = useState<"full" | "500000" | "1000000" | "custom">("full");
   const [customPaymentAmount, setCustomPaymentAmount] = useState("");
 
+  const [aiFields, setAiFields] = useState<string[]>([]);
+  const aiClass = (k: string) => aiFields.includes(k) ? "border-emerald-500 bg-emerald-50/50 shadow-[0_0_0_2px_rgba(16,185,129,0.3)] text-emerald-950 transition-all focus:border-emerald-600" : "";
+  const childAiClass = (child: any, k: string) => child.aiFields?.includes(k) ? "border-emerald-500 bg-emerald-50/50 shadow-[0_0_0_2px_rgba(16,185,129,0.3)] text-emerald-950 transition-all focus:border-emerald-600" : "";
+
   // Child / Infant entries
   const [childEntries, setChildEntries] = useState<Array<{
     id: string;
@@ -280,6 +289,7 @@ export default function BookingWizard() {
     passportExpiry: string;
     passportCopyUrl: string;
     profilePhotoUrl: string;
+    aiFields?: string[];
   }>>([]);
 
   // Online/offline detection
@@ -332,9 +342,6 @@ export default function BookingWizard() {
   }, [paystackEnabled]);
 
   // ── Child/Infant helpers ──────────────────────────────────────────
-  const CHILD_PRICE = 2350000;
-  const INFANT_PRICE = 1200000;
-
   function getAgeFromDOB(dob: string): { years: number; months: number } | null {
     if (!dob) return null;
     const birth = new Date(dob);
@@ -354,7 +361,7 @@ export default function BookingWizard() {
     return "adult";
   }
 
-  const getChildPrice = (type: "child" | "infant") => type === "infant" ? INFANT_PRICE : CHILD_PRICE;
+  const getChildPrice = (type: "child" | "infant") => type === "infant" ? (childInfantPricing.infantPrice || 1200000) : (childInfantPricing.childPrice || 1200000);
 
   const addChildEntry = (type: "child" | "infant") => {
     setChildEntries(prev => [...prev, {
@@ -431,6 +438,12 @@ export default function BookingWizard() {
       if (!valid) {
         setValidationErrors(missingFields.map(f => f.label));
         toast({ title: "Required fields missing", description: missingFields.map(f => f.label).join(", "), variant: "destructive" });
+        return;
+      }
+
+      const invalidChild = childEntries.find(c => !c.firstName || !c.lastName || !c.dateOfBirth || !c.gender || !c.passportNumber || !c.passportCopyUrl);
+      if (invalidChild) {
+        toast({ title: "Child details missing", description: "Please ensure all added children/infants have their names, date of birth, gender, and passport details (including uploaded passport copy) filled.", variant: "destructive" });
         return;
       }
     }
@@ -795,11 +808,24 @@ export default function BookingWizard() {
               {/* AI Passport Scanner — auto-fills all fields below */}
               <PassportScanner
                 onExtracted={(data) => {
+                  const extracted: string[] = [];
+                  if (data.firstName) extracted.push("firstName");
+                  if (data.lastName) extracted.push("lastName");
+                  if (data.passportNumber) extracted.push("passportNumber");
+                  if (data.passportIssueDate) extracted.push("passportIssueDate");
+                  if (data.passportExpiry) extracted.push("passportExpiry");
+                  if (data.issuingAuthority) extracted.push("passportIssuingAuthority");
+                  if (data.dateOfBirth) extracted.push("dateOfBirth");
+                  if (data.gender) extracted.push("gender");
+                  if (data.nationality) extracted.push("nationality");
+                  setAiFields(prev => Array.from(new Set([...prev, ...extracted])));
+                  
                   setPassportForm(f => ({
                     ...f,
                     passportNumber:    data.passportNumber    || f.passportNumber,
                     passportIssueDate: data.passportIssueDate || f.passportIssueDate,
                     passportExpiry:    data.passportExpiry    || f.passportExpiry,
+                    passportIssuingAuthority: data.issuingAuthority || f.passportIssuingAuthority,
                   }));
                   if (data.firstName || data.lastName) {
                     setPersonalForm(f => ({
@@ -819,30 +845,42 @@ export default function BookingWizard() {
                   <div className="sm:col-span-2">
                     <Label htmlFor="passportNumber">{lbl("passportNumber", "Passport Number")}</Label>
                     <Input id="passportNumber" value={passportForm.passportNumber}
-                      onChange={e => setPassportForm(f => ({ ...f, passportNumber: e.target.value }))}
-                      placeholder="e.g. A12345678" className="font-mono" />
+                      onChange={e => {
+                        if (aiFields.includes("passportNumber")) setAiFields(p => p.filter(f => f !== "passportNumber"));
+                        setPassportForm(f => ({ ...f, passportNumber: e.target.value }));
+                      }}
+                      placeholder="e.g. A12345678" className={`font-mono ${aiClass("passportNumber")}`} />
                   </div>
                 )}
                 {show("passportIssueDate") && (
                   <div>
                     <Label htmlFor="passportIssueDate">{lbl("passportIssueDate", "Date of Issue")}</Label>
                     <Input id="passportIssueDate" type="date" value={passportForm.passportIssueDate}
-                      onChange={e => setPassportForm(f => ({ ...f, passportIssueDate: e.target.value }))} />
+                      onChange={e => {
+                        if (aiFields.includes("passportIssueDate")) setAiFields(p => p.filter(f => f !== "passportIssueDate"));
+                        setPassportForm(f => ({ ...f, passportIssueDate: e.target.value }));
+                      }} className={aiClass("passportIssueDate")} />
                   </div>
                 )}
                 {show("passportExpiry") && (
                   <div>
                     <Label htmlFor="passportExpiry">{lbl("passportExpiry", "Expiration Date")}</Label>
                     <Input id="passportExpiry" type="date" value={passportForm.passportExpiry}
-                      onChange={e => setPassportForm(f => ({ ...f, passportExpiry: e.target.value }))} />
+                      onChange={e => {
+                        if (aiFields.includes("passportExpiry")) setAiFields(p => p.filter(f => f !== "passportExpiry"));
+                        setPassportForm(f => ({ ...f, passportExpiry: e.target.value }));
+                      }} className={aiClass("passportExpiry")} />
                   </div>
                 )}
                 {show("passportIssuingAuthority") && (
                   <div className="sm:col-span-2">
                     <Label htmlFor="passportIssuingAuthority">{lbl("passportIssuingAuthority", "Issuing Authority")}</Label>
                     <Input id="passportIssuingAuthority" value={passportForm.passportIssuingAuthority}
-                      onChange={e => setPassportForm(f => ({ ...f, passportIssuingAuthority: e.target.value }))}
-                      placeholder="e.g. Nigeria Immigration Service" />
+                      onChange={e => {
+                        if (aiFields.includes("passportIssuingAuthority")) setAiFields(p => p.filter(f => f !== "passportIssuingAuthority"));
+                        setPassportForm(f => ({ ...f, passportIssuingAuthority: e.target.value }));
+                      }}
+                      placeholder="e.g. Nigeria Immigration Service" className={aiClass("passportIssuingAuthority")} />
                   </div>
                 )}
                 {show("visaNumber") && (
@@ -890,8 +928,11 @@ export default function BookingWizard() {
                 {show("civility") && (
                   <div>
                     <Label>{lbl("civility", "Civility")}</Label>
-                    <Select value={personalForm.civility} onValueChange={v => setPersonalForm(f => ({ ...f, civility: v }))}>
-                      <SelectTrigger><SelectValue placeholder="Select…" /></SelectTrigger>
+                    <Select value={personalForm.civility} onValueChange={v => {
+                      if (aiFields.includes("civility")) setAiFields(p => p.filter(f => f !== "civility"));
+                      setPersonalForm(f => ({ ...f, civility: v }));
+                    }}>
+                      <SelectTrigger className={aiClass("civility")}><SelectValue placeholder="Select…" /></SelectTrigger>
                       <SelectContent>{CIVILITY_OPTIONS.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
@@ -899,8 +940,11 @@ export default function BookingWizard() {
                 {show("gender") && (
                   <div>
                     <Label>{lbl("gender", "Sex")}</Label>
-                    <Select value={personalForm.gender} onValueChange={v => setPersonalForm(f => ({ ...f, gender: v }))}>
-                      <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
+                    <Select value={personalForm.gender} onValueChange={v => {
+                      if (aiFields.includes("gender")) setAiFields(p => p.filter(f => f !== "gender"));
+                      setPersonalForm(f => ({ ...f, gender: v }));
+                    }}>
+                      <SelectTrigger className={aiClass("gender")}><SelectValue placeholder="Select gender" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="male">Male</SelectItem>
                         <SelectItem value="female">Female</SelectItem>
@@ -912,21 +956,30 @@ export default function BookingWizard() {
                   <div>
                     <Label htmlFor="firstName">{lbl("firstName", "First Name")}</Label>
                     <Input id="firstName" value={personalForm.firstName}
-                      onChange={e => setPersonalForm(f => ({ ...f, firstName: e.target.value }))} />
+                      onChange={e => {
+                        if (aiFields.includes("firstName")) setAiFields(p => p.filter(f => f !== "firstName"));
+                        setPersonalForm(f => ({ ...f, firstName: e.target.value }));
+                      }} className={aiClass("firstName")} />
                   </div>
                 )}
                 {show("lastName") && (
                   <div>
                     <Label htmlFor="lastName">{lbl("lastName", "Last Name")}</Label>
                     <Input id="lastName" value={personalForm.lastName}
-                      onChange={e => setPersonalForm(f => ({ ...f, lastName: e.target.value }))} />
+                      onChange={e => {
+                        if (aiFields.includes("lastName")) setAiFields(p => p.filter(f => f !== "lastName"));
+                        setPersonalForm(f => ({ ...f, lastName: e.target.value }));
+                      }} className={aiClass("lastName")} />
                   </div>
                 )}
                 {show("dateOfBirth") && (
                   <div>
                     <Label htmlFor="dateOfBirth">{lbl("dateOfBirth", "Date of Birth")}</Label>
                     <Input id="dateOfBirth" type="date" value={personalForm.dateOfBirth}
-                      onChange={e => setPersonalForm(f => ({ ...f, dateOfBirth: e.target.value }))} />
+                      onChange={e => {
+                        if (aiFields.includes("dateOfBirth")) setAiFields(p => p.filter(f => f !== "dateOfBirth"));
+                        setPersonalForm(f => ({ ...f, dateOfBirth: e.target.value }));
+                      }} className={aiClass("dateOfBirth")} />
                   </div>
                 )}
                 {show("placeOfBirth") && (
@@ -940,8 +993,11 @@ export default function BookingWizard() {
                 {show("nationality") && (
                   <div>
                     <Label>{lbl("nationality", "Nationality")}</Label>
-                    <Select value={personalForm.nationality} onValueChange={v => setPersonalForm(f => ({ ...f, nationality: v }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                    <Select value={personalForm.nationality} onValueChange={v => {
+                      if (aiFields.includes("nationality")) setAiFields(p => p.filter(f => f !== "nationality"));
+                      setPersonalForm(f => ({ ...f, nationality: v }));
+                    }}>
+                      <SelectTrigger className={aiClass("nationality")}><SelectValue /></SelectTrigger>
                       <SelectContent>{NATIONALITIES.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
@@ -1127,7 +1183,7 @@ export default function BookingWizard() {
                     </Button>
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground mb-3">Child (≤11 years): ₦{CHILD_PRICE.toLocaleString()} · Infant (0-23 months): ₦{INFANT_PRICE.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground mb-3">Child (≤11 years): ₦{(childInfantPricing.childPrice || 1200000).toLocaleString()} · Infant (0-23 months): ₦{(childInfantPricing.infantPrice || 1200000).toLocaleString()}</p>
                 {childEntries.map((child, idx) => {
                   const detectedType = child.dateOfBirth ? detectPilgrimType(child.dateOfBirth) : child.type;
                   const actualType = detectedType === "adult" ? child.type : detectedType;
@@ -1147,6 +1203,17 @@ export default function BookingWizard() {
                       <PassportScanner
                         compact
                         onExtracted={(data) => {
+                          const extracted: string[] = [];
+                          if (data.firstName) extracted.push("firstName");
+                          if (data.lastName) extracted.push("lastName");
+                          if (data.passportNumber) extracted.push("passportNumber");
+                          if (data.passportIssueDate) extracted.push("passportIssueDate");
+                          if (data.passportExpiry) extracted.push("passportExpiry");
+                          if (data.dateOfBirth) extracted.push("dateOfBirth");
+                          if (data.gender) extracted.push("gender");
+                          if (data.nationality) extracted.push("nationality");
+                          const newAiFields = Array.from(new Set([...(child.aiFields || []), ...extracted]));
+                          
                           updateChildEntry(child.id, {
                             firstName: data.firstName || child.firstName,
                             lastName: data.lastName || child.lastName,
@@ -1156,6 +1223,7 @@ export default function BookingWizard() {
                             passportNumber: data.passportNumber || child.passportNumber,
                             passportIssueDate: data.passportIssueDate || child.passportIssueDate,
                             passportExpiry: data.passportExpiry || child.passportExpiry,
+                            aiFields: newAiFields,
                           });
                         }}
                         onProfilePhoto={(url) => updateChildEntry(child.id, { profilePhotoUrl: url })}
@@ -1163,24 +1231,34 @@ export default function BookingWizard() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                         <div>
                           <Label className="text-xs">First Name *</Label>
-                          <Input value={child.firstName} onChange={e => updateChildEntry(child.id, { firstName: e.target.value })} placeholder="First name" />
+                          <Input value={child.firstName} onChange={e => {
+                            const aiFields = child.aiFields?.filter(f => f !== "firstName") || [];
+                            updateChildEntry(child.id, { firstName: e.target.value, aiFields });
+                          }} placeholder="First name" className={childAiClass(child, "firstName")} />
                         </div>
                         <div>
                           <Label className="text-xs">Last Name *</Label>
-                          <Input value={child.lastName} onChange={e => updateChildEntry(child.id, { lastName: e.target.value })} placeholder="Last name" />
+                          <Input value={child.lastName} onChange={e => {
+                            const aiFields = child.aiFields?.filter(f => f !== "lastName") || [];
+                            updateChildEntry(child.id, { lastName: e.target.value, aiFields });
+                          }} placeholder="Last name" className={childAiClass(child, "lastName")} />
                         </div>
                         <div>
                           <Label className="text-xs">Date of Birth *</Label>
                           <Input type="date" value={child.dateOfBirth} onChange={e => {
                             const newDob = e.target.value;
                             const detected = detectPilgrimType(newDob);
-                            updateChildEntry(child.id, { dateOfBirth: newDob, type: detected === "adult" ? child.type : detected as "child" | "infant" });
-                          }} />
+                            const aiFields = child.aiFields?.filter(f => f !== "dateOfBirth") || [];
+                            updateChildEntry(child.id, { dateOfBirth: newDob, type: detected === "adult" ? child.type : detected as "child" | "infant", aiFields });
+                          }} className={childAiClass(child, "dateOfBirth")} />
                         </div>
                         <div>
                           <Label className="text-xs">Gender</Label>
-                          <Select value={child.gender} onValueChange={v => updateChildEntry(child.id, { gender: v })}>
-                            <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                          <Select value={child.gender} onValueChange={v => {
+                            const aiFields = child.aiFields?.filter(f => f !== "gender") || [];
+                            updateChildEntry(child.id, { gender: v, aiFields });
+                          }}>
+                            <SelectTrigger className={childAiClass(child, "gender")}><SelectValue placeholder="Select" /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="male">Male</SelectItem>
                               <SelectItem value="female">Female</SelectItem>
@@ -1189,12 +1267,18 @@ export default function BookingWizard() {
                         </div>
                         <div>
                           <Label className="text-xs">Passport Number</Label>
-                          <Input value={child.passportNumber} onChange={e => updateChildEntry(child.id, { passportNumber: e.target.value })} placeholder="Passport number" className="font-mono" />
+                          <Input value={child.passportNumber} onChange={e => {
+                            const aiFields = child.aiFields?.filter(f => f !== "passportNumber") || [];
+                            updateChildEntry(child.id, { passportNumber: e.target.value, aiFields });
+                          }} placeholder="Passport number" className={`font-mono ${childAiClass(child, "passportNumber")}`} />
                         </div>
                         <div>
                           <Label className="text-xs">Nationality</Label>
-                          <Select value={child.nationality} onValueChange={v => updateChildEntry(child.id, { nationality: v })}>
-                            <SelectTrigger><SelectValue /></SelectTrigger>
+                          <Select value={child.nationality} onValueChange={v => {
+                            const aiFields = child.aiFields?.filter(f => f !== "nationality") || [];
+                            updateChildEntry(child.id, { nationality: v, aiFields });
+                          }}>
+                            <SelectTrigger className={childAiClass(child, "nationality")}><SelectValue /></SelectTrigger>
                             <SelectContent>{NATIONALITIES.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}</SelectContent>
                           </Select>
                         </div>

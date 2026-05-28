@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   CheckCircle2, ChevronRight, ChevronLeft, UserPlus, Package, User,
   CreditCard, BookOpen, Phone, Camera, FileText, Upload, X, AlertTriangle, Search,
-  WifiOff, Wifi, Baby, AlertCircle, Loader2,
+  WifiOff, Wifi, Baby, AlertCircle, Loader2, Trash2
 } from "lucide-react";
 import PassportScanner from "@/components/PassportScanner";
 import BatchPassportUpload, { type BatchPilgrim } from "@/components/BatchPassportUpload";
@@ -303,6 +303,23 @@ export default function AdminBookPilgrim() {
   const [isRestored, setIsRestored] = useState(false);
   const [pilgrimType, setPilgrimType] = useState<"adult" | "child" | "infant">("adult");
   const [isCustomAmount, setIsCustomAmount] = useState(false);
+  const [aiFields, setAiFields] = useState<string[]>([]);
+  // Child / Infant entries for single mode
+  const [childEntries, setChildEntries] = useState<Array<{
+    id: string;
+    type: "child" | "infant";
+    firstName: string;
+    lastName: string;
+    dateOfBirth: string;
+    gender: string;
+    nationality: string;
+    passportNumber: string;
+    passportIssueDate: string;
+    passportExpiry: string;
+    passportCopyUrl: string;
+    profilePhotoUrl: string;
+    aiFields?: string[];
+  }>>([]);
   const [batchMode, setBatchMode] = useState(false);
   const [batchPilgrims, setBatchPilgrims] = useState<BatchPilgrim[]>([]);
   const [batchStep, setBatchStep] = useState<"upload" | "details" | "payment">("upload");
@@ -336,6 +353,7 @@ export default function AdminBookPilgrim() {
         if (parsed.step) setStep(parsed.step);
         if (parsed.phoneCode) setPhoneCode(parsed.phoneCode);
         if (parsed.pilgrimType) setPilgrimType(parsed.pilgrimType);
+        if (parsed.childEntries) setChildEntries(parsed.childEntries);
       }
     } catch (e) {
       // ignore
@@ -351,8 +369,8 @@ export default function AdminBookPilgrim() {
       localStorage.removeItem("admin_pilgrim_draft");
       return;
     }
-    localStorage.setItem("admin_pilgrim_draft", JSON.stringify({ packageId, pilgrim, travel, payment, step, phoneCode, pilgrimType }));
-  }, [packageId, pilgrim, travel, payment, step, phoneCode, isRestored, pilgrimType]);
+    localStorage.setItem("admin_pilgrim_draft", JSON.stringify({ packageId, pilgrim, travel, payment, step, phoneCode, pilgrimType, childEntries }));
+  }, [packageId, pilgrim, travel, payment, step, phoneCode, isRestored, pilgrimType, childEntries]);
 
   const { data: pkgData } = useQuery({ queryKey: ["packages-for-booking"], queryFn: fetchPackages });
   
@@ -399,6 +417,25 @@ export default function AdminBookPilgrim() {
   const packages    = pkgData?.packages || [];
   const selectedPkg = packages.find(p => p.id === packageId);
 
+  // Calculate single mode total price
+  const detectPilgrimType = (dob: string): string => {
+    const birth = new Date(dob); const now = new Date();
+    let years = now.getFullYear() - birth.getFullYear();
+    const m = now.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) years--;
+    if (years < 2) return "infant";
+    if (years < 12) return "child";
+    return "adult";
+  };
+  const roomSurchargeSingle = selectedPkg ? (roomSurcharges[(travel.roomPreference || "quad").toLowerCase()] || 0) : 0;
+  const ciExtraSingle = selectedPkg ? (pilgrimType === "infant" ? (childInfantPricing.infantPrice || 0) : pilgrimType === "child" ? (childInfantPricing.childPrice || 0) : 0) : 0;
+  const childrenTotalSingle = childEntries.reduce((sum, c) => {
+    const t = c.dateOfBirth ? detectPilgrimType(c.dateOfBirth) : c.type;
+    const actualType = t === "adult" ? c.type : t;
+    return sum + (actualType === "infant" ? (childInfantPricing.infantPrice || 0) : (childInfantPricing.childPrice || 0));
+  }, 0);
+  const singleTotalPrice = Number(selectedPkg?.price || 0) + roomSurchargeSingle + ciExtraSingle + childrenTotalSingle;
+
   const hajjCount  = useMemo(() => packages.filter(p => p.type === "hajj").length,  [packages]);
   const umrahCount = useMemo(() => packages.filter(p => p.type === "umrah").length, [packages]);
 
@@ -412,9 +449,27 @@ export default function AdminBookPilgrim() {
     return list;
   }, [packages, pkgTab, pkgSearch]);
 
-  const set = (key: keyof PilgrimState) => (v: string) => setPilgrim(p => ({ ...p, [key]: v }));
+  const aiClass = (k: string) => aiFields.includes(k) ? "border-emerald-500 bg-emerald-50/50 shadow-[0_0_0_2px_rgba(16,185,129,0.3)] text-emerald-950 transition-all focus:border-emerald-600" : "border-[#E2E8F0] bg-white";
+
+  const set = (key: keyof PilgrimState) => (v: string) => {
+    if (aiFields.includes(key as string)) setAiFields(prev => prev.filter(f => f !== key));
+    setPilgrim(p => ({ ...p, [key]: v }));
+  };
   const setInput = (key: keyof PilgrimState) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => set(key)(e.target.value);
+
+  const addChildEntry = (type: "child" | "infant") => {
+    setChildEntries(prev => [...prev, {
+      id: crypto.randomUUID(), type, firstName: "", lastName: "", dateOfBirth: "",
+      gender: "", nationality: "", passportNumber: "", passportIssueDate: "",
+      passportExpiry: "", passportCopyUrl: "", profilePhotoUrl: ""
+    }]);
+  };
+  const removeChildEntry = (id: string) => setChildEntries(prev => prev.filter(c => c.id !== id));
+  const updateChildEntry = (id: string, updates: Partial<typeof childEntries[0]>) => {
+    setChildEntries(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+  };
+  const childAiClass = (child: any, k: string) => child.aiFields?.includes(k) ? "border-emerald-500 bg-emerald-50/50 shadow-[0_0_0_2px_rgba(16,185,129,0.3)] text-emerald-950 transition-all focus:border-emerald-600" : "";
 
   const cfg = useFormFieldConfig();
   const show = (name: string) => cfg(name).visible;
@@ -428,7 +483,7 @@ export default function AdminBookPilgrim() {
 
   const handlePaystackPayment = async (bookingId: string, serverBooking?: { totalPrice?: string }) => {
     try {
-      const amount = (Number(serverBooking?.totalPrice) || selectedPkg?.price) ?? 0;
+      const amount = (Number(serverBooking?.totalPrice) || singleTotalPrice) ?? 0;
       const res = await fetch("/api/payments/paystack/initialize", {
         method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify({ bookingId, amount, email: pilgrim.email || "admin@raudah.com" }),
@@ -459,9 +514,49 @@ export default function AdminBookPilgrim() {
 
   const bookMutation = useMutation({
     mutationFn: bookPilgrim,
-    onSuccess: async (data) => {
+    onSuccess: async (data, variables) => {
       // Skip automatic navigation during batch submission — batch handler manages its own flow
       if (isBatchSubmitting) return;
+      // If this was a child booking submitted by the loop below, do nothing
+      if ((variables as any).parentBookingId) return;
+
+      if (childEntries.length > 0) {
+        const batchId = crypto.randomUUID();
+        for (const child of childEntries) {
+          try {
+            await bookMutation.mutateAsync({
+              packageId,
+              pilgrimCount: 1,
+              fullName: `${child.firstName} ${child.lastName}`.trim(),
+              firstName: child.firstName,
+              lastName: child.lastName,
+              dateOfBirth: child.dateOfBirth,
+              gender: child.gender,
+              nationality: child.nationality,
+              passportNumber: child.passportNumber,
+              passportIssueDate: child.passportIssueDate,
+              passportExpiry: child.passportExpiry,
+              passportCopyUrl: child.passportCopyUrl,
+              profilePhotoUrl: child.profilePhotoUrl,
+              phone: pilgrim.phone ? `${phoneCode}${pilgrim.phone}` : "",
+              email: pilgrim.email,
+              country: pilgrim.country,
+              city: pilgrim.city,
+              roomPreference: travel.roomPreference || "Quad",
+              pilgrimType: child.type,
+              parentBookingId: data.booking.id,
+              batchId,
+              paymentMethod: payment.method === "online" ? "paystack" : payment.method,
+              amountPaid: 0,
+              markVerified: payment.method === "online" ? false : payment.markVerified,
+              totalPrice: child.type === "infant" ? childInfantPricing.infantPrice : childInfantPricing.childPrice,
+            } as any);
+          } catch (err) {
+            console.error(`Failed to create booking for child: ${child.firstName}`, err);
+          }
+        }
+      }
+
       if (payment.method === "online") {
         await handlePaystackPayment(data.booking.id, data.booking);
       } else {
@@ -492,7 +587,7 @@ export default function AdminBookPilgrim() {
       paymentProofUrl: payment.paymentProofUrl || undefined,
       markVerified: payment.method === "online" ? false : payment.markVerified,
       amountPaid: payment.method === "online" ? 0 : (payment.amountPaid ? Number(payment.amountPaid) : undefined),
-      totalPrice: selectedPkg?.price,
+      totalPrice: singleTotalPrice,
       pilgrimType,
     });
   };
@@ -1096,6 +1191,16 @@ export default function AdminBookPilgrim() {
 
             <PassportScanner
               onExtracted={data => {
+                const extracted: string[] = [];
+                if (data.firstName) extracted.push("firstName");
+                if (data.lastName) extracted.push("lastName");
+                if (data.passportNumber) extracted.push("passportNumber");
+                if (data.passportIssueDate) extracted.push("passportIssueDate");
+                if (data.passportExpiry) extracted.push("passportExpiry");
+                if (data.dateOfBirth) extracted.push("dateOfBirth");
+                if (data.gender) extracted.push("gender");
+                if (data.nationality) extracted.push("nationality");
+                setAiFields(prev => Array.from(new Set([...prev, ...extracted])));
                 setPilgrim(prev => ({
                   ...prev,
                   firstName:             data.firstName        || prev.firstName,
@@ -1120,19 +1225,19 @@ export default function AdminBookPilgrim() {
                 <div className="md:col-span-2">
                   <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">{lbl("passportNumber", "Passport Number")}</Label>
                   <Input value={pilgrim.passportNumber} onChange={setInput("passportNumber")}
-                    placeholder="e.g. A12345678" className="mt-1 rounded-xl font-mono" />
+                    placeholder="e.g. A12345678" className={`mt-1 rounded-xl font-mono ${aiClass("passportNumber")}`} />
                 </div>
               )}
               {show("passportIssueDate") && (
                 <div>
                   <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">{lbl("passportIssueDate", "Date of Issue")}</Label>
-                  <Input type="date" value={pilgrim.passportIssueDate} onChange={setInput("passportIssueDate")} className="mt-1 rounded-xl" />
+                  <Input type="date" value={pilgrim.passportIssueDate} onChange={setInput("passportIssueDate")} className={`mt-1 rounded-xl ${aiClass("passportIssueDate")}`} />
                 </div>
               )}
               {show("passportExpiry") && (
                 <div>
                   <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">{lbl("passportExpiry", "Expiration Date")}</Label>
-                  <Input type="date" value={pilgrim.passportExpiry} onChange={setInput("passportExpiry")} className="mt-1 rounded-xl" />
+                  <Input type="date" value={pilgrim.passportExpiry} onChange={setInput("passportExpiry")} className={`mt-1 rounded-xl ${aiClass("passportExpiry")}`} />
                 </div>
               )}
               {show("passportIssuingAuthority") && (
@@ -1199,7 +1304,7 @@ export default function AdminBookPilgrim() {
                 <div>
                   <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">{lbl("gender", "Sex")}</Label>
                   <Select value={pilgrim.gender} onValueChange={set("gender")}>
-                    <SelectTrigger className="mt-1 rounded-xl"><SelectValue placeholder="Select…" /></SelectTrigger>
+                    <SelectTrigger className={`mt-1 rounded-xl ${aiClass("gender")}`}><SelectValue placeholder="Select…" /></SelectTrigger>
                     <SelectContent>{GENDERS.map(g => <SelectItem key={g} value={g} className="capitalize">{g.charAt(0).toUpperCase() + g.slice(1)}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
@@ -1208,14 +1313,14 @@ export default function AdminBookPilgrim() {
                 <div>
                   <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">{lbl("firstName", "First Name")}</Label>
                   <Input value={pilgrim.firstName} onChange={setInput("firstName")}
-                    placeholder="First name" className="mt-1 rounded-xl" />
+                    placeholder="First name" className={`mt-1 rounded-xl ${aiClass("firstName")}`} />
                 </div>
               )}
               {show("lastName") && (
                 <div>
                   <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">{lbl("lastName", "Last Name")}</Label>
                   <Input value={pilgrim.lastName} onChange={setInput("lastName")}
-                    placeholder="Last name" className="mt-1 rounded-xl" />
+                    placeholder="Last name" className={`mt-1 rounded-xl ${aiClass("lastName")}`} />
                 </div>
               )}
               {show("dateOfBirth") && (
@@ -1234,7 +1339,7 @@ export default function AdminBookPilgrim() {
                       else if (years < 12) setPilgrimType("child");
                       else setPilgrimType("adult");
                     }
-                  }} className="mt-1 rounded-xl" />
+                  }} className={`mt-1 rounded-xl ${aiClass("dateOfBirth")}`} />
                 </div>
               )}
               {/* Pilgrim Type (auto-detected from DOB or manual) */}
@@ -1267,7 +1372,7 @@ export default function AdminBookPilgrim() {
                 <div>
                   <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">{lbl("nationality", "Nationality")}</Label>
                   <Select value={pilgrim.nationality} onValueChange={set("nationality")}>
-                    <SelectTrigger className="mt-1 rounded-xl"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className={`mt-1 rounded-xl ${aiClass("nationality")}`}><SelectValue /></SelectTrigger>
                     <SelectContent>{NATIONALITIES.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
@@ -1336,6 +1441,132 @@ export default function AdminBookPilgrim() {
                     placeholder="Any notes or observations about this pilgrim…" className="mt-1 rounded-xl resize-none" rows={2} />
                 </div>
               )}
+            </div>
+
+            {/* ── Child / Infant Registration ──────────────────── */}
+            <div className="border-t border-[#E2E8F0] pt-6 mt-6">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-[#0F172A] font-black text-sm">Travelling with Children?</h3>
+                  <p className="text-xs text-[#64748B] mt-0.5">Add children or infants to this booking</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => addChildEntry("child")} className="rounded-xl border-[#DCE3F0] h-9 px-3">
+                    <UserPlus className="w-3.5 h-3.5 mr-1.5" /> Child
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => addChildEntry("infant")} className="rounded-xl border-[#DCE3F0] h-9 px-3">
+                    <Baby className="w-3.5 h-3.5 mr-1.5" /> Infant
+                  </Button>
+                </div>
+              </div>
+              <p className="text-xs text-[#64748B] mb-4 font-medium">Child (≤11 years): ₦{(childInfantPricing.childPrice || 1200000).toLocaleString()} · Infant (0-23 months): ₦{(childInfantPricing.infantPrice || 1200000).toLocaleString()}</p>
+              
+              <div className="space-y-4">
+                {childEntries.map((child, idx) => {
+                  const detectedType = child.dateOfBirth ? detectPilgrimType(child.dateOfBirth) : child.type;
+                  const actualType = detectedType === "adult" ? child.type : detectedType;
+                  return (
+                    <div key={child.id} className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-2xl p-4 relative">
+                      <Button type="button" variant="ghost" size="icon" onClick={() => removeChildEntry(child.id)} className="absolute right-2 top-2 h-8 w-8 text-[#64748B] hover:text-red-500 hover:bg-red-50 rounded-xl">
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="w-6 h-6 rounded-full bg-[#2D3199] text-white flex items-center justify-center text-xs font-bold">{idx + 1}</div>
+                        <h4 className="font-bold text-[#0F172A] capitalize">{actualType} Details</h4>
+                        {detectedType === "adult" && (
+                          <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold ml-2">DOB indicates Adult</span>
+                        )}
+                      </div>
+                      
+                      <PassportScanner
+                        compact
+                        onExtracted={(data) => {
+                          const extracted: string[] = [];
+                          if (data.firstName) extracted.push("firstName");
+                          if (data.lastName) extracted.push("lastName");
+                          if (data.passportNumber) extracted.push("passportNumber");
+                          if (data.passportIssueDate) extracted.push("passportIssueDate");
+                          if (data.passportExpiry) extracted.push("passportExpiry");
+                          if (data.dateOfBirth) extracted.push("dateOfBirth");
+                          if (data.gender) extracted.push("gender");
+                          if (data.nationality) extracted.push("nationality");
+                          const newAiFields = Array.from(new Set([...(child.aiFields || []), ...extracted]));
+                          
+                          updateChildEntry(child.id, {
+                            firstName: data.firstName || child.firstName,
+                            lastName: data.lastName || child.lastName,
+                            dateOfBirth: data.dateOfBirth || child.dateOfBirth,
+                            gender: data.gender || child.gender,
+                            nationality: data.nationality || child.nationality,
+                            passportNumber: data.passportNumber || child.passportNumber,
+                            passportIssueDate: data.passportIssueDate || child.passportIssueDate,
+                            passportExpiry: data.passportExpiry || child.passportExpiry,
+                            aiFields: newAiFields,
+                          });
+                        }}
+                        onProfilePhoto={(url) => updateChildEntry(child.id, { profilePhotoUrl: url })}
+                        onPassportCopy={(url) => updateChildEntry(child.id, { passportCopyUrl: url })}
+                      />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                        <div>
+                          <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">First Name *</Label>
+                          <Input value={child.firstName} onChange={e => {
+                            const aiFields = child.aiFields?.filter(f => f !== "firstName") || [];
+                            updateChildEntry(child.id, { firstName: e.target.value, aiFields });
+                          }} placeholder="First name" className={`mt-1 rounded-xl ${childAiClass(child, "firstName")}`} />
+                        </div>
+                        <div>
+                          <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Last Name *</Label>
+                          <Input value={child.lastName} onChange={e => {
+                            const aiFields = child.aiFields?.filter(f => f !== "lastName") || [];
+                            updateChildEntry(child.id, { lastName: e.target.value, aiFields });
+                          }} placeholder="Last name" className={`mt-1 rounded-xl ${childAiClass(child, "lastName")}`} />
+                        </div>
+                        <div>
+                          <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Date of Birth *</Label>
+                          <Input type="date" value={child.dateOfBirth} onChange={e => {
+                            const newDob = e.target.value;
+                            const detected = detectPilgrimType(newDob);
+                            const aiFields = child.aiFields?.filter(f => f !== "dateOfBirth") || [];
+                            updateChildEntry(child.id, { dateOfBirth: newDob, type: detected === "adult" ? child.type : detected as "child" | "infant", aiFields });
+                          }} className={`mt-1 rounded-xl ${childAiClass(child, "dateOfBirth")}`} />
+                        </div>
+                        <div>
+                          <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Sex</Label>
+                          <Select value={child.gender} onValueChange={v => {
+                            const aiFields = child.aiFields?.filter(f => f !== "gender") || [];
+                            updateChildEntry(child.id, { gender: v, aiFields });
+                          }}>
+                            <SelectTrigger className={`mt-1 rounded-xl ${childAiClass(child, "gender")}`}><SelectValue placeholder="Select" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="male">Male</SelectItem>
+                              <SelectItem value="female">Female</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Passport Number</Label>
+                          <Input value={child.passportNumber} onChange={e => {
+                            const aiFields = child.aiFields?.filter(f => f !== "passportNumber") || [];
+                            updateChildEntry(child.id, { passportNumber: e.target.value, aiFields });
+                          }} placeholder="Passport number" className={`mt-1 rounded-xl font-mono ${childAiClass(child, "passportNumber")}`} />
+                        </div>
+                        <div>
+                          <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Nationality</Label>
+                          <Select value={child.nationality} onValueChange={v => {
+                            const aiFields = child.aiFields?.filter(f => f !== "nationality") || [];
+                            updateChildEntry(child.id, { nationality: v, aiFields });
+                          }}>
+                            <SelectTrigger className={`mt-1 rounded-xl ${childAiClass(child, "nationality")}`}><SelectValue /></SelectTrigger>
+                            <SelectContent>{NATIONALITIES.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}</SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-[#64748B] mt-3 font-semibold">Contact and travel info will use parent's details.</p>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -1429,7 +1660,12 @@ export default function AdminBookPilgrim() {
                       {pilgrim.passportNumber && ` · ${pilgrim.passportNumber}`}
                     </p>
                   </div>
-                  <p className="font-black text-[#2D3199] text-xl">₦{Number(selectedPkg.price).toLocaleString()}</p>
+                  <div className="text-right">
+                    <p className="font-black text-[#2D3199] text-xl">₦{singleTotalPrice.toLocaleString()}</p>
+                    {roomSurchargeSingle > 0 && <p className="text-[10px] text-amber-600">+₦{roomSurchargeSingle.toLocaleString()} room</p>}
+                    {ciExtraSingle > 0 && <p className="text-[10px] text-amber-600">+₦{ciExtraSingle.toLocaleString()} {pilgrimType}</p>}
+                    {childrenTotalSingle > 0 && <p className="text-[10px] text-emerald-600 font-bold">+₦{childrenTotalSingle.toLocaleString()} ({childEntries.length} children)</p>}
+                  </div>
                 </div>
               </div>
             )}
@@ -1501,7 +1737,7 @@ export default function AdminBookPilgrim() {
                   <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider mb-2 block">Payment Amount</Label>
                   <div className="grid grid-cols-2 gap-2">
                     {[
-                      { key: "full", label: "Full Payment", amount: selectedPkg ? String(selectedPkg.price) : "0" },
+                      { key: "full", label: "Full Payment", amount: String(singleTotalPrice) },
                       { key: "500000", label: "Minimum Deposit", amount: "500000" },
                       { key: "1000000", label: "₦1,000,000", amount: "1000000" },
                       { key: "custom", label: "Custom Amount", amount: "custom" },
@@ -1540,13 +1776,13 @@ export default function AdminBookPilgrim() {
                     </div>
                   )}
                 </div>
-                {selectedPkg && payment.amountPaid && Number(payment.amountPaid) > 0 && Number(payment.amountPaid) < Number(selectedPkg.price) && payment.method !== "online" && (
+                {selectedPkg && payment.amountPaid && Number(payment.amountPaid) > 0 && Number(payment.amountPaid) < singleTotalPrice && payment.method !== "online" && (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                     <p className="text-sm text-amber-700 font-semibold">
-                      💡 Partial Payment: ₦{Number(payment.amountPaid).toLocaleString()} of ₦{Number(selectedPkg.price).toLocaleString()} — Booking will remain pending until balance is cleared.
+                      💡 Partial Payment: ₦{Number(payment.amountPaid).toLocaleString()} of ₦{singleTotalPrice.toLocaleString()} — Booking will remain pending until balance is cleared.
                     </p>
                     <p className="text-sm text-amber-700 mt-1">
-                      Balance remaining: ₦{(Number(selectedPkg.price) - Number(payment.amountPaid)).toLocaleString()}
+                      Balance remaining: ₦{(singleTotalPrice - Number(payment.amountPaid)).toLocaleString()}
                     </p>
                   </div>
                 )}
@@ -1557,7 +1793,7 @@ export default function AdminBookPilgrim() {
                   <label htmlFor="markVerified" className="flex-1 cursor-pointer">
                     <span className="text-sm font-bold text-emerald-700 block">Mark as Verified & Confirmed</span>
                     <span className="text-xs text-emerald-600">
-                      {selectedPkg && payment.amountPaid && Number(payment.amountPaid) > 0 && Number(payment.amountPaid) < Number(selectedPkg.price)
+                      {selectedPkg && payment.amountPaid && Number(payment.amountPaid) > 0 && Number(payment.amountPaid) < singleTotalPrice
                         ? "Verify this deposit — Booking will remain pending until balance is cleared"
                         : "Automatically confirm booking and verify payment"}
                     </span>

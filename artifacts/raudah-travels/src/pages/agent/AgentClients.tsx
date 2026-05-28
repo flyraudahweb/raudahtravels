@@ -178,6 +178,7 @@ export default function AgentClients() {
     markVerified: boolean;
   }>>([]);
   const [batchCropTarget, setBatchCropTarget] = useState<{ index: number; imageUrl: string } | null>(null);
+  const [aiFields, setAiFields] = useState<string[]>([]);
   const [isCustomAmount, setIsCustomAmount] = useState(false);
   const [batchCropState, setBatchCropState] = useState<any>(null);
   const batchCropImgRef = useRef<HTMLImageElement>(null);
@@ -452,7 +453,12 @@ export default function AgentClients() {
     ticketsIssued: allClients.filter(c => !!(c.ticketDocumentUrl || c.visa?.ticketDocumentUrl)).length,
   };
 
-  const set = useCallback((k: string, v: string | boolean) => setForm(f => ({ ...f, [k]: v })), []);
+  const aiClass = (k: string) => aiFields.includes(k) ? "border-emerald-500 bg-emerald-50/50 shadow-[0_0_0_2px_rgba(16,185,129,0.3)] text-emerald-950 transition-all focus:border-emerald-600" : "border-[#E2E8F0] bg-white";
+
+  const set = useCallback((k: string, v: string | boolean) => {
+    setAiFields(prev => prev.includes(k) ? prev.filter(f => f !== k) : prev);
+    setForm(f => ({ ...f, [k]: v }));
+  }, []);
   const passportWarnLevel = passportWarn(form.passportExpiry);
 
   return (
@@ -1293,6 +1299,16 @@ export default function AgentClients() {
                   <p className="text-xs text-[#2D3199]/80 mb-4">Auto-fill the details below by scanning the passport data page.</p>
                   <PassportScanner
                     onExtracted={data => {
+                      const extracted: string[] = [];
+                      if (data.firstName) extracted.push("firstName");
+                      if (data.lastName) extracted.push("lastName");
+                      if (data.passportNumber) extracted.push("passportNumber");
+                      if (data.passportIssueDate) extracted.push("passportIssueDate");
+                      if (data.passportExpiry) extracted.push("passportExpiry");
+                      if (data.dateOfBirth) extracted.push("dateOfBirth");
+                      if (data.gender) extracted.push("gender");
+                      if (data.nationality) extracted.push("nationality");
+                      setAiFields(prev => Array.from(new Set([...prev, ...extracted])));
                       setForm(f => ({
                         ...f,
                         firstName:         data.firstName        || f.firstName,
@@ -1314,7 +1330,7 @@ export default function AgentClients() {
                   {show("passportNumber") && (
                     <div className="space-y-1.5">
                       <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide">{lbl("passportNumber", "Passport No.")}</Label>
-                      <Input value={form.passportNumber} onChange={e => set("passportNumber", e.target.value.toUpperCase())} placeholder="A12345678" className="rounded-xl border-[#E2E8F0] h-12 font-mono bg-white" />
+                      <Input value={form.passportNumber} onChange={e => set("passportNumber", e.target.value.toUpperCase())} placeholder="A12345678" className={`rounded-xl h-12 font-mono ${aiClass("passportNumber")}`} />
                     </div>
                   )}
                   {show("passportIssuingAuthority") && (
@@ -1326,13 +1342,13 @@ export default function AgentClients() {
                   {show("passportIssueDate") && (
                     <div className="space-y-1.5">
                       <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide">{lbl("passportIssueDate", "Issue Date")}</Label>
-                      <Input type="date" value={form.passportIssueDate} onChange={e => set("passportIssueDate", e.target.value)} className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                      <Input type="date" value={form.passportIssueDate} onChange={e => set("passportIssueDate", e.target.value)} className={`rounded-xl h-12 ${aiClass("passportIssueDate")}`} />
                     </div>
                   )}
                   {show("passportExpiry") && (
                     <div className="space-y-1.5">
                       <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide">{lbl("passportExpiry", "Expiry Date")}</Label>
-                      <Input type="date" value={form.passportExpiry} onChange={e => set("passportExpiry", e.target.value)} className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                      <Input type="date" value={form.passportExpiry} onChange={e => set("passportExpiry", e.target.value)} className={`rounded-xl h-12 ${aiClass("passportExpiry")}`} />
                     </div>
                   )}
                   {show("visaNumber") && (
@@ -1392,14 +1408,14 @@ export default function AgentClients() {
                     {show("firstName") && (
                       <div className="col-span-3 space-y-1.5">
                         <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("firstName", "First Name")}</Label>
-                        <Input value={form.firstName} onChange={e => set("firstName", e.target.value)} placeholder="Abubakar" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                        <Input value={form.firstName} onChange={e => set("firstName", e.target.value)} placeholder="Abubakar" className={`rounded-xl h-12 ${aiClass("firstName")}`} />
                       </div>
                     )}
                   </div>
                   {show("lastName") && (
                     <div className="space-y-1.5">
                       <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("lastName", "Last Name")}</Label>
-                      <Input value={form.lastName} onChange={e => set("lastName", e.target.value)} placeholder="Ibrahim" className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                      <Input value={form.lastName} onChange={e => set("lastName", e.target.value)} placeholder="Ibrahim" className={`rounded-xl h-12 ${aiClass("lastName")}`} />
                     </div>
                   )}
                   <div className="grid grid-cols-2 gap-3">
@@ -1418,14 +1434,14 @@ export default function AgentClients() {
                             else if (years < 12) setPilgrimType("child");
                             else setPilgrimType("adult");
                           }
-                        }} className="rounded-xl border-[#E2E8F0] h-12 bg-white" />
+                        }} className={`rounded-xl h-12 ${aiClass("dateOfBirth")}`} />
                       </div>
                     )}
                     {show("gender") && (
                       <div className="space-y-1.5">
                         <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("gender", "Gender")}</Label>
                         <Select value={form.gender} onValueChange={v => set("gender", v)}>
-                          <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue placeholder="—" /></SelectTrigger>
+                          <SelectTrigger className={`rounded-xl h-12 ${aiClass("gender")}`}><SelectValue placeholder="—" /></SelectTrigger>
                           <SelectContent>{GENDERS.map(g => <SelectItem key={g} value={g} className="capitalize">{g}</SelectItem>)}</SelectContent>
                         </Select>
                       </div>
@@ -1460,7 +1476,7 @@ export default function AgentClients() {
                       <div className="space-y-1.5">
                         <Label className="text-[10px] font-black text-[#64748B] uppercase tracking-wider">{lbl("nationality", "Nationality")}</Label>
                         <Select value={form.nationality} onValueChange={v => set("nationality", v)}>
-                          <SelectTrigger className="rounded-xl border-[#E2E8F0] h-12 bg-white"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className={`rounded-xl h-12 ${aiClass("nationality")}`}><SelectValue /></SelectTrigger>
                           <SelectContent>{NATIONALITIES.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}</SelectContent>
                         </Select>
                       </div>
