@@ -41,7 +41,7 @@ const SITE = "www.flyraudah.com.ng";
 const CARD_W_L = 800, CARD_H_L = 450;
 const CARD_W_P = 450, CARD_H_P = 640;
 const PDF_BATCH = 12;
-const PAGE_LIMIT = 50;
+const PAGE_LIMIT = 100;
 
 // ─── Nigerian Flag ───────────────────────────────────────────────────────────
 
