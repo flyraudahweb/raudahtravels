@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Settings, Phone, Mail, MapPin, MessageCircle, Globe, CreditCard, Save, CheckCircle2, Copy, Check, Eye, EyeOff, ExternalLink, Video, Layout, Plus, Trash2, Users, BarChart2, Image, Sparkles, Send, Loader2 } from "lucide-react";
+import { Settings, Phone, Mail, MapPin, MessageCircle, Globe, CreditCard, Save, CheckCircle2, Copy, Check, Eye, EyeOff, ExternalLink, Video, Layout, Plus, Trash2, Users, BarChart2, Image, Sparkles, Send, Loader2, Coins } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 async function fetchSettings(): Promise<{ settings: Record<string, any> }> {
@@ -118,6 +118,9 @@ export default function AdminSettings() {
     { name: "Amina Musa Bello",      role: "Operations Manager",       photoUrl: "", initials: "AB" },
   ]);
 
+  const [roomSurcharges, setRoomSurcharges] = useState({ single: 0, double: 0, triple: 0, quad: 0, quint: 0 });
+  const [childInfantPricing, setChildInfantPricing] = useState({ childPrice: 0, infantPrice: 0 });
+
   useEffect(() => {
     if (!settings) return;
     if (settings.contact_info) setContact({ phone: settings.contact_info.phone || "", email: settings.contact_info.email || "", address: settings.contact_info.address || "", whatsapp: settings.contact_info.whatsapp || "" });
@@ -142,6 +145,8 @@ export default function AdminSettings() {
     if (settings.smtp_from_name) setSmtp(s => ({ ...s, fromName: settings.smtp_from_name as string }));
     if (settings.smtp_from_email) setSmtp(s => ({ ...s, fromEmail: settings.smtp_from_email as string }));
     if (settings.smtp_secure !== undefined) setSmtp(s => ({ ...s, secure: !!settings.smtp_secure }));
+    if (settings.room_surcharges) setRoomSurcharges(settings.room_surcharges as any);
+    if (settings.child_infant_pricing) setChildInfantPricing(settings.child_infant_pricing as any);
   }, [data]);
 
   const save = useMutation({
@@ -713,6 +718,76 @@ export default function AdminSettings() {
             {saved === "leadership_team" ? <CheckCircle2 className="w-4 h-4" /> : <Save className="w-4 h-4" />}
             {saved === "leadership_team" ? "Saved!" : "Save Team"}
           </Button>
+        </div>
+      </Section>
+
+      {/* ── Pricing Config ──────────────────────────────────────────────── */}
+      <Section title="Pricing Configuration" icon={Coins}>
+        <div className="space-y-6">
+          <div>
+            <p className="font-bold text-[#0F172A] text-sm mb-1">Room Surcharges (₦)</p>
+            <p className="text-xs text-[#64748B] mb-4">
+              Extra charge applied to a booking based on the room preference.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+              {["single", "double", "triple", "quad", "quint"].map((roomType) => (
+                <div key={roomType}>
+                  <Label className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider mb-1">
+                    {roomType}
+                  </Label>
+                  <Input
+                    type="number"
+                    value={(roomSurcharges as any)[roomType]}
+                    onChange={e => setRoomSurcharges(s => ({ ...s, [roomType]: Number(e.target.value) || 0 }))}
+                    className="rounded-xl text-sm"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="pt-3">
+              <Button onClick={() => save.mutate({ key: "room_surcharges", value: roomSurcharges })} disabled={save.isPending} className="bg-[#2D3199] hover:bg-[#1C1F66] text-white rounded-xl gap-2">
+                {saved === "room_surcharges" ? <CheckCircle2 className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                {saved === "room_surcharges" ? "Saved!" : "Save Room Prices"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="border-t border-[#F1F5F9] pt-5">
+            <p className="font-bold text-[#0F172A] text-sm mb-1">Child / Infant Pricing (₦)</p>
+            <p className="text-xs text-[#64748B] mb-4">
+              Extra charge applied to a booking if the pilgrim is a child (2-11) or infant (0-1).
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md">
+              <div>
+                <Label className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider mb-1">
+                  Child Price
+                </Label>
+                <Input
+                  type="number"
+                  value={childInfantPricing.childPrice}
+                  onChange={e => setChildInfantPricing(s => ({ ...s, childPrice: Number(e.target.value) || 0 }))}
+                  className="rounded-xl text-sm"
+                />
+              </div>
+              <div>
+                <Label className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider mb-1">
+                  Infant Price
+                </Label>
+                <Input
+                  type="number"
+                  value={childInfantPricing.infantPrice}
+                  onChange={e => setChildInfantPricing(s => ({ ...s, infantPrice: Number(e.target.value) || 0 }))}
+                  className="rounded-xl text-sm"
+                />
+              </div>
+            </div>
+            <div className="pt-3">
+              <Button onClick={() => save.mutate({ key: "child_infant_pricing", value: childInfantPricing })} disabled={save.isPending} className="bg-[#2D3199] hover:bg-[#1C1F66] text-white rounded-xl gap-2">
+                {saved === "child_infant_pricing" ? <CheckCircle2 className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                {saved === "child_infant_pricing" ? "Saved!" : "Save Child/Infant Prices"}
+              </Button>
+            </div>
+          </div>
         </div>
       </Section>
 
