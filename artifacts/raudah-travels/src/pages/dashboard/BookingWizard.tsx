@@ -520,8 +520,12 @@ export default function BookingWizard() {
           // Room surcharge & pilgrim type
           roomSurcharge: roomSurcharge || 0,
           pilgrimType: mainPilgrimType,
+          customData: {
+            childrenExtra: childrenTotal,
+            childrenCount: childEntries.length,
+          },
         },
-      },
+      } as any,
       {
         onSuccess: async (booking) => {
           createdBookingIdRef.current = booking.id;
@@ -814,7 +818,6 @@ export default function BookingWizard() {
                   if (data.passportNumber) extracted.push("passportNumber");
                   if (data.passportIssueDate) extracted.push("passportIssueDate");
                   if (data.passportExpiry) extracted.push("passportExpiry");
-                  if (data.issuingAuthority) extracted.push("passportIssuingAuthority");
                   if (data.dateOfBirth) extracted.push("dateOfBirth");
                   if (data.gender) extracted.push("gender");
                   if (data.nationality) extracted.push("nationality");
@@ -825,7 +828,6 @@ export default function BookingWizard() {
                     passportNumber:    data.passportNumber    || f.passportNumber,
                     passportIssueDate: data.passportIssueDate || f.passportIssueDate,
                     passportExpiry:    data.passportExpiry    || f.passportExpiry,
-                    passportIssuingAuthority: data.issuingAuthority || f.passportIssuingAuthority,
                   }));
                   if (data.firstName || data.lastName) {
                     setPersonalForm(f => ({

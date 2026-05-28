@@ -1666,6 +1666,9 @@ components:
         phone:
           type: string
           nullable: true
+        customData:
+          type: object
+          additionalProperties: true
       required: [packageId, pilgrimCount]
 
     UpdateBookingBody:

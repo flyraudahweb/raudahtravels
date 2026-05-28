@@ -349,7 +349,13 @@ export default function AdminBookPilgrim() {
         if (parsed.packageId) setPackageId(parsed.packageId);
         if (parsed.pilgrim) setPilgrim(parsed.pilgrim);
         if (parsed.travel) setTravel(parsed.travel);
-        if (parsed.payment) setPayment(parsed.payment);
+        if (parsed.payment) {
+          setPayment(parsed.payment);
+          // We defer custom amount check because singleTotalPrice is not known yet
+          if (parsed.payment.amountPaid && !["", "500000", "1000000"].includes(String(parsed.payment.amountPaid))) {
+            setIsCustomAmount(true);
+          }
+        }
         if (parsed.step) setStep(parsed.step);
         if (parsed.phoneCode) setPhoneCode(parsed.phoneCode);
         if (parsed.pilgrimType) setPilgrimType(parsed.pilgrimType);
@@ -589,6 +595,10 @@ export default function AdminBookPilgrim() {
       amountPaid: payment.method === "online" ? 0 : (payment.amountPaid ? Number(payment.amountPaid) : undefined),
       totalPrice: singleTotalPrice,
       pilgrimType,
+      customData: {
+        childrenExtra: childrenTotalSingle,
+        childrenCount: childEntries.length,
+      },
     });
   };
 
@@ -1505,7 +1515,6 @@ export default function AdminBookPilgrim() {
                           });
                         }}
                         onProfilePhoto={(url) => updateChildEntry(child.id, { profilePhotoUrl: url })}
-                        onPassportCopy={(url) => updateChildEntry(child.id, { passportCopyUrl: url })}
                       />
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
                         <div>

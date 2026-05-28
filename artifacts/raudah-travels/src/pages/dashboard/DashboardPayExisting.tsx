@@ -187,6 +187,13 @@ export default function DashboardPayExisting() {
         packageName: (booking as any)?.package?.name,
         departureDate: (booking as any)?.package?.departureDate,
         bookingId,
+        totalPrice: totalPrice,
+        amountPaidSoFar: amountPaid + amountDue,
+        breakdown: {
+          basePrice: (booking as any)?.package?.price || 0,
+          roomSurcharge: (booking as any)?.roomSurcharge || 0,
+          childrenExtra: (booking as any)?.customData?.childrenExtra || 0,
+        },
       });
     };
 

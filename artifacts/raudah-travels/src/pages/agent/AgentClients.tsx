@@ -198,7 +198,12 @@ export default function AgentClients() {
       const draft = localStorage.getItem("agent_client_draft");
       if (draft) {
         const parsed = JSON.parse(draft);
-        if (parsed.form) setForm(parsed.form);
+        if (parsed.form) {
+          setForm(parsed.form);
+          if (parsed.form.amountPaid && !["", "500000", "1000000"].includes(String(parsed.form.amountPaid))) {
+            setIsCustomAmount(true);
+          }
+        }
         if (parsed.regStep) setRegStep(parsed.regStep);
         if (parsed.phoneCode) setPhoneCode(parsed.phoneCode);
         if (parsed.pilgrimType) setPilgrimType(parsed.pilgrimType);

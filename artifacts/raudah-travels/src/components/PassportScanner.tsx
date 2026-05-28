@@ -347,9 +347,116 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
     }
   };
 
+  const renderCropDialog = () => (
+    <Dialog open={!!pendingCrop} onOpenChange={(open) => {
+      if (!open && pendingCrop) {
+        if (cropOrigin === 'ai') {
+          onExtracted(pendingCrop.result);
+          setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
+          setStatus("done");
+        } else if (cropOrigin === 'error') {
+          setStatus("idle");
+        }
+        setPendingCrop(null);
+      }
+    }}>
+      <DialogContent className="max-w-xl p-0 overflow-hidden bg-white rounded-3xl gap-0 border-0">
+        <DialogHeader className="p-5 pb-3">
+          <DialogTitle className="text-lg font-black text-[#0F172A] flex items-center gap-2">
+            <CropIcon className="w-5 h-5 text-[#2D3199]" />
+            Crop Profile Picture
+          </DialogTitle>
+          <DialogDescription className="text-xs font-semibold text-[#64748B]">
+            Please drag and resize the box to perfectly frame the profile face.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="bg-[#1e293b] border-y border-[#334155] p-4 flex justify-center items-center relative min-h-[300px]">
+          {pendingCrop && (
+            <ReactCrop
+              crop={crop}
+              onChange={(_, percentCrop) => setCrop(percentCrop)}
+              aspect={1}
+              className="max-h-[60vh]"
+              keepSelection
+            >
+              <img
+                ref={imgRef}
+                src={pendingCrop.imageUrl}
+                alt="Passport"
+                className="max-w-full max-h-[60vh] object-contain rounded-lg shadow-xl"
+                onLoad={(e) => {
+                  const img = e.currentTarget;
+                  setCrop(calculateInitialCrop(pendingCrop.bbox, img.naturalWidth, img.naturalHeight));
+                }}
+              />
+            </ReactCrop>
+          )}
+        </div>
+
+        <DialogFooter className="p-4 bg-white flex items-center justify-between">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              if (pendingCrop) {
+                if (cropOrigin === 'ai') {
+                  onExtracted(pendingCrop.result);
+                  setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
+                  setStatus("done");
+                } else if (cropOrigin === 'error') {
+                  setStatus("idle");
+                }
+                setPendingCrop(null);
+              }
+            }}
+            className="rounded-xl border-[#E2E8F0] text-[#64748B] font-bold h-11 px-6"
+          >
+            Skip
+          </Button>
+          <Button
+            type="button"
+            disabled={isUploadingCrop}
+            onClick={async () => {
+              if (pendingCrop && imgRef.current && crop) {
+                try {
+                  setIsUploadingCrop(true);
+                  const b64 = generateCroppedImage(imgRef.current, crop);
+                  const res = await fetch(b64);
+                  const blob = await res.blob();
+                  const file = new File([blob], "profile.jpg", { type: "image/jpeg" });
+                  const url = await uploadFile(file, "photos");
+                  
+                  setProfilePicUrl(url);
+                  onProfilePhoto?.(url);
+                } catch (err) {
+                  console.error("Crop/upload error", err);
+                } finally {
+                  setIsUploadingCrop(false);
+                  if (cropOrigin === 'ai') {
+                    onExtracted(pendingCrop.result);
+                    setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
+                    setStatus("done");
+                  } else if (cropOrigin === 'error') {
+                    setStatus("idle");
+                  }
+                  setPendingCrop(null);
+                }
+              }
+            }}
+            className="rounded-xl bg-[#2D3199] hover:bg-[#1C1F66] text-white font-black h-11 px-6 shadow-md"
+          >
+            {isUploadingCrop ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Uploading...</> : "Confirm Crop"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   // ── Compact mode (used in inline toolbar contexts) ─────────────────────────
   if (compact) {
     return (
+      <>
       <div className="flex flex-wrap items-center gap-2">
         <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
 
@@ -397,11 +504,14 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
           </div>
         )}
       </div>
+      {renderCropDialog()}
+      </>
     );
   }
 
   // ── Full mode ──────────────────────────────────────────────────────────────
   return (
+    <>
     <div className={`rounded-2xl overflow-hidden transition-all ${status === "dismissed" ? "border border-[#E2E8F0]" : "border-2 border-dashed border-[#2D3199]/30 bg-[#F8FAFF]"}`}>
       <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
 
@@ -548,120 +658,9 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
         </div>
       )}
 
-      {/* Manual Cropping Dialog */}
-      <Dialog open={!!pendingCrop} onOpenChange={(open) => {
-        if (!open && pendingCrop) {
-          // Only push AI-extracted data when the crop was opened from the normal AI flow
-          if (cropOrigin === 'ai') {
-            onExtracted(pendingCrop.result);
-            setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
-            setStatus("done");
-          } else if (cropOrigin === 'error') {
-            // From error state with no AI data — go back to idle
-            setStatus("idle");
-          }
-          // 'recrop' — keep status as 'done', don't push empty result
-          setPendingCrop(null);
-        }
-      }}>
-        <DialogContent className="max-w-xl p-0 overflow-hidden bg-white rounded-3xl gap-0 border-0">
-          <DialogHeader className="p-5 pb-3">
-            <DialogTitle className="text-lg font-black text-[#0F172A] flex items-center gap-2">
-              <CropIcon className="w-5 h-5 text-[#2D3199]" />
-              Crop Profile Picture
-            </DialogTitle>
-            <DialogDescription className="text-xs font-semibold text-[#64748B]">
-              Please drag and resize the box to perfectly frame the profile face.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="bg-[#1e293b] border-y border-[#334155] p-4 flex justify-center items-center relative min-h-[300px]">
-            {pendingCrop && (
-              <ReactCrop
-                crop={crop}
-                onChange={(_, percentCrop) => setCrop(percentCrop)}
-                aspect={1}
-                className="max-h-[60vh]"
-                keepSelection
-              >
-                <img
-                  ref={imgRef}
-                  src={pendingCrop.imageUrl}
-                  alt="Passport"
-                  className="max-w-full max-h-[60vh] object-contain rounded-lg shadow-xl"
-                  onLoad={(e) => {
-                    const img = e.currentTarget;
-                    setCrop(calculateInitialCrop(pendingCrop.bbox, img.naturalWidth, img.naturalHeight));
-                  }}
-                />
-              </ReactCrop>
-            )}
-          </div>
-
-          <DialogFooter className="p-4 bg-white flex items-center justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                if (pendingCrop) {
-                  if (cropOrigin === 'ai') {
-                    onExtracted(pendingCrop.result);
-                    setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
-                    setStatus("done");
-                  } else if (cropOrigin === 'error') {
-                    setStatus("idle");
-                  }
-                  // 'recrop' — keep status as 'done'
-                  setPendingCrop(null);
-                }
-              }}
-              className="rounded-xl border-[#E2E8F0] text-[#64748B] font-bold h-11 px-6"
-            >
-              Skip
-            </Button>
-            <Button
-              type="button"
-              disabled={isUploadingCrop}
-              onClick={async () => {
-                if (pendingCrop && imgRef.current && crop) {
-                  try {
-                    setIsUploadingCrop(true);
-                    const b64 = generateCroppedImage(imgRef.current, crop);
-                    
-                    // Convert base64 to File object
-                    const res = await fetch(b64);
-                    const blob = await res.blob();
-                    const file = new File([blob], "profile.jpg", { type: "image/jpeg" });
-                    
-                    // Upload to R2
-                    const url = await uploadFile(file, "photos");
-                    
-                    setProfilePicUrl(url);
-                    onProfilePhoto?.(url);
-                  } catch (err) {
-                    console.error("Crop/upload error", err);
-                  } finally {
-                    setIsUploadingCrop(false);
-                    if (cropOrigin === 'ai') {
-                      onExtracted(pendingCrop.result);
-                      setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
-                      setStatus("done");
-                    } else if (cropOrigin === 'error') {
-                      // No AI data was extracted — go to idle so user can fill manually
-                      setStatus("idle");
-                    }
-                    // 'recrop' — keep status as 'done', photo already updated via onProfilePhoto
-                    setPendingCrop(null);
-                  }
-                }
-              }}
-              className="rounded-xl bg-[#2D3199] hover:bg-[#1C1F66] text-white font-black h-11 px-6 shadow-md"
-            >
-              {isUploadingCrop ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Uploading...</> : "Confirm Crop"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Manual Cropping Dialog moved to renderCropDialog */}
     </div>
+    {renderCropDialog()}
+    </>
   );
 }

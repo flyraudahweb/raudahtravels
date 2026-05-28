@@ -91,6 +91,13 @@ export default function DashboardPayments() {
       packageName: (payment.booking as any)?.package?.name,
       departureDate: (payment.booking as any)?.package?.departureDate,
       bookingId: payment.booking?.id,
+      totalPrice: (payment.booking as any)?.totalPrice,
+      amountPaidSoFar: (payment.booking as any)?.amountPaid,
+      breakdown: {
+        basePrice: (payment.booking as any)?.package?.price || 0,
+        roomSurcharge: (payment.booking as any)?.roomSurcharge || 0,
+        childrenExtra: (payment.booking as any)?.childrenExtra || 0,
+      },
     });
   };
 

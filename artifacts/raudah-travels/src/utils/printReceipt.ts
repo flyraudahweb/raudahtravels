@@ -10,6 +10,13 @@ export interface ReceiptData {
   packageName?: string | null;
   departureDate?: string | null;
   bookingId?: string | null;
+  breakdown?: {
+    basePrice: number;
+    roomSurcharge: number;
+    childrenExtra: number;
+  };
+  totalPrice?: number;
+  amountPaidSoFar?: number;
 }
 
 const METHOD_LABELS: Record<string, string> = {
@@ -191,6 +198,26 @@ export function printReceipt(data: ReceiptData) {
       </div>` : ""}
     </div>` : ""}
 
+    ${data.breakdown && (data.breakdown.roomSurcharge > 0 || data.breakdown.childrenExtra > 0) ? `
+    <!-- Breakdown -->
+    <div class="section">
+      <div class="section-title">Invoice Breakdown</div>
+      <div class="row">
+        <span class="row-label">Base Package</span>
+        <span class="row-value">₦${data.breakdown.basePrice.toLocaleString()}</span>
+      </div>
+      ${data.breakdown.roomSurcharge > 0 ? `
+      <div class="row">
+        <span class="row-label">Room Surcharge</span>
+        <span class="row-value">₦${data.breakdown.roomSurcharge.toLocaleString()}</span>
+      </div>` : ""}
+      ${data.breakdown.childrenExtra > 0 ? `
+      <div class="row">
+        <span class="row-label">Children / Infants</span>
+        <span class="row-value">₦${data.breakdown.childrenExtra.toLocaleString()}</span>
+      </div>` : ""}
+    </div>` : ""}
+
     ${data.notes ? `
     <div class="section">
       <div class="section-title">Notes</div>
@@ -205,10 +232,30 @@ export function printReceipt(data: ReceiptData) {
 
     <hr class="divider" />
 
-    <!-- Summary Row -->
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;">
-      <span style="font-size:15px;font-weight:700;color:#0F172A;">Total Amount</span>
-      <span style="font-size:22px;font-weight:900;color:#2D3199;">₦${data.amount.toLocaleString()}</span>
+    <!-- Payment Summary -->
+    <div class="section">
+      <div class="section-title">Payment Summary</div>
+      ${data.totalPrice ? `
+      <div class="row">
+        <span class="row-label">Total Booking Cost</span>
+        <span class="row-value">₦${data.totalPrice.toLocaleString()}</span>
+      </div>` : ""}
+      <div class="row" style="background:#EEF0FF; padding:10px 12px; border-radius:8px; margin: 8px 0;">
+        <span class="row-label" style="color:#2D3199; font-weight:800;">Amount Paid (This Transaction)</span>
+        <span class="row-value accent" style="font-size:16px;">₦${data.amount.toLocaleString()}</span>
+      </div>
+      ${data.amountPaidSoFar !== undefined && data.totalPrice !== undefined ? `
+      <div class="row">
+        <span class="row-label">Total Amount Paid So Far</span>
+        <span class="row-value text-emerald-600">₦${data.amountPaidSoFar.toLocaleString()}</span>
+      </div>
+      <div class="row">
+        <span class="row-label" style="font-weight: 800;">Remaining Balance</span>
+        <span class="row-value" style="font-weight: 800; color: ${Math.max(0, data.totalPrice - data.amountPaidSoFar) === 0 ? '#059669' : '#DC2626'};">
+          ${Math.max(0, data.totalPrice - data.amountPaidSoFar) === 0 ? "FULLY PAID" : `₦${Math.max(0, data.totalPrice - data.amountPaidSoFar).toLocaleString()}`}
+        </span>
+      </div>
+      ` : ""}
     </div>
 
   </div>

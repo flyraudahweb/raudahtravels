@@ -157,11 +157,24 @@ router.post("/bookings", async (req, res) => {
     return res.status(409).json({ error: "Package is fully booked — no more capacity available" });
   }
 
-  // Price is always computed server-side from the canonical package price
-  // Room surcharge is added on top of the base package price
-  const surcharge = Math.max(0, Number(clientRoomSurcharge) || 0);
-  const pricePerPerson = Number(pkg.price) + surcharge;
-  const totalPrice = pricePerPerson * count;
+  // Fetch settings for accurate server-side pricing
+  const roomSettings = await db.query.siteSettingsTable.findFirst({ where: eq(siteSettingsTable.key, "room_surcharges") });
+  const roomSurcharges = (roomSettings?.value as any) || {};
+
+  // Compute pricing
+  let finalTotalPrice = 0;
+  const surcharge = Number(roomSurcharges[(safePilgrimFields.roomPreference || "quad").toLowerCase()]) || 0;
+  
+  if (parentBookingId) {
+    // Child bookings are paid for by the parent booking
+    finalTotalPrice = 0;
+  } else {
+    // Parent booking: Base + Room Surcharge + Children
+    const basePerPerson = Number(pkg.price) + surcharge;
+    const childrenExtra = Number((safePilgrimFields.customData as any)?.childrenExtra) || 0;
+    finalTotalPrice = (basePerPerson * count) + childrenExtra;
+  }
+
   const reference = `RDH-${randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
 
   const [booking] = await db.insert(bookingsTable).values({
@@ -171,7 +184,7 @@ router.post("/bookings", async (req, res) => {
     packageId,
     agentId,
     status: "pending",     // always starts pending — never trust client
-    totalPrice: String(totalPrice),
+    totalPrice: String(finalTotalPrice),
     amountPaid: "0",       // always zero at creation
     pilgrimCount: count,
     pilgrimDetails,
