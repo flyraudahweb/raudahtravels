@@ -297,7 +297,7 @@ export default function AdminBookPilgrim() {
     departureCity: "", roomPreference: "Quad", specialRequests: "",
   });
   const [payment, setPayment] = useState({ method: "cash", markVerified: true, amountPaid: "", paymentReference: "", paymentProofUrl: "" });
-  const [pkgTab, setPkgTab]     = useState<"all" | "hajj" | "umrah">("all");
+  const [pkgTab, setPkgTab]     = useState<"all" | "hajj" | "umrah" | "other">("all");
   const [pkgSearch, setPkgSearch] = useState("");
   const [phoneCode, setPhoneCode] = useState("+234");
   const [isRestored, setIsRestored] = useState(false);
@@ -444,10 +444,17 @@ export default function AdminBookPilgrim() {
 
   const hajjCount  = useMemo(() => packages.filter(p => p.type === "hajj").length,  [packages]);
   const umrahCount = useMemo(() => packages.filter(p => p.type === "umrah").length, [packages]);
+  const otherCount = useMemo(() => packages.filter(p => p.type !== "hajj" && p.type !== "umrah").length, [packages]);
 
   const visiblePackages = useMemo(() => {
     let list = packages;
-    if (pkgTab !== "all") list = list.filter(p => p.type === pkgTab);
+    if (pkgTab !== "all") {
+      if (pkgTab === "other") {
+        list = list.filter(p => p.type !== "hajj" && p.type !== "umrah");
+      } else {
+        list = list.filter(p => p.type === pkgTab);
+      }
+    }
     if (pkgSearch.trim()) {
       const q = pkgSearch.toLowerCase();
       list = list.filter(p => p.name.toLowerCase().includes(q));
@@ -775,6 +782,7 @@ export default function AdminBookPilgrim() {
                       { key: "all",   label: "All",   count: packages.length },
                       { key: "hajj",  label: "Hajj",  count: hajjCount  },
                       { key: "umrah", label: "Umrah", count: umrahCount },
+                      { key: "other", label: "Other Services", count: otherCount },
                     ] as const).map(tab => (
                       <button key={tab.key} onClick={() => setPkgTab(tab.key)}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${pkgTab === tab.key ? "bg-white text-[#2D3199] shadow-sm" : "text-[#64748B] hover:text-[#2D3199]"}`}>
