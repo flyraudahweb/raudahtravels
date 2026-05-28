@@ -346,6 +346,12 @@ router.put("/payments/:id/verify", async (req, res) => {
     // Only create visa application when booking becomes fully paid
     const isFullyPaid = Number(confirmedBooking.amountPaid) >= Number(confirmedBooking.totalPrice);
     if (isFullyPaid) {
+      // Generate an idNumber for fully paid bookings
+      await db.execute(sql`
+        UPDATE bookings 
+        SET id_number = nextval('bookings_id_number_seq') 
+        WHERE id = ${confirmedBooking.id} AND id_number IS NULL
+      `);
       await ensureVisaApplication(confirmedBooking.id, confirmedBooking.fullName, confirmedBooking.passportNumber);
     }
     setImmediate(() => sendBookingReceipt(
@@ -566,6 +572,12 @@ router.post("/payments/paystack/verify", async (req, res) => {
         // Only create visa application when booking becomes fully paid
         const isFullyPaid = Number(booking.amountPaid) >= Number(booking.totalPrice);
         if (isFullyPaid) {
+          // Generate an idNumber for fully paid bookings
+          await trx.execute(sql`
+            UPDATE bookings 
+            SET id_number = nextval('bookings_id_number_seq') 
+            WHERE id = ${booking.id} AND id_number IS NULL
+          `);
           await ensureVisaApplication(booking.id, booking.fullName, booking.passportNumber);
         }
       }
@@ -685,6 +697,12 @@ router.post("/payments/paystack/webhook", async (req, res) => {
               // Only create visa application when booking becomes fully paid
               const isFullyPaid = Number(booking.amountPaid) >= Number(booking.totalPrice);
               if (isFullyPaid) {
+                // Generate an idNumber for fully paid bookings
+                await tx.execute(sql`
+                  UPDATE bookings 
+                  SET id_number = nextval('bookings_id_number_seq') 
+                  WHERE id = ${booking.id} AND id_number IS NULL
+                `);
                 await ensureVisaApplication(booking.id, booking.fullName, booking.passportNumber);
               }
             }

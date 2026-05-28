@@ -2200,9 +2200,15 @@ router.post("/admin/book-pilgrim", async (req, res) => {
         .set({ currentBookings: sql`${packagesTable.currentBookings} + 1` })
         .where(eq(packagesTable.id, packageId));
 
-      // Only create visa application when booking is fully paid
       const isFullyPaid = Number(booking.amountPaid) >= price;
       if (markVerified && isFullyPaid) {
+        // Generate an idNumber for fully paid bookings
+        await tx.execute(sql`
+          UPDATE bookings 
+          SET id_number = nextval('bookings_id_number_seq') 
+          WHERE id = ${booking.id} AND id_number IS NULL
+        `);
+
         const existingVisa = await tx.query.visaApplicationsTable.findFirst({
           where: eq(visaApplicationsTable.bookingId, booking.id),
         });

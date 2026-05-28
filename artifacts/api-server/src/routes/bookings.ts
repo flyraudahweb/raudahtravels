@@ -256,6 +256,12 @@ router.put("/bookings/:id", async (req, res) => {
   if (!booking) return res.status(404).json({ error: "Booking not found" });
 
   if (updateData.status === "confirmed") {
+    // Generate an idNumber if the booking doesn't have one
+    await db.execute(sql`
+      UPDATE bookings 
+      SET id_number = nextval('bookings_id_number_seq') 
+      WHERE id = ${booking.id} AND id_number IS NULL
+    `);
     await ensureVisaApplication(booking.id, booking.fullName ?? undefined, booking.passportNumber ?? undefined);
   }
 
