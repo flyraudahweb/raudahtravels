@@ -1057,7 +1057,7 @@ export default function AdminAgents() {
   const [activeTab, setActiveTab] = useState<Tab>("applications");
   const [dialog, setDialog] = useState<ActiveDialog>(null);
   const [agentPage, setAgentPage] = useState(1);
-  const AGENTS_PER_PAGE = 15;
+  const AGENTS_PER_PAGE = 100;
 
   const { data: appsData, isLoading: appsLoading } = useListAgentApplications({
     query: { queryKey: getListAgentApplicationsQueryKey() },

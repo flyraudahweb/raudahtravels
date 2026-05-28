@@ -1022,7 +1022,7 @@ function exportPDF(pilgrims: PilgrimRow[]) {
 }
 
 const FILTER_ALL = "__all__";
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 100;
 
 export default function AdminPilgrims() {
   const [search, setSearch]               = useState("");

@@ -84,7 +84,7 @@ export default function AdminVisaManagement() {
   const { data, isLoading } = useQuery<{ visas: VisaApp[]; total: number; totalPages: number }>({
     queryKey: ["admin-visa", statusFilter, debouncedSearch, packageFilter, page],
     queryFn: async () => {
-      const p = new URLSearchParams({ limit: "50", page: String(page) });
+      const p = new URLSearchParams({ limit: "100", page: String(page) });
       if (statusFilter !== "all") p.set("status", statusFilter);
       if (debouncedSearch) p.set("search", debouncedSearch);
       if (packageFilter !== "all") p.set("packageId", packageFilter);
@@ -367,7 +367,7 @@ export default function AdminVisaManagement() {
                           })}
                           className="w-4 h-4 rounded accent-[#2D3199]" />
                       </td>
-                      <td className="px-4 py-3 text-gray-400 text-xs tabular-nums">{(page - 1) * 50 + i + 1}</td>
+                      <td className="px-4 py-3 text-gray-400 text-xs tabular-nums">{(page - 1) * 100 + i + 1}</td>
                       <td className="px-4 py-3">
                         <p className="font-semibold text-gray-900 leading-tight">
                           {visa.booking?.fullName || visa.pilgrimName || "—"}
@@ -419,7 +419,7 @@ export default function AdminVisaManagement() {
 
             {totalPages > 1 && (
               <div className="px-4 py-3 border-t flex items-center justify-between text-sm bg-gray-50/50">
-                <span className="text-xs text-gray-500">Showing {(page - 1) * 50 + 1}–{Math.min(page * 50, total)} of {total}</span>
+                <span className="text-xs text-gray-500">Showing {(page - 1) * 100 + 1}–{Math.min(page * 100, total)} of {total}</span>
                 <div className="flex items-center gap-1">
                   <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
                     className="px-3 py-1 rounded border text-xs hover:bg-white disabled:opacity-40">← Prev</button>
