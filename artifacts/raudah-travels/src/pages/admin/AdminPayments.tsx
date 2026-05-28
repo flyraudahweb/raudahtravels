@@ -35,7 +35,7 @@ const METHOD_CONFIG: Record<string, { label: string; icon: string; bg: string }>
   paystack:      { label: "Paystack",      icon: "🔒", bg: "bg-indigo-50" },
 };
 
-const OUTSTANDING_PAGE_SIZE = 20;
+const OUTSTANDING_PAGE_SIZE = 100;
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
@@ -628,6 +628,7 @@ export default function AdminPayments() {
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
   const [viewingProof, setViewingProof] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
+  const [page, setPage] = useState(1);
 
   /* ── Tab state ── */
   const [activeTab, setActiveTab] = useState<"all" | "outstanding">("all");
@@ -648,6 +649,10 @@ export default function AdminPayments() {
         );
       })
     : allPayments;
+
+  const PAGE_SIZE = 100;
+  const totalPages = Math.max(1, Math.ceil(payments.length / PAGE_SIZE));
+  const paginatedPayments = payments.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const handleVerify = (action: "verified" | "rejected") => {
     if (!verifyingId) return;
@@ -766,14 +771,14 @@ export default function AdminPayments() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8]" />
               <input
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={e => { setSearch(e.target.value); setPage(1); }}
                 placeholder="Search by pilgrim, reference, or method…"
                 className="w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-[#DCE3F0] bg-white focus:outline-none focus:ring-2 focus:ring-[#2D3199]/20 focus:border-[#2D3199]"
               />
             </div>
             <div className="flex gap-1.5 bg-white rounded-xl border border-[#DCE3F0] p-1">
               {["all", "pending", "verified", "rejected"].map(s => (
-                <button key={s} onClick={() => setStatusFilter(s)}
+                <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all capitalize whitespace-nowrap ${statusFilter === s ? "bg-[#2D3199] text-white shadow-sm" : "text-[#64748B] hover:text-[#2D3199]"}`}
                   data-testid={`filter-${s}`}>
                   {s}
@@ -794,8 +799,9 @@ export default function AdminPayments() {
               <p className="text-[#94A3B8] text-sm">Try a different filter or search term</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {payments.map(payment => {
+            <>
+              <div className="space-y-3">
+                {paginatedPayments.map(payment => {
                 const c = STATUS_CONFIG[payment.status] || STATUS_CONFIG.pending;
                 const StatusIcon = c.icon;
                 const m = METHOD_CONFIG[payment.method] || { label: payment.method.replace(/_/g, " "), icon: "💰", bg: "bg-[#F0F2FF]" };
@@ -872,7 +878,57 @@ export default function AdminPayments() {
                   </div>
                 );
               })}
-            </div>
+              </div>
+              
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between bg-white rounded-2xl border border-[#DCE3F0] px-5 py-3.5 mt-4">
+                  <p className="text-xs text-[#94A3B8] font-medium">
+                    Showing{" "}
+                    <span className="font-bold text-[#334155]">{(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, payments.length)}</span>
+                    {" "}of <span className="font-bold text-[#334155]">{payments.length}</span>
+                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center border border-[#DCE3F0] text-[#64748B] hover:border-[#2D3199] hover:text-[#2D3199] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                      let num: number;
+                      if (totalPages <= 7) {
+                        num = i + 1;
+                      } else if (page <= 4) {
+                        num = i + 1;
+                      } else if (page >= totalPages - 3) {
+                        num = totalPages - 6 + i;
+                      } else {
+                        num = page - 3 + i;
+                      }
+                      return (
+                        <button key={num} onClick={() => setPage(num)}
+                          className={`w-8 h-8 rounded-lg text-xs font-bold transition-colors ${
+                            page === num
+                              ? "bg-[#2D3199] text-white shadow-sm"
+                              : "border border-[#DCE3F0] text-[#64748B] hover:border-[#2D3199] hover:text-[#2D3199]"
+                          }`}>
+                          {num}
+                        </button>
+                      );
+                    })}
+                    <button
+                      onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                      disabled={page === totalPages}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center border border-[#DCE3F0] text-[#64748B] hover:border-[#2D3199] hover:text-[#2D3199] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </>
       )}
