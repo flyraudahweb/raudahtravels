@@ -39,7 +39,20 @@ declare global {
 interface PackageOption {
   id: string; name: string; type: string; price: number;
   departureDate: string; capacity: number; currentBookings: number;
+  packageDates?: any[];
 }
+
+const formatDate = (dateStr: string) => {
+  try {
+    return new Date(dateStr).toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  } catch (e) {
+    return dateStr;
+  }
+};
 
 const STEPS = [
   { id: 1, label: "Package",  icon: Package },
@@ -292,6 +305,7 @@ export default function AdminBookPilgrim() {
   const [result, setResult] = useState<{ reference: string } | null>(null);
 
   const [packageId, setPackageId] = useState("");
+  const [packageDateId, setPackageDateId] = useState("");
   const [pilgrim, setPilgrim]     = useState<PilgrimState>(DEFAULT_PILGRIM);
   const [travel, setTravel]       = useState({
     departureCity: "", roomPreference: "Quad", specialRequests: "",
@@ -347,6 +361,7 @@ export default function AdminBookPilgrim() {
       if (draft) {
         const parsed = JSON.parse(draft);
         if (parsed.packageId) setPackageId(parsed.packageId);
+        if (parsed.packageDateId) setPackageDateId(parsed.packageDateId);
         if (parsed.pilgrim) setPilgrim(parsed.pilgrim);
         if (parsed.travel) setTravel(parsed.travel);
         if (parsed.payment) {
@@ -375,8 +390,8 @@ export default function AdminBookPilgrim() {
       localStorage.removeItem("admin_pilgrim_draft");
       return;
     }
-    localStorage.setItem("admin_pilgrim_draft", JSON.stringify({ packageId, pilgrim, travel, payment, step, phoneCode, pilgrimType, childEntries }));
-  }, [packageId, pilgrim, travel, payment, step, phoneCode, isRestored, pilgrimType, childEntries]);
+    localStorage.setItem("admin_pilgrim_draft", JSON.stringify({ packageId, packageDateId, pilgrim, travel, payment, step, phoneCode, pilgrimType, childEntries }));
+  }, [packageId, packageDateId, pilgrim, travel, payment, step, phoneCode, isRestored, pilgrimType, childEntries]);
 
   const { data: pkgData } = useQuery({ queryKey: ["packages-for-booking"], queryFn: fetchPackages });
   
@@ -539,6 +554,7 @@ export default function AdminBookPilgrim() {
           try {
             await bookMutation.mutateAsync({
               packageId,
+              packageDateId: packageDateId || undefined,
               pilgrimCount: 1,
               fullName: `${child.firstName} ${child.lastName}`.trim(),
               firstName: child.firstName,
@@ -591,6 +607,7 @@ export default function AdminBookPilgrim() {
     if (req("phone") && !pilgrim.phone) { toast({ title: "Phone number is required", variant: "destructive" }); return; }
     bookMutation.mutate({
       packageId,
+      packageDateId: packageDateId || undefined,
       ...pilgrim,
       phone: pilgrim.phone ? `${phoneCode}${pilgrim.phone}` : "",
       fullName: `${pilgrim.firstName} ${pilgrim.lastName}`.trim(),
@@ -610,8 +627,13 @@ export default function AdminBookPilgrim() {
   };
 
   const handleNext = () => {
-    if (step === 1 && !packageId) {
-      toast({ title: "Please select a package", variant: "destructive" }); return;
+    if (step === 1) {
+      if (!packageId) {
+        toast({ title: "Please select a package", variant: "destructive" }); return;
+      }
+      if (selectedPkg?.type === "umrah" && selectedPkg.packageDates && selectedPkg.packageDates.length > 0 && !packageDateId) {
+        toast({ title: "Please select a flight schedule", variant: "destructive" }); return;
+      }
     }
     if (step === 2) {
       const { valid, missingFields } = validateRequiredFields(cfg, pilgrim,
@@ -650,7 +672,7 @@ export default function AdminBookPilgrim() {
 
   const resetForm = () => {
     localStorage.removeItem("admin_pilgrim_draft");
-    setStep(1); setResult(null); setPackageId("");
+    setStep(1); setResult(null); setPackageId(""); setPackageDateId("");
     setPilgrim(DEFAULT_PILGRIM);
     setTravel({ departureCity: "", roomPreference: "Quad", specialRequests: "" });
     setPayment({ method: "cash", markVerified: true, amountPaid: "", paymentReference: "", paymentProofUrl: "" });
@@ -813,7 +835,7 @@ export default function AdminBookPilgrim() {
                 ) : (
                   <div className="space-y-2.5 max-h-[360px] overflow-y-auto pr-1">
                     {visiblePackages.map(pkg => (
-                      <div key={pkg.id} onClick={() => setPackageId(pkg.id)}
+                      <div key={pkg.id} onClick={() => { setPackageId(pkg.id); setPackageDateId(""); }}
                         className={`cursor-pointer rounded-2xl border-2 p-4 transition-all ${packageId === pkg.id ? "border-[#2D3199] bg-[#EEF0FF]" : "border-[#DCE3F0] hover:border-[#2D3199]/30"}`}>
                         <div className="flex items-center justify-between">
                           <div className="min-w-0 flex-1">
@@ -830,6 +852,27 @@ export default function AdminBookPilgrim() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {selectedPkg?.type === "umrah" && selectedPkg.packageDates && selectedPkg.packageDates.length > 0 && (
+                  <div className="space-y-2 mt-4 border-t pt-4">
+                    <Label htmlFor="packageDateId" className="text-sm font-semibold text-primary">Flight Schedule *</Label>
+                    <Select value={packageDateId} onValueChange={setPackageDateId}>
+                      <SelectTrigger id="packageDateId" className="w-full">
+                        <SelectValue placeholder="Select a flight schedule..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[...selectedPkg.packageDates]
+                          .sort((a, b) => new Date(a.outbound).getTime() - new Date(b.outbound).getTime())
+                          .map((d: any) => (
+                            <SelectItem key={d.id} value={d.id} className="text-xs">
+                              {formatDate(d.outbound)} - {formatDate(d.returnDate)} ({d.outboundRoute} | {d.returnRoute}) via {d.airline}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-[#64748B]">Please select your preferred travel dates. This is required for Umrah packages.</p>
                   </div>
                 )}
               </>
@@ -1170,7 +1213,7 @@ export default function AdminBookPilgrim() {
                     const ciExtra = detType === "infant" ? (childInfantPricing.infantPrice || 0) : detType === "child" ? (childInfantPricing.childPrice || 0) : 0;
                     try {
                       const data = await bookMutation.mutateAsync({
-                        packageId, civility: p.civility, firstName: p.firstName, lastName: p.lastName,
+                        packageId, packageDateId: packageDateId || undefined, civility: p.civility, firstName: p.firstName, lastName: p.lastName,
                         fullName: `${p.firstName} ${p.lastName}`.trim(),
                         passportNumber: p.passportNumber, passportIssueDate: p.passportIssueDate,
                         passportExpiry: p.passportExpiry, passportIssuingAuthority: p.passportIssuingAuthority,
@@ -1684,6 +1727,17 @@ export default function AdminBookPilgrim() {
                     {childrenTotalSingle > 0 && <p className="text-[10px] text-emerald-600 font-bold">+₦{childrenTotalSingle.toLocaleString()} ({childEntries.length} children)</p>}
                   </div>
                 </div>
+                {packageDateId && (() => {
+                  const selectedDate = selectedPkg.packageDates?.find((d: any) => d.id === packageDateId);
+                  if (!selectedDate) return null;
+                  return (
+                    <div className="mt-3 text-xs font-medium text-emerald-800 bg-emerald-100/50 p-2.5 rounded-xl border border-emerald-200/65">
+                      <span className="block text-[10px] font-bold uppercase tracking-wider text-emerald-700">Flight Schedule</span>
+                      {formatDate(selectedDate.outbound)} - {formatDate(selectedDate.returnDate)}
+                      <span className="block text-[10px] text-[#64748B] font-normal">({selectedDate.outboundRoute} | {selectedDate.returnRoute}) via {selectedDate.airline}</span>
+                    </div>
+                  );
+                })()}
               </div>
             )}
             <div>

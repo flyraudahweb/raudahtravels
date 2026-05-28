@@ -6,7 +6,7 @@ import { createNotification } from "../utils/notify.js";
 
 import {
   profilesTable, staffPermissionsTable, bookingsTable, paymentsTable,
-  packagesTable, agentsTable, supportTicketsTable, bankAccountsTable,
+  packagesTable, packageDatesTable, agentsTable, supportTicketsTable, bankAccountsTable,
   siteSettingsTable, bookingFormFieldsTable, userActivityTable,
   bookingAmendmentRequestsTable, staffMessagesTable, chatChannelsTable,
   visaApplicationsTable, visaProvidersTable,
@@ -384,6 +384,16 @@ router.get("/admin/pilgrims", async (req, res) => {
       type: packagesTable.type,
       category: packagesTable.category,
     },
+    packageDate: {
+      id: packageDatesTable.id,
+      outbound: packageDatesTable.outbound,
+      outboundRoute: packageDatesTable.outboundRoute,
+      returnDate: packageDatesTable.returnDate,
+      returnRoute: packageDatesTable.returnRoute,
+      airline: packageDatesTable.airline,
+      islamicDate: packageDatesTable.islamicDate,
+      islamicReturnDate: packageDatesTable.islamicReturnDate,
+    },
     user: {
       id: profilesTable.id,
       fullName: profilesTable.fullName,
@@ -395,6 +405,7 @@ router.get("/admin/pilgrims", async (req, res) => {
   })
     .from(bookingsTable)
     .leftJoin(packagesTable, eq(bookingsTable.packageId, packagesTable.id))
+    .leftJoin(packageDatesTable, eq(bookingsTable.packageDateId, packageDatesTable.id))
     .leftJoin(profilesTable, eq(bookingsTable.userId, profilesTable.id))
     .leftJoin(agentsTable, eq(bookingsTable.agentId, agentsTable.id))
     .where(whereClause)
@@ -419,6 +430,7 @@ router.get("/admin/pilgrims", async (req, res) => {
     totalPrice: Number(row.booking.totalPrice),
     amountPaid: Number(row.booking.amountPaid),
     package: row.package,
+    packageDate: row.packageDate || null,
     user: row.user,
     agentBusinessName: row.agentBusinessName || null,
     registeredByStaffName: row.booking.registeredByStaffId ? (staffMap.get(row.booking.registeredByStaffId) || null) : null,
@@ -631,9 +643,20 @@ router.get("/admin/pilgrims/:id", async (req, res) => {
       name: packagesTable.name,
       type: packagesTable.type,
     },
+    packageDate: {
+      id: packageDatesTable.id,
+      outbound: packageDatesTable.outbound,
+      outboundRoute: packageDatesTable.outboundRoute,
+      returnDate: packageDatesTable.returnDate,
+      returnRoute: packageDatesTable.returnRoute,
+      airline: packageDatesTable.airline,
+      islamicDate: packageDatesTable.islamicDate,
+      islamicReturnDate: packageDatesTable.islamicReturnDate,
+    },
   })
     .from(bookingsTable)
     .leftJoin(packagesTable, eq(bookingsTable.packageId, packagesTable.id))
+    .leftJoin(packageDatesTable, eq(bookingsTable.packageDateId, packageDatesTable.id))
     .where(eq(bookingsTable.userId, req.params.id));
 
   const payments = await db.query.paymentsTable.findMany({
@@ -647,6 +670,7 @@ router.get("/admin/pilgrims/:id", async (req, res) => {
       totalPrice: Number(r.booking.totalPrice),
       amountPaid: Number(r.booking.amountPaid),
       package: r.package,
+      packageDate: r.packageDate || null,
     })),
     documents: [],
     payments: payments.map(p => ({ ...p, amount: Number(p.amount) })),

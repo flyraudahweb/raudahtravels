@@ -24,3 +24,12 @@ export const insertPackageDateSchema = createInsertSchema(packageDatesTable).omi
 });
 export type InsertPackageDate = z.infer<typeof insertPackageDateSchema>;
 export type PackageDate = typeof packageDatesTable.$inferSelect;
+
+import { relations } from "drizzle-orm";
+
+export const packageDatesRelations = relations(packageDatesTable, ({ one }) => ({
+  package: one(packagesTable, {
+    fields: [packageDatesTable.packageId],
+    references: [packagesTable.id],
+  }),
+}));

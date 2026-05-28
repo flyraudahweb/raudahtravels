@@ -442,7 +442,7 @@ router.post("/agent/register-client", async (req, res) => {
   if (agent.status !== "active") return res.status(403).json({ error: "Agent account must be active to register clients" });
 
   const {
-    packageId, civility, firstName, lastName,
+    packageId, packageDateId, civility, firstName, lastName,
     passportNumber, passportIssueDate, passportExpiry, passportIssuingAuthority,
     passportCopyUrl, profilePhotoUrl, visaNumber,
     dateOfBirth, placeOfBirth, gender, phone, email, nationality,
@@ -568,7 +568,7 @@ router.post("/agent/register-client", async (req, res) => {
         // Create booking
         [booking] = await tx.insert(bookingsTable).values({
           id: randomUUID(), reference: bookingReference, userId: walkInUser.id,
-          packageId, agentId: agent.id, status: "confirmed",
+          packageId, packageDateId: nullify(packageDateId), agentId: agent.id, status: "confirmed",
           totalPrice: String(price), amountPaid: String(walletPaid), pilgrimCount: 1,
           fullName: resolvedFullName || undefined,
           civility: nullify(civility), firstName: nullify(firstName), lastName: nullify(lastName),
@@ -744,6 +744,7 @@ router.post("/agent/register-client", async (req, res) => {
         reference: bookingReference,
         userId: walkInUser.id,
         packageId,
+        packageDateId: nullify(packageDateId),
         agentId: agent.id,
         status: "pending",
         totalPrice: String(price),

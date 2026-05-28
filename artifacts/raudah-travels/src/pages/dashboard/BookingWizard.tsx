@@ -186,6 +186,18 @@ export default function BookingWizard() {
   const { toast } = useToast();
   const { user } = useUser();
 
+  const formatDate = (dateStr: string) => {
+    try {
+      return new Date(dateStr).toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
   const { data: pkg, isLoading, isFetching } = useGetPackage(packageId, {
     query: { enabled: !!packageId, queryKey: getGetPackageQueryKey(packageId), staleTime: 0 },
   });
@@ -294,6 +306,8 @@ export default function BookingWizard() {
 
   // Online/offline detection
   const { isOnline, wasOffline } = useOnlineStatus();
+  
+  const [packageDateId, setPackageDateId] = useState<string>("");
 
   useEffect(() => {
     try {
@@ -308,6 +322,7 @@ export default function BookingWizard() {
         if (parsed.childEntries) setChildEntries(parsed.childEntries);
         if (parsed.paymentOption) setPaymentOption(parsed.paymentOption);
         if (parsed.customPaymentAmount) setCustomPaymentAmount(parsed.customPaymentAmount);
+        if (parsed.packageDateId) setPackageDateId(parsed.packageDateId);
       }
     } catch (e) {}
     setIsRestored(true);
@@ -321,9 +336,9 @@ export default function BookingWizard() {
     }
     localStorage.setItem("user_booking_draft", JSON.stringify({
       passportForm, personalForm, contactForm, payForm, step,
-      childEntries, paymentOption, customPaymentAmount,
+      childEntries, paymentOption, customPaymentAmount, packageDateId,
     }));
-  }, [passportForm, personalForm, contactForm, payForm, step, done, isRestored, childEntries, paymentOption, customPaymentAmount]);
+  }, [passportForm, personalForm, contactForm, payForm, step, done, isRestored, childEntries, paymentOption, customPaymentAmount, packageDateId]);
 
   useEffect(() => {
     if (!paystackScriptLoaded.current) {
@@ -407,6 +422,12 @@ export default function BookingWizard() {
 
   const handleNext = () => {
     // Step-level field validation
+    if (step === 0) {
+      if (pkg?.type === "umrah" && pkg.packageDates && pkg.packageDates.length > 0 && !packageDateId) {
+        toast({ title: "Flight Schedule Required", description: "Please select a flight schedule before proceeding.", variant: "destructive" });
+        return;
+      }
+    }
     if (step === 1) {
       const { valid, missingFields } = validateRequiredFields(cfg, passportForm,
         ["passportNumber", "passportIssueDate", "passportExpiry", "passportIssuingAuthority", "passportCopyUrl"]);
@@ -483,6 +504,7 @@ export default function BookingWizard() {
       {
         data: {
           packageId: pkg!.id,
+          packageDateId: packageDateId || undefined,
           pilgrimCount: payForm.pilgrimCount,
           pilgrimDetails,
           notes: contactForm.specialRequests,
@@ -538,6 +560,7 @@ export default function BookingWizard() {
                 await createBooking.mutateAsync({
                   data: {
                     packageId: pkg!.id,
+                    packageDateId: packageDateId || undefined,
                     pilgrimCount: 1,
                     fullName: `${child.firstName} ${child.lastName}`.trim(),
                     firstName: child.firstName || undefined,
@@ -801,6 +824,26 @@ export default function BookingWizard() {
                   </SelectContent>
                 </Select>
               </div>
+              {pkg?.type === "umrah" && pkg.packageDates && pkg.packageDates.length > 0 && (
+                <div className="space-y-2 mt-4 border-t pt-4">
+                  <Label htmlFor="packageDateId" className="text-sm font-semibold text-primary">Flight Schedule *</Label>
+                  <Select value={packageDateId} onValueChange={setPackageDateId}>
+                    <SelectTrigger id="packageDateId" className="w-full">
+                      <SelectValue placeholder="Select a flight schedule..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[...pkg.packageDates]
+                        .sort((a, b) => new Date(a.outbound).getTime() - new Date(b.outbound).getTime())
+                        .map((d: any) => (
+                          <SelectItem key={d.id} value={d.id} className="text-xs">
+                            {formatDate(d.outbound)} - {formatDate(d.returnDate)} ({d.outboundRoute} | {d.returnRoute}) via {d.airline}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">Please select your preferred travel dates. This is required for Umrah packages.</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -1303,6 +1346,19 @@ export default function BookingWizard() {
                 <div className="flex justify-between"><span className="text-muted-foreground">Name</span><span>{personalForm.civility ? `${personalForm.civility} ` : ""}{fullName || "—"}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Pilgrims</span><span>{payForm.pilgrimCount}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Departure</span><span>{new Date(pkg.departureDate).toLocaleDateString()}</span></div>
+                {packageDateId && (() => {
+                  const selectedDate = pkg.packageDates.find((d: any) => d.id === packageDateId);
+                  if (!selectedDate) return null;
+                  return (
+                    <div className="flex justify-between text-emerald-700 bg-emerald-50/50 p-2 rounded border border-emerald-100 my-1">
+                      <span className="text-muted-foreground">Flight Schedule</span>
+                      <span className="font-medium text-right text-xs">
+                        {formatDate(selectedDate.outbound)} - {formatDate(selectedDate.returnDate)}<br />
+                        <span className="text-[10px] text-muted-foreground">({selectedDate.outboundRoute} | {selectedDate.returnRoute}) via {selectedDate.airline}</span>
+                      </span>
+                    </div>
+                  );
+                })()}
                 <div className="flex justify-between"><span className="text-muted-foreground">Price per person</span>
                   {isFetching ? <Skeleton className="h-5 w-28" /> : <span>₦{pkg.price.toLocaleString()}</span>}
                 </div>

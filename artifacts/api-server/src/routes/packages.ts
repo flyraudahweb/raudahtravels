@@ -21,7 +21,7 @@ async function requireAdmin(req: Request, res: Response, next: NextFunction) {
   return next();
 }
 
-function toPackageResponse(p: typeof packagesTable.$inferSelect) {
+function toPackageResponse(p: any) {
   return {
     id: p.id,
     name: p.name,
@@ -54,9 +54,10 @@ function toPackageResponse(p: typeof packagesTable.$inferSelect) {
     starRating: p.starRating,
     countdownEnabled: p.countdownEnabled,
     countdownExpiry: p.countdownExpiry ?? null,
-    countdownAction: (p as any).countdownAction ?? "disable",
+    countdownAction: p.countdownAction ?? "disable",
     isRegistrationClosed: !!(p.countdownEnabled && p.countdownExpiry && new Date(p.countdownExpiry) < new Date()),
     createdAt: p.createdAt,
+    packageDates: p.packageDates ?? [],
   };
 }
 
@@ -74,6 +75,7 @@ router.get("/packages", async (req, res) => {
       limit: parseInt(limit),
       offset: parseInt(offset),
       orderBy: desc(packagesTable.createdAt),
+      with: { packageDates: true },
     });
 
     let mapped = packages.map(toPackageResponse);
@@ -110,6 +112,7 @@ router.get("/packages/stats", async (req, res) => {
 router.get("/packages/:id", async (req, res) => {
   const pkg = await db.query.packagesTable.findFirst({
     where: eq(packagesTable.id, req.params.id),
+    with: { packageDates: true },
   });
   if (!pkg) return res.status(404).json({ error: "Package not found" });
   return res.json(toPackageResponse(pkg));

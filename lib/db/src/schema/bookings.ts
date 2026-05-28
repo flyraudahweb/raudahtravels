@@ -171,3 +171,16 @@ export type InsertBooking = z.infer<typeof insertBookingSchema>;
 export type Booking = typeof bookingsTable.$inferSelect;
 export type Commission = typeof commissionsTable.$inferSelect;
 export type BookingAmendmentRequest = typeof bookingAmendmentRequestsTable.$inferSelect;
+
+import { relations } from "drizzle-orm";
+
+export const bookingsRelations = relations(bookingsTable, ({ one }) => ({
+  packageDate: one(packageDatesTable, {
+    fields: [bookingsTable.packageDateId],
+    references: [packageDatesTable.id],
+  }),
+  package: one(packagesTable, {
+    fields: [bookingsTable.packageId],
+    references: [packagesTable.id],
+  }),
+}));

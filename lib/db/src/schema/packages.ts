@@ -66,3 +66,10 @@ export const insertPackageSchema = createInsertSchema(packagesTable).omit({
 });
 export type InsertPackage = z.infer<typeof insertPackageSchema>;
 export type Package = typeof packagesTable.$inferSelect;
+
+import { relations } from "drizzle-orm";
+import { packageDatesTable } from "./package-dates";
+
+export const packagesRelations = relations(packagesTable, ({ many }) => ({
+  packageDates: many(packageDatesTable),
+}));

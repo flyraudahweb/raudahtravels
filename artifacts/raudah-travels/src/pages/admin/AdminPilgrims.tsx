@@ -75,6 +75,16 @@ type PilgrimRow = {
   visaDeliveryMessage?: string | null;
   createdAt: string;
   package?: { id: string; name: string; type: string; category: string } | null;
+  packageDate?: {
+    id: string;
+    outbound: string;
+    outboundRoute: string;
+    returnDate: string;
+    returnRoute: string;
+    airline: string;
+    islamicDate?: string | null;
+    islamicReturnDate?: string | null;
+  } | null;
   user?: { id: string; fullName: string; email: string; phone?: string | null } | null;
 };
 
@@ -421,6 +431,19 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
                         <span className="text-xs text-[#64748B]">Room: <strong className="text-[#0F172A]">{pilgrim.roomPreference}</strong></span>
                       </div>
                     )}
+                    {pilgrim.packageDate && (
+                      <div className="border-t border-[#F1F5F9] px-4 py-2.5 flex items-center justify-between gap-2 bg-emerald-50/20">
+                        <div className="flex items-center gap-2">
+                          <Plane className="w-3.5 h-3.5 text-emerald-600" />
+                          <span className="text-xs text-[#64748B]">
+                            Flight: <strong className="text-emerald-700">{pilgrim.packageDate.airline}</strong> ({pilgrim.packageDate.outboundRoute} ➔ {pilgrim.packageDate.returnRoute})
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/50 px-2 py-0.5 rounded-md shrink-0">
+                          {new Date(pilgrim.packageDate.outbound).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })} - {new Date(pilgrim.packageDate.returnDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -570,6 +593,24 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
                   <DetailField label="Room Preference" value={pilgrim.roomPreference} icon={Home} />
                   <DetailField label="Package"         value={pilgrim.package?.name}  icon={BookOpen} full />
                 </DetailSection>
+
+                {pilgrim.packageDate && (
+                  <div className="rounded-2xl border border-emerald-200 overflow-hidden bg-emerald-50/50">
+                    <div className="flex items-center gap-2.5 px-4 py-3 border-b border-emerald-200" style={{ background: "rgba(16, 185, 129, 0.08)" }}>
+                      <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0 bg-emerald-600">
+                        <Plane className="w-3.5 h-3.5 text-white" />
+                      </div>
+                      <h4 className="text-xs font-black text-[#0F172A] uppercase tracking-wide">Flight Schedule</h4>
+                    </div>
+                    <div className="p-4 grid grid-cols-2 gap-x-6 gap-y-4">
+                      <DetailField label="Airline" value={pilgrim.packageDate.airline} icon={Plane} />
+                      <DetailField label="Outbound Date" value={new Date(pilgrim.packageDate.outbound).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} icon={Calendar} />
+                      <DetailField label="Outbound Route" value={pilgrim.packageDate.outboundRoute} icon={MapPin} />
+                      <DetailField label="Return Date" value={new Date(pilgrim.packageDate.returnDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} icon={Calendar} />
+                      <DetailField label="Return Route" value={pilgrim.packageDate.returnRoute} icon={MapPin} />
+                    </div>
+                  </div>
+                )}
                 {(!liveVisa && !pilgrim.visaDeliveryMessage && paidPct < 100) && (
                   <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
                     <div className="flex items-start gap-3">
@@ -736,7 +777,7 @@ function exportExcel(pilgrims: PilgrimRow[]) {
     "Passport No","Date of Issue","Passport Expiry","Issuing Authority","N° Visa",
     "Partner / Mahram","Under Cover","Observation",
     "Package","Type","Category","Status","Total Price","Amount Paid","Payment Status",
-    "Departure City","Room Preference","Agent ID","Registered",
+    "Departure City","Room Preference","Flight Schedule","Agent ID","Registered",
   ];
   const rows = pilgrims.map(p => [
     p.reference ?? "",
@@ -774,6 +815,7 @@ function exportExcel(pilgrims: PilgrimRow[]) {
     paymentStatus(p),
     p.departureCity ?? "",
     p.roomPreference ?? "",
+    p.packageDate ? `${p.packageDate.airline} (${p.packageDate.outboundRoute} - ${p.packageDate.returnRoute}) [${new Date(p.packageDate.outbound).toLocaleDateString("en-GB")} - ${new Date(p.packageDate.returnDate).toLocaleDateString("en-GB")}]` : "",
     p.agentId ?? "",
     new Date(p.createdAt).toLocaleDateString("en-GB"),
   ]);

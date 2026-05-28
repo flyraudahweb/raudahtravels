@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { bookingsTable, packagesTable, profilesTable, visaApplicationsTable, userActivityTable } from "@workspace/db";
+import { bookingsTable, packagesTable, packageDatesTable, profilesTable, visaApplicationsTable, userActivityTable } from "@workspace/db";
 import { createNotification } from "../utils/notify.js";
 import { getAuth } from "@clerk/express";
 import { eq, and, sql, desc } from "drizzle-orm";
@@ -31,7 +31,7 @@ async function ensureVisaApplication(bookingId: string, pilgrimName?: string, pa
   }
 }
 
-function toBookingResponse(b: typeof bookingsTable.$inferSelect, pkg?: any, user?: any) {
+function toBookingResponse(b: typeof bookingsTable.$inferSelect, pkg?: any, user?: any, packageDate?: any) {
   return {
     id: b.id,
     reference: b.reference,
@@ -76,6 +76,16 @@ function toBookingResponse(b: typeof bookingsTable.$inferSelect, pkg?: any, user
       price: Number(pkg.price),
       imageUrl: pkg.imageUrl,
     } : null,
+    packageDate: packageDate ? {
+      id: packageDate.id,
+      outbound: packageDate.outbound,
+      outboundRoute: packageDate.outboundRoute,
+      returnDate: packageDate.returnDate,
+      returnRoute: packageDate.returnRoute,
+      airline: packageDate.airline,
+      islamicDate: packageDate.islamicDate,
+      islamicReturnDate: packageDate.islamicReturnDate,
+    } : null,
     user: user ? {
       id: user.id,
       fullName: user.fullName,
@@ -113,17 +123,25 @@ router.get("/bookings", async (req, res) => {
 
   const packageIds = [...new Set(bookings.map(b => b.packageId).filter(Boolean))];
   const userIds = [...new Set(bookings.map(b => b.userId).filter(Boolean))];
+  const packageDateIds = [...new Set(bookings.map(b => b.packageDateId).filter(Boolean))];
 
-  const [packages, users] = await Promise.all([
+  const [packages, users, packageDates] = await Promise.all([
     packageIds.length ? db.select().from(packagesTable).where(sql`id = ANY(ARRAY[${sql.join(packageIds.map(id => sql`${id}`), sql`, `)}]::text[])`) : [],
     userIds.length ? db.select().from(profilesTable).where(sql`id = ANY(ARRAY[${sql.join(userIds.map(id => sql`${id}`), sql`, `)}]::text[])`) : [],
+    packageDateIds.length ? db.select().from(packageDatesTable).where(sql`id = ANY(ARRAY[${sql.join(packageDateIds.map(id => sql`${id}`), sql`, `)}]::text[])`) : [],
   ]);
 
   const pkgMap = Object.fromEntries(packages.map(p => [p.id, p]));
   const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+  const dateMap = Object.fromEntries(packageDates.map(d => [d.id, d]));
 
   return res.json({
-    bookings: bookings.map(b => toBookingResponse(b, b.packageId ? pkgMap[b.packageId] : undefined, b.userId ? userMap[b.userId] : undefined)),
+    bookings: bookings.map(b => toBookingResponse(
+      b,
+      b.packageId ? pkgMap[b.packageId] : undefined,
+      b.userId ? userMap[b.userId] : undefined,
+      b.packageDateId ? dateMap[b.packageDateId] : undefined
+    )),
     total: Number(total[0].count),
   });
 });
@@ -138,7 +156,7 @@ router.post("/bookings", async (req, res) => {
   // Destructure fields explicitly — strip any server-controlled fields from the
   // remaining spread so a client cannot override totalPrice, amountPaid, status, etc.
   const {
-    packageId, pilgrimCount, pilgrimDetails, notes, agentId,
+    packageId, packageDateId, pilgrimCount, pilgrimDetails, notes, agentId,
     // Room surcharge and pilgrim type (client-provided, validated server-side)
     roomSurcharge: clientRoomSurcharge, pilgrimType, parentBookingId, batchId,
     // These must never come from the client — explicitly consumed & discarded:
@@ -186,6 +204,7 @@ router.post("/bookings", async (req, res) => {
     reference,
     userId: profile.id,
     packageId,
+    packageDateId: packageDateId || undefined,
     agentId,
     status: "pending",     // always starts pending — never trust client
     totalPrice: String(finalTotalPrice),
@@ -225,12 +244,13 @@ router.get("/bookings/:id", async (req, res) => {
   const isAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
   if (!isAdmin && booking.userId !== profile.id) return res.status(403).json({ error: "Forbidden" });
 
-  const [pkg, user] = await Promise.all([
+  const [pkg, user, packageDate] = await Promise.all([
     booking.packageId ? db.query.packagesTable.findFirst({ where: eq(packagesTable.id, booking.packageId) }) : null,
     booking.userId ? db.query.profilesTable.findFirst({ where: eq(profilesTable.id, booking.userId) }) : null,
+    booking.packageDateId ? db.query.packageDatesTable.findFirst({ where: eq(packageDatesTable.id, booking.packageDateId) }) : null,
   ]);
 
-  return res.json(toBookingResponse(booking, pkg, user));
+  return res.json(toBookingResponse(booking, pkg, user, packageDate));
 });
 
 router.put("/bookings/:id", async (req, res) => {

@@ -132,10 +132,10 @@ interface AgentClient {
   ticketDocumentUrl?: string;
   createdAt: string;
 }
-interface Package { id: string; name: string; type: string; price: number; maxCapacity: number; currentBookings: number; }
+interface Package { id: string; name: string; type: string; price: number; maxCapacity: number; currentBookings: number; packageDates?: any[]; }
 
 const BLANK_FORM = {
-  packageId: "", civility: "", firstName: "", lastName: "",
+  packageId: "", packageDateId: "", civility: "", firstName: "", lastName: "",
   passportNumber: "", passportIssueDate: "", passportExpiry: "", passportIssuingAuthority: "",
   passportCopyUrl: "", profilePhotoUrl: "", visaNumber: "",
   dateOfBirth: "", placeOfBirth: "", gender: "", phone: "", email: "", nationality: "Nigerian",
@@ -145,6 +145,18 @@ const BLANK_FORM = {
   partner: "", underCover: "", observation: "",
   amountPaid: "", paymentMethod: "cash", paymentReference: "", paymentProofUrl: ""
 };
+
+function formatDate(dateStr: string) {
+  try {
+    return new Date(dateStr).toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  } catch (e) {
+    return dateStr;
+  }
+}
 
 function passportWarn(expiry: string) {
   if (!expiry) return null;
@@ -408,6 +420,7 @@ export default function AgentClients() {
     if (warn === "expired") { submittingRef.current = false; toast({ title: "Passport expired", description: "Cannot register with expired passport.", variant: "destructive" }); return; }
     registerMutation.mutate({
       packageId: form.packageId,
+      packageDateId: form.packageDateId || undefined,
       civility: form.civility || undefined,
       firstName: form.firstName || undefined,
       lastName: form.lastName || undefined,
@@ -462,7 +475,13 @@ export default function AgentClients() {
 
   const set = useCallback((k: string, v: string | boolean) => {
     setAiFields(prev => prev.includes(k) ? prev.filter(f => f !== k) : prev);
-    setForm(f => ({ ...f, [k]: v }));
+    setForm(f => {
+      const next = { ...f, [k]: v };
+      if (k === "packageId") {
+        next.packageDateId = "";
+      }
+      return next;
+    });
   }, []);
   const passportWarnLevel = passportWarn(form.passportExpiry);
 
@@ -875,6 +894,28 @@ export default function AgentClients() {
                       </div>
                     </div>
                   )}
+                  {selectedPkg?.type === "umrah" && selectedPkg.packageDates && selectedPkg.packageDates.length > 0 && (
+                    <div className="space-y-1.5 mt-4">
+                      <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide flex items-center gap-1">
+                        Flight Schedule <span className="text-red-500">*</span>
+                      </Label>
+                      <Select value={form.packageDateId} onValueChange={v => set("packageDateId", v)}>
+                        <SelectTrigger className="rounded-xl border-[#E2E8F0] h-14 bg-white text-base">
+                          <SelectValue placeholder="Choose a flight schedule…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[...selectedPkg.packageDates]
+                            .sort((a, b) => new Date(a.outbound).getTime() - new Date(b.outbound).getTime())
+                            .map((d: any) => (
+                              <SelectItem key={d.id} value={d.id} className="text-xs">
+                                {formatDate(d.outbound)} - {formatDate(d.returnDate)} ({d.outboundRoute} | {d.returnRoute}) via {d.airline}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[10px] text-[#64748B]">Please select travel dates. Required for Umrah packages.</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1236,6 +1277,7 @@ export default function AgentClients() {
                         try {
                           const data = await registerMutation.mutateAsync({
                             packageId: form.packageId,
+                            packageDateId: form.packageDateId || undefined,
                             civility: p.civility,
                             firstName: p.firstName,
                             lastName: p.lastName,
@@ -1841,7 +1883,7 @@ export default function AgentClients() {
                   {form.paymentMethod !== "online" && (
                     <Button type="button" onClick={() => {
                       setResult(null);
-                      setForm(f => ({ ...BLANK_FORM, packageId: f.packageId, paymentMethod: f.paymentMethod }));
+                      setForm(f => ({ ...BLANK_FORM, packageId: f.packageId, packageDateId: f.packageDateId, paymentMethod: f.paymentMethod }));
                       setPilgrimType("adult");
                       setBatchMode(false); setBatchPilgrims([]); setBatchStep("upload"); setBatchActiveIndex(0); setBatchPayments([]); setBatchCropTarget(null); setBatchCropState(null);
                       setIsBatchSubmitting(false); setBatchProgress(0); setBatchResults([]);
@@ -1865,7 +1907,13 @@ export default function AgentClients() {
 
                   {regStep < 5 ? (
                     <Button type="button" onClick={() => {
-                      if (regStep === 1 && !form.packageId) { toast({ title: "Select a package", variant: "destructive" }); return; }
+                      if (regStep === 1) {
+                        if (!form.packageId) { toast({ title: "Select a package", variant: "destructive" }); return; }
+                        if (selectedPkg?.type === "umrah" && selectedPkg.packageDates && selectedPkg.packageDates.length > 0 && !form.packageDateId) {
+                          toast({ title: "Select a flight schedule", description: "Flight schedule is required for Umrah packages.", variant: "destructive" });
+                          return;
+                        }
+                      }
                       if (regStep === 2) {
                         const { valid, missingFields } = validateRequiredFields(cfg, form,
                           ["passportNumber", "passportIssueDate", "passportExpiry"]);
