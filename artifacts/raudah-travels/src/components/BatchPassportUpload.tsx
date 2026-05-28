@@ -37,6 +37,7 @@ export interface BatchPilgrim {
   underCover: string;
   observation: string;
   departureCity: string;
+  packageDateId?: string;
 
   // Extraction status
   status: "pending" | "extracting" | "done" | "error";
@@ -107,6 +108,7 @@ export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, on
     placeOfBirth: "", occupation: "", ethnicGroup: "", levelOfStudy: "",
     visaNumber: "", partner: "", underCover: "", observation: "",
     departureCity: "",
+    packageDateId: "",
     status: "pending",
   });
 

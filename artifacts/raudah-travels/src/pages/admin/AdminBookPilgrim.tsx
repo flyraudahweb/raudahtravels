@@ -892,7 +892,10 @@ export default function AdminBookPilgrim() {
                 maxPilgrims={10}
                 formConfig={cfg}
                 onBatchReady={(pilgrims) => {
-                  setBatchPilgrims(pilgrims);
+                  setBatchPilgrims(pilgrims.map(p => ({
+                    ...p,
+                    packageDateId: p.packageDateId || packageDateId || undefined
+                  })));
                   setBatchActiveIndex(0);
                   setBatchStep("details");
                 }}
@@ -1077,6 +1080,21 @@ export default function AdminBookPilgrim() {
                               {["Lagos", "Abuja", "Kano", "Port Harcourt", "Ibadan", "Enugu"].map(c => <option key={c} value={c}>{c}</option>)}
                             </select></div>
                         )}
+                        {selectedPkg?.type === "umrah" && selectedPkg.packageDates && selectedPkg.packageDates.length > 0 && (
+                          <div className="col-span-2">
+                            <label className="text-[10px] font-bold text-[#64748B] uppercase">Flight Schedule *</label>
+                            <select className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm font-semibold text-[#0F172A]"
+                              value={ap.packageDateId || ""}
+                              onChange={e => updateAP({ packageDateId: e.target.value || undefined })}>
+                              <option value="">Select a flight schedule…</option>
+                              {[...selectedPkg.packageDates].sort((a: any, b: any) => new Date(a.outbound).getTime() - new Date(b.outbound).getTime()).map((d: any) => (
+                                <option key={d.id} value={d.id}>
+                                  {formatDate(d.outbound)} - {formatDate(d.returnDate)} ({d.outboundRoute} | {d.returnRoute}) via {d.airline}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
                         {show("underCover") && (
                           <div className="col-span-2"><label className="text-[10px] font-bold text-[#64748B] uppercase">Under Cover</label>
                             <input className="w-full mt-1 px-3 py-2 rounded-xl border border-[#DCE3F0] text-sm" value={ap.underCover} onChange={e => updateAP({ underCover: e.target.value })} placeholder="e.g. RAUDAH FUNTUA" /></div>
@@ -1111,6 +1129,15 @@ export default function AdminBookPilgrim() {
                           <Button type="button" onClick={() => setBatchActiveIndex(i => i + 1)} className="rounded-xl text-xs font-black h-9 bg-[#2D3199] text-white">Next →</Button>
                         ) : (
                           <Button type="button" onClick={() => {
+                            if (selectedPkg?.type === "umrah" && selectedPkg.packageDates && selectedPkg.packageDates.length > 0) {
+                              const missingDate = batchPilgrims.find(p => !p.packageDateId);
+                              if (missingDate) {
+                                const idx = batchPilgrims.indexOf(missingDate);
+                                setBatchActiveIndex(idx);
+                                toast({ title: "Flight schedule required", description: `Please select a flight schedule for pilgrim ${idx + 1}.`, variant: "destructive" });
+                                return;
+                              }
+                            }
                             setBatchPayments(batchPilgrims.map(() => ({ method: "cash", amountPaid: "", markVerified: true, paymentReference: "", paymentProofUrl: "" })));
                             setBatchStep("payment");
                           }} className="rounded-xl text-xs font-black h-9 bg-[#FF3B00] text-white">Continue to Payment →</Button>
@@ -1213,7 +1240,7 @@ export default function AdminBookPilgrim() {
                     const ciExtra = detType === "infant" ? (childInfantPricing.infantPrice || 0) : detType === "child" ? (childInfantPricing.childPrice || 0) : 0;
                     try {
                       const data = await bookMutation.mutateAsync({
-                        packageId, packageDateId: packageDateId || undefined, civility: p.civility, firstName: p.firstName, lastName: p.lastName,
+                        packageId, packageDateId: p.packageDateId || packageDateId || undefined, civility: p.civility, firstName: p.firstName, lastName: p.lastName,
                         fullName: `${p.firstName} ${p.lastName}`.trim(),
                         passportNumber: p.passportNumber, passportIssueDate: p.passportIssueDate,
                         passportExpiry: p.passportExpiry, passportIssuingAuthority: p.passportIssuingAuthority,
