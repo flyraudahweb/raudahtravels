@@ -268,15 +268,20 @@ export default function AdminActivity() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 50;
 
-  const params: Record<string, string> = { limit: "80" };
+  const params: Record<string, string> = { 
+    limit: String(PAGE_SIZE), 
+    offset: String((page - 1) * PAGE_SIZE) 
+  };
   if (category !== "all") params.category = category;
   if (dateFrom) params.dateFrom = dateFrom;
   if (dateTo) params.dateTo = dateTo;
   if (search) params.search = search;
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ["admin-activity", category, dateFrom, dateTo, search],
+    queryKey: ["admin-activity", category, dateFrom, dateTo, search, page],
     queryFn: () => fetchActivity(params),
     refetchInterval: 15000,
   });
@@ -323,7 +328,7 @@ export default function AdminActivity() {
             <p className="text-sm font-bold text-red-700">{failedPayments.length} failed payment{failedPayments.length !== 1 ? "s" : ""} need follow-up</p>
             <p className="text-xs text-red-600 mt-0.5">Click the "Payment Events" tab to filter and view contact details</p>
           </div>
-          <button onClick={() => setCategory("payments")} className="px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded-xl hover:bg-red-700 transition-colors whitespace-nowrap">
+          <button onClick={() => { setCategory("payments"); setPage(1); }} className="px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded-xl hover:bg-red-700 transition-colors whitespace-nowrap">
             View All
           </button>
         </div>
@@ -332,7 +337,7 @@ export default function AdminActivity() {
       {/* Category tabs */}
       <div className="flex gap-1.5 bg-white rounded-2xl border border-[#DCE3F0] p-1 shadow-sm w-fit">
         {CATEGORIES.map(cat => (
-          <button key={cat.id} onClick={() => setCategory(cat.id)}
+          <button key={cat.id} onClick={() => { setCategory(cat.id); setPage(1); }}
             className={`flex items-center gap-1.5 px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${category === cat.id ? "bg-[#2D3199] text-white shadow-sm" : "text-[#64748B] hover:text-[#2D3199]"}`}>
             {cat.label}
             {cat.id === "payments" && failedPayments.length > 0 && (
@@ -348,7 +353,7 @@ export default function AdminActivity() {
       <div className="flex gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8]" />
-          <Input value={search} onChange={e => setSearch(e.target.value)}
+          <Input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
             placeholder="Search by name, email, reference…"
             className="pl-9 rounded-xl border-[#DCE3F0] bg-white h-9" />
         </div>
@@ -407,9 +412,19 @@ export default function AdminActivity() {
         )}
       </div>
 
-      <p className="text-center text-xs text-[#94A3B8]">
-        Showing {activities.length} of {data?.total ?? 0} events · Auto-refreshes every 15 seconds
-      </p>
+      {/* Pagination controls */}
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-3 px-2 py-2">
+        <p className="text-center text-xs text-[#94A3B8]">
+          Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, data?.total ?? 0)} of {data?.total ?? 0} events · Auto-refreshes
+        </p>
+        <div className="flex gap-2">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1.5 rounded-lg border text-xs font-bold text-[#64748B] bg-white hover:bg-[#F8FAFF] disabled:opacity-40 transition-colors">← Prev</button>
+          <span className="px-3 py-1.5 rounded-lg text-xs font-black text-[#2D3199] bg-[#EEF0FF]">
+            {page} / {Math.max(1, Math.ceil((data?.total ?? 0) / PAGE_SIZE))}
+          </span>
+          <button onClick={() => setPage(p => p + 1)} disabled={page >= Math.ceil((data?.total ?? 0) / PAGE_SIZE)} className="px-3 py-1.5 rounded-lg border text-xs font-bold text-[#64748B] bg-white hover:bg-[#F8FAFF] disabled:opacity-40 transition-colors">Next →</button>
+        </div>
+      </div>
     </div>
   );
 }
