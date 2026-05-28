@@ -302,6 +302,7 @@ export default function AdminBookPilgrim() {
   const [phoneCode, setPhoneCode] = useState("+234");
   const [isRestored, setIsRestored] = useState(false);
   const [pilgrimType, setPilgrimType] = useState<"adult" | "child" | "infant">("adult");
+  const [isCustomAmount, setIsCustomAmount] = useState(false);
   const [batchMode, setBatchMode] = useState(false);
   const [batchPilgrims, setBatchPilgrims] = useState<BatchPilgrim[]>([]);
   const [batchStep, setBatchStep] = useState<"upload" | "details" | "payment">("upload");
@@ -1503,24 +1504,33 @@ export default function AdminBookPilgrim() {
                       { key: "full", label: "Full Payment", amount: selectedPkg ? String(selectedPkg.price) : "0" },
                       { key: "500000", label: "Minimum Deposit", amount: "500000" },
                       { key: "1000000", label: "₦1,000,000", amount: "1000000" },
-                      { key: "custom", label: "Custom Amount", amount: "" },
+                      { key: "custom", label: "Custom Amount", amount: "custom" },
                     ].map(opt => (
                       <button key={opt.key} type="button"
-                        onClick={() => setPayment(p => ({ ...p, amountPaid: opt.amount }))}
+                        onClick={() => {
+                          if (opt.key === "custom") {
+                            setIsCustomAmount(true);
+                            setPayment(p => ({ ...p, amountPaid: "" }));
+                          } else {
+                            setIsCustomAmount(false);
+                            setPayment(p => ({ ...p, amountPaid: opt.amount }));
+                          }
+                        }}
                         className={`p-3 rounded-xl border-2 text-left transition-all ${
-                          payment.amountPaid === opt.amount ? "border-[#2D3199] bg-[#EEF0FF]" : "border-[#DCE3F0] hover:border-[#2D3199]/30"
+                          payment.amountPaid === opt.amount || (opt.key === "custom" && isCustomAmount) ? "border-[#2D3199] bg-[#EEF0FF]" : "border-[#DCE3F0] hover:border-[#2D3199]/30"
                         }`}>
                         <span className="text-xs font-bold text-[#0F172A] block">{opt.label}</span>
-                        {opt.amount && <span className="text-[10px] text-[#64748B]">₦{Number(opt.amount).toLocaleString()}</span>}
+                        {opt.amount && opt.amount !== "custom" && <span className="text-[10px] text-[#64748B]">₦{Number(opt.amount).toLocaleString()}</span>}
                       </button>
                     ))}
                   </div>
-                  {/* Custom amount input fallback */}
-                  {!["", String(selectedPkg?.price || "0"), "500000", "1000000"].includes(payment.amountPaid) && (
-                    <div className="mt-2">
+                  {/* Custom amount input */}
+                  {isCustomAmount && (
+                    <div className="mt-2 relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#64748B] font-bold">₦</span>
                       <Input type="number" value={payment.amountPaid}
                         onChange={e => setPayment(p => ({ ...p, amountPaid: e.target.value }))}
-                        placeholder="Enter amount" className="rounded-xl font-mono" min={0} />
+                        placeholder="Enter amount" className="pl-8 rounded-xl font-mono h-11" min={0} />
                     </div>
                   )}
                   {payment.amountPaid && (

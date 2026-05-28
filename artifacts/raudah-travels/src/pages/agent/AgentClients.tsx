@@ -178,6 +178,7 @@ export default function AgentClients() {
     markVerified: boolean;
   }>>([]);
   const [batchCropTarget, setBatchCropTarget] = useState<{ index: number; imageUrl: string } | null>(null);
+  const [isCustomAmount, setIsCustomAmount] = useState(false);
   const [batchCropState, setBatchCropState] = useState<any>(null);
   const batchCropImgRef = useRef<HTMLImageElement>(null);
   const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
@@ -1664,20 +1665,28 @@ export default function AgentClients() {
                             { key: "full", label: "Full Payment", amount: String(effectivePrice) },
                             { key: "500000", label: "Minimum Deposit", amount: "500000" },
                             { key: "1000000", label: "₦1,000,000", amount: "1000000" },
-                            { key: "custom", label: "Custom Amount", amount: "" },
+                            { key: "custom", label: "Custom Amount", amount: "custom" },
                           ].map(opt => (
                             <button key={opt.key} type="button"
-                              onClick={() => set("amountPaid", opt.amount)}
+                              onClick={() => {
+                                if (opt.key === "custom") {
+                                  setIsCustomAmount(true);
+                                  set("amountPaid", "");
+                                } else {
+                                  setIsCustomAmount(false);
+                                  set("amountPaid", opt.amount);
+                                }
+                              }}
                               className={`p-3 rounded-xl border-2 text-left transition-all ${
-                                form.amountPaid === opt.amount ? "border-[#2D3199] bg-[#EEF0FF]" : "border-[#DCE3F0] hover:border-[#2D3199]/30"
+                                form.amountPaid === opt.amount || (opt.key === "custom" && isCustomAmount) ? "border-[#2D3199] bg-[#EEF0FF]" : "border-[#DCE3F0] hover:border-[#2D3199]/30"
                               }`}>
                               <span className="text-xs font-bold text-[#0F172A] block">{opt.label}</span>
-                              {opt.amount && <span className="text-[10px] text-[#64748B]">₦{Number(opt.amount).toLocaleString()}</span>}
+                              {opt.amount && opt.amount !== "custom" && <span className="text-[10px] text-[#64748B]">₦{Number(opt.amount).toLocaleString()}</span>}
                             </button>
                           ))}
                         </div>
                         {/* Custom amount input */}
-                        {!["", String(effectivePrice), "500000", "1000000"].includes(form.amountPaid) && (
+                        {isCustomAmount && (
                           <div className="mt-2 relative">
                             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#64748B] font-bold">₦</span>
                             <Input type="number" value={form.amountPaid} onChange={e => set("amountPaid", e.target.value)} placeholder="Enter amount" className="pl-8 rounded-xl border-[#E2E8F0] h-12 text-lg font-black text-[#0F172A] bg-white" min={0} />
