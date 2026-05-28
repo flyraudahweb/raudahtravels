@@ -276,7 +276,7 @@ export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, on
       {/* Upload area */}
       {pilgrims.length < maxPilgrims && (
         <div className="border-2 border-dashed border-[#2D3199]/30 rounded-2xl bg-[#F8FAFF] p-6">
-          <input ref={inputRef} type="file" accept="image/*" multiple onChange={handleFiles} className="hidden" />
+          <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFiles} className="hidden" />
           <div className="flex flex-col items-center gap-3">
             {isProcessing ? (
               <>
@@ -296,7 +296,7 @@ export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, on
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <Button type="button" onClick={() => inputRef.current?.click()}
+                  <Button type="button" onClick={() => fileInputRef.current?.click()}
                     className="bg-[#2D3199] hover:bg-[#1C1F66] text-white rounded-xl gap-2 font-bold">
                     <ScanLine className="w-4 h-4" /> Select Passports
                   </Button>
