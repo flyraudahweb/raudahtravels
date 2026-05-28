@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   UserCheck, CheckCircle2, XCircle, Building2, BadgeCheck, Plus, UserPlus,
   Wallet, TrendingUp, Percent, DollarSign, Tag, Trash2, Edit3,
-  Eye, EyeOff, Loader2, ChevronDown, Clock, RefreshCw, Users, CreditCard, Phone, Mail, MapPin, X, ChevronRight, Download,
+  Eye, EyeOff, Loader2, ChevronDown, Clock, RefreshCw, Users, CreditCard, Phone, Mail, MapPin, X, ChevronRight, Download, Search,
   ShieldBan, ShieldCheck, Ban, AlertTriangle, ChevronLeft,
 } from "lucide-react";
 import {
@@ -1057,6 +1057,7 @@ export default function AdminAgents() {
   const [activeTab, setActiveTab] = useState<Tab>("applications");
   const [dialog, setDialog] = useState<ActiveDialog>(null);
   const [agentPage, setAgentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
   const AGENTS_PER_PAGE = 100;
 
   const { data: appsData, isLoading: appsLoading } = useListAgentApplications({
@@ -1068,8 +1069,21 @@ export default function AdminAgents() {
 
   const rejectApp = useRejectAgentApplication();
 
-  const applications = appsData?.applications || [];
-  const agents = agentsData?.agents || [];
+  const matchesSearch = (item: any) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      item.businessName?.toLowerCase().includes(q) ||
+      item.fullName?.toLowerCase().includes(q) ||
+      item.contactPerson?.toLowerCase().includes(q) ||
+      item.email?.toLowerCase().includes(q) ||
+      item.phone?.toLowerCase().includes(q) ||
+      item.agentCode?.toLowerCase().includes(q)
+    );
+  };
+
+  const applications = (appsData?.applications || []).filter(matchesSearch);
+  const agents = (agentsData?.agents || []).filter(matchesSearch);
 
   const pending = applications.filter(a => a.status === "pending");
   const rejectedApps = applications.filter(a => a.status === "rejected");
@@ -1158,21 +1172,33 @@ export default function AdminAgents() {
         ))}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-[#F1F5F9] rounded-xl p-1">
-        {TABS.map(tab => (
-          <button key={tab} onClick={() => setActiveTab(tab)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition-colors capitalize ${
-              activeTab === tab ? "bg-white text-[#2D3199] shadow-sm" : "text-[#64748B] hover:text-[#334155]"
-            }`}>
-            {tab === "applications" ? "Pending" : tab === "active" ? "Active Agents" : tab === "suspended" ? "Suspended" : tab === "rejected" ? "Rejected" : "Logs"}
-            {tabCounts[tab] > 0 && (
-              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${activeTab === tab ? "bg-[#2D3199] text-white" : "bg-[#94A3B8] text-white"}`}>
-                {tabCounts[tab]}
-              </span>
-            )}
-          </button>
-        ))}
+      {/* Tabs and Search */}
+      <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+        <div className="flex gap-1 bg-[#F1F5F9] rounded-xl p-1 overflow-x-auto w-full sm:w-auto">
+          {TABS.map(tab => (
+            <button key={tab} onClick={() => setActiveTab(tab)}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition-colors capitalize whitespace-nowrap ${
+                activeTab === tab ? "bg-white text-[#2D3199] shadow-sm" : "text-[#64748B] hover:text-[#334155]"
+              }`}>
+              {tab === "applications" ? "Pending" : tab === "active" ? "Active Agents" : tab === "suspended" ? "Suspended" : tab === "rejected" ? "Rejected" : "Logs"}
+              {tabCounts[tab] > 0 && (
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${activeTab === tab ? "bg-[#2D3199] text-white" : "bg-[#94A3B8] text-white"}`}>
+                  {tabCounts[tab]}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+        <div className="relative w-full sm:w-64 shrink-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8]" />
+          <input
+            type="text"
+            placeholder="Search agents..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 bg-white border border-[#DCE3F0] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#2D3199] focus:border-transparent transition-all"
+          />
+        </div>
       </div>
 
       {/* ── Tab: Pending Applications ── */}
