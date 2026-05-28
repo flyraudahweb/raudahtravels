@@ -14,7 +14,7 @@ export default function AgentCommissions() {
 
   const totalEarned = commissions.filter(c => c.status === "paid").reduce((sum, c) => sum + c.amount, 0);
   const pending = commissions.filter(c => c.status === "pending").reduce((sum, c) => sum + c.amount, 0);
-  const cancelled = commissions.filter(c => c.status === "cancelled").reduce((sum, c) => sum + c.amount, 0);
+  const cancelled = commissions.filter(c => (c.status as string) === "cancelled").reduce((sum, c) => sum + c.amount, 0);
 
   const fmtCurrency = (n: number) =>
     n >= 1_000_000 ? `₦${(n / 1_000_000).toFixed(2)}M`

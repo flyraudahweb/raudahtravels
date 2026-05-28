@@ -15,6 +15,15 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 
+declare module "@workspace/api-client-react" {
+  interface SupportTicket {
+    category?: string;
+  }
+  interface SupportTicketDetail {
+    category?: string;
+  }
+}
+
 const CATEGORY_LABELS: Record<string, string> = {
   general_inquiry: "General Inquiry",
   booking_issues: "Booking Issues",

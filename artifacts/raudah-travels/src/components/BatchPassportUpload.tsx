@@ -102,7 +102,7 @@ export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, on
     passportIssuingAuthority: "", dateOfBirth: "", gender: "",
     nationality: "Nigerian", passportCopyUrl: "", profilePhotoUrl: "",
     phone: "", email: "", address: "", city: "", country: "Nigeria",
-    roomPreference: "Double", civility: "", maritalStatus: "",
+    roomPreference: "Quad", civility: "", maritalStatus: "",
     placeOfBirth: "", occupation: "", ethnicGroup: "", levelOfStudy: "",
     visaNumber: "", partner: "", underCover: "", observation: "",
     status: "pending",
@@ -216,7 +216,7 @@ export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, on
     }
 
     setIsProcessing(false);
-    if (inputRef.current) inputRef.current.value = "";
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const addManualPilgrim = () => {

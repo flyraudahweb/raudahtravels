@@ -75,7 +75,7 @@ function CreateAgentDialog({ open, onClose }: { open: boolean; onClose: () => vo
       onSuccess: (data) => {
         setResult({ tempPassword: data.tempPassword || form.tempPassword, message: data.message });
         qc.invalidateQueries({ queryKey: getListAgentsQueryKey({}) });
-        toast({ title: data.alreadyExisted ? "Agent account already exists — showing credentials." : "Agent account created!" });
+        toast({ title: (data as any).alreadyExisted ? "Agent account already exists — showing credentials." : "Agent account created!" });
       },
       onError: (err: any) => {
         const msg = err?.data?.error || err?.message || "";
@@ -216,7 +216,7 @@ function ApproveApplicationDialog({ app, onClose }: { app: any; onClose: () => v
         setResult({ tempPassword: data.tempPassword, message: data.message || "Agent account created." });
         qc.invalidateQueries({ queryKey: getListAgentApplicationsQueryKey() });
         qc.invalidateQueries({ queryKey: getListAgentsQueryKey({}) });
-        toast({ title: data.alreadyExisted ? "Agent account already exists!" : "Agent approved and account created!" });
+        toast({ title: (data as any).alreadyExisted ? "Agent account already exists!" : "Agent approved and account created!" });
       },
       onError: (err: any) => {
         const msg = err?.data?.error || err?.message || "";
@@ -1074,7 +1074,7 @@ export default function AdminAgents() {
   const pending = applications.filter(a => a.status === "pending");
   const rejectedApps = applications.filter(a => a.status === "rejected");
   const activeAgents = agents.filter(a => a.status === "active");
-  const inactiveAgents = agents.filter(a => a.status === "suspended" || a.status === "blocked");
+  const inactiveAgents = agents.filter(a => a.status === "suspended" || (a.status as string) === "blocked");
 
   const handleRejectApp = (app: any) => {
     rejectApp.mutate({ id: app.id, data: {} }, {
@@ -1386,13 +1386,13 @@ export default function AdminAgents() {
                 <div key={agent.id} className={`bg-white rounded-2xl border p-5 ${agent.status === "blocked" ? "border-red-200" : "border-amber-200"}`}>
                   <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div className="flex items-start gap-4">
-                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${agent.status === "blocked" ? "bg-red-100" : "bg-amber-100"}`}>
-                        {agent.status === "blocked" ? <Ban className="w-5 h-5 text-red-600" /> : <ShieldBan className="w-5 h-5 text-amber-600" />}
+                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${(agent.status as string) === "blocked" ? "bg-red-100" : "bg-amber-100"}`}>
+                        {(agent.status as string) === "blocked" ? <Ban className="w-5 h-5 text-red-600" /> : <ShieldBan className="w-5 h-5 text-amber-600" />}
                       </div>
                       <div>
                         <div className="flex items-center gap-2 flex-wrap mb-1">
                           <h3 className="font-black text-[#0F172A] text-base">{agent.businessName}</h3>
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase ${agent.status === "blocked" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase ${(agent.status as string) === "blocked" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
                             {agent.status}
                           </span>
                         </div>
@@ -1404,7 +1404,7 @@ export default function AdminAgents() {
                   <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-[#F1F5F9]">
                     <button onClick={() => handleChangeAgentStatus(agent.id, "active")}
                       className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors">
-                      <ShieldCheck className="w-3.5 h-3.5" /> {agent.status === "blocked" ? "Unblock" : "Unsuspend"} (Set Active)
+                      <ShieldCheck className="w-3.5 h-3.5" /> {(agent.status as string) === "blocked" ? "Unblock" : "Unsuspend"} (Set Active)
                     </button>
                     <button onClick={() => setDialog({ type: "confirm-delete-agent", agent })}
                       className="flex items-center gap-1.5 px-4 py-2 bg-red-50 border border-red-200 hover:bg-red-100 text-red-600 text-xs font-bold rounded-xl transition-colors">

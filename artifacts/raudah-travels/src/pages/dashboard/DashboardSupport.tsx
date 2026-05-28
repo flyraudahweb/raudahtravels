@@ -14,6 +14,15 @@ import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@clerk/react";
 import type { SupportTicketDetail, SupportMessage } from "@workspace/api-client-react";
 
+declare module "@workspace/api-client-react" {
+  interface SupportTicket {
+    category?: string;
+  }
+  interface SupportTicketDetail {
+    category?: string;
+  }
+}
+
 const CATEGORIES = [
   { id: "general_inquiry",            label: "General Inquiry",            desc: "General questions and inquiries",         color: "bg-blue-50 border-blue-200 text-blue-700",    dot: "bg-blue-400" },
   { id: "booking_issues",             label: "Booking Issues",             desc: "Booking-related problems",                color: "bg-amber-50 border-amber-200 text-amber-700",  dot: "bg-amber-400" },
