@@ -568,6 +568,17 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
                   <DetailField label="Room Preference" value={pilgrim.roomPreference} icon={Home} />
                   <DetailField label="Package"         value={pilgrim.package?.name}  icon={BookOpen} full />
                 </DetailSection>
+                {(!liveVisa && !pilgrim.visaDeliveryMessage && paidPct < 100) && (
+                  <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                    <div className="flex items-start gap-3">
+                      <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5" />
+                      <div>
+                        <p className="font-bold text-amber-700 text-sm">Visa Processing Pending</p>
+                        <p className="text-amber-600 text-xs mt-1">Awaiting full payment to begin visa processing.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {(pilgrim.visaDeliveryMessage || liveVisa) && (
                   <DetailSection title="Visa Information" icon={Shield} accent="#10B981">
                     {pilgrim.visaDeliveryMessage && <DetailField label="Visa Note" value={pilgrim.visaDeliveryMessage} full />}

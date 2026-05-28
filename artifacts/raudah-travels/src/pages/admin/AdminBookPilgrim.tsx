@@ -1808,7 +1808,11 @@ export default function AdminBookPilgrim() {
                     onChange={e => setPayment(p => ({ ...p, markVerified: e.target.checked }))}
                     id="markVerified" className="w-4 h-4 accent-emerald-600" />
                   <label htmlFor="markVerified" className="flex-1 cursor-pointer">
-                    <span className="text-sm font-bold text-emerald-700 block">Mark as Verified & Confirmed</span>
+                    <span className="text-sm font-bold text-emerald-700 block">
+                      {selectedPkg && payment.amountPaid && Number(payment.amountPaid) > 0 && Number(payment.amountPaid) < singleTotalPrice
+                        ? "Mark Deposit as Verified"
+                        : "Mark as Verified & Confirmed"}
+                    </span>
                     <span className="text-xs text-emerald-600">
                       {selectedPkg && payment.amountPaid && Number(payment.amountPaid) > 0 && Number(payment.amountPaid) < singleTotalPrice
                         ? "Verify this deposit — Booking will remain pending until balance is cleared"
