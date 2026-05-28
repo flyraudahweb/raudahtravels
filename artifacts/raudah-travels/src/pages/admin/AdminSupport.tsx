@@ -15,15 +15,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 
-declare module "@workspace/api-client-react" {
-  interface SupportTicket {
-    category?: string;
-  }
-  interface SupportTicketDetail {
-    category?: string;
-  }
-}
-
 const CATEGORY_LABELS: Record<string, string> = {
   general_inquiry: "General Inquiry",
   booking_issues: "Booking Issues",
@@ -104,8 +95,8 @@ function TicketView({ ticketId, onBack }: { ticketId: string; onBack: () => void
   const sc = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.open;
   const pc = PRIORITY_CONFIG[ticket.priority] || PRIORITY_CONFIG.medium;
   const PriorityIcon = pc.icon;
-  const catLabel = CATEGORY_LABELS[ticket.category || ""] || ticket.category;
-  const catColor = CATEGORY_COLORS[ticket.category || ""] || "bg-gray-50 text-gray-600 border-gray-200";
+  const catLabel = CATEGORY_LABELS[(ticket as any).category || ""] || (ticket as any).category;
+  const catColor = CATEGORY_COLORS[(ticket as any).category || ""] || "bg-gray-50 text-gray-600 border-gray-200";
   const assignedStaff = (ticket as any).assignedStaff || (ticket as any).assignedToName;
   const userName = (ticket as any).userName;
   const userEmail = (ticket as any).userEmail;
@@ -335,8 +326,8 @@ export default function AdminSupport() {
             const sc = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.open;
             const pc = PRIORITY_CONFIG[ticket.priority] || PRIORITY_CONFIG.medium;
             const PriorityIcon = pc.icon;
-            const catLabel = CATEGORY_LABELS[ticket.category || ""];
-            const catColor = CATEGORY_COLORS[ticket.category || ""] || "bg-gray-50 text-gray-600 border-gray-200";
+            const catLabel = CATEGORY_LABELS[(ticket as any).category || ""];
+            const catColor = CATEGORY_COLORS[(ticket as any).category || ""] || "bg-gray-50 text-gray-600 border-gray-200";
             const assignedStaff = (ticket as any).assignedToName;
             const userName = (ticket as any).userName;
             const unreadAdmin = (ticket as any).unreadCountAdmin;

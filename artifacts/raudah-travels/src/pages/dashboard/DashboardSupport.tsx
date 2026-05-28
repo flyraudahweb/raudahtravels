@@ -14,15 +14,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@clerk/react";
 import type { SupportTicketDetail, SupportMessage } from "@workspace/api-client-react";
 
-declare module "@workspace/api-client-react" {
-  interface SupportTicket {
-    category?: string;
-  }
-  interface SupportTicketDetail {
-    category?: string;
-  }
-}
-
 const CATEGORIES = [
   { id: "general_inquiry",            label: "General Inquiry",            desc: "General questions and inquiries",         color: "bg-blue-50 border-blue-200 text-blue-700",    dot: "bg-blue-400" },
   { id: "booking_issues",             label: "Booking Issues",             desc: "Booking-related problems",                color: "bg-amber-50 border-amber-200 text-amber-700",  dot: "bg-amber-400" },
@@ -62,9 +53,9 @@ function TicketThread({ ticketId, onBack }: { ticketId: string; onBack: () => vo
   if (isLoading) return <div className="space-y-3">{[1,2,3].map(i => <Skeleton key={i} className="h-16 rounded-2xl" />)}</div>;
   if (!ticket) return <p className="text-[#94A3B8] text-center py-12">Ticket not found.</p>;
 
-  const cfg = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.open;
-  const catInfo = CATEGORIES.find(c => c.id === ticket.category);
-  const messages: SupportMessage[] = (ticket as SupportTicketDetail).messages || [];
+  const cfg = STATUS_CONFIG[(ticket as any).status] || STATUS_CONFIG.open;
+  const catInfo = CATEGORIES.find(c => c.id === (ticket as any).category);
+  const messages: SupportMessage[] = (ticket as any).messages || [];
 
   return (
     <div className="space-y-5">
@@ -107,7 +98,7 @@ function TicketThread({ ticketId, onBack }: { ticketId: string; onBack: () => vo
               })}
             </div>
           </ScrollArea>
-          {ticket.status !== "resolved" && ticket.status !== "closed" && (
+          {(ticket as any).status !== "resolved" && (ticket as any).status !== "closed" && (
             <form onSubmit={handleSend} className="flex gap-2 border-t border-[#F1F5F9] pt-4">
               <input value={message} onChange={e => setMessage(e.target.value)} placeholder="Write your message…"
                 className="flex-1 bg-[#F8F9FF] border border-[#DCE3F0] rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[#2D3199] focus:ring-2 focus:ring-[#2D3199]/10 transition-all" />
@@ -250,7 +241,7 @@ export default function DashboardSupport() {
         <div className="space-y-3">
           {tickets.map(ticket => {
             const cfg = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.open;
-            const catInfo = CATEGORIES.find(c => c.id === ticket.category);
+            const catInfo = CATEGORIES.find(c => c.id === (ticket as any).category);
             return (
               <div key={ticket.id}
                 className="bg-white rounded-2xl border border-[#DCE3F0] p-5 cursor-pointer hover:shadow-[0_4px_20px_rgba(45,49,153,0.08)] hover:border-[#B8C0E8] transition-all flex items-center gap-4"
