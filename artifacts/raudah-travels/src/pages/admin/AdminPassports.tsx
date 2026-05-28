@@ -169,7 +169,7 @@ function PassportCard({
   );
 }
 
-const PAGE_SIZE = 24;
+const PAGE_SIZE = 100;
 const FILTER_ALL = "all";
 
 function useDebounce<T>(value: T, delay: number): T {
