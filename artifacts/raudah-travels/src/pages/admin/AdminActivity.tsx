@@ -269,7 +269,7 @@ export default function AdminActivity() {
   const [dateTo, setDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
-  const PAGE_SIZE = 50;
+  const PAGE_SIZE = 100;
 
   const params: Record<string, string> = { 
     limit: String(PAGE_SIZE), 
