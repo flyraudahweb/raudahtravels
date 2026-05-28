@@ -138,7 +138,35 @@ export function Footer() {
                 <span className="w-8 h-8 rounded-xl bg-white/5 border border-white/8 flex items-center justify-center shrink-0 mt-0.5">
                   <MapPin className="w-3.5 h-3.5 text-[#FF3B00]" />
                 </span>
-                {address}
+                <div>
+                  <p className="text-white font-bold mb-0.5">Head Office</p>
+                  <p>{address}</p>
+                </div>
+              </div>
+
+              {/* Abuja Office */}
+              <div className="flex items-start gap-3 text-white/55 text-sm">
+                <span className="w-8 h-8 rounded-xl bg-white/5 border border-white/8 flex items-center justify-center shrink-0 mt-0.5">
+                  <MapPin className="w-3.5 h-3.5 text-[#FF3B00]" />
+                </span>
+                <div>
+                  <p className="text-white font-bold mb-0.5">Abuja Office</p>
+                  <p>City scape/Shariff plaza block A no 208A first floor, Alexandria crescent wuse 2, Abuja</p>
+                  <p className="text-xs mt-1">Tel: 08039789940 | WhatsApp: +2348035378973</p>
+                </div>
+              </div>
+
+              {/* Niger Republic Office */}
+              <div className="flex items-start gap-3 text-white/55 text-sm">
+                <span className="w-8 h-8 rounded-xl bg-white/5 border border-white/8 flex items-center justify-center shrink-0 mt-0.5">
+                  <MapPin className="w-3.5 h-3.5 text-[#FF3B00]" />
+                </span>
+                <div>
+                  <p className="text-white font-bold mb-0.5">Niger Republic Office</p>
+                  <p>Adresse: Any koira Niamey-Niger</p>
+                  <p className="text-xs mt-1">E-mail: Raudahniger@gmail.com</p>
+                  <p className="text-xs mt-0.5">Tel: +227 90-59-28-28 | 80-31-11-42 | 98-39-79-79</p>
+                </div>
               </div>
             </div>
           </div>
