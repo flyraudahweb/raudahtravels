@@ -411,6 +411,48 @@ export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, on
                 </Select>
               </div>
             )}
+            {show("placeOfBirth") && (
+              <div>
+                <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("placeOfBirth", "Place of Birth")}</Label>
+                <Input value={selected.placeOfBirth} onChange={e => updatePilgrim(selected.id, { placeOfBirth: e.target.value })}
+                  placeholder="City / State" className="rounded-xl h-10 text-sm" />
+              </div>
+            )}
+            {show("ethnicGroup") && (
+              <div>
+                <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("ethnicGroup", "Ethnic Group")}</Label>
+                <Input value={selected.ethnicGroup} onChange={e => updatePilgrim(selected.id, { ethnicGroup: e.target.value })}
+                  placeholder="e.g. Hausa, Yoruba…" className="rounded-xl h-10 text-sm" />
+              </div>
+            )}
+            {show("levelOfStudy") && (
+              <div>
+                <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("levelOfStudy", "Level of Study")}</Label>
+                <Input value={selected.levelOfStudy} onChange={e => updatePilgrim(selected.id, { levelOfStudy: e.target.value })}
+                  placeholder="e.g. BSc, MSc…" className="rounded-xl h-10 text-sm" />
+              </div>
+            )}
+            {show("partner") && (
+              <div className="col-span-2">
+                <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("partner", "Partner / Mahram")}</Label>
+                <Input value={selected.partner} onChange={e => updatePilgrim(selected.id, { partner: e.target.value })}
+                  placeholder="Partner / Mahram name" className="rounded-xl h-10 text-sm" />
+              </div>
+            )}
+            {show("underCover") && (
+              <div className="col-span-2">
+                <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("underCover", "Under Cover")}</Label>
+                <Input value={selected.underCover} onChange={e => updatePilgrim(selected.id, { underCover: e.target.value })}
+                  placeholder="e.g. RAUDAH FUNTUA" className="rounded-xl h-10 text-sm" />
+              </div>
+            )}
+            {show("observation") && (
+              <div className="col-span-2">
+                <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("observation", "Observation")}</Label>
+                <Input value={selected.observation} onChange={e => updatePilgrim(selected.id, { observation: e.target.value })}
+                  placeholder="Any special needs or notes" className="rounded-xl h-10 text-sm" />
+              </div>
+            )}
             
             {/* Passport & Identity */}
             <div className="col-span-2 mt-4">
