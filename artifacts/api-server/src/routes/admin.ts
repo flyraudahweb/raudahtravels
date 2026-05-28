@@ -2082,6 +2082,25 @@ router.post("/admin/book-pilgrim", async (req, res) => {
       const surcharge = Number(clientRoomSurcharge) || 0;
       price += surcharge;
 
+      // Apply infant/child pricing if applicable
+      if (pilgrimType === "infant" || pilgrimType === "child") {
+        const pricingSetting = await tx.query.siteSettingsTable.findFirst({
+          where: eq(siteSettingsTable.key, "child_infant_pricing"),
+        });
+        if (pricingSetting && pricingSetting.value) {
+          try {
+            const pricing = JSON.parse(pricingSetting.value);
+            if (pilgrimType === "infant" && pricing.infantPrice) {
+              price += Number(pricing.infantPrice);
+            } else if (pilgrimType === "child" && pricing.childPrice) {
+              price += Number(pricing.childPrice);
+            }
+          } catch (e) {
+            // Ignore parse error
+          }
+        }
+      }
+
       if (agentIdValue) {
         const agentDiscount = await tx.query.agentPackageDiscountsTable.findFirst({
           where: and(
