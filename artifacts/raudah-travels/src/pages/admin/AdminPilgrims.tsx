@@ -1186,7 +1186,7 @@ export default function AdminPilgrims() {
                 <SelectTrigger className={`h-8 text-xs rounded-lg border w-full px-2.5 ${f.value !== FILTER_ALL ? "border-[#2D3199] bg-[#EEF0FF] text-[#2D3199] font-bold" : "border-[#DCE3F0] text-[#64748B]"}`}>
                   <SelectValue placeholder={f.placeholder} />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-[300px]">
                   <SelectItem value={FILTER_ALL}>{f.placeholder}</SelectItem>
                   {f.options.map(o => <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>)}
                 </SelectContent>

@@ -429,7 +429,7 @@ export default function AdminPassports() {
           {staffList.length > 0 && (
             <Select value={filterStaff} onValueChange={v => { setFilterStaff(v); setPage(1); }}>
               <SelectTrigger className="w-44 rounded-xl border-[#DCE3F0]"><SelectValue placeholder="All Staff" /></SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-[300px]">
                 <SelectItem value={FILTER_ALL}>All Staff</SelectItem>
                 {staffList.map(s => (
                   <SelectItem key={s.id} value={s.id}>{s.fullName || "Unnamed"}</SelectItem>
@@ -440,7 +440,7 @@ export default function AdminPassports() {
           {agentList.length > 0 && (
             <Select value={filterAgent} onValueChange={v => { setFilterAgent(v); setPage(1); }}>
               <SelectTrigger className="w-44 rounded-xl border-[#DCE3F0]"><SelectValue placeholder="All Agents" /></SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-[300px]">
                 <SelectItem value={FILTER_ALL}>All Agents</SelectItem>
                 {agentList.map(a => (
                   <SelectItem key={a.id} value={a.id}>{a.businessName || a.user?.fullName || "Unnamed"}</SelectItem>
