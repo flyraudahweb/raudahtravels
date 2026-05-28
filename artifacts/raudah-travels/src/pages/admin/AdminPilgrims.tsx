@@ -1220,7 +1220,7 @@ export default function AdminPilgrims() {
             },
           ].map(f => (
             <div key={f.placeholder} className="w-[130px]">
-              {f.options.length > 10 ? (
+              {f.placeholder === "All Agents" || f.placeholder === "All Staff" ? (
                 <FilterCombobox value={f.value} onChange={f.onChange} placeholder={f.placeholder} options={f.options} />
               ) : (
                 <Select value={f.value} onValueChange={f.onChange}>
