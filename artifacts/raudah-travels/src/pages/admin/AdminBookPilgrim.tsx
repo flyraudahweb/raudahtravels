@@ -700,6 +700,7 @@ export default function AdminBookPilgrim() {
             {batchStep === "upload" && (
               <BatchPassportUpload
                 maxPilgrims={10}
+                formConfig={cfg}
                 onBatchReady={(pilgrims) => {
                   setBatchPilgrims(pilgrims);
                   setBatchStep("review");
@@ -757,6 +758,7 @@ export default function AdminBookPilgrim() {
                       try {
                         const data = await bookMutation.mutateAsync({
                           packageId,
+                          civility: p.civility,
                           firstName: p.firstName,
                           lastName: p.lastName,
                           fullName: `${p.firstName} ${p.lastName}`.trim(),
@@ -765,13 +767,25 @@ export default function AdminBookPilgrim() {
                           passportExpiry: p.passportExpiry,
                           passportIssuingAuthority: p.passportIssuingAuthority,
                           dateOfBirth: p.dateOfBirth,
+                          placeOfBirth: p.placeOfBirth,
                           gender: p.gender,
                           nationality: p.nationality,
+                          maritalStatus: p.maritalStatus,
+                          occupation: p.occupation,
+                          ethnicGroup: p.ethnicGroup,
+                          levelOfStudy: p.levelOfStudy,
+                          visaNumber: p.visaNumber,
+                          partner: p.partner,
+                          underCover: p.underCover,
+                          observation: p.observation,
                           passportCopyUrl: p.passportCopyUrl,
                           profilePhotoUrl: p.profilePhotoUrl,
-                          phone: "", email: "",
-                          country: "Nigeria", city: "",
-                          roomPreference: "Double",
+                          phone: p.phone,
+                          email: p.email,
+                          country: p.country,
+                          city: p.city,
+                          address: p.address,
+                          roomPreference: p.roomPreference || "Double",
                           paymentMethod: payment.method === "online" ? "cash" : payment.method,
                           amountPaid: 0,
                           pilgrimType: detectedType,

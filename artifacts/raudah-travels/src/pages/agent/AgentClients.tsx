@@ -845,6 +845,7 @@ export default function AgentClients() {
                 {batchStep === "upload" && (
                   <BatchPassportUpload
                     maxPilgrims={10}
+                    formConfig={cfg}
                     onBatchReady={(pilgrims) => {
                       setBatchPilgrims(pilgrims);
                       setBatchStep("review");
@@ -911,6 +912,7 @@ export default function AgentClients() {
                           try {
                             const data = await registerMutation.mutateAsync({
                               packageId: form.packageId,
+                              civility: p.civility,
                               firstName: p.firstName,
                               lastName: p.lastName,
                               fullName: `${p.firstName} ${p.lastName}`.trim(),
@@ -919,13 +921,25 @@ export default function AgentClients() {
                               passportExpiry: p.passportExpiry,
                               passportIssuingAuthority: p.passportIssuingAuthority,
                               dateOfBirth: p.dateOfBirth,
+                              placeOfBirth: p.placeOfBirth,
                               gender: p.gender,
                               nationality: p.nationality,
+                              maritalStatus: p.maritalStatus,
+                              occupation: p.occupation,
+                              ethnicGroup: p.ethnicGroup,
+                              levelOfStudy: p.levelOfStudy,
+                              visaNumber: p.visaNumber,
+                              partner: p.partner,
+                              underCover: p.underCover,
+                              observation: p.observation,
                               passportCopyUrl: p.passportCopyUrl,
                               profilePhotoUrl: p.profilePhotoUrl,
-                              phone: "", email: "",
-                              country: "Nigeria", city: "",
-                              roomPreference: "Double",
+                              phone: p.phone || "",
+                              email: p.email || "",
+                              country: p.country || "Nigeria",
+                              city: p.city || "",
+                              address: p.address || "",
+                              roomPreference: p.roomPreference || "Double",
                               paymentMethod: form.paymentMethod === "online" ? "cash" : form.paymentMethod,
                               amountPaid: form.paymentMethod === "wallet" ? effectivePrice : 0,
                               pilgrimType: detectedType,

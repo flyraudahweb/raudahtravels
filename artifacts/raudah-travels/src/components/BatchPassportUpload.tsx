@@ -18,15 +18,37 @@ export interface BatchPilgrim {
   nationality: string;
   passportCopyUrl: string;
   profilePhotoUrl: string;
+  
+  // Extra fields to match single registration
+  phone: string;
+  email: string;
+  address: string;
+  city: string;
+  country: string;
+  roomPreference: string;
+  civility: string;
+  maritalStatus: string;
+  placeOfBirth: string;
+  occupation: string;
+  ethnicGroup: string;
+  levelOfStudy: string;
+  visaNumber: string;
+  partner: string;
+  underCover: string;
+  observation: string;
+
   // Extraction status
   status: "pending" | "extracting" | "done" | "error";
   errorMessage?: string;
 }
 
+export type FieldCfgFn = (fieldName: string) => { visible: boolean; required: boolean };
+
 interface Props {
   maxPilgrims?: number;
   onBatchReady: (pilgrims: BatchPilgrim[]) => void;
   onCancel: () => void;
+  formConfig?: FieldCfgFn;
 }
 
 const GENDERS = ["male", "female"];
@@ -60,11 +82,18 @@ function normalizeGender(sex: string): string {
   return "";
 }
 
-export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, onCancel }: Props) {
+// Base64 helper for image validation
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+function getBase64Size(base64Str: string) {
+  const base64Len = base64Str.length - (base64Str.indexOf(",") + 1);
+  return Math.ceil((base64Len * 3) / 4);
+}
+
+export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, onCancel, formConfig }: Props) {
   const [pilgrims, setPilgrims] = useState<BatchPilgrim[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedPilgrim, setSelectedPilgrim] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const createBlankPilgrim = (): BatchPilgrim => ({
     id: crypto.randomUUID(),
@@ -72,8 +101,21 @@ export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, on
     passportNumber: "", passportIssueDate: "", passportExpiry: "",
     passportIssuingAuthority: "", dateOfBirth: "", gender: "",
     nationality: "Nigerian", passportCopyUrl: "", profilePhotoUrl: "",
+    phone: "", email: "", address: "", city: "", country: "Nigeria",
+    roomPreference: "Double", civility: "", maritalStatus: "",
+    placeOfBirth: "", occupation: "", ethnicGroup: "", levelOfStudy: "",
+    visaNumber: "", partner: "", underCover: "", observation: "",
     status: "pending",
   });
+
+  const show = (field: string) => {
+    if (!formConfig) return true; // Show by default if no config passed
+    return formConfig(field).visible !== false;
+  };
+
+  const lbl = (field: string, defaultLabel: string) => {
+    return formConfig && formConfig(field).required ? `${defaultLabel} *` : defaultLabel;
+  };
 
   const updatePilgrim = useCallback((id: string, updates: Partial<BatchPilgrim>) => {
     setPilgrims(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
@@ -321,6 +363,21 @@ export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, on
               className="text-xs text-[#94A3B8] hover:text-[#64748B] font-bold">Done</button>
           </div>
           <div className="grid grid-cols-2 gap-3">
+            {/* Personal Details */}
+            <div className="col-span-2 mt-2">
+              <p className="text-xs font-black text-[#2D3199] border-b border-[#2D3199]/10 pb-1 mb-3">Personal Details</p>
+            </div>
+            {show("civility") && (
+              <div>
+                <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("civility", "Title")}</Label>
+                <Select value={selected.civility} onValueChange={v => updatePilgrim(selected.id, { civility: v })}>
+                  <SelectTrigger className="rounded-xl h-10 text-sm"><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    {["Mr", "Mrs", "Miss", "Alhaji", "Hajiya", "Imam", "Dr", "Prof"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div>
               <Label className="text-[10px] font-bold text-[#64748B] uppercase">First Name *</Label>
               <Input value={selected.firstName} onChange={e => updatePilgrim(selected.id, { firstName: e.target.value })}
@@ -332,14 +389,44 @@ export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, on
                 placeholder="Last name" className="rounded-xl h-10 text-sm" />
             </div>
             <div>
+              <Label className="text-[10px] font-bold text-[#64748B] uppercase">Date of Birth</Label>
+              <Input type="date" value={selected.dateOfBirth} onChange={e => updatePilgrim(selected.id, { dateOfBirth: e.target.value })}
+                className="rounded-xl h-10 text-sm" />
+            </div>
+            <div>
+              <Label className="text-[10px] font-bold text-[#64748B] uppercase">Gender</Label>
+              <Select value={selected.gender} onValueChange={v => updatePilgrim(selected.id, { gender: v })}>
+                <SelectTrigger className="rounded-xl h-10 text-sm"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>{GENDERS.map(g => <SelectItem key={g} value={g} className="capitalize">{g}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            {show("maritalStatus") && (
+              <div>
+                <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("maritalStatus", "Marital Status")}</Label>
+                <Select value={selected.maritalStatus} onValueChange={v => updatePilgrim(selected.id, { maritalStatus: v })}>
+                  <SelectTrigger className="rounded-xl h-10 text-sm"><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    {["Single", "Married", "Divorced", "Widowed"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            
+            {/* Passport & Identity */}
+            <div className="col-span-2 mt-4">
+              <p className="text-xs font-black text-[#2D3199] border-b border-[#2D3199]/10 pb-1 mb-3">Passport & Identity</p>
+            </div>
+            <div>
               <Label className="text-[10px] font-bold text-[#64748B] uppercase">Passport No. *</Label>
               <Input value={selected.passportNumber} onChange={e => updatePilgrim(selected.id, { passportNumber: e.target.value })}
                 placeholder="A00000000" className="rounded-xl h-10 text-sm font-mono" />
             </div>
             <div>
-              <Label className="text-[10px] font-bold text-[#64748B] uppercase">Date of Birth</Label>
-              <Input type="date" value={selected.dateOfBirth} onChange={e => updatePilgrim(selected.id, { dateOfBirth: e.target.value })}
-                className="rounded-xl h-10 text-sm" />
+              <Label className="text-[10px] font-bold text-[#64748B] uppercase">Nationality</Label>
+              <Select value={selected.nationality} onValueChange={v => updatePilgrim(selected.id, { nationality: v })}>
+                <SelectTrigger className="rounded-xl h-10 text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>{NATIONALITIES.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}</SelectContent>
+              </Select>
             </div>
             <div>
               <Label className="text-[10px] font-bold text-[#64748B] uppercase">Passport Issue</Label>
@@ -351,25 +438,88 @@ export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, on
               <Input type="date" value={selected.passportExpiry} onChange={e => updatePilgrim(selected.id, { passportExpiry: e.target.value })}
                 className="rounded-xl h-10 text-sm" />
             </div>
-            <div>
-              <Label className="text-[10px] font-bold text-[#64748B] uppercase">Gender</Label>
-              <Select value={selected.gender} onValueChange={v => updatePilgrim(selected.id, { gender: v })}>
-                <SelectTrigger className="rounded-xl h-10 text-sm"><SelectValue placeholder="—" /></SelectTrigger>
-                <SelectContent>{GENDERS.map(g => <SelectItem key={g} value={g} className="capitalize">{g}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-[10px] font-bold text-[#64748B] uppercase">Nationality</Label>
-              <Select value={selected.nationality} onValueChange={v => updatePilgrim(selected.id, { nationality: v })}>
-                <SelectTrigger className="rounded-xl h-10 text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent>{NATIONALITIES.map(n => <SelectItem key={n} value={n}>{n}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
             <div className="col-span-2">
               <Label className="text-[10px] font-bold text-[#64748B] uppercase">Issuing Authority</Label>
               <Input value={selected.passportIssuingAuthority} onChange={e => updatePilgrim(selected.id, { passportIssuingAuthority: e.target.value })}
                 placeholder="e.g. Immigration" className="rounded-xl h-10 text-sm" />
             </div>
+            <div className="col-span-2 flex items-center gap-4 mt-2">
+              <div className="flex-1">
+                <Label className="text-[10px] font-bold text-[#64748B] uppercase">Profile Photo (Passport size)</Label>
+                <Input type="file" accept="image/*" onChange={async e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (file.size > MAX_FILE_SIZE) { alert("Photo exceeds 5MB"); return; }
+                  const base64 = await new Promise<string>((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.readAsDataURL(file);
+                  });
+                  updatePilgrim(selected.id, { profilePhotoUrl: base64 });
+                }} className="rounded-xl text-xs cursor-pointer bg-white file:bg-[#EEF0FF] file:text-[#2D3199] file:font-bold file:border-0 file:rounded-lg file:mr-2 file:px-2 file:py-1" />
+              </div>
+              {selected.profilePhotoUrl && (
+                <img src={selected.profilePhotoUrl} alt="Profile" className="w-12 h-12 rounded-full object-cover border border-[#DCE3F0]" />
+              )}
+            </div>
+
+            {/* Contacts & Address */}
+            <div className="col-span-2 mt-4">
+              <p className="text-xs font-black text-[#2D3199] border-b border-[#2D3199]/10 pb-1 mb-3">Contacts & Address</p>
+            </div>
+            {show("phone") && (
+              <div>
+                <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("phone", "Phone Number")}</Label>
+                <Input value={selected.phone} onChange={e => updatePilgrim(selected.id, { phone: e.target.value })}
+                  placeholder="Phone" className="rounded-xl h-10 text-sm" />
+              </div>
+            )}
+            {show("email") && (
+              <div>
+                <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("email", "Email")}</Label>
+                <Input type="email" value={selected.email} onChange={e => updatePilgrim(selected.id, { email: e.target.value })}
+                  placeholder="Email address" className="rounded-xl h-10 text-sm" />
+              </div>
+            )}
+            {show("occupation") && (
+              <div className="col-span-2">
+                <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("occupation", "Occupation")}</Label>
+                <Input value={selected.occupation} onChange={e => updatePilgrim(selected.id, { occupation: e.target.value })}
+                  placeholder="e.g. Teacher, Farmer…" className="rounded-xl h-10 text-sm" />
+              </div>
+            )}
+            {show("country") && (
+              <div>
+                <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("country", "Country")}</Label>
+                <Input value={selected.country} onChange={e => updatePilgrim(selected.id, { country: e.target.value })}
+                  placeholder="Nigeria" className="rounded-xl h-10 text-sm" />
+              </div>
+            )}
+            {show("city") && (
+              <div>
+                <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("city", "City")}</Label>
+                <Input value={selected.city} onChange={e => updatePilgrim(selected.id, { city: e.target.value })}
+                  placeholder="City of residence" className="rounded-xl h-10 text-sm" />
+              </div>
+            )}
+            {show("address") && (
+              <div className="col-span-2">
+                <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("address", "Full Address")}</Label>
+                <Input value={selected.address} onChange={e => updatePilgrim(selected.id, { address: e.target.value })}
+                  placeholder="Residential address" className="rounded-xl h-10 text-sm" />
+              </div>
+            )}
+            {show("roomPreference") && (
+              <div className="col-span-2">
+                <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("roomPreference", "Room Preference")}</Label>
+                <Select value={selected.roomPreference} onValueChange={v => updatePilgrim(selected.id, { roomPreference: v })}>
+                  <SelectTrigger className="rounded-xl h-10 text-sm"><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    {["Single", "Double", "Triple", "Quad", "Quint"].map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           {selected.status === "error" && (
             <p className="text-xs text-red-600 font-semibold flex items-center gap-1">
