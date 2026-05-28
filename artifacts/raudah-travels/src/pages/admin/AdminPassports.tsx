@@ -3,10 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Download, FileText, Search, User, AlertTriangle, CheckCircle2,
   Clock, Shield, Filter, X, ChevronLeft, ChevronRight, FileImage, Eye,
+  ChevronDown, Check,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -171,6 +174,42 @@ function PassportCard({
 
 const PAGE_SIZE = 100;
 const FILTER_ALL = "all";
+
+function FilterCombobox({ value, onChange, placeholder, options }: { value: string; onChange: (v: string) => void; placeholder: string; options: { v: string; l: string }[] }) {
+  const [open, setOpen] = useState(false);
+  const selectedLabel = value === FILTER_ALL ? placeholder : (options.find(o => o.v === value)?.l || placeholder);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className={`flex items-center justify-between h-10 text-sm rounded-xl border px-3 w-44 shrink-0 ${value !== FILTER_ALL ? "border-[#2D3199] bg-[#EEF0FF] text-[#2D3199] font-bold" : "border-[#DCE3F0] text-[#64748B] bg-white hover:bg-[#F8FAFC] transition-colors"}`}>
+          <span className="truncate">{selectedLabel}</span>
+          <ChevronDown className="ml-1 h-4 w-4 shrink-0 opacity-50" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[220px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder={`Search ${placeholder.toLowerCase()}...`} className="h-9 text-sm" />
+          <CommandList>
+            <CommandEmpty className="py-4 text-center text-sm text-[#94A3B8]">No results found.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem value={placeholder} onSelect={() => { onChange(FILTER_ALL); setOpen(false); }} className="text-sm">
+                <Check className={`mr-2 h-4 w-4 ${value === FILTER_ALL ? "opacity-100" : "opacity-0"}`} />
+                {placeholder}
+              </CommandItem>
+              {options.map((option) => (
+                <CommandItem key={option.v} value={option.l} onSelect={() => { onChange(option.v); setOpen(false); }} className="text-sm">
+                  <Check className={`mr-2 h-4 w-4 ${value === option.v ? "opacity-100" : "opacity-0"}`} />
+                  {option.l}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -427,26 +466,20 @@ export default function AdminPassports() {
             </SelectContent>
           </Select>
           {staffList.length > 0 && (
-            <Select value={filterStaff} onValueChange={v => { setFilterStaff(v); setPage(1); }}>
-              <SelectTrigger className="w-44 rounded-xl border-[#DCE3F0]"><SelectValue placeholder="All Staff" /></SelectTrigger>
-              <SelectContent className="max-h-[300px]">
-                <SelectItem value={FILTER_ALL}>All Staff</SelectItem>
-                {staffList.map(s => (
-                  <SelectItem key={s.id} value={s.id}>{s.fullName || "Unnamed"}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <FilterCombobox
+              value={filterStaff}
+              onChange={(v) => { setFilterStaff(v); setPage(1); }}
+              placeholder="All Staff"
+              options={staffList.map(s => ({ v: s.id, l: s.fullName || "Unnamed" }))}
+            />
           )}
           {agentList.length > 0 && (
-            <Select value={filterAgent} onValueChange={v => { setFilterAgent(v); setPage(1); }}>
-              <SelectTrigger className="w-44 rounded-xl border-[#DCE3F0]"><SelectValue placeholder="All Agents" /></SelectTrigger>
-              <SelectContent className="max-h-[300px]">
-                <SelectItem value={FILTER_ALL}>All Agents</SelectItem>
-                {agentList.map(a => (
-                  <SelectItem key={a.id} value={a.id}>{a.businessName || a.user?.fullName || "Unnamed"}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <FilterCombobox
+              value={filterAgent}
+              onChange={(v) => { setFilterAgent(v); setPage(1); }}
+              placeholder="All Agents"
+              options={agentList.map(a => ({ v: a.id, l: a.businessName || a.user?.fullName || "Unnamed" }))}
+            />
           )}
           {hasFilters && (
             <button onClick={clearFilters}

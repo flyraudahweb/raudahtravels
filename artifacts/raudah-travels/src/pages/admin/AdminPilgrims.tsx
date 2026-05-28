@@ -8,11 +8,13 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import {
   Users, Search, ChevronRight, BookOpen, Phone, CreditCard, Calendar,
   MapPin, Download, FileText, Globe, UserCheck, X, Filter, Plane, Home, User,
   Mail, Badge, Clock, Shield, Heart, AlertCircle, CheckCircle2, Printer,
-  Plus, Loader2,
+  Plus, Loader2, ChevronDown, Check,
 } from "lucide-react";
 
 const statusStyle: Record<string, string> = {
@@ -1024,6 +1026,42 @@ function exportPDF(pilgrims: PilgrimRow[]) {
 const FILTER_ALL = "__all__";
 const PAGE_SIZE = 100;
 
+function FilterCombobox({ value, onChange, placeholder, options }: { value: string; onChange: (v: string) => void; placeholder: string; options: { v: string; l: string }[] }) {
+  const [open, setOpen] = useState(false);
+  const selectedLabel = value === FILTER_ALL ? placeholder : (options.find(o => o.v === value)?.l || placeholder);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className={`flex items-center justify-between h-8 text-xs rounded-lg border w-full px-2.5 ${value !== FILTER_ALL ? "border-[#2D3199] bg-[#EEF0FF] text-[#2D3199] font-bold" : "border-[#DCE3F0] text-[#64748B] bg-white hover:bg-[#F8FAFC] transition-colors"}`}>
+          <span className="truncate">{selectedLabel}</span>
+          <ChevronDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[220px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder={`Search ${placeholder.toLowerCase()}...`} className="h-9 text-xs" />
+          <CommandList>
+            <CommandEmpty className="py-4 text-center text-xs text-[#94A3B8]">No results found.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem value={placeholder} onSelect={() => { onChange(FILTER_ALL); setOpen(false); }} className="text-xs">
+                <Check className={`mr-2 h-3.5 w-3.5 ${value === FILTER_ALL ? "opacity-100" : "opacity-0"}`} />
+                {placeholder}
+              </CommandItem>
+              {options.map((option) => (
+                <CommandItem key={option.v} value={option.l} onSelect={() => { onChange(option.v); setOpen(false); }} className="text-xs">
+                  <Check className={`mr-2 h-3.5 w-3.5 ${value === option.v ? "opacity-100" : "opacity-0"}`} />
+                  {option.l}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function AdminPilgrims() {
   const [search, setSearch]               = useState("");
   const [filterStatus, setFilterStatus]   = useState(FILTER_ALL);
@@ -1182,15 +1220,19 @@ export default function AdminPilgrims() {
             },
           ].map(f => (
             <div key={f.placeholder} className="w-[130px]">
-              <Select value={f.value} onValueChange={f.onChange}>
-                <SelectTrigger className={`h-8 text-xs rounded-lg border w-full px-2.5 ${f.value !== FILTER_ALL ? "border-[#2D3199] bg-[#EEF0FF] text-[#2D3199] font-bold" : "border-[#DCE3F0] text-[#64748B]"}`}>
-                  <SelectValue placeholder={f.placeholder} />
-                </SelectTrigger>
-                <SelectContent className="max-h-[300px]">
-                  <SelectItem value={FILTER_ALL}>{f.placeholder}</SelectItem>
-                  {f.options.map(o => <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              {f.options.length > 10 ? (
+                <FilterCombobox value={f.value} onChange={f.onChange} placeholder={f.placeholder} options={f.options} />
+              ) : (
+                <Select value={f.value} onValueChange={f.onChange}>
+                  <SelectTrigger className={`h-8 text-xs rounded-lg border w-full px-2.5 ${f.value !== FILTER_ALL ? "border-[#2D3199] bg-[#EEF0FF] text-[#2D3199] font-bold" : "border-[#DCE3F0] text-[#64748B]"}`}>
+                    <SelectValue placeholder={f.placeholder} />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[300px]">
+                    <SelectItem value={FILTER_ALL}>{f.placeholder}</SelectItem>
+                    {f.options.map(o => <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           ))}
 
