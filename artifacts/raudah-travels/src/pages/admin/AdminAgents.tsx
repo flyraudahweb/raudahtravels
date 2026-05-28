@@ -1383,7 +1383,7 @@ export default function AdminAgents() {
           ) : (
             <div className="space-y-3">
               {inactiveAgents.map(agent => (
-                <div key={agent.id} className={`bg-white rounded-2xl border p-5 ${agent.status === "blocked" ? "border-red-200" : "border-amber-200"}`}>
+                <div key={agent.id} className={`bg-white rounded-2xl border p-5 ${(agent.status as string) === "blocked" ? "border-red-200" : "border-amber-200"}`}>
                   <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div className="flex items-start gap-4">
                       <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${(agent.status as string) === "blocked" ? "bg-red-100" : "bg-amber-100"}`}>

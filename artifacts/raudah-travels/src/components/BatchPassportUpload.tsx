@@ -36,6 +36,7 @@ export interface BatchPilgrim {
   partner: string;
   underCover: string;
   observation: string;
+  departureCity: string;
 
   // Extraction status
   status: "pending" | "extracting" | "done" | "error";
@@ -105,6 +106,7 @@ export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, on
     roomPreference: "Quad", civility: "", maritalStatus: "",
     placeOfBirth: "", occupation: "", ethnicGroup: "", levelOfStudy: "",
     visaNumber: "", partner: "", underCover: "", observation: "",
+    departureCity: "",
     status: "pending",
   });
 
@@ -485,23 +487,61 @@ export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, on
               <Input value={selected.passportIssuingAuthority} onChange={e => updatePilgrim(selected.id, { passportIssuingAuthority: e.target.value })}
                 placeholder="e.g. Immigration" className="rounded-xl h-10 text-sm" />
             </div>
-            <div className="col-span-2 flex items-center gap-4 mt-2">
-              <div className="flex-1">
-                <Label className="text-[10px] font-bold text-[#64748B] uppercase">Profile Photo (Passport size)</Label>
-                <Input type="file" accept="image/*" onChange={async e => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  if (file.size > MAX_FILE_SIZE) { alert("Photo exceeds 5MB"); return; }
-                  const base64 = await new Promise<string>((resolve) => {
-                    const reader = new FileReader();
-                    reader.onload = () => resolve(reader.result as string);
-                    reader.readAsDataURL(file);
-                  });
-                  updatePilgrim(selected.id, { profilePhotoUrl: base64 });
-                }} className="rounded-xl text-xs cursor-pointer bg-white file:bg-[#EEF0FF] file:text-[#2D3199] file:font-bold file:border-0 file:rounded-lg file:mr-2 file:px-2 file:py-1" />
+            {show("visaNumber") && (
+              <div>
+                <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("visaNumber", "N° Visa")}</Label>
+                <Input value={selected.visaNumber} onChange={e => updatePilgrim(selected.id, { visaNumber: e.target.value })}
+                  placeholder="Visa number" className="rounded-xl h-10 text-sm font-mono" />
               </div>
-              {selected.profilePhotoUrl && (
-                <img src={selected.profilePhotoUrl} alt="Profile" className="w-12 h-12 rounded-full object-cover border border-[#DCE3F0]" />
+            )}
+            <div className="col-span-2 flex flex-col gap-4 mt-2 border-t border-[#F1F5F9] pt-4">
+              {show("passportCopyUrl") && (
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("passportCopyUrl", "Passport Copy")}</Label>
+                    <Input type="file" accept="image/*,.pdf" onChange={async e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > MAX_FILE_SIZE) { alert("File exceeds 5MB"); return; }
+                      const base64 = await new Promise<string>((resolve) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result as string);
+                        reader.readAsDataURL(file);
+                      });
+                      updatePilgrim(selected.id, { passportCopyUrl: base64 });
+                    }} className="rounded-xl text-xs cursor-pointer bg-white file:bg-[#EEF0FF] file:text-[#2D3199] file:font-bold file:border-0 file:rounded-lg file:mr-2 file:px-2 file:py-1" />
+                  </div>
+                  {selected.passportCopyUrl && (
+                    <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden border border-[#DCE3F0]">
+                      {selected.passportCopyUrl.startsWith("data:image") ? (
+                        <img src={selected.passportCopyUrl} alt="Passport" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-[8px] font-bold text-gray-500">PDF</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {show("profilePhotoUrl") && (
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("profilePhotoUrl", "Profile Photo (Passport size)")}</Label>
+                    <Input type="file" accept="image/*" onChange={async e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > MAX_FILE_SIZE) { alert("Photo exceeds 5MB"); return; }
+                      const base64 = await new Promise<string>((resolve) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result as string);
+                        reader.readAsDataURL(file);
+                      });
+                      updatePilgrim(selected.id, { profilePhotoUrl: base64 });
+                    }} className="rounded-xl text-xs cursor-pointer bg-white file:bg-[#EEF0FF] file:text-[#2D3199] file:font-bold file:border-0 file:rounded-lg file:mr-2 file:px-2 file:py-1" />
+                  </div>
+                  {selected.profilePhotoUrl && (
+                    <img src={selected.profilePhotoUrl} alt="Profile" className="w-12 h-12 rounded-full object-cover border border-[#DCE3F0]" />
+                  )}
+                </div>
               )}
             </div>
 
@@ -558,6 +598,17 @@ export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, on
                   <SelectTrigger className="rounded-xl h-10 text-sm"><SelectValue placeholder="—" /></SelectTrigger>
                   <SelectContent>
                     {["Single", "Double", "Triple", "Quad", "Quint"].map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {show("departureCity") && (
+              <div className="col-span-2">
+                <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("departureCity", "Departure City")}</Label>
+                <Select value={selected.departureCity} onValueChange={v => updatePilgrim(selected.id, { departureCity: v })}>
+                  <SelectTrigger className="rounded-xl h-10 text-sm"><SelectValue placeholder="Select…" /></SelectTrigger>
+                  <SelectContent>
+                    {["Lagos", "Abuja", "Kano", "Port Harcourt", "Ibadan", "Enugu"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

@@ -1169,6 +1169,7 @@ export default function AgentClients() {
                             city: p.city || "",
                             address: p.address || "",
                             roomPreference: p.roomPreference || "Double",
+                            departureCity: p.departureCity || undefined,
                             paymentMethod: pm.method,
                             amountPaid: pm.method === "wallet" ? pTotalPrice : (pm.amountPaid ? Number(pm.amountPaid) : 0),
                             pilgrimType: detType,

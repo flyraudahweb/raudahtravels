@@ -983,6 +983,7 @@ export default function AdminBookPilgrim() {
                         passportCopyUrl: p.passportCopyUrl, profilePhotoUrl: p.profilePhotoUrl,
                         phone: p.phone, email: p.email, country: p.country, city: p.city, address: p.address,
                         roomPreference: p.roomPreference || "Quad", roomSurcharge,
+                        departureCity: p.departureCity || undefined,
                         paymentMethod: pm.method, amountPaid: pm.amountPaid ? Number(pm.amountPaid) : 0,
                         markVerified: pm.markVerified, pilgrimType: detType, batchId,
                       });
