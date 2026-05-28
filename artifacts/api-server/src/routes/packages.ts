@@ -65,7 +65,7 @@ router.get("/packages", async (req, res) => {
     const { type, available, status, limit = "100", offset = "0" } = req.query as Record<string, string>;
 
     const conditions = [];
-    if (type) conditions.push(eq(packagesTable.type, type as "hajj" | "umrah"));
+    if (type) conditions.push(eq(packagesTable.type, type as any));
     if (available === "true") conditions.push(eq(packagesTable.isActive, true));
     if (status) conditions.push(eq(packagesTable.status, status as any));
 

@@ -108,7 +108,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [hajj, umrah]
+            enum: [hajj, umrah, visa_only, ticket_only, accommodation_only, visa_ticket, visa_accommodation, accommodation_ticket]
         - name: available
           in: query
           schema:
@@ -1435,7 +1435,7 @@ components:
           type: string
         type:
           type: string
-          enum: [hajj, umrah]
+          enum: [hajj, umrah, visa_only, ticket_only, accommodation_only, visa_ticket, visa_accommodation, accommodation_ticket]
         category:
           type: string
           enum: [premium, standard, budget]
@@ -1529,7 +1529,7 @@ components:
           type: string
         type:
           type: string
-          enum: [hajj, umrah]
+          enum: [hajj, umrah, visa_only, ticket_only, accommodation_only, visa_ticket, visa_accommodation, accommodation_ticket]
         description:
           type: string
         price:

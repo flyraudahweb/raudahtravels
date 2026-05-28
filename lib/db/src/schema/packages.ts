@@ -10,7 +10,16 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const packageTypeEnum = pgEnum("package_type", ["hajj", "umrah"]);
+export const packageTypeEnum = pgEnum("package_type", [
+  "hajj", 
+  "umrah",
+  "visa_only",
+  "ticket_only",
+  "accommodation_only",
+  "visa_ticket",
+  "visa_accommodation",
+  "accommodation_ticket"
+]);
 export const packageCategoryEnum = pgEnum("package_category", ["premium", "standard", "budget"]);
 export const packageStatusEnum = pgEnum("package_status", ["active", "draft", "archived"]);
 

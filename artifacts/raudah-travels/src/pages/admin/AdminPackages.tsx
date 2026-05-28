@@ -24,7 +24,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
 type PackageForm = {
-  name: string; type: "hajj" | "umrah"; description: string; price: string;
+  name: string; type: "hajj" | "umrah" | "visa_only" | "ticket_only" | "accommodation_only" | "visa_ticket" | "visa_accommodation" | "accommodation_ticket"; description: string; price: string;
   depositAmount: string; durationDays: string; departureDate: string; returnDate: string;
   maxCapacity: string; starRating: string; inclusions: string;
   countdownEnabled: boolean; countdownExpiry: string; countdownAction: "disable" | "both";
@@ -93,11 +93,17 @@ function PackageFormDialog({ open, onClose, initial }: { open: boolean; onClose:
             </div>
             <div>
               <Label className="text-sm font-bold text-[#334155]">Type</Label>
-              <Select value={form.type} onValueChange={(v) => setForm(f => ({ ...f, type: v as "hajj" | "umrah" }))}>
+              <Select value={form.type} onValueChange={(v) => setForm(f => ({ ...f, type: v as any }))}>
                 <SelectTrigger className="mt-1.5 rounded-xl"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="hajj">Hajj</SelectItem>
                   <SelectItem value="umrah">Umrah</SelectItem>
+                  <SelectItem value="visa_only">Visa Only</SelectItem>
+                  <SelectItem value="ticket_only">Ticket Only</SelectItem>
+                  <SelectItem value="accommodation_only">Accommodation Only</SelectItem>
+                  <SelectItem value="visa_ticket">Visa + Ticket</SelectItem>
+                  <SelectItem value="visa_accommodation">Visa + Accommodation</SelectItem>
+                  <SelectItem value="accommodation_ticket">Accommodation + Ticket</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -58,6 +58,12 @@ export type TravelPackageType =
 export const TravelPackageType = {
   hajj: "hajj",
   umrah: "umrah",
+  visa_only: "visa_only",
+  ticket_only: "ticket_only",
+  accommodation_only: "accommodation_only",
+  visa_ticket: "visa_ticket",
+  visa_accommodation: "visa_accommodation",
+  accommodation_ticket: "accommodation_ticket",
 } as const;
 
 export type TravelPackageCategory =

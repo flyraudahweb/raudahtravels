@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   CalendarDays, MapPin, Users, Star, Check,
   SlidersHorizontal, X, ChevronRight, Plane, Building2,
@@ -47,12 +48,19 @@ const SEASON_BADGE: Record<string, string> = {
   "Sha'ban": "bg-teal-500/15 text-teal-300 border-teal-400/30",
 };
 
+const TYPE_LABELS: Record<string, string> = {
+  hajj: "Hajj", umrah: "Umrah", visa_only: "Visa Only", ticket_only: "Ticket Only",
+  accommodation_only: "Accommodation Only", visa_ticket: "Visa + Ticket",
+  visa_accommodation: "Visa + Accommodation", accommodation_ticket: "Accommodation + Ticket",
+  all: "All Types"
+};
+
 export default function Packages() {
   const searchString = useSearch();
   const searchParams = new URLSearchParams(searchString);
   const initialType = searchParams.get("type") as "hajj" | "umrah" | null;
 
-  const [typeFilter, setTypeFilter] = useState<"hajj" | "umrah" | "all">(initialType || "all");
+  const [typeFilter, setTypeFilter] = useState<string>(initialType || "all");
   const [categoryFilter, setCategoryFilter] = useState<"premium" | "standard" | "budget" | "all">("all");
   const [seasonFilter, setSeasonFilter] = useState<string | "all">("all");
   const [priceRange, setPriceRange] = useState([0, 10_000_000]);
@@ -100,10 +108,23 @@ export default function Packages() {
                   ? "bg-[#2D3199] text-white shadow-brand"
                   : "bg-[#F1F5F9] text-[#334155] hover:bg-[#EEF0FF] hover:text-[#2D3199]"
               }`}>
-              <span className="capitalize">{t === "all" ? "All Types" : t}</span>
+              <span className="capitalize">{TYPE_LABELS[t]}</span>
               {typeFilter === t && <Check className="w-3.5 h-3.5" />}
             </button>
           ))}
+          <Select value={["hajj", "umrah", "all"].includes(typeFilter) ? "" : typeFilter} onValueChange={(v) => setTypeFilter(v)}>
+            <SelectTrigger className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-all h-auto ${!["hajj", "umrah", "all"].includes(typeFilter) ? "bg-[#2D3199] text-white shadow-brand" : "bg-[#F1F5F9] text-[#334155] hover:bg-[#EEF0FF] hover:text-[#2D3199] border-none"}`}>
+              <SelectValue placeholder={!["hajj", "umrah", "all"].includes(typeFilter) ? TYPE_LABELS[typeFilter] : "Other Services"} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="visa_only">Visa Only</SelectItem>
+              <SelectItem value="ticket_only">Ticket Only</SelectItem>
+              <SelectItem value="accommodation_only">Accommodation Only</SelectItem>
+              <SelectItem value="visa_ticket">Visa + Ticket</SelectItem>
+              <SelectItem value="visa_accommodation">Visa + Accommodation</SelectItem>
+              <SelectItem value="accommodation_ticket">Accommodation + Ticket</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -195,9 +216,24 @@ export default function Packages() {
                   className={`px-4 py-1.5 rounded-xl text-sm font-bold transition-all ${
                     typeFilter === t ? "bg-white text-[#2D3199] shadow-sm" : "text-[#64748B] hover:text-[#2D3199]"
                   }`}>
-                  {t === "all" ? "All" : t.charAt(0).toUpperCase() + t.slice(1)}
+                  {TYPE_LABELS[t]}
                 </button>
               ))}
+              <div className="relative">
+                <Select value={["hajj", "umrah", "all"].includes(typeFilter) ? "" : typeFilter} onValueChange={(v) => setTypeFilter(v)}>
+                  <SelectTrigger className={`px-4 py-1.5 rounded-xl text-sm font-bold transition-all border-none h-auto focus:ring-0 ${!["hajj", "umrah", "all"].includes(typeFilter) ? "bg-white text-[#2D3199] shadow-sm" : "bg-transparent text-[#64748B] hover:text-[#2D3199]"}`}>
+                    <SelectValue placeholder={!["hajj", "umrah", "all"].includes(typeFilter) ? TYPE_LABELS[typeFilter] : "Other Services"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="visa_only">Visa Only</SelectItem>
+                    <SelectItem value="ticket_only">Ticket Only</SelectItem>
+                    <SelectItem value="accommodation_only">Accommodation Only</SelectItem>
+                    <SelectItem value="visa_ticket">Visa + Ticket</SelectItem>
+                    <SelectItem value="visa_accommodation">Visa + Accommodation</SelectItem>
+                    <SelectItem value="accommodation_ticket">Accommodation + Ticket</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 
@@ -287,7 +323,7 @@ export default function Packages() {
                           {/* Top left badges */}
                           <div className="absolute top-4 left-4 flex flex-wrap gap-1.5">
                             <span className="px-3 py-1 bg-[#FF3B00] text-white text-xs font-black uppercase tracking-wider rounded-full">
-                              {pkg.type}
+                              {TYPE_LABELS[pkg.type] ?? pkg.type}
                             </span>
                             <span className={`px-3 py-1 text-xs font-bold rounded-full border capitalize ${CATEGORY_COLORS[pkg.category] ?? ""}`}>
                               {pkg.category}
