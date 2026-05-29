@@ -32,7 +32,7 @@ export async function uploadFile(
       const options = {
         maxSizeMB: 1.5,          // Target size is < 1.5MB to ensure it passes backend 2MB limit
         maxWidthOrHeight: 1920,  // Keep high resolution
-        useWebWorker: true,
+        useWebWorker: false,     // Avoid CSP issues with CDN-loaded worker scripts
         alwaysKeepResolution: true, // Try to preserve dimensions as much as possible
       };
       finalFile = await imageCompression(file, options);

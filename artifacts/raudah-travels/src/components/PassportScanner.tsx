@@ -169,6 +169,21 @@ function generateCroppedImage(image: HTMLImageElement, crop: Crop): string {
   return finalCanvas.toDataURL("image/jpeg", 0.92);
 }
 
+/**
+ * Convert a data URL to a File object without using fetch() — avoids CSP
+ * connect-src restrictions that block fetching data: URLs.
+ */
+function dataUrlToFile(dataUrl: string, filename: string): File {
+  const [header, base64] = dataUrl.split(",");
+  const mime = header.match(/:(.*?);/)?.[1] || "image/jpeg";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new File([bytes], filename, { type: mime });
+}
+
 function calculateInitialCrop(bbox: BBox | null | undefined, W: number, H: number): PercentCrop {
   function toNorm(v: number, dim: number): number {
     if (!isFinite(v) || v < 0) return 0;
@@ -422,9 +437,8 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
                 try {
                   setIsUploadingCrop(true);
                   const b64 = generateCroppedImage(imgRef.current, crop);
-                  const res = await fetch(b64);
-                  const blob = await res.blob();
-                  const file = new File([blob], "profile.jpg", { type: "image/jpeg" });
+                  // Use dataUrlToFile instead of fetch(dataUrl) to avoid CSP connect-src blocking data: URLs
+                  const file = dataUrlToFile(b64, "profile.jpg");
                   const url = await uploadFile(file, "photos");
                   
                   setProfilePicUrl(url);

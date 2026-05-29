@@ -2009,8 +2009,13 @@ export default function AgentClients() {
                 if (fCtx) { fCtx.fillStyle = "#fff"; fCtx.fillRect(0,0,400,400); fCtx.drawImage(canvas,0,0,canvas.width,canvas.height,0,0,400,400); }
                 const dataUrl = final.toDataURL("image/jpeg", 0.92);
                 try {
-                  const res2 = await fetch(dataUrl); const blob = await res2.blob();
-                  const file = new File([blob], "profile.jpg", { type: "image/jpeg" });
+                  // CSP-safe: convert data URL to File without fetch()
+                  const [header, b64] = dataUrl.split(",");
+                  const mime = header.match(/:(.*?);/)?.[1] || "image/jpeg";
+                  const bin = atob(b64);
+                  const bytes = new Uint8Array(bin.length);
+                  for (let j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j);
+                  const file = new File([bytes], "profile.jpg", { type: mime });
                   const { uploadFile } = await import("@/lib/upload");
                   const url = await uploadFile(file, "photos");
                   setBatchPilgrims(prev => prev.map((p, i) => i === batchCropTarget!.index ? { ...p, profilePhotoUrl: url } : p));
