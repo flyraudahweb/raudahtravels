@@ -352,7 +352,7 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
       if (onProfilePhoto) {
         setCropOrigin('ai');
         setPendingCrop({
-          imageUrl: passportImageDataUrl,
+          imageUrl: passportDataUrl,
           result,
           bbox: data.faceBoundingBox,
         });
