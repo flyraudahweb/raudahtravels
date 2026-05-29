@@ -140,8 +140,8 @@ router.use(aiRouter);
 router.use(agentsRouter);
 router.use(documentsRouter);
 router.use(dashboardRouter);
+router.use(uploadRouter);
 router.use(adminRouter);
 router.use(backupRouter);
-router.use(uploadRouter);
 
 export default router;
