@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { bookingsTable, packagesTable, packageDatesTable, profilesTable, visaApplicationsTable, userActivityTable } from "@workspace/db";
+import { bookingsTable, packagesTable, packageDatesTable, profilesTable, visaApplicationsTable, userActivityTable, siteSettingsTable } from "@workspace/db";
 import { createNotification } from "../utils/notify.js";
 import { getAuth } from "@clerk/express";
 import { eq, and, sql, desc } from "drizzle-orm";
