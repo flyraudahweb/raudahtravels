@@ -333,15 +333,21 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
         nationality:       data.nationality || "",
       };
 
-      // Convert file to a base64 data URL (NOT a blob URL!) so it can be safely
-      // stored in the database. Blob URLs are ephemeral browser memory addresses
-      // that vanish on page refresh.
-      const passportImageDataUrl = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(file);
-      });
-      result.passportImageDataUrl = passportImageDataUrl;
+      // Upload the passport image to R2 so we get a real URL (not a massive base64 string).
+      // Fallback to data URL if upload fails.
+      let passportImageUrl: string;
+      try {
+        const passportFile = new File([file], `passport-${Date.now()}.${file.type.split('/')[1] || 'jpg'}`, { type: file.type });
+        passportImageUrl = await uploadFile(passportFile, "passports");
+      } catch (uploadErr) {
+        console.warn("Passport image upload failed, using data URL fallback", uploadErr);
+        passportImageUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
+      }
+      result.passportImageDataUrl = passportImageUrl;
 
       if (onProfilePhoto) {
         setCropOrigin('ai');
@@ -439,7 +445,14 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
                   const b64 = generateCroppedImage(imgRef.current, crop);
                   // Use dataUrlToFile instead of fetch(dataUrl) to avoid CSP connect-src blocking data: URLs
                   const file = dataUrlToFile(b64, "profile.jpg");
-                  const url = await uploadFile(file, "photos");
+                  let url: string;
+                  try {
+                    url = await uploadFile(file, "photos");
+                  } catch (uploadErr) {
+                    console.warn("Profile photo upload to R2 failed, using data URL fallback", uploadErr);
+                    // Fallback: use the cropped data URL directly so the photo is not lost
+                    url = b64;
+                  }
                   
                   setProfilePicUrl(url);
                   onProfilePhoto?.(url);

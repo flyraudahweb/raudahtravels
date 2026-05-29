@@ -1590,6 +1590,7 @@ export default function AdminBookPilgrim() {
                             passportNumber: data.passportNumber || child.passportNumber,
                             passportIssueDate: data.passportIssueDate || child.passportIssueDate,
                             passportExpiry: data.passportExpiry || child.passportExpiry,
+                            passportCopyUrl: data.passportImageDataUrl || child.passportCopyUrl,
                             aiFields: newAiFields,
                           });
                         }}

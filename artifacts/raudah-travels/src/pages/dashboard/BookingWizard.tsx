@@ -871,6 +871,7 @@ export default function BookingWizard() {
                     passportNumber:    data.passportNumber    || f.passportNumber,
                     passportIssueDate: data.passportIssueDate || f.passportIssueDate,
                     passportExpiry:    data.passportExpiry    || f.passportExpiry,
+                    passportCopyUrl:   data.passportImageDataUrl || f.passportCopyUrl,
                   }));
                   if (data.firstName || data.lastName) {
                     setPersonalForm(f => ({
@@ -1268,6 +1269,7 @@ export default function BookingWizard() {
                             passportNumber: data.passportNumber || child.passportNumber,
                             passportIssueDate: data.passportIssueDate || child.passportIssueDate,
                             passportExpiry: data.passportExpiry || child.passportExpiry,
+                            passportCopyUrl: data.passportImageDataUrl || child.passportCopyUrl,
                             aiFields: newAiFields,
                           });
                         }}
