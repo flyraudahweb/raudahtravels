@@ -891,6 +891,7 @@ export default function AdminBookPilgrim() {
               <BatchPassportUpload
                 maxPilgrims={10}
                 formConfig={cfg}
+                packageDates={selectedPkg?.type === "umrah" ? selectedPkg.packageDates : []}
                 onBatchReady={(pilgrims) => {
                   setBatchPilgrims(pilgrims.map(p => ({
                     ...p,

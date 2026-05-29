@@ -51,6 +51,7 @@ interface Props {
   onBatchReady: (pilgrims: BatchPilgrim[]) => void;
   onCancel: () => void;
   formConfig?: FieldCfgFn;
+  packageDates?: any[];
 }
 
 const GENDERS = ["male", "female"];
@@ -91,7 +92,7 @@ function getBase64Size(base64Str: string) {
   return Math.ceil((base64Len * 3) / 4);
 }
 
-export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, onCancel, formConfig }: Props) {
+export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, onCancel, formConfig, packageDates }: Props) {
   const [pilgrims, setPilgrims] = useState<BatchPilgrim[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedPilgrim, setSelectedPilgrim] = useState<string | null>(null);
@@ -455,6 +456,21 @@ export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, on
                 <Label className="text-[10px] font-bold text-[#64748B] uppercase">{lbl("observation", "Observation")}</Label>
                 <Input value={selected.observation} onChange={e => updatePilgrim(selected.id, { observation: e.target.value })}
                   placeholder="Any special needs or notes" className="rounded-xl h-10 text-sm" />
+              </div>
+            )}
+            {packageDates && packageDates.length > 0 && (
+              <div className="col-span-2">
+                <Label className="text-[10px] font-bold text-[#64748B] uppercase">Flight Schedule</Label>
+                <Select value={selected.packageDateId} onValueChange={v => updatePilgrim(selected.id, { packageDateId: v })}>
+                  <SelectTrigger className="rounded-xl h-10 text-sm"><SelectValue placeholder="Select flight schedule" /></SelectTrigger>
+                  <SelectContent>
+                    {[...packageDates].sort((a: any, b: any) => new Date(a.outbound).getTime() - new Date(b.outbound).getTime()).map(d => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {new Date(d.outbound).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} - {new Date(d.returnDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} ({d.outboundRoute} | {d.returnRoute}) via {d.airline}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             )}
             
