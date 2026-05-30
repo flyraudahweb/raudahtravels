@@ -446,7 +446,7 @@ export default function BookingWizard() {
     }
     if (step === 2) {
       const { valid, missingFields } = validateRequiredFields(cfg, personalForm,
-        ["firstName", "lastName", "dateOfBirth", "gender", "nationality", "placeOfBirth"]);
+        ["firstName", "lastName", "dateOfBirth", "gender", "nationality", "placeOfBirth", "profilePhotoUrl"]);
       if (!valid) {
         setValidationErrors(missingFields.map(f => f.label));
         toast({ title: "Required fields missing", description: missingFields.map(f => f.label).join(", "), variant: "destructive" });

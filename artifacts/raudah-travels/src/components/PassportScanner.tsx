@@ -237,6 +237,7 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
   const [profilePicUrl, setProfilePicUrl] = useState<string | null>(null);
   const [extractedName, setExtractedName] = useState<string | null>(null);
   const [lastPassportImage, setLastPassportImage] = useState<string | null>(null);
+  const [aiExtractionFailed, setAiExtractionFailed] = useState(false);
 
   // Manual Crop State
   // cropOrigin tracks where the crop dialog was opened from:
@@ -255,6 +256,7 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
     setProfilePicUrl(null);
     setExtractedName(null);
     setLastPassportImage(null);
+    setAiExtractionFailed(false);
     if (inputRef.current) inputRef.current.value = "";
   };
 
@@ -284,6 +286,7 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
     setProfilePicUrl(null);
     setExtractedName(null);
     setLastPassportImage(null);
+    setAiExtractionFailed(false);
 
     try {
       const base64 = await new Promise<string>((resolve, reject) => {
@@ -296,70 +299,82 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
         reader.readAsDataURL(file);
       });
 
-      // Save the image data URL so we can re-open the crop dialog later,
-      // even if AI extraction fails.
+      // Save the image data URL for the crop dialog
       const passportDataUrl = `data:${file.type};base64,${base64}`;
       setLastPassportImage(passportDataUrl);
 
-      const res = await fetch("/api/passport/extract", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64: base64, mimeType: file.type }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setStatus("error");
-        setErrorInfo(classifyError(data.error || "Extraction failed"));
-        return;
-      }
-
-      if (!data.isAcceptableQuality) {
-        setStatus("error");
-        setErrorInfo(classifyError(data.rejectionReason || "Image quality too low"));
-        return;
-      }
-
-      const result: PassportScanResult = {
-        firstName:         data.firstName       || "",
-        lastName:          data.lastName        || "",
-        passportNumber:    data.documentNumber  || "",
-        passportIssueDate: normalizeDateToISO(data.dateOfIssue  || ""),
-        passportExpiry:    normalizeDateToISO(data.dateOfExpiry || ""),
-        dateOfBirth:       normalizeDateToISO(data.dateOfBirth  || ""),
-        gender:            normalizeGender(data.sex || ""),
-        nationality:       data.nationality || "",
-      };
-
-      // Upload the passport image to R2 so we get a real URL (not a massive base64 string).
-      // Fallback to data URL if upload fails.
+      // Upload passport image to R2 FIRST — we need it regardless of AI success
       let passportImageUrl: string;
       try {
         const passportFile = new File([file], `passport-${Date.now()}.${file.type.split('/')[1] || 'jpg'}`, { type: file.type });
         passportImageUrl = await uploadFile(passportFile, "passports");
       } catch (uploadErr) {
         console.warn("Passport image upload failed, using data URL fallback", uploadErr);
-        passportImageUrl = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(file);
-        });
+        passportImageUrl = passportDataUrl;
       }
-      result.passportImageDataUrl = passportImageUrl;
 
+      // Try AI extraction (non-blocking — failure still proceeds with crop)
+      let aiResult: any = null;
+      let aiFailed = false;
+      let aiError: ErrorInfo | null = null;
+
+      try {
+        const res = await fetch("/api/passport/extract", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageBase64: base64, mimeType: file.type }),
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          aiFailed = true;
+          aiError = classifyError(data.error || "Extraction failed");
+        } else if (!data.isAcceptableQuality) {
+          aiFailed = true;
+          aiError = classifyError(data.rejectionReason || "Image quality too low");
+        } else {
+          aiResult = data;
+        }
+      } catch (aiErr: any) {
+        aiFailed = true;
+        aiError = classifyError(aiErr.message || "Unknown error");
+      }
+
+      // Build result — always includes passport URL, AI fields only if extraction succeeded
+      const result: PassportScanResult = {
+        firstName:         aiResult?.firstName       || "",
+        lastName:          aiResult?.lastName        || "",
+        passportNumber:    aiResult?.documentNumber  || "",
+        passportIssueDate: normalizeDateToISO(aiResult?.dateOfIssue  || ""),
+        passportExpiry:    normalizeDateToISO(aiResult?.dateOfExpiry || ""),
+        dateOfBirth:       normalizeDateToISO(aiResult?.dateOfBirth  || ""),
+        gender:            normalizeGender(aiResult?.sex || ""),
+        nationality:       aiResult?.nationality || "",
+        passportImageDataUrl: passportImageUrl,
+      };
+
+      if (aiFailed) {
+        setAiExtractionFailed(true);
+        setErrorInfo(aiError);
+      }
+
+      // Always show crop dialog if onProfilePhoto is provided — even on AI failure
       if (onProfilePhoto) {
         setCropOrigin('ai');
         setPendingCrop({
           imageUrl: passportDataUrl,
           result,
-          bbox: data.faceBoundingBox,
+          bbox: aiFailed ? null : aiResult?.faceBoundingBox,
         });
-        // We defer calling onExtracted and setting status to 'done' until cropping completes or is skipped.
+        // onExtracted and status="done" are deferred until crop completes
       } else {
         onExtracted(result);
-        setExtractedName(`${result.firstName} ${result.lastName}`.trim() || "Passport scanned");
+        setExtractedName(
+          aiFailed
+            ? "Passport uploaded"
+            : (`${result.firstName} ${result.lastName}`.trim() || "Passport scanned")
+        );
         setStatus("done");
       }
     } catch (err: any) {
@@ -369,26 +384,21 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
   };
 
   const renderCropDialog = () => (
-    <Dialog open={!!pendingCrop} onOpenChange={(open) => {
-      if (!open && pendingCrop) {
-        if (cropOrigin === 'ai') {
-          onExtracted(pendingCrop.result);
-          setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
-          setStatus("done");
-        } else if (cropOrigin === 'error') {
-          setStatus("idle");
-        }
-        setPendingCrop(null);
-      }
-    }}>
-      <DialogContent className="max-w-xl p-0 overflow-hidden bg-white rounded-3xl gap-0 border-0">
+    <Dialog open={!!pendingCrop} onOpenChange={() => { /* forced — cannot dismiss */ }}>
+      <DialogContent
+        className="max-w-xl p-0 overflow-hidden bg-white rounded-3xl gap-0 border-0 [&>button]:hidden"
+        onInteractOutside={(e: Event) => e.preventDefault()}
+        onEscapeKeyDown={(e: KeyboardEvent) => e.preventDefault()}
+      >
         <DialogHeader className="p-5 pb-3">
           <DialogTitle className="text-lg font-black text-[#0F172A] flex items-center gap-2">
             <CropIcon className="w-5 h-5 text-[#2D3199]" />
             Crop Profile Picture
           </DialogTitle>
           <DialogDescription className="text-xs font-semibold text-[#64748B]">
-            Please drag and resize the box to perfectly frame the profile face.
+            {aiExtractionFailed
+              ? "AI extraction was unavailable. Please crop the profile photo below, then fill in passport details manually."
+              : "Please drag and resize the box to perfectly frame the profile face."}
           </DialogDescription>
         </DialogHeader>
 
@@ -415,26 +425,7 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
           )}
         </div>
 
-        <DialogFooter className="p-4 bg-white flex items-center justify-between">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              if (pendingCrop) {
-                if (cropOrigin === 'ai') {
-                  onExtracted(pendingCrop.result);
-                  setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
-                  setStatus("done");
-                } else if (cropOrigin === 'error') {
-                  setStatus("idle");
-                }
-                setPendingCrop(null);
-              }
-            }}
-            className="rounded-xl border-[#E2E8F0] text-[#64748B] font-bold h-11 px-6"
-          >
-            Skip
-          </Button>
+        <DialogFooter className="p-4 bg-white flex items-center justify-end">
           <Button
             type="button"
             disabled={isUploadingCrop}
@@ -443,14 +434,12 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
                 try {
                   setIsUploadingCrop(true);
                   const b64 = generateCroppedImage(imgRef.current, crop);
-                  // Use dataUrlToFile instead of fetch(dataUrl) to avoid CSP connect-src blocking data: URLs
                   const file = dataUrlToFile(b64, "profile.jpg");
                   let url: string;
                   try {
                     url = await uploadFile(file, "photos");
                   } catch (uploadErr) {
                     console.warn("Profile photo upload to R2 failed, using data URL fallback", uploadErr);
-                    // Fallback: use the cropped data URL directly so the photo is not lost
                     url = b64;
                   }
                   
@@ -462,11 +451,16 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
                   setIsUploadingCrop(false);
                   if (cropOrigin === 'ai') {
                     onExtracted(pendingCrop.result);
-                    setExtractedName(`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned");
+                    setExtractedName(
+                      aiExtractionFailed
+                        ? "Passport uploaded"
+                        : (`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned")
+                    );
                     setStatus("done");
                   } else if (cropOrigin === 'error') {
                     setStatus("idle");
                   }
+                  // recrop: just update photo, don't change status
                   setPendingCrop(null);
                 }
               }
@@ -609,15 +603,19 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
           )}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              {aiExtractionFailed ? (
+                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              )}
               <p className="text-sm font-black text-[#0F172A] truncate">
                 {extractedName ?? "Passport scanned"}
               </p>
             </div>
             <p className="text-xs text-[#64748B] mt-0.5">
-              Fields auto-filled.
-              {profilePicUrl ? " Profile photo cropped from passport." : ""}
-              {" "}Review and correct any details below.
+              {aiExtractionFailed
+                ? "Passport uploaded. AI extraction was unavailable — please fill in the details manually below."
+                : <>Fields auto-filled.{profilePicUrl ? " Profile photo cropped from passport." : ""}{" "}Review and correct any details below.</>}
             </p>
           </div>
           <div className="flex flex-col gap-1.5 shrink-0">

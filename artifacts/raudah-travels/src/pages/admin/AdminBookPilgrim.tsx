@@ -655,7 +655,7 @@ export default function AdminBookPilgrim() {
     }
     if (step === 3) {
       const { valid, missingFields } = validateRequiredFields(cfg, pilgrim,
-        ["firstName", "lastName", "dateOfBirth", "gender", "nationality", "placeOfBirth"]);
+        ["firstName", "lastName", "dateOfBirth", "gender", "nationality", "placeOfBirth", "profilePhotoUrl"]);
       if (!valid) {
         toast({ title: "Required fields missing", description: missingFields.map(f => f.label).join(", "), variant: "destructive" }); return;
       }

@@ -1943,14 +1943,14 @@ export default function AgentClients() {
                       }
                       if (regStep === 2) {
                         const { valid, missingFields } = validateRequiredFields(cfg, form,
-                          ["passportNumber", "passportIssueDate", "passportExpiry"]);
+                          ["passportNumber", "passportIssueDate", "passportExpiry", "passportCopyUrl"]);
                         if (!valid) {
                           toast({ title: "Required fields missing", description: missingFields.map(f => f.label).join(", "), variant: "destructive" }); return;
                         }
                       }
                       if (regStep === 3) {
                         const { valid, missingFields } = validateRequiredFields(cfg, form,
-                          ["firstName", "lastName", "dateOfBirth", "gender", "nationality"]);
+                          ["firstName", "lastName", "dateOfBirth", "gender", "nationality", "profilePhotoUrl"]);
                         if (!valid) {
                           toast({ title: "Required fields missing", description: missingFields.map(f => f.label).join(", "), variant: "destructive" }); return;
                         }
