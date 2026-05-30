@@ -269,7 +269,10 @@ export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, on
             <Users className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="font-black text-lg">Batch Registration</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-black text-lg">Batch Registration</h3>
+              <span className="px-1.5 py-0.5 rounded bg-white/20 text-[10px] font-bold uppercase tracking-wider">Beta</span>
+            </div>
             <p className="text-white/70 text-xs">Upload up to {maxPilgrims} passports for AI extraction</p>
           </div>
           <div className="ml-auto text-right">

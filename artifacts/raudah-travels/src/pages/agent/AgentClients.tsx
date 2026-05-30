@@ -850,8 +850,9 @@ export default function AgentClients() {
                     👤 Single Client
                   </button>
                   <button type="button" onClick={() => setBatchMode(true)}
-                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex-1 ${batchMode ? "bg-white text-[#2D3199] shadow-sm" : "text-[#64748B]"}`}>
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex-1 flex items-center justify-center gap-1.5 ${batchMode ? "bg-white text-[#2D3199] shadow-sm" : "text-[#64748B]"}`}>
                     👥 Batch (up to 10)
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider ${batchMode ? "bg-[#2D3199]/10" : "bg-[#64748B]/10"}`}>Beta</span>
                   </button>
                 </div>
                 <div className="space-y-1.5">
