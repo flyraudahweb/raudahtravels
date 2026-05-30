@@ -92,6 +92,19 @@ export const TravelPackageCountdownAction = {
   both: "both",
 } as const;
 
+export interface PackageDate {
+  id: string;
+  packageId: string;
+  outbound: string;
+  outboundRoute?: string | null;
+  returnDate: string;
+  returnRoute?: string | null;
+  airline?: string | null;
+  islamicDate?: string | null;
+  islamicReturnDate?: string | null;
+  createdAt: string;
+}
+
 export interface TravelPackage {
   id: string;
   name: string;
@@ -119,6 +132,7 @@ export interface TravelPackage {
   countdownExpiry?: string | null;
   countdownAction: TravelPackageCountdownAction;
   isRegistrationClosed: boolean;
+  packageDates?: PackageDate[];
   createdAt: string;
 }
 
@@ -208,6 +222,7 @@ export interface Booking {
 
 export interface CreateBookingBody {
   packageId: string;
+  packageDateId?: string;
   pilgrimCount: number;
   pilgrimDetails?: string;
   notes?: string;
