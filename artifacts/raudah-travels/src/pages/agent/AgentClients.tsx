@@ -1979,11 +1979,15 @@ export default function AgentClients() {
       </Dialog>
       {/* Batch Profile Crop Dialog */}
       {batchCropTarget && (
-        <Dialog open={true} onOpenChange={(open) => { if (!open) setBatchCropTarget(null); }}>
-          <DialogContent className="max-w-xl p-0 overflow-hidden bg-white rounded-3xl gap-0 border-0">
+        <Dialog open={true} onOpenChange={() => { /* forced — cannot dismiss */ }}>
+          <DialogContent
+            className="max-w-xl p-0 overflow-hidden bg-white rounded-3xl gap-0 border-0 [&>button]:hidden"
+            onInteractOutside={(e: any) => e.preventDefault()}
+            onEscapeKeyDown={(e: any) => e.preventDefault()}
+          >
             <DialogHeader className="p-5 pb-3">
               <DialogTitle className="text-lg font-black text-[#0F172A]">✂ Crop Profile Photo</DialogTitle>
-              <DialogDescription className="text-xs text-[#64748B]">Drag to frame the face. Click Confirm to save.</DialogDescription>
+              <DialogDescription className="text-xs text-[#64748B]">Drag to frame the face. Click Confirm to save. This step is required.</DialogDescription>
             </DialogHeader>
             <div className="bg-[#1e293b] border-y border-[#334155] p-4 flex justify-center items-center min-h-[300px]">
               <ReactCrop crop={batchCropState} onChange={(_: any, pct: any) => setBatchCropState(pct)} aspect={1} keepSelection className="max-h-[60vh]">
@@ -1992,8 +1996,7 @@ export default function AgentClients() {
                   onLoad={() => setBatchCropState({ unit: "%" as const, x: 3, y: 7, width: 28, height: 61 })} />
               </ReactCrop>
             </div>
-            <DialogFooter className="p-4 bg-white flex items-center justify-between">
-              <Button type="button" variant="outline" onClick={() => setBatchCropTarget(null)} className="rounded-xl border-[#E2E8F0] font-bold h-11 px-6">Cancel</Button>
+            <DialogFooter className="p-4 bg-white flex items-center justify-end">
               <Button type="button" onClick={async () => {
                 if (!batchCropImgRef.current || !batchCropState) return;
                 const img = batchCropImgRef.current;

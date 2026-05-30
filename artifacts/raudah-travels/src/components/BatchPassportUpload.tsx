@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { uploadFile } from "@/lib/upload";
 
 export interface BatchPilgrim {
   id: string;
@@ -147,35 +148,56 @@ export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, on
 
       const passportDataUrl = `data:${file.type};base64,${base64}`;
 
-      const res = await fetch("/api/passport/extract", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64: base64, mimeType: file.type }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        updatePilgrim(pilgrimId, { status: "error", errorMessage: data.error || "Extraction failed", passportCopyUrl: passportDataUrl });
-        return;
-      }
-      if (!data.isAcceptableQuality) {
-        updatePilgrim(pilgrimId, { status: "error", errorMessage: data.rejectionReason || "Image quality issue", passportCopyUrl: passportDataUrl });
-        return;
+      // Upload passport image to R2 first — always save regardless of AI
+      let passportImageUrl: string;
+      try {
+        const passportFile = new File([file], `passport-${Date.now()}.${file.type.split('/')[1] || 'jpg'}`, { type: file.type });
+        passportImageUrl = await uploadFile(passportFile, "passports");
+      } catch {
+        passportImageUrl = passportDataUrl; // fallback to data URL
       }
 
+      // Try AI extraction (non-blocking — failure still saves passport)
+      let aiResult: any = null;
+      let aiFailed = false;
+      let aiErrorMsg = "";
+
+      try {
+        const res = await fetch("/api/passport/extract", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageBase64: base64, mimeType: file.type }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          aiFailed = true;
+          aiErrorMsg = data.error || "Extraction failed";
+        } else if (!data.isAcceptableQuality) {
+          aiFailed = true;
+          aiErrorMsg = data.rejectionReason || "Image quality issue";
+        } else {
+          aiResult = data;
+        }
+      } catch (aiErr: any) {
+        aiFailed = true;
+        aiErrorMsg = aiErr.message || "Unknown error";
+      }
+
+      // Always update with passport URL — AI fields only if extraction succeeded
       updatePilgrim(pilgrimId, {
-        status: "done",
-        firstName: data.firstName || "",
-        lastName: data.lastName || "",
-        passportNumber: data.documentNumber || "",
-        passportIssueDate: normalizeDateToISO(data.dateOfIssue || ""),
-        passportExpiry: normalizeDateToISO(data.dateOfExpiry || ""),
-        passportIssuingAuthority: data.issuingAuthority || data.authority || data.issuingState || "",
-        dateOfBirth: normalizeDateToISO(data.dateOfBirth || ""),
-        gender: normalizeGender(data.sex || ""),
-        nationality: data.nationality || "Nigerian",
-        passportCopyUrl: passportDataUrl,
+        status: aiFailed ? "done" : "done",
+        firstName: aiResult?.firstName || "",
+        lastName: aiResult?.lastName || "",
+        passportNumber: aiResult?.documentNumber || "",
+        passportIssueDate: normalizeDateToISO(aiResult?.dateOfIssue || ""),
+        passportExpiry: normalizeDateToISO(aiResult?.dateOfExpiry || ""),
+        passportIssuingAuthority: aiResult?.issuingAuthority || aiResult?.authority || aiResult?.issuingState || "",
+        dateOfBirth: normalizeDateToISO(aiResult?.dateOfBirth || ""),
+        gender: normalizeGender(aiResult?.sex || ""),
+        nationality: aiResult?.nationality || "Nigerian",
+        passportCopyUrl: passportImageUrl,
+        errorMessage: aiFailed ? `AI: ${aiErrorMsg} — fill details manually` : undefined,
       });
     } catch (err: any) {
       updatePilgrim(pilgrimId, { status: "error", errorMessage: err.message || "Unknown error" });
@@ -521,12 +543,18 @@ export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, on
                       const file = e.target.files?.[0];
                       if (!file) return;
                       if (file.size > MAX_FILE_SIZE) { alert("File exceeds 5MB"); return; }
-                      const base64 = await new Promise<string>((resolve) => {
-                        const reader = new FileReader();
-                        reader.onload = () => resolve(reader.result as string);
-                        reader.readAsDataURL(file);
-                      });
-                      updatePilgrim(selected.id, { passportCopyUrl: base64 });
+                      try {
+                        const url = await uploadFile(file, "passports");
+                        updatePilgrim(selected.id, { passportCopyUrl: url });
+                      } catch {
+                        // Fallback to base64 if R2 upload fails
+                        const base64 = await new Promise<string>((resolve) => {
+                          const reader = new FileReader();
+                          reader.onload = () => resolve(reader.result as string);
+                          reader.readAsDataURL(file);
+                        });
+                        updatePilgrim(selected.id, { passportCopyUrl: base64 });
+                      }
                     }} className="rounded-xl text-xs cursor-pointer bg-white file:bg-[#EEF0FF] file:text-[#2D3199] file:font-bold file:border-0 file:rounded-lg file:mr-2 file:px-2 file:py-1" />
                   </div>
                   {selected.passportCopyUrl && (
@@ -548,12 +576,18 @@ export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, on
                       const file = e.target.files?.[0];
                       if (!file) return;
                       if (file.size > MAX_FILE_SIZE) { alert("Photo exceeds 5MB"); return; }
-                      const base64 = await new Promise<string>((resolve) => {
-                        const reader = new FileReader();
-                        reader.onload = () => resolve(reader.result as string);
-                        reader.readAsDataURL(file);
-                      });
-                      updatePilgrim(selected.id, { profilePhotoUrl: base64 });
+                      try {
+                        const url = await uploadFile(file, "photos");
+                        updatePilgrim(selected.id, { profilePhotoUrl: url });
+                      } catch {
+                        // Fallback to base64 if R2 upload fails
+                        const base64 = await new Promise<string>((resolve) => {
+                          const reader = new FileReader();
+                          reader.onload = () => resolve(reader.result as string);
+                          reader.readAsDataURL(file);
+                        });
+                        updatePilgrim(selected.id, { profilePhotoUrl: base64 });
+                      }
                     }} className="rounded-xl text-xs cursor-pointer bg-white file:bg-[#EEF0FF] file:text-[#2D3199] file:font-bold file:border-0 file:rounded-lg file:mr-2 file:px-2 file:py-1" />
                   </div>
                   {selected.profilePhotoUrl && (
@@ -654,6 +688,20 @@ export default function BatchPassportUpload({ maxPilgrims = 10, onBatchReady, on
             if (invalid.length > 0) {
               setSelectedPilgrim(invalid[0].id);
               alert(`Please fill in the name for all pilgrims. ${invalid.length} pilgrim(s) are missing names.`);
+              return;
+            }
+            // Validate passport copy
+            const noPassport = ready.filter(p => !p.passportCopyUrl);
+            if (noPassport.length > 0) {
+              setSelectedPilgrim(noPassport[0].id);
+              alert(`${noPassport.length} pilgrim(s) are missing a passport copy. Please upload passport documents for all pilgrims.`);
+              return;
+            }
+            // Validate profile photo
+            const noPhoto = ready.filter(p => !p.profilePhotoUrl);
+            if (noPhoto.length > 0) {
+              setSelectedPilgrim(noPhoto[0].id);
+              alert(`${noPhoto.length} pilgrim(s) are missing a profile photo. Please upload profile photos for all pilgrims.`);
               return;
             }
             // Check passport expiry for each pilgrim
