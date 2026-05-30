@@ -1349,7 +1349,7 @@ export default function BookingWizard() {
                 <div className="flex justify-between"><span className="text-muted-foreground">Pilgrims</span><span>{payForm.pilgrimCount}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Departure</span><span>{new Date(pkg.departureDate).toLocaleDateString()}</span></div>
                 {packageDateId && (() => {
-                  const selectedDate = pkg.packageDates.find((d: any) => d.id === packageDateId);
+                  const selectedDate = pkg.packageDates?.find((d: any) => d.id === packageDateId);
                   if (!selectedDate) return null;
                   return (
                     <div className="flex justify-between text-emerald-700 bg-emerald-50/50 p-2 rounded border border-emerald-100 my-1">

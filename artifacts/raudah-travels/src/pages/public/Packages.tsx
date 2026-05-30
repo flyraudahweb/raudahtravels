@@ -67,8 +67,8 @@ export default function Packages() {
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   const { data, isLoading } = useListPackages(
-    { type: typeFilter === "all" ? undefined : typeFilter, available: true },
-    { query: { queryKey: getListPackagesQueryKey({ type: typeFilter === "all" ? undefined : typeFilter, available: true }) } }
+    { type: typeFilter === "all" ? undefined : typeFilter as any, available: true },
+    { query: { queryKey: getListPackagesQueryKey({ type: typeFilter === "all" ? undefined : typeFilter as any, available: true }) } }
   );
 
   const packages = (data?.packages ?? []).filter(pkg => {
