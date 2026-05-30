@@ -110,7 +110,7 @@ interface PaymentRecord {
 export default function AgentBookings() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
-  const pageSize = 20;
+  const pageSize = 100;
   const queryClient = useQueryClient();
   const { toast } = useToast();
   // Record Payment state

@@ -20,7 +20,7 @@ const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; b
   completed: { label: "Completed", bg: "bg-blue-50",    text: "text-blue-700",    border: "border-blue-200",    dot: "bg-blue-400",    icon: Award },
 };
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 100;
 
 type SortKey = "newest" | "oldest" | "amount_high" | "amount_low" | "name_az";
 
