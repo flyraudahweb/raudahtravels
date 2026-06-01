@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Plane, Plus, Trash2, Edit2, Loader2, X } from "lucide-react";
 
@@ -122,26 +123,58 @@ export function GlobalPackageDatesDialog({ open, onClose }: { open: boolean; onC
                 </button>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label className="text-xs font-bold text-slate-500 uppercase">Departure City / Route Preset</Label>
+                  <Select 
+                    value={
+                      form.outboundRoute === "KANO-JEDDAH" && form.returnRoute === "JEDDAH-KANO" ? "kano" : 
+                      form.outboundRoute === "ABUJA-MADINAH" && form.returnRoute === "MADINAH-ABUJA" ? "abuja" : 
+                      "custom"
+                    } 
+                    onValueChange={(val) => {
+                      if (val === "kano") setForm({ ...form, outboundRoute: "KANO-JEDDAH", returnRoute: "JEDDAH-KANO", airline: "flyadeal" });
+                      else if (val === "abuja") setForm({ ...form, outboundRoute: "ABUJA-MADINAH", returnRoute: "MADINAH-ABUJA", airline: "EGYPTAIR" });
+                      else setForm({ ...form, outboundRoute: "", returnRoute: "", airline: "" });
+                    }}
+                  >
+                    <SelectTrigger className="rounded-xl h-10">
+                      <SelectValue placeholder="Select Route Preset..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="kano">Kano (KANO-JEDDAH via flyadeal)</SelectItem>
+                      <SelectItem value="abuja">Abuja (ABUJA-MADINAH via EGYPTAIR)</SelectItem>
+                      <SelectItem value="custom">Custom Route...</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold text-slate-500 uppercase">Outbound Date</Label>
                   <Input type="date" value={form.outbound} onChange={e => setForm({ ...form, outbound: e.target.value })} required className="rounded-xl h-10" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-500 uppercase">Outbound Route</Label>
-                  <Input placeholder="e.g. ABUJA-MADINAH" value={form.outboundRoute} onChange={e => setForm({ ...form, outboundRoute: e.target.value })} className="rounded-xl h-10" />
-                </div>
-                <div className="space-y-1.5">
                   <Label className="text-xs font-bold text-slate-500 uppercase">Return Date</Label>
                   <Input type="date" value={form.returnDate} onChange={e => setForm({ ...form, returnDate: e.target.value })} className="rounded-xl h-10" />
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-500 uppercase">Return Route</Label>
-                  <Input placeholder="e.g. JEDDAH-ABUJA" value={form.returnRoute} onChange={e => setForm({ ...form, returnRoute: e.target.value })} className="rounded-xl h-10" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-500 uppercase">Airline</Label>
-                  <Input placeholder="e.g. EGYPTAIR" value={form.airline} onChange={e => setForm({ ...form, airline: e.target.value })} className="rounded-xl h-10" />
-                </div>
+
+                {(form.outboundRoute !== "KANO-JEDDAH" || form.returnRoute !== "JEDDAH-KANO") && 
+                 (form.outboundRoute !== "ABUJA-MADINAH" || form.returnRoute !== "MADINAH-ABUJA") && (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-slate-500 uppercase">Outbound Route</Label>
+                      <Input placeholder="e.g. LAGOS-JEDDAH" value={form.outboundRoute} onChange={e => setForm({ ...form, outboundRoute: e.target.value })} className="rounded-xl h-10" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-slate-500 uppercase">Return Route</Label>
+                      <Input placeholder="e.g. JEDDAH-LAGOS" value={form.returnRoute} onChange={e => setForm({ ...form, returnRoute: e.target.value })} className="rounded-xl h-10" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-slate-500 uppercase">Airline</Label>
+                      <Input placeholder="e.g. EGYPTAIR" value={form.airline} onChange={e => setForm({ ...form, airline: e.target.value })} className="rounded-xl h-10" />
+                    </div>
+                  </>
+                )}
+
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold text-slate-500 uppercase">Islamic Outbound (opt)</Label>
                   <Input placeholder="e.g. 1 Muharram" value={form.islamicDate} onChange={e => setForm({ ...form, islamicDate: e.target.value })} className="rounded-xl h-10" />
@@ -150,6 +183,7 @@ export function GlobalPackageDatesDialog({ open, onClose }: { open: boolean; onC
                   <Label className="text-xs font-bold text-slate-500 uppercase">Islamic Return (opt)</Label>
                   <Input placeholder="e.g. 15 Muharram" value={form.islamicReturnDate} onChange={e => setForm({ ...form, islamicReturnDate: e.target.value })} className="rounded-xl h-10" />
                 </div>
+
                 <div className="flex items-end md:col-start-4">
                   <Button type="submit" className="w-full h-10 rounded-xl bg-[#FF3B00] hover:bg-[#e03500] font-bold shadow-md shadow-[#FF3B00]/20" disabled={createDate.isPending || updateDate.isPending}>
                     {createDate.isPending || updateDate.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Schedule"}
