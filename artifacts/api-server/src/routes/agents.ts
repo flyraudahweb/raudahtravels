@@ -549,6 +549,16 @@ router.post("/agent/register-client", async (req, res) => {
             price = Math.max(0, price - dv);
           }
         }
+
+        // Apply agent commission as price reduction
+        const commRate = Number(agent.commissionRate);
+        let commissionAmount = 0;
+        if (commRate > 0) {
+          commissionAmount = agent.commissionType === "percentage"
+            ? Math.round(price * commRate / 100 * 100) / 100
+            : Math.min(commRate, price);
+          price = Math.max(0, price - commissionAmount);
+        }
         walletPaid = price;
 
         // Check wallet balance against actual discounted price
@@ -646,12 +656,8 @@ router.post("/agent/register-client", async (req, res) => {
           metadata: { clientName: resolvedFullName, packageName: pkg.name, amount: walletPaid, paymentMethod: "wallet", reference: bookingReference },
         });
 
-        // Create commission record for this booking
-        const commRate = Number(agent.commissionRate);
-        if (commRate > 0) {
-          const commissionAmount = agent.commissionType === "percentage"
-            ? Math.round(price * commRate / 100 * 100) / 100
-            : commRate;
+        // Create commission record for this booking (commissionAmount calculated above)
+        if (commissionAmount > 0) {
           await tx.insert(commissionsTable).values({
             id: randomUUID(),
             agentId: agent.id,
@@ -728,6 +734,16 @@ router.post("/agent/register-client", async (req, res) => {
         } else {
           price = Math.max(0, price - dv);
         }
+      }
+
+      // Apply agent commission as price reduction
+      const commRate = Number(agent.commissionRate);
+      let commissionAmount = 0;
+      if (commRate > 0) {
+        commissionAmount = agent.commissionType === "percentage"
+          ? Math.round(price * commRate / 100 * 100) / 100
+          : Math.min(commRate, price);
+        price = Math.max(0, price - commissionAmount);
       }
       const clampedPaid = Math.min(rawPaid, price);
 
@@ -834,12 +850,8 @@ router.post("/agent/register-client", async (req, res) => {
         metadata: { clientName: resolvedFullName, packageName: pkg.name, amount: clampedPaid, paymentMethod: paymentMethod || "cash", reference: bookingReference },
       });
 
-      // Create commission record for this booking
-      const commRate = Number(agent.commissionRate);
-      if (commRate > 0) {
-        const commissionAmount = agent.commissionType === "percentage"
-          ? Math.round(price * commRate / 100 * 100) / 100
-          : commRate;
+      // Create commission record for this booking (commissionAmount calculated above)
+      if (commissionAmount > 0) {
         await tx.insert(commissionsTable).values({
           id: randomUUID(),
           agentId: agent.id,

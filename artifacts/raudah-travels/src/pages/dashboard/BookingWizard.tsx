@@ -582,7 +582,7 @@ export default function BookingWizard() {
                     pilgrimType: child.type,
                     parentBookingId: booking.id,
                     batchId,
-                  },
+                  } as any,
                 });
               } catch (err) {
                 console.error(`Failed to create booking for child: ${child.firstName}`, err);
@@ -1383,7 +1383,7 @@ export default function BookingWizard() {
                     <div className="flex justify-between text-emerald-700 bg-emerald-50/50 p-2 rounded border border-emerald-100 my-1">
                       <span className="text-muted-foreground">Flight Schedule</span>
                       <span className="font-medium text-right text-xs">
-                        {formatDate(selectedDate.outbound)} - {formatDate(selectedDate.returnDate)}<br />
+                        {formatDate(selectedDate.outbound as string)} - {formatDate(selectedDate.returnDate as string)}<br />
                         <span className="text-[10px] text-muted-foreground">({selectedDate.outboundRoute} | {selectedDate.returnRoute}) via {selectedDate.airline}</span>
                       </span>
                     </div>

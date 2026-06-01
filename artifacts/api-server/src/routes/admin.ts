@@ -2939,7 +2939,142 @@ router.post("/admin/agents/:id/wallet/topup", async (req, res) => {
   });
 });
 
-// ── Agent Package Discounts ───────────────────────────────────────────────────
+// ── Agent Wallet Deduction (admin) ────────────────────────────────────────────
+
+router.post("/admin/agents/:id/wallet/deduct", async (req, res) => {
+  const { userId: clerkUserId } = getAuth(req);
+  if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
+
+  const adminProfile = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, clerkUserId) });
+  if (!adminProfile) return res.status(404).json({ error: "Admin profile not found" });
+
+  // Only super_admin can perform wallet deductions
+  if (adminProfile.role !== "super_admin") {
+    return res.status(403).json({ error: "Only Super Admin can perform wallet deductions" });
+  }
+
+  const { amount, reason, idempotencyKey } = req.body as { amount: number; reason: string; idempotencyKey: string };
+  if (!amount || amount <= 0) return res.status(400).json({ error: "Valid amount is required" });
+  if (!reason || !reason.trim()) return res.status(400).json({ error: "A reason for the deduction is required" });
+  if (!idempotencyKey) return res.status(400).json({ error: "idempotencyKey is required" });
+
+  const agentId = req.params.id;
+  const agent = await db.query.agentsTable.findFirst({ where: eq(agentsTable.id, agentId) });
+  if (!agent) return res.status(404).json({ error: "Agent not found" });
+
+  let finalBalance = 0;
+
+  try {
+    await db.transaction(async (tx) => {
+      // Lock the wallet row to prevent concurrent modifications
+      const lockResult = await tx.execute(
+        sql`SELECT * FROM agent_wallets WHERE agent_id = ${agentId} FOR UPDATE`
+      );
+      const walletRow = (lockResult as any).rows?.[0] ?? (Array.isArray(lockResult) ? lockResult[0] : null);
+      if (!walletRow) throw new Error("Wallet not found for this agent");
+
+      const currentBalance = Number((walletRow as any).balance);
+      if (currentBalance < amount) {
+        throw new Error(`Insufficient balance. Available: ₦${currentBalance.toLocaleString()}, Requested deduction: ₦${amount.toLocaleString()}`);
+      }
+
+      // Deduct from wallet
+      const [wallet] = await tx.update(agentWalletsTable)
+        .set({ balance: sql`balance - ${amount}`, updatedAt: new Date() })
+        .where(eq(agentWalletsTable.agentId, agentId))
+        .returning();
+
+      // Record transaction (idempotency via unique reference)
+      await tx.insert(walletTransactionsTable).values({
+        id: randomUUID(),
+        agentId,
+        amount: String(-amount),
+        type: "deduction",
+        reference: `DEDUCT-${idempotencyKey}`,
+        description: `Deducted by Admin (${adminProfile.fullName}): ${reason}`,
+      });
+
+      // Log audit activity
+      await tx.insert(userActivityTable).values({
+        id: randomUUID(),
+        userId: adminProfile.id,
+        eventType: "wallet_deduction",
+        metadata: {
+          agentId,
+          agentName: agent.businessName || agentId,
+          amount,
+          reason,
+          idempotencyKey,
+        },
+      });
+
+      finalBalance = Number(wallet?.balance || 0);
+    });
+  } catch (err: any) {
+    if (err.code === "23505" || err.message.includes("unique constraint")) {
+      return res.status(409).json({ error: "This deduction has already been processed (duplicate request)" });
+    }
+    console.error("Wallet deduction error:", err);
+    return res.status(400).json({ error: err.message || "Failed to process wallet deduction" });
+  }
+
+  return res.json({
+    success: true,
+    newBalance: finalBalance,
+    message: `₦${amount.toLocaleString()} deducted from agent wallet successfully.`,
+  });
+});
+
+// ── Agent Transactions (admin view) ───────────────────────────────────────────
+
+router.get("/admin/agents/:id/transactions", async (req, res) => {
+  const { userId: clerkUserId } = getAuth(req);
+  if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
+  const callerProfile = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, clerkUserId) });
+  if (!callerProfile) return res.status(404).json({ error: "Profile not found" });
+  if (!["admin", "super_admin", "staff"].includes(callerProfile.role)) {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+
+  const agentId = req.params.id;
+  const { limit = "50", offset = "0" } = req.query as Record<string, string>;
+  const pLimit = Math.min(Math.max(1, parseInt(limit) || 50), 200);
+  const pOffset = Math.max(0, parseInt(offset) || 0);
+
+  const wallet = await db.query.agentWalletsTable.findFirst({ where: eq(agentWalletsTable.agentId, agentId) });
+
+  const [transactions, [{ count }]] = await Promise.all([
+    db.select().from(walletTransactionsTable)
+      .where(eq(walletTransactionsTable.agentId, agentId))
+      .orderBy(desc(walletTransactionsTable.createdAt))
+      .limit(pLimit)
+      .offset(pOffset),
+    db.select({ count: sql<number>`count(*)::int` })
+      .from(walletTransactionsTable)
+      .where(eq(walletTransactionsTable.agentId, agentId)),
+  ]);
+
+  // Also get commission totals
+  const commissions = await db.select({
+    totalAmount: sql<number>`COALESCE(SUM(amount::numeric), 0)`,
+    paidAmount: sql<number>`COALESCE(SUM(CASE WHEN status = 'paid' THEN amount::numeric ELSE 0 END), 0)`,
+    pendingAmount: sql<number>`COALESCE(SUM(CASE WHEN status = 'pending' THEN amount::numeric ELSE 0 END), 0)`,
+  }).from(commissionsTable).where(eq(commissionsTable.agentId, agentId));
+
+  return res.json({
+    balance: Number(wallet?.balance || 0),
+    transactions: transactions.map(t => ({ ...t, amount: Number(t.amount) })),
+    total: count,
+    totalPages: Math.ceil(count / pLimit),
+    commissionSummary: {
+      total: Number(commissions[0]?.totalAmount || 0),
+      paid: Number(commissions[0]?.paidAmount || 0),
+      pending: Number(commissions[0]?.pendingAmount || 0),
+    },
+  });
+});
+
+
 
 router.get("/admin/agents/:id/package-discounts", async (req, res) => {
   const discounts = await db.query.agentPackageDiscountsTable.findMany({

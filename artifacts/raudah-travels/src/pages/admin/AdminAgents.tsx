@@ -18,6 +18,7 @@ import {
   Eye, EyeOff, Loader2, ChevronDown, Clock, RefreshCw, Users, CreditCard, Phone, Mail, MapPin, X, ChevronRight, Download, Search,
   ShieldBan, ShieldCheck, Ban, AlertTriangle, ChevronLeft,
 } from "lucide-react";
+import { Minus } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
@@ -383,6 +384,112 @@ function WalletTopupDialog({ agent, onClose }: { agent: any; onClose: () => void
   );
 }
 
+/* ─── Wallet Deduct Dialog ────────────────────────────────────────────── */
+
+function WalletDeductDialog({ agent, onClose }: { agent: any; onClose: () => void }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [step, setStep] = useState<"form" | "confirm" | "done">("form");
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const [newBalance, setNewBalance] = useState(0);
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
+
+  const deductMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/admin/agents/${agent.id}/wallet/deduct`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: parseFloat(amount), reason, idempotencyKey }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to process deduction");
+      return data;
+    },
+    onSuccess: (data) => {
+      setNewBalance(data.newBalance);
+      setStep("done");
+      qc.invalidateQueries({ queryKey: getListAgentsQueryKey({}) });
+      qc.invalidateQueries({ queryKey: ["agent-transactions", agent.id] });
+      toast({ title: `₦${parseFloat(amount).toLocaleString()} deducted from wallet` });
+    },
+    onError: (err: any) => toast({ title: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="font-black text-red-700">Deduct from Wallet</DialogTitle>
+          <DialogDescription>Deduct funds from <strong>{agent.businessName}</strong>'s wallet</DialogDescription>
+        </DialogHeader>
+
+        {step === "form" && (
+          <div className="space-y-4 py-2">
+            <div className="bg-[#F8FAFC] rounded-2xl border border-[#DCE3F0] p-4">
+              <p className="text-xs text-[#94A3B8] font-medium mb-1">Current Balance</p>
+              <p className="text-2xl font-black text-[#2D3199]">₦{(agent.walletBalance || 0).toLocaleString()}</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-[#334155]">Amount to Deduct (₦)</Label>
+              <Input value={amount} onChange={e => setAmount(e.target.value)} type="number" min="1" placeholder="e.g. 50000" className="text-lg font-bold" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-[#334155]">Reason for Deduction</Label>
+              <Input value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. Refund, correction, penalty..." className="text-sm" />
+            </div>
+            <Button onClick={() => setStep("confirm")} disabled={!amount || parseFloat(amount) <= 0 || !reason.trim()} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl">
+              Proceed to Confirmation
+            </Button>
+          </div>
+        )}
+
+        {step === "confirm" && (
+          <div className="space-y-4 py-2">
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-center">
+              <p className="text-red-800 text-sm font-medium">Please confirm this deduction.</p>
+              <div className="mt-3 bg-white rounded-xl p-3 border border-red-200">
+                <p className="text-xs text-red-600 font-bold uppercase tracking-wider mb-1">Deduction Amount</p>
+                <p className="text-2xl font-black text-red-700">₦{parseFloat(amount).toLocaleString()}</p>
+              </div>
+              <div className="mt-2 bg-white rounded-xl p-3 border border-red-200">
+                <p className="text-xs text-red-600 font-bold uppercase tracking-wider mb-1">Reason</p>
+                <p className="text-sm font-semibold text-[#0F172A]">{reason}</p>
+              </div>
+            </div>
+            <p className="text-center text-xs text-[#94A3B8]">
+              This action is permanent and cannot be undone. Only Super Admins can perform this.
+            </p>
+            <div className="flex gap-3">
+              <Button onClick={() => setStep("form")} variant="outline" className="flex-1 rounded-xl">Back</Button>
+              <Button onClick={() => deductMutation.mutate()} disabled={deductMutation.isPending} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl">
+                {deductMutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing...</> : "Confirm Deduction"}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === "done" && (
+          <div className="space-y-4 py-2 text-center">
+            <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto">
+              <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-lg font-black text-[#0F172A]">Wallet Debited!</p>
+              <p className="text-[#64748B] text-sm mt-1">₦{parseFloat(amount).toLocaleString()} deducted successfully</p>
+            </div>
+            <div className="bg-[#F8FAFC] rounded-2xl border border-[#DCE3F0] p-4">
+              <p className="text-xs text-[#94A3B8] font-medium mb-1">New Balance</p>
+              <p className="text-2xl font-black text-[#2D3199]">₦{newBalance.toLocaleString()}</p>
+            </div>
+            <Button onClick={onClose} className="w-full bg-[#2D3199] rounded-xl">Done</Button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /* ─── Package Discounts Dialog ────────────────────────────────────────── */
 
 function PackageDiscountsDialog({ agent, onClose }: { agent: any; onClose: () => void }) {
@@ -633,10 +740,12 @@ function CommissionEditDialog({ agent, onClose }: { agent: any; onClose: () => v
 function AgentDetailDialog({ agent, onClose, onAction }: {
   agent: any;
   onClose: () => void;
-  onAction: (type: "wallet" | "commission" | "discounts", agent: any) => void;
+  onAction: (type: "wallet" | "commission" | "discounts" | "deduct", agent: any) => void;
 }) {
   const [page, setPage] = useState(1);
+  const [txPage, setTxPage] = useState(1);
   const PAGE_SIZE = 10;
+  const TX_PAGE_SIZE = 10;
 
   const { data: clientsData, isLoading: clientsLoading } = useQuery<{ pilgrims: any[]; total: number }>({
     queryKey: ["agent-detail-clients", agent.id],
@@ -649,6 +758,23 @@ function AgentDetailDialog({ agent, onClose, onAction }: {
   const totalRevenue = clients.reduce((s: number, c: any) => s + Number(c.totalPrice || 0), 0);
   const totalPaid = clients.reduce((s: number, c: any) => s + Number(c.amountPaid || 0), 0);
   const confirmedCount = clients.filter((c: any) => c.status === "confirmed").length;
+
+  // Fetch transaction history & commission summary
+  const { data: txData, isLoading: txLoading } = useQuery<{
+    balance: number;
+    transactions: Array<{ id: string; amount: number; type: string; reference: string; description: string; createdAt: string }>;
+    total: number;
+    totalPages: number;
+    commissionSummary: { total: number; paid: number; pending: number };
+  }>({
+    queryKey: ["agent-transactions", agent.id, txPage],
+    queryFn: () => fetch(`/api/admin/agents/${agent.id}/transactions?limit=${TX_PAGE_SIZE}&offset=${(txPage - 1) * TX_PAGE_SIZE}`, { credentials: "include" }).then(r => r.json()),
+    staleTime: 15000,
+  });
+  const transactions = txData?.transactions || [];
+  const txTotalPages = txData?.totalPages || 1;
+  const commissionSummary = txData?.commissionSummary || { total: 0, paid: 0, pending: 0 };
+  const liveWalletBalance = txData?.balance ?? Number(agent.walletBalance || 0);
 
   const totalPages = Math.max(1, Math.ceil(clients.length / PAGE_SIZE));
   const paginatedClients = clients.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -757,7 +883,7 @@ function AgentDetailDialog({ agent, onClose, onAction }: {
                 <div className="flex-1">
                   <p className="text-[9px] font-black text-[#94A3B8] uppercase tracking-widest">Wallet Balance</p>
                   <p className="text-sm font-black text-emerald-600 mt-0.5">
-                    ₦{Number(agent.wallet?.balance || 0).toLocaleString()}
+                    ₦{liveWalletBalance.toLocaleString()}
                   </p>
                 </div>
                 <button onClick={() => onAction("wallet", agent)}
@@ -780,6 +906,10 @@ function AgentDetailDialog({ agent, onClose, onAction }: {
               <button onClick={() => onAction("discounts", agent)}
                 className="flex items-center gap-1.5 px-3 py-2 bg-white border border-[#DCE3F0] hover:bg-[#F8FAFC] text-[#334155] text-xs font-bold rounded-xl transition-colors">
                 <Tag className="w-3.5 h-3.5" /> Package Discounts
+              </button>
+              <button onClick={() => onAction("deduct", agent)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-red-50 border border-red-200 hover:bg-red-100 text-red-700 text-xs font-bold rounded-xl transition-colors">
+                <Minus className="w-3.5 h-3.5" /> Deduct Wallet
               </button>
             </div>
 
@@ -871,6 +1001,85 @@ function AgentDetailDialog({ agent, onClose, onAction }: {
                         >
                           Next
                         </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Transaction History */}
+            <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-[#E2E8F0] bg-[#FAFBFF] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-md bg-emerald-50 flex items-center justify-center">
+                    <Wallet className="w-3.5 h-3.5 text-emerald-600" />
+                  </div>
+                  <p className="text-xs font-black text-[#0F172A] uppercase tracking-wide">Transaction History</p>
+                  <span className="text-[10px] font-black bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">
+                    {txData?.total || 0}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-[10px] font-bold">
+                  <span className="text-[#94A3B8]">Commission Earned:</span>
+                  <span className="text-emerald-700">₦{commissionSummary.total.toLocaleString()}</span>
+                </div>
+              </div>
+
+              {txLoading ? (
+                <div className="p-4 space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-10 rounded-xl" />)}</div>
+              ) : transactions.length === 0 ? (
+                <div className="p-6 text-center">
+                  <Wallet className="w-7 h-7 text-[#94A3B8]/30 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-[#94A3B8]">No transactions yet</p>
+                </div>
+              ) : (
+                <div className="flex flex-col">
+                  <div className="divide-y divide-[#F1F5F9] max-h-[250px] overflow-y-auto">
+                    {transactions.map((tx: any) => {
+                      const isDebit = tx.amount < 0;
+                      return (
+                        <div key={tx.id} className="px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-[#FAFBFF] transition-colors">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${isDebit ? 'bg-red-50' : 'bg-emerald-50'}`}>
+                              {isDebit ? (
+                                <Minus className="w-3.5 h-3.5 text-red-500" />
+                              ) : (
+                                <Plus className="w-3.5 h-3.5 text-emerald-500" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-[#0F172A] truncate">
+                                {tx.description || tx.reference || tx.type}
+                              </p>
+                              <p className="text-[10px] text-[#94A3B8]">
+                                {new Date(tx.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                              </p>
+                            </div>
+                          </div>
+                          <p className={`text-xs font-black shrink-0 ${isDebit ? 'text-red-600' : 'text-emerald-600'}`}>
+                            {isDebit ? '-' : '+'}₦{Math.abs(tx.amount).toLocaleString()}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {txTotalPages > 1 && (
+                    <div className="px-4 py-2.5 border-t border-[#E2E8F0] bg-[#FAFBFF] flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#64748B]">
+                        Page {txPage} of {txTotalPages}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setTxPage(p => Math.max(1, p - 1))}
+                          disabled={txPage === 1}
+                          className="px-2 py-1 text-xs font-bold rounded-md bg-white border border-[#DCE3F0] text-[#0F172A] disabled:opacity-40 hover:bg-[#F1F5F9]"
+                        >Prev</button>
+                        <button
+                          onClick={() => setTxPage(p => Math.min(txTotalPages, p + 1))}
+                          disabled={txPage === txTotalPages}
+                          className="px-2 py-1 text-xs font-bold rounded-md bg-white border border-[#DCE3F0] text-[#0F172A] disabled:opacity-40 hover:bg-[#F1F5F9]"
+                        >Next</button>
                       </div>
                     </div>
                   )}
@@ -1040,6 +1249,7 @@ type ActiveDialog =
   | { type: "create" }
   | { type: "approve-app"; app: any }
   | { type: "wallet"; agent: any }
+  | { type: "deduct"; agent: any }
   | { type: "discounts"; agent: any }
   | { type: "commission"; agent: any }
   | { type: "detail"; agent: any }
@@ -1508,6 +1718,9 @@ export default function AdminAgents() {
       )}
       {dialog?.type === "commission" && (
         <CommissionEditDialog agent={dialog.agent} onClose={() => setDialog(null)} />
+      )}
+      {dialog?.type === "deduct" && (
+        <WalletDeductDialog agent={dialog.agent} onClose={() => setDialog(null)} />
       )}
       {dialog?.type === "detail" && (
         <AgentDetailDialog agent={dialog.agent} onClose={() => setDialog(null)}

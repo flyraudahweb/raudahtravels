@@ -330,16 +330,26 @@ export default function AgentClients() {
   }, [searchStr, packages]);
   const selectedPkg = packages.find(p => p.id === form.packageId);
 
-  // Compute agent's effective price after admin-applied discount
+  // Compute agent's effective price after admin-applied discount AND commission
   const selectedDiscount = selectedPkg ? discountMap[selectedPkg.id] : undefined;
+  const commissionRate = discountData?.commissionRate || 0;
+  const commissionType = discountData?.commissionType || "percentage";
   const effectivePrice = selectedPkg ? (() => {
     let p = selectedPkg.price;
+    // Apply per-package discount first
     if (selectedDiscount) {
       if (selectedDiscount.discountType === "percentage") {
         p = Math.round((p - (p * selectedDiscount.discountValue / 100)) * 100) / 100;
       } else {
         p = Math.max(0, p - selectedDiscount.discountValue);
       }
+    }
+    // Apply commission as price reduction
+    if (commissionRate > 0) {
+      const commDeduction = commissionType === "percentage"
+        ? Math.round(p * commissionRate / 100 * 100) / 100
+        : Math.min(commissionRate, p);
+      p = Math.max(0, p - commDeduction);
     }
     return p;
   })() : 0;
@@ -1740,8 +1750,33 @@ export default function AgentClients() {
                             {form.civility && `${form.civility} `}{form.firstName} {form.lastName}
                           </p>
                         </div>
-                        <p className="font-black text-[#2D3199] text-xl">₦{effectivePrice.toLocaleString()}{selectedDiscount ? <span className="text-xs text-emerald-600 ml-1 font-bold">({selectedDiscount.discountType === "percentage" ? `${selectedDiscount.discountValue}% off` : `₦${selectedDiscount.discountValue.toLocaleString()} off`})</span> : null}</p>
+                        <div className="text-right">
+                          {(selectedDiscount || commissionRate > 0) && (
+                            <p className="text-xs text-[#94A3B8] line-through mb-0.5">₦{selectedPkg.price.toLocaleString()}</p>
+                          )}
+                          <p className="font-black text-[#2D3199] text-xl">₦{effectivePrice.toLocaleString()}</p>
+                        </div>
                       </div>
+                      {(selectedDiscount || commissionRate > 0) && (
+                        <div className="mt-2 pt-2 border-t border-[#C7CCF5]/30 space-y-1">
+                          {selectedDiscount && (
+                            <div className="flex justify-between text-[10px]">
+                              <span className="text-emerald-700 font-semibold">Package Discount</span>
+                              <span className="font-black text-emerald-700">
+                                -{selectedDiscount.discountType === "percentage" ? `${selectedDiscount.discountValue}%` : `₦${selectedDiscount.discountValue.toLocaleString()}`}
+                              </span>
+                            </div>
+                          )}
+                          {commissionRate > 0 && (
+                            <div className="flex justify-between text-[10px]">
+                              <span className="text-emerald-700 font-semibold">Commission Discount</span>
+                              <span className="font-black text-emerald-700">
+                                -{commissionType === "percentage" ? `${commissionRate}%` : `₦${Number(commissionRate).toLocaleString()}`}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
 

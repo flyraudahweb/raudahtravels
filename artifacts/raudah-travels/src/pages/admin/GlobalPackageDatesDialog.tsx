@@ -41,7 +41,7 @@ export function GlobalPackageDatesDialog({ open, onClose }: { open: boolean; onC
   const { toast } = useToast();
   const qc = useQueryClient();
   const { data: datesResp, isLoading } = useListPackageDates(
-    { query: { enabled: open } }
+    { query: { enabled: open, queryKey: getListPackageDatesQueryKey() } }
   );
   
   const createDate = useCreatePackageDate();
