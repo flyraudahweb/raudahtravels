@@ -146,6 +146,79 @@ paths:
               schema:
                 $ref: "#/components/schemas/TravelPackage"
 
+  /package-dates:
+    get:
+      operationId: listPackageDates
+      tags: [packages]
+      summary: List all global flight schedules
+      responses:
+        "200":
+          description: List of dates
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dates:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PackageDate"
+    post:
+      operationId: createPackageDate
+      tags: [packages]
+      summary: Add a global flight schedule (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePackageDateBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackageDate"
+
+  /package-dates/{id}:
+    put:
+      operationId: updatePackageDate
+      tags: [packages]
+      summary: Update a global flight schedule (admin)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePackageDateBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackageDate"
+    delete:
+      operationId: deletePackageDate
+      tags: [packages]
+      summary: Delete a global flight schedule (admin)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+
   /packages/{id}:
     get:
       operationId: getPackage
@@ -1353,6 +1426,73 @@ paths:
 
 components:
   schemas:
+    PackageDate:
+      type: object
+      properties:
+        id:
+          type: string
+        packageId:
+          type: string
+          nullable: true
+        outbound:
+          type: string
+        outboundRoute:
+          type: string
+          nullable: true
+        returnDate:
+          type: string
+          nullable: true
+        returnRoute:
+          type: string
+          nullable: true
+        airline:
+          type: string
+          nullable: true
+        islamicDate:
+          type: string
+          nullable: true
+        islamicReturnDate:
+          type: string
+          nullable: true
+      required: [id, outbound]
+
+    CreatePackageDateBody:
+      type: object
+      properties:
+        outbound:
+          type: string
+        outboundRoute:
+          type: string
+        returnDate:
+          type: string
+        returnRoute:
+          type: string
+        airline:
+          type: string
+        islamicDate:
+          type: string
+        islamicReturnDate:
+          type: string
+      required: [outbound]
+
+    UpdatePackageDateBody:
+      type: object
+      properties:
+        outbound:
+          type: string
+        outboundRoute:
+          type: string
+        returnDate:
+          type: string
+        returnRoute:
+          type: string
+        airline:
+          type: string
+        islamicDate:
+          type: string
+        islamicReturnDate:
+          type: string
+
     HealthStatus:
       type: object
       properties:

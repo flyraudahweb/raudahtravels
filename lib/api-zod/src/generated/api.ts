@@ -89,7 +89,18 @@ export const SyncProfileResponse = zod.object({
  * @summary List travel packages
  */
 export const ListPackagesQueryParams = zod.object({
-  type: zod.enum(["hajj", "umrah"]).optional(),
+  type: zod
+    .enum([
+      "hajj",
+      "umrah",
+      "visa_only",
+      "ticket_only",
+      "accommodation_only",
+      "visa_ticket",
+      "visa_accommodation",
+      "accommodation_ticket",
+    ])
+    .optional(),
   available: zod.coerce.boolean().optional(),
   limit: zod.coerce.number().optional(),
   offset: zod.coerce.number().optional(),
@@ -100,7 +111,16 @@ export const ListPackagesResponse = zod.object({
     zod.object({
       id: zod.string(),
       name: zod.string(),
-      type: zod.enum(["hajj", "umrah"]),
+      type: zod.enum([
+        "hajj",
+        "umrah",
+        "visa_only",
+        "ticket_only",
+        "accommodation_only",
+        "visa_ticket",
+        "visa_accommodation",
+        "accommodation_ticket",
+      ]),
       category: zod.enum(["premium", "standard", "budget"]),
       season: zod.string().nullish(),
       description: zod.string(),
@@ -135,7 +155,16 @@ export const ListPackagesResponse = zod.object({
  */
 export const CreatePackageBody = zod.object({
   name: zod.string(),
-  type: zod.enum(["hajj", "umrah"]),
+  type: zod.enum([
+    "hajj",
+    "umrah",
+    "visa_only",
+    "ticket_only",
+    "accommodation_only",
+    "visa_ticket",
+    "visa_accommodation",
+    "accommodation_ticket",
+  ]),
   description: zod.string(),
   price: zod.number(),
   depositAmount: zod.number(),
@@ -154,6 +183,76 @@ export const CreatePackageBody = zod.object({
 });
 
 /**
+ * @summary List all global flight schedules
+ */
+export const ListPackageDatesResponse = zod.object({
+  dates: zod
+    .array(
+      zod.object({
+        id: zod.string(),
+        packageId: zod.string().nullish(),
+        outbound: zod.string(),
+        outboundRoute: zod.string().nullish(),
+        returnDate: zod.string().nullish(),
+        returnRoute: zod.string().nullish(),
+        airline: zod.string().nullish(),
+        islamicDate: zod.string().nullish(),
+        islamicReturnDate: zod.string().nullish(),
+      }),
+    )
+    .optional(),
+});
+
+/**
+ * @summary Add a global flight schedule (admin)
+ */
+export const CreatePackageDateBody = zod.object({
+  outbound: zod.string(),
+  outboundRoute: zod.string().optional(),
+  returnDate: zod.string().optional(),
+  returnRoute: zod.string().optional(),
+  airline: zod.string().optional(),
+  islamicDate: zod.string().optional(),
+  islamicReturnDate: zod.string().optional(),
+});
+
+/**
+ * @summary Update a global flight schedule (admin)
+ */
+export const UpdatePackageDateParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdatePackageDateBody = zod.object({
+  outbound: zod.string().optional(),
+  outboundRoute: zod.string().optional(),
+  returnDate: zod.string().optional(),
+  returnRoute: zod.string().optional(),
+  airline: zod.string().optional(),
+  islamicDate: zod.string().optional(),
+  islamicReturnDate: zod.string().optional(),
+});
+
+export const UpdatePackageDateResponse = zod.object({
+  id: zod.string(),
+  packageId: zod.string().nullish(),
+  outbound: zod.string(),
+  outboundRoute: zod.string().nullish(),
+  returnDate: zod.string().nullish(),
+  returnRoute: zod.string().nullish(),
+  airline: zod.string().nullish(),
+  islamicDate: zod.string().nullish(),
+  islamicReturnDate: zod.string().nullish(),
+});
+
+/**
+ * @summary Delete a global flight schedule (admin)
+ */
+export const DeletePackageDateParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+/**
  * @summary Get a package by ID
  */
 export const GetPackageParams = zod.object({
@@ -163,7 +262,16 @@ export const GetPackageParams = zod.object({
 export const GetPackageResponse = zod.object({
   id: zod.string(),
   name: zod.string(),
-  type: zod.enum(["hajj", "umrah"]),
+  type: zod.enum([
+    "hajj",
+    "umrah",
+    "visa_only",
+    "ticket_only",
+    "accommodation_only",
+    "visa_ticket",
+    "visa_accommodation",
+    "accommodation_ticket",
+  ]),
   category: zod.enum(["premium", "standard", "budget"]),
   season: zod.string().nullish(),
   description: zod.string(),
@@ -199,7 +307,16 @@ export const UpdatePackageParams = zod.object({
 
 export const UpdatePackageBody = zod.object({
   name: zod.string(),
-  type: zod.enum(["hajj", "umrah"]),
+  type: zod.enum([
+    "hajj",
+    "umrah",
+    "visa_only",
+    "ticket_only",
+    "accommodation_only",
+    "visa_ticket",
+    "visa_accommodation",
+    "accommodation_ticket",
+  ]),
   description: zod.string(),
   price: zod.number(),
   depositAmount: zod.number(),
@@ -220,7 +337,16 @@ export const UpdatePackageBody = zod.object({
 export const UpdatePackageResponse = zod.object({
   id: zod.string(),
   name: zod.string(),
-  type: zod.enum(["hajj", "umrah"]),
+  type: zod.enum([
+    "hajj",
+    "umrah",
+    "visa_only",
+    "ticket_only",
+    "accommodation_only",
+    "visa_ticket",
+    "visa_accommodation",
+    "accommodation_ticket",
+  ]),
   category: zod.enum(["premium", "standard", "budget"]),
   season: zod.string().nullish(),
   description: zod.string(),
@@ -297,7 +423,16 @@ export const ListBookingsResponse = zod.object({
         .object({
           id: zod.string(),
           name: zod.string(),
-          type: zod.enum(["hajj", "umrah"]),
+          type: zod.enum([
+            "hajj",
+            "umrah",
+            "visa_only",
+            "ticket_only",
+            "accommodation_only",
+            "visa_ticket",
+            "visa_accommodation",
+            "accommodation_ticket",
+          ]),
           category: zod.enum(["premium", "standard", "budget"]),
           season: zod.string().nullish(),
           description: zod.string(),
@@ -357,6 +492,7 @@ export const CreateBookingBody = zod.object({
   fullName: zod.string().nullish(),
   passportNumber: zod.string().nullish(),
   phone: zod.string().nullish(),
+  customData: zod.record(zod.string(), zod.unknown()).optional(),
 });
 
 /**
@@ -383,7 +519,16 @@ export const GetBookingResponse = zod.object({
     .object({
       id: zod.string(),
       name: zod.string(),
-      type: zod.enum(["hajj", "umrah"]),
+      type: zod.enum([
+        "hajj",
+        "umrah",
+        "visa_only",
+        "ticket_only",
+        "accommodation_only",
+        "visa_ticket",
+        "visa_accommodation",
+        "accommodation_ticket",
+      ]),
       category: zod.enum(["premium", "standard", "budget"]),
       season: zod.string().nullish(),
       description: zod.string(),
@@ -460,7 +605,16 @@ export const UpdateBookingResponse = zod.object({
     .object({
       id: zod.string(),
       name: zod.string(),
-      type: zod.enum(["hajj", "umrah"]),
+      type: zod.enum([
+        "hajj",
+        "umrah",
+        "visa_only",
+        "ticket_only",
+        "accommodation_only",
+        "visa_ticket",
+        "visa_accommodation",
+        "accommodation_ticket",
+      ]),
       category: zod.enum(["premium", "standard", "budget"]),
       season: zod.string().nullish(),
       description: zod.string(),
@@ -546,7 +700,16 @@ export const ListPaymentsResponse = zod.object({
             .object({
               id: zod.string(),
               name: zod.string(),
-              type: zod.enum(["hajj", "umrah"]),
+              type: zod.enum([
+                "hajj",
+                "umrah",
+                "visa_only",
+                "ticket_only",
+                "accommodation_only",
+                "visa_ticket",
+                "visa_accommodation",
+                "accommodation_ticket",
+              ]),
               category: zod.enum(["premium", "standard", "budget"]),
               season: zod.string().nullish(),
               description: zod.string(),
@@ -650,7 +813,16 @@ export const GetPaymentResponse = zod.object({
         .object({
           id: zod.string(),
           name: zod.string(),
-          type: zod.enum(["hajj", "umrah"]),
+          type: zod.enum([
+            "hajj",
+            "umrah",
+            "visa_only",
+            "ticket_only",
+            "accommodation_only",
+            "visa_ticket",
+            "visa_accommodation",
+            "accommodation_ticket",
+          ]),
           category: zod.enum(["premium", "standard", "budget"]),
           season: zod.string().nullish(),
           description: zod.string(),
@@ -738,7 +910,16 @@ export const VerifyPaymentResponse = zod.object({
         .object({
           id: zod.string(),
           name: zod.string(),
-          type: zod.enum(["hajj", "umrah"]),
+          type: zod.enum([
+            "hajj",
+            "umrah",
+            "visa_only",
+            "ticket_only",
+            "accommodation_only",
+            "visa_ticket",
+            "visa_accommodation",
+            "accommodation_ticket",
+          ]),
           category: zod.enum(["premium", "standard", "budget"]),
           season: zod.string().nullish(),
           description: zod.string(),
@@ -1594,7 +1775,16 @@ export const ListCommissionsResponse = zod.object({
             .object({
               id: zod.string(),
               name: zod.string(),
-              type: zod.enum(["hajj", "umrah"]),
+              type: zod.enum([
+                "hajj",
+                "umrah",
+                "visa_only",
+                "ticket_only",
+                "accommodation_only",
+                "visa_ticket",
+                "visa_accommodation",
+                "accommodation_ticket",
+              ]),
               category: zod.enum(["premium", "standard", "budget"]),
               season: zod.string().nullish(),
               description: zod.string(),
@@ -1678,7 +1868,16 @@ export const GetDashboardSummaryResponse = zod.object({
         .object({
           id: zod.string(),
           name: zod.string(),
-          type: zod.enum(["hajj", "umrah"]),
+          type: zod.enum([
+            "hajj",
+            "umrah",
+            "visa_only",
+            "ticket_only",
+            "accommodation_only",
+            "visa_ticket",
+            "visa_accommodation",
+            "accommodation_ticket",
+          ]),
           category: zod.enum(["premium", "standard", "budget"]),
           season: zod.string().nullish(),
           description: zod.string(),
@@ -1753,7 +1952,16 @@ export const GetDashboardSummaryResponse = zod.object({
             .object({
               id: zod.string(),
               name: zod.string(),
-              type: zod.enum(["hajj", "umrah"]),
+              type: zod.enum([
+                "hajj",
+                "umrah",
+                "visa_only",
+                "ticket_only",
+                "accommodation_only",
+                "visa_ticket",
+                "visa_accommodation",
+                "accommodation_ticket",
+              ]),
               category: zod.enum(["premium", "standard", "budget"]),
               season: zod.string().nullish(),
               description: zod.string(),
@@ -1861,7 +2069,16 @@ export const GetAgentOverviewResponse = zod.object({
         .object({
           id: zod.string(),
           name: zod.string(),
-          type: zod.enum(["hajj", "umrah"]),
+          type: zod.enum([
+            "hajj",
+            "umrah",
+            "visa_only",
+            "ticket_only",
+            "accommodation_only",
+            "visa_ticket",
+            "visa_accommodation",
+            "accommodation_ticket",
+          ]),
           category: zod.enum(["premium", "standard", "budget"]),
           season: zod.string().nullish(),
           description: zod.string(),
@@ -2005,7 +2222,16 @@ export const GetPilgrimResponse = zod
             .object({
               id: zod.string(),
               name: zod.string(),
-              type: zod.enum(["hajj", "umrah"]),
+              type: zod.enum([
+                "hajj",
+                "umrah",
+                "visa_only",
+                "ticket_only",
+                "accommodation_only",
+                "visa_ticket",
+                "visa_accommodation",
+                "accommodation_ticket",
+              ]),
               category: zod.enum(["premium", "standard", "budget"]),
               season: zod.string().nullish(),
               description: zod.string(),
@@ -2103,7 +2329,16 @@ export const GetPilgrimResponse = zod
                 .object({
                   id: zod.string(),
                   name: zod.string(),
-                  type: zod.enum(["hajj", "umrah"]),
+                  type: zod.enum([
+                    "hajj",
+                    "umrah",
+                    "visa_only",
+                    "ticket_only",
+                    "accommodation_only",
+                    "visa_ticket",
+                    "visa_accommodation",
+                    "accommodation_ticket",
+                  ]),
                   category: zod.enum(["premium", "standard", "budget"]),
                   season: zod.string().nullish(),
                   description: zod.string(),

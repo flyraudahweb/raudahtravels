@@ -22,6 +22,7 @@ import type { TravelPackage } from "@workspace/api-client-react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { GlobalPackageDatesDialog } from "./GlobalPackageDatesDialog";
 
 type PackageForm = {
   name: string; type: "hajj" | "umrah" | "visa_only" | "ticket_only" | "accommodation_only" | "visa_ticket" | "visa_accommodation" | "accommodation_ticket"; description: string; price: string;
@@ -714,6 +715,7 @@ export default function AdminPackages() {
   const deletePackage = useDeletePackage();
   const updatePackage = useUpdatePackage();
   const [createOpen, setCreateOpen] = useState(false);
+  const [datesOpen, setDatesOpen] = useState(false);
   const [editing, setEditing] = useState<TravelPackage | null>(null);
   const [statsFor, setStatsFor] = useState<TravelPackage | null>(null);
   const [tab, setTab] = useState<"active" | "archived">("active");
@@ -752,13 +754,20 @@ export default function AdminPackages() {
           <h1 className="text-2xl font-black text-[#0F172A]">Packages</h1>
           <p className="text-[#64748B] text-sm mt-0.5">Manage all Hajj & Umrah packages</p>
         </div>
-        <button onClick={() => setCreateOpen(true)}
-          className="flex items-center gap-2 px-5 py-2.5 bg-[#FF3B00] hover:bg-[#E03500] text-white font-bold rounded-2xl transition-colors shadow-[0_4px_16px_rgba(255,59,0,0.3)] shrink-0">
-          <Plus className="w-4 h-4" /> New Package
-        </button>
+        <div className="flex items-center gap-3 shrink-0">
+          <button onClick={() => setDatesOpen(true)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-white border border-[#DCE3F0] hover:bg-slate-50 text-[#0F172A] font-bold rounded-2xl transition-colors shrink-0">
+            <CalendarDays className="w-4 h-4 text-[#2D3199]" /> Flight Schedules
+          </button>
+          <button onClick={() => setCreateOpen(true)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-[#FF3B00] hover:bg-[#E03500] text-white font-bold rounded-2xl transition-colors shadow-[0_4px_16px_rgba(255,59,0,0.3)] shrink-0">
+            <Plus className="w-4 h-4" /> New Package
+          </button>
+        </div>
       </div>
 
       <PackageFormDialog open={createOpen} onClose={() => setCreateOpen(false)} />
+      <GlobalPackageDatesDialog open={datesOpen} onClose={() => setDatesOpen(false)} />
       {editing && <PackageFormDialog open={!!editing} onClose={() => setEditing(null)} initial={editing} />}
       {statsFor && <PackageStatsDialog pkg={statsFor} onClose={() => setStatsFor(null)} />}
 

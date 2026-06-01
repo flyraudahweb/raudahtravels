@@ -75,10 +75,20 @@ router.get("/packages", async (req, res) => {
       limit: parseInt(limit),
       offset: parseInt(offset),
       orderBy: desc(packagesTable.createdAt),
-      with: { packageDates: true },
+      // Removed: with: { packageDates: true }
     });
 
-    let mapped = packages.map(toPackageResponse);
+    const globalDates = await db.query.packageDatesTable.findMany({
+      where: sql`package_id IS NULL`,
+    });
+
+    let mapped = packages.map((p) => {
+      const isUmrah = p.type === "umrah";
+      return toPackageResponse({
+        ...p,
+        packageDates: isUmrah ? globalDates : [],
+      });
+    });
 
     // For public listings, hide packages whose countdown expired AND action is to disable/hide.
     // Packages with countdownAction "show_closed_badge" stay visible with a "Registration Closed" indicator.
@@ -112,10 +122,71 @@ router.get("/packages/stats", async (req, res) => {
 router.get("/packages/:id", async (req, res) => {
   const pkg = await db.query.packagesTable.findFirst({
     where: eq(packagesTable.id, req.params.id),
-    with: { packageDates: true },
+    // Removed: with: { packageDates: true }
   });
   if (!pkg) return res.status(404).json({ error: "Package not found" });
-  return res.json(toPackageResponse(pkg));
+
+  const globalDates = await db.query.packageDatesTable.findMany({
+    where: sql`package_id IS NULL`,
+  });
+
+  return res.json(toPackageResponse({
+    ...pkg,
+    packageDates: pkg.type === "umrah" ? globalDates : [],
+  }));
+});
+
+// === GLOBAL PACKAGE DATES ENDPOINTS ===
+import { packageDatesTable } from "@workspace/db";
+
+router.get("/package-dates", async (req, res) => {
+  const dates = await db.query.packageDatesTable.findMany({
+    where: sql`package_id IS NULL`,
+  });
+  return res.json({ dates });
+});
+
+router.post("/package-dates", requireAdmin as any, async (req, res) => {
+  const { outbound, outboundRoute, returnDate, returnRoute, airline, islamicDate, islamicReturnDate } = req.body;
+  
+  const [newDate] = await db.insert(packageDatesTable).values({
+    id: randomUUID(),
+    packageId: null as any, // Global
+    outbound,
+    outboundRoute,
+    returnDate,
+    returnRoute,
+    airline,
+    islamicDate,
+    islamicReturnDate,
+  }).returning();
+
+  return res.status(201).json(newDate);
+});
+
+router.put("/package-dates/:id", requireAdmin as any, async (req, res) => {
+  const { outbound, outboundRoute, returnDate, returnRoute, airline, islamicDate, islamicReturnDate } = req.body;
+  const updates: any = {};
+  if (outbound !== undefined) updates.outbound = outbound;
+  if (outboundRoute !== undefined) updates.outboundRoute = outboundRoute;
+  if (returnDate !== undefined) updates.returnDate = returnDate;
+  if (returnRoute !== undefined) updates.returnRoute = returnRoute;
+  if (airline !== undefined) updates.airline = airline;
+  if (islamicDate !== undefined) updates.islamicDate = islamicDate;
+  if (islamicReturnDate !== undefined) updates.islamicReturnDate = islamicReturnDate;
+
+  const [updated] = await db.update(packageDatesTable)
+    .set(updates)
+    .where(eq(packageDatesTable.id, req.params.id))
+    .returning();
+    
+  if (!updated) return res.status(404).json({ error: "Flight schedule not found" });
+  return res.json(updated);
+});
+
+router.delete("/package-dates/:id", requireAdmin as any, async (req, res) => {
+  await db.delete(packageDatesTable).where(eq(packageDatesTable.id, req.params.id));
+  return res.status(204).send();
 });
 
 // SECURITY FIX #4: All mutation endpoints below require admin authentication

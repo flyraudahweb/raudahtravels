@@ -5,6 +5,38 @@
  * Raudah Travels & Tours API
  * OpenAPI spec version: 0.1.0
  */
+export interface PackageDate {
+  id: string;
+  packageId?: string | null;
+  outbound: string;
+  outboundRoute?: string | null;
+  returnDate?: string | null;
+  returnRoute?: string | null;
+  airline?: string | null;
+  islamicDate?: string | null;
+  islamicReturnDate?: string | null;
+}
+
+export interface CreatePackageDateBody {
+  outbound: string;
+  outboundRoute?: string;
+  returnDate?: string;
+  returnRoute?: string;
+  airline?: string;
+  islamicDate?: string;
+  islamicReturnDate?: string;
+}
+
+export interface UpdatePackageDateBody {
+  outbound?: string;
+  outboundRoute?: string;
+  returnDate?: string;
+  returnRoute?: string;
+  airline?: string;
+  islamicDate?: string;
+  islamicReturnDate?: string;
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -92,19 +124,6 @@ export const TravelPackageCountdownAction = {
   both: "both",
 } as const;
 
-export interface PackageDate {
-  id: string;
-  packageId: string;
-  outbound: string;
-  outboundRoute?: string | null;
-  returnDate: string;
-  returnRoute?: string | null;
-  airline?: string | null;
-  islamicDate?: string | null;
-  islamicReturnDate?: string | null;
-  createdAt: string;
-}
-
 export interface TravelPackage {
   id: string;
   name: string;
@@ -132,7 +151,6 @@ export interface TravelPackage {
   countdownExpiry?: string | null;
   countdownAction: TravelPackageCountdownAction;
   isRegistrationClosed: boolean;
-  packageDates?: PackageDate[];
   createdAt: string;
 }
 
@@ -226,9 +244,10 @@ export interface Booking {
   user?: UserProfile | null;
 }
 
+export type CreateBookingBodyCustomData = { [key: string]: unknown };
+
 export interface CreateBookingBody {
   packageId: string;
-  packageDateId?: string;
   pilgrimCount: number;
   pilgrimDetails?: string;
   notes?: string;
@@ -236,46 +255,7 @@ export interface CreateBookingBody {
   fullName?: string | null;
   passportNumber?: string | null;
   phone?: string | null;
-  // Extended pilgrim fields (accepted by backend via ...safePilgrimFields)
-  civility?: string | null;
-  firstName?: string | null;
-  lastName?: string | null;
-  passportIssueDate?: string | null;
-  passportExpiry?: string | null;
-  passportIssuingAuthority?: string | null;
-  passportCopyUrl?: string | null;
-  profilePhotoUrl?: string | null;
-  visaNumber?: string | null;
-  dateOfBirth?: string | null;
-  gender?: string | null;
-  nationality?: string | null;
-  placeOfBirth?: string | null;
-  ethnicGroup?: string | null;
-  maritalStatus?: string | null;
-  levelOfStudy?: string | null;
-  occupation?: string | null;
-  observation?: string | null;
-  partner?: string | null;
-  underCover?: string | null;
-  email?: string | null;
-  country?: string | null;
-  city?: string | null;
-  address?: string | null;
-  roomPreference?: string | null;
-  roomSurcharge?: number;
-  departureCity?: string | null;
-  specialRequests?: string | null;
-  pilgrimType?: string;
-  parentBookingId?: string | null;
-  batchId?: string | null;
-  fathersName?: string | null;
-  mothersName?: string | null;
-  mahramName?: string | null;
-  mahramRelationship?: string | null;
-  mahramPassport?: string | null;
-  emergencyContactName?: string | null;
-  emergencyContactPhone?: string | null;
-  emergencyContactRelationship?: string | null;
+  customData?: CreateBookingBodyCustomData;
 }
 
 export type UpdateBookingBodyStatus =
@@ -981,7 +961,17 @@ export type ListPackagesType =
 export const ListPackagesType = {
   hajj: "hajj",
   umrah: "umrah",
+  visa_only: "visa_only",
+  ticket_only: "ticket_only",
+  accommodation_only: "accommodation_only",
+  visa_ticket: "visa_ticket",
+  visa_accommodation: "visa_accommodation",
+  accommodation_ticket: "accommodation_ticket",
 } as const;
+
+export type ListPackageDates200 = {
+  dates?: PackageDate[];
+};
 
 export type ListBookingsParams = {
   status?: ListBookingsStatus;

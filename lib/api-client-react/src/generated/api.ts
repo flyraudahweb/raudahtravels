@@ -42,6 +42,7 @@ import type {
   CreateDocumentBody,
   CreateNotificationBody,
   CreatePackageBody,
+  CreatePackageDateBody,
   CreatePaymentBody,
   CreateSupportMessageBody,
   CreateSupportTicketBody,
@@ -60,6 +61,7 @@ import type {
   ListCommissionsParams,
   ListDocumentsParams,
   ListNotificationsParams,
+  ListPackageDates200,
   ListPackagesParams,
   ListPaymentsParams,
   ListPilgrimsParams,
@@ -68,6 +70,7 @@ import type {
   MyPermissionsResponse,
   Notification,
   NotificationListResponse,
+  PackageDate,
   PackageDiscount,
   PackageListResponse,
   PackageStats,
@@ -91,6 +94,7 @@ import type {
   UpdateAgentProfileBody,
   UpdateBookingBody,
   UpdateCommissionBody,
+  UpdatePackageDateBody,
   UpdateProfileBody,
   UpdateStaffSpecialties200,
   UpdateStaffSpecialtiesBody,
@@ -612,6 +616,338 @@ export const useCreatePackage = <
   TContext
 > => {
   return useMutation(getCreatePackageMutationOptions(options));
+};
+
+/**
+ * @summary List all global flight schedules
+ */
+export const getListPackageDatesUrl = () => {
+  return `/api/package-dates`;
+};
+
+export const listPackageDates = async (
+  options?: RequestInit,
+): Promise<ListPackageDates200> => {
+  return customFetch<ListPackageDates200>(getListPackageDatesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListPackageDatesQueryKey = () => {
+  return [`/api/package-dates`] as const;
+};
+
+export const getListPackageDatesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listPackageDates>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPackageDates>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListPackageDatesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listPackageDates>>
+  > = ({ signal }) => listPackageDates({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listPackageDates>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListPackageDatesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listPackageDates>>
+>;
+export type ListPackageDatesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all global flight schedules
+ */
+
+export function useListPackageDates<
+  TData = Awaited<ReturnType<typeof listPackageDates>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listPackageDates>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListPackageDatesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Add a global flight schedule (admin)
+ */
+export const getCreatePackageDateUrl = () => {
+  return `/api/package-dates`;
+};
+
+export const createPackageDate = async (
+  createPackageDateBody: CreatePackageDateBody,
+  options?: RequestInit,
+): Promise<PackageDate> => {
+  return customFetch<PackageDate>(getCreatePackageDateUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createPackageDateBody),
+  });
+};
+
+export const getCreatePackageDateMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createPackageDate>>,
+    TError,
+    { data: BodyType<CreatePackageDateBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createPackageDate>>,
+  TError,
+  { data: BodyType<CreatePackageDateBody> },
+  TContext
+> => {
+  const mutationKey = ["createPackageDate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createPackageDate>>,
+    { data: BodyType<CreatePackageDateBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createPackageDate(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreatePackageDateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createPackageDate>>
+>;
+export type CreatePackageDateMutationBody = BodyType<CreatePackageDateBody>;
+export type CreatePackageDateMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Add a global flight schedule (admin)
+ */
+export const useCreatePackageDate = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createPackageDate>>,
+    TError,
+    { data: BodyType<CreatePackageDateBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createPackageDate>>,
+  TError,
+  { data: BodyType<CreatePackageDateBody> },
+  TContext
+> => {
+  return useMutation(getCreatePackageDateMutationOptions(options));
+};
+
+/**
+ * @summary Update a global flight schedule (admin)
+ */
+export const getUpdatePackageDateUrl = (id: string) => {
+  return `/api/package-dates/${id}`;
+};
+
+export const updatePackageDate = async (
+  id: string,
+  updatePackageDateBody: UpdatePackageDateBody,
+  options?: RequestInit,
+): Promise<PackageDate> => {
+  return customFetch<PackageDate>(getUpdatePackageDateUrl(id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updatePackageDateBody),
+  });
+};
+
+export const getUpdatePackageDateMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updatePackageDate>>,
+    TError,
+    { id: string; data: BodyType<UpdatePackageDateBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updatePackageDate>>,
+  TError,
+  { id: string; data: BodyType<UpdatePackageDateBody> },
+  TContext
+> => {
+  const mutationKey = ["updatePackageDate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updatePackageDate>>,
+    { id: string; data: BodyType<UpdatePackageDateBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updatePackageDate(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdatePackageDateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updatePackageDate>>
+>;
+export type UpdatePackageDateMutationBody = BodyType<UpdatePackageDateBody>;
+export type UpdatePackageDateMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update a global flight schedule (admin)
+ */
+export const useUpdatePackageDate = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updatePackageDate>>,
+    TError,
+    { id: string; data: BodyType<UpdatePackageDateBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updatePackageDate>>,
+  TError,
+  { id: string; data: BodyType<UpdatePackageDateBody> },
+  TContext
+> => {
+  return useMutation(getUpdatePackageDateMutationOptions(options));
+};
+
+/**
+ * @summary Delete a global flight schedule (admin)
+ */
+export const getDeletePackageDateUrl = (id: string) => {
+  return `/api/package-dates/${id}`;
+};
+
+export const deletePackageDate = async (
+  id: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeletePackageDateUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeletePackageDateMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deletePackageDate>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deletePackageDate>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["deletePackageDate"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deletePackageDate>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deletePackageDate(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeletePackageDateMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deletePackageDate>>
+>;
+
+export type DeletePackageDateMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete a global flight schedule (admin)
+ */
+export const useDeletePackageDate = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deletePackageDate>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deletePackageDate>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getDeletePackageDateMutationOptions(options));
 };
 
 /**

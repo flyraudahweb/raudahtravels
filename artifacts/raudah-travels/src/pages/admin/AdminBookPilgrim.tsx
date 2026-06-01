@@ -884,7 +884,10 @@ export default function AdminBookPilgrim() {
         {/* ── Step 2: Passport (or Batch Upload) ──────────────────── */}
         {step === 2 && batchMode && (
           <div className="space-y-4">
-            <h2 className="font-black text-[#0F172A] text-lg">Batch Passport Upload</h2>
+              <h2 className="font-black text-[#0F172A] text-lg flex items-center gap-2">
+                Batch Passport Upload
+                <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-bold ml-2 uppercase tracking-widest">Beta</span>
+              </h2>
             <p className="text-sm text-[#64748B]">
               Upload passport images for multiple pilgrims. AI will extract details from each passport automatically.
             </p>

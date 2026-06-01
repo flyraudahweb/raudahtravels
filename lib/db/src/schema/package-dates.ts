@@ -6,7 +6,6 @@ import { packagesTable } from "./packages";
 export const packageDatesTable = pgTable("package_dates", {
   id: text("id").primaryKey().default("gen_random_uuid()"),
   packageId: text("package_id")
-    .notNull()
     .references(() => packagesTable.id, { onDelete: "cascade" }),
   outbound: date("outbound").notNull(),
   outboundRoute: text("outbound_route"),
