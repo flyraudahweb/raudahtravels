@@ -1636,6 +1636,10 @@ components:
           type: boolean
         createdAt:
           type: string
+        packageDates:
+          type: array
+          items:
+            $ref: "#/components/schemas/PackageDate"
       required:
         - id
         - name
@@ -1788,6 +1792,8 @@ components:
       type: object
       properties:
         packageId:
+          type: string
+        packageDateId:
           type: string
         pilgrimCount:
           type: number

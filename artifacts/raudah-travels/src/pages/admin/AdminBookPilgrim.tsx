@@ -306,6 +306,7 @@ export default function AdminBookPilgrim() {
 
   const [packageId, setPackageId] = useState("");
   const [packageDateId, setPackageDateId] = useState("");
+  const [departureCityFilter, setDepartureCityFilter] = useState("");
   const [pilgrim, setPilgrim]     = useState<PilgrimState>(DEFAULT_PILGRIM);
   const [travel, setTravel]       = useState({
     departureCity: "", roomPreference: "Quad", specialRequests: "",
@@ -856,26 +857,52 @@ export default function AdminBookPilgrim() {
                   </div>
                 )}
 
-                {selectedPkg?.type === "umrah" && selectedPkg.packageDates && selectedPkg.packageDates.length > 0 && (
-                  <div className="space-y-2 mt-4 border-t pt-4">
-                    <Label htmlFor="packageDateId" className="text-sm font-semibold text-primary">Flight Schedule *</Label>
-                    <Select value={packageDateId} onValueChange={setPackageDateId}>
-                      <SelectTrigger id="packageDateId" className="w-full">
-                        <SelectValue placeholder="Select a flight schedule..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {[...selectedPkg.packageDates]
-                          .sort((a, b) => new Date(a.outbound).getTime() - new Date(b.outbound).getTime())
-                          .map((d: any) => (
-                            <SelectItem key={d.id} value={d.id} className="text-xs">
-                              {formatDate(d.outbound)} - {formatDate(d.returnDate)} ({d.outboundRoute} | {d.returnRoute}) via {d.airline}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-[11px] text-[#64748B]">Please select your preferred travel dates. This is required for Umrah packages.</p>
-                  </div>
-                )}
+                {selectedPkg?.type === "umrah" && selectedPkg.packageDates && selectedPkg.packageDates.length > 0 && (() => {
+                  const departureCities = [...new Set(selectedPkg.packageDates.map((d: any) => (d.outboundRoute || "").split("-")[0].trim()).filter(Boolean))];
+                  const filteredDates = departureCityFilter
+                    ? selectedPkg.packageDates.filter((d: any) => (d.outboundRoute || "").startsWith(departureCityFilter))
+                    : selectedPkg.packageDates;
+                  return (
+                    <div className="space-y-3 mt-4 border-t pt-4">
+                      {departureCities.length > 1 && (
+                        <div>
+                          <Label className="text-xs font-black text-[#1C1F66] uppercase tracking-wide">Departure City</Label>
+                          <div className="flex gap-2 mt-1.5">
+                            {departureCities.map((city: string) => (
+                              <button key={city} type="button"
+                                onClick={() => { setDepartureCityFilter(departureCityFilter === city ? "" : city); setPackageDateId(""); }}
+                                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border-2 ${
+                                  departureCityFilter === city
+                                    ? "border-[#2D3199] bg-[#EEF0FF] text-[#2D3199]"
+                                    : "border-[#DCE3F0] bg-white text-[#64748B] hover:border-[#2D3199]/40"
+                                }`}>
+                                ✈ {city}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div>
+                        <Label htmlFor="packageDateId" className="text-sm font-semibold text-primary">Flight Schedule *</Label>
+                        <Select value={packageDateId} onValueChange={setPackageDateId}>
+                          <SelectTrigger id="packageDateId" className="w-full">
+                            <SelectValue placeholder={departureCityFilter ? `Select a ${departureCityFilter} flight...` : "Select a flight schedule..."} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[...filteredDates]
+                              .sort((a: any, b: any) => new Date(a.outbound).getTime() - new Date(b.outbound).getTime())
+                              .map((d: any) => (
+                                <SelectItem key={d.id} value={d.id} className="text-xs">
+                                  {formatDate(d.outbound)} - {formatDate(d.returnDate)} ({d.outboundRoute} → {d.returnRoute}) via {d.airline}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-[11px] text-[#64748B] mt-1">Select your preferred departure city and travel dates.</p>
+                      </div>
+                    </div>
+                  );
+                })()}
               </>
             )}
           </div>

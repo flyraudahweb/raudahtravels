@@ -152,6 +152,7 @@ export interface TravelPackage {
   countdownAction: TravelPackageCountdownAction;
   isRegistrationClosed: boolean;
   createdAt: string;
+  packageDates?: PackageDate[];
 }
 
 export type CreatePackageBodyType =
@@ -248,6 +249,7 @@ export type CreateBookingBodyCustomData = { [key: string]: unknown };
 
 export interface CreateBookingBody {
   packageId: string;
+  packageDateId?: string;
   pilgrimCount: number;
   pilgrimDetails?: string;
   notes?: string;

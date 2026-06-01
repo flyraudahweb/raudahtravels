@@ -145,6 +145,21 @@ export const ListPackagesResponse = zod.object({
       countdownAction: zod.enum(["disable", "both"]),
       isRegistrationClosed: zod.boolean(),
       createdAt: zod.string(),
+      packageDates: zod
+        .array(
+          zod.object({
+            id: zod.string(),
+            packageId: zod.string().nullish(),
+            outbound: zod.string(),
+            outboundRoute: zod.string().nullish(),
+            returnDate: zod.string().nullish(),
+            returnRoute: zod.string().nullish(),
+            airline: zod.string().nullish(),
+            islamicDate: zod.string().nullish(),
+            islamicReturnDate: zod.string().nullish(),
+          }),
+        )
+        .optional(),
     }),
   ),
   total: zod.number(),
@@ -296,6 +311,21 @@ export const GetPackageResponse = zod.object({
   countdownAction: zod.enum(["disable", "both"]),
   isRegistrationClosed: zod.boolean(),
   createdAt: zod.string(),
+  packageDates: zod
+    .array(
+      zod.object({
+        id: zod.string(),
+        packageId: zod.string().nullish(),
+        outbound: zod.string(),
+        outboundRoute: zod.string().nullish(),
+        returnDate: zod.string().nullish(),
+        returnRoute: zod.string().nullish(),
+        airline: zod.string().nullish(),
+        islamicDate: zod.string().nullish(),
+        islamicReturnDate: zod.string().nullish(),
+      }),
+    )
+    .optional(),
 });
 
 /**
@@ -371,6 +401,21 @@ export const UpdatePackageResponse = zod.object({
   countdownAction: zod.enum(["disable", "both"]),
   isRegistrationClosed: zod.boolean(),
   createdAt: zod.string(),
+  packageDates: zod
+    .array(
+      zod.object({
+        id: zod.string(),
+        packageId: zod.string().nullish(),
+        outbound: zod.string(),
+        outboundRoute: zod.string().nullish(),
+        returnDate: zod.string().nullish(),
+        returnRoute: zod.string().nullish(),
+        airline: zod.string().nullish(),
+        islamicDate: zod.string().nullish(),
+        islamicReturnDate: zod.string().nullish(),
+      }),
+    )
+    .optional(),
 });
 
 /**
@@ -457,6 +502,21 @@ export const ListBookingsResponse = zod.object({
           countdownAction: zod.enum(["disable", "both"]),
           isRegistrationClosed: zod.boolean(),
           createdAt: zod.string(),
+          packageDates: zod
+            .array(
+              zod.object({
+                id: zod.string(),
+                packageId: zod.string().nullish(),
+                outbound: zod.string(),
+                outboundRoute: zod.string().nullish(),
+                returnDate: zod.string().nullish(),
+                returnRoute: zod.string().nullish(),
+                airline: zod.string().nullish(),
+                islamicDate: zod.string().nullish(),
+                islamicReturnDate: zod.string().nullish(),
+              }),
+            )
+            .optional(),
         })
         .nullish(),
       user: zod
@@ -485,6 +545,7 @@ export const ListBookingsResponse = zod.object({
  */
 export const CreateBookingBody = zod.object({
   packageId: zod.string(),
+  packageDateId: zod.string().optional(),
   pilgrimCount: zod.number(),
   pilgrimDetails: zod.string().optional(),
   notes: zod.string().optional(),
@@ -553,6 +614,21 @@ export const GetBookingResponse = zod.object({
       countdownAction: zod.enum(["disable", "both"]),
       isRegistrationClosed: zod.boolean(),
       createdAt: zod.string(),
+      packageDates: zod
+        .array(
+          zod.object({
+            id: zod.string(),
+            packageId: zod.string().nullish(),
+            outbound: zod.string(),
+            outboundRoute: zod.string().nullish(),
+            returnDate: zod.string().nullish(),
+            returnRoute: zod.string().nullish(),
+            airline: zod.string().nullish(),
+            islamicDate: zod.string().nullish(),
+            islamicReturnDate: zod.string().nullish(),
+          }),
+        )
+        .optional(),
     })
     .nullish(),
   user: zod
@@ -639,6 +715,21 @@ export const UpdateBookingResponse = zod.object({
       countdownAction: zod.enum(["disable", "both"]),
       isRegistrationClosed: zod.boolean(),
       createdAt: zod.string(),
+      packageDates: zod
+        .array(
+          zod.object({
+            id: zod.string(),
+            packageId: zod.string().nullish(),
+            outbound: zod.string(),
+            outboundRoute: zod.string().nullish(),
+            returnDate: zod.string().nullish(),
+            returnRoute: zod.string().nullish(),
+            airline: zod.string().nullish(),
+            islamicDate: zod.string().nullish(),
+            islamicReturnDate: zod.string().nullish(),
+          }),
+        )
+        .optional(),
     })
     .nullish(),
   user: zod
@@ -734,6 +825,21 @@ export const ListPaymentsResponse = zod.object({
               countdownAction: zod.enum(["disable", "both"]),
               isRegistrationClosed: zod.boolean(),
               createdAt: zod.string(),
+              packageDates: zod
+                .array(
+                  zod.object({
+                    id: zod.string(),
+                    packageId: zod.string().nullish(),
+                    outbound: zod.string(),
+                    outboundRoute: zod.string().nullish(),
+                    returnDate: zod.string().nullish(),
+                    returnRoute: zod.string().nullish(),
+                    airline: zod.string().nullish(),
+                    islamicDate: zod.string().nullish(),
+                    islamicReturnDate: zod.string().nullish(),
+                  }),
+                )
+                .optional(),
             })
             .nullish(),
           user: zod
@@ -847,6 +953,21 @@ export const GetPaymentResponse = zod.object({
           countdownAction: zod.enum(["disable", "both"]),
           isRegistrationClosed: zod.boolean(),
           createdAt: zod.string(),
+          packageDates: zod
+            .array(
+              zod.object({
+                id: zod.string(),
+                packageId: zod.string().nullish(),
+                outbound: zod.string(),
+                outboundRoute: zod.string().nullish(),
+                returnDate: zod.string().nullish(),
+                returnRoute: zod.string().nullish(),
+                airline: zod.string().nullish(),
+                islamicDate: zod.string().nullish(),
+                islamicReturnDate: zod.string().nullish(),
+              }),
+            )
+            .optional(),
         })
         .nullish(),
       user: zod
@@ -944,6 +1065,21 @@ export const VerifyPaymentResponse = zod.object({
           countdownAction: zod.enum(["disable", "both"]),
           isRegistrationClosed: zod.boolean(),
           createdAt: zod.string(),
+          packageDates: zod
+            .array(
+              zod.object({
+                id: zod.string(),
+                packageId: zod.string().nullish(),
+                outbound: zod.string(),
+                outboundRoute: zod.string().nullish(),
+                returnDate: zod.string().nullish(),
+                returnRoute: zod.string().nullish(),
+                airline: zod.string().nullish(),
+                islamicDate: zod.string().nullish(),
+                islamicReturnDate: zod.string().nullish(),
+              }),
+            )
+            .optional(),
         })
         .nullish(),
       user: zod
@@ -1809,6 +1945,21 @@ export const ListCommissionsResponse = zod.object({
               countdownAction: zod.enum(["disable", "both"]),
               isRegistrationClosed: zod.boolean(),
               createdAt: zod.string(),
+              packageDates: zod
+                .array(
+                  zod.object({
+                    id: zod.string(),
+                    packageId: zod.string().nullish(),
+                    outbound: zod.string(),
+                    outboundRoute: zod.string().nullish(),
+                    returnDate: zod.string().nullish(),
+                    returnRoute: zod.string().nullish(),
+                    airline: zod.string().nullish(),
+                    islamicDate: zod.string().nullish(),
+                    islamicReturnDate: zod.string().nullish(),
+                  }),
+                )
+                .optional(),
             })
             .nullish(),
           user: zod
@@ -1902,6 +2053,21 @@ export const GetDashboardSummaryResponse = zod.object({
           countdownAction: zod.enum(["disable", "both"]),
           isRegistrationClosed: zod.boolean(),
           createdAt: zod.string(),
+          packageDates: zod
+            .array(
+              zod.object({
+                id: zod.string(),
+                packageId: zod.string().nullish(),
+                outbound: zod.string(),
+                outboundRoute: zod.string().nullish(),
+                returnDate: zod.string().nullish(),
+                returnRoute: zod.string().nullish(),
+                airline: zod.string().nullish(),
+                islamicDate: zod.string().nullish(),
+                islamicReturnDate: zod.string().nullish(),
+              }),
+            )
+            .optional(),
         })
         .nullish(),
       user: zod
@@ -1986,6 +2152,21 @@ export const GetDashboardSummaryResponse = zod.object({
               countdownAction: zod.enum(["disable", "both"]),
               isRegistrationClosed: zod.boolean(),
               createdAt: zod.string(),
+              packageDates: zod
+                .array(
+                  zod.object({
+                    id: zod.string(),
+                    packageId: zod.string().nullish(),
+                    outbound: zod.string(),
+                    outboundRoute: zod.string().nullish(),
+                    returnDate: zod.string().nullish(),
+                    returnRoute: zod.string().nullish(),
+                    airline: zod.string().nullish(),
+                    islamicDate: zod.string().nullish(),
+                    islamicReturnDate: zod.string().nullish(),
+                  }),
+                )
+                .optional(),
             })
             .nullish(),
           user: zod
@@ -2103,6 +2284,21 @@ export const GetAgentOverviewResponse = zod.object({
           countdownAction: zod.enum(["disable", "both"]),
           isRegistrationClosed: zod.boolean(),
           createdAt: zod.string(),
+          packageDates: zod
+            .array(
+              zod.object({
+                id: zod.string(),
+                packageId: zod.string().nullish(),
+                outbound: zod.string(),
+                outboundRoute: zod.string().nullish(),
+                returnDate: zod.string().nullish(),
+                returnRoute: zod.string().nullish(),
+                airline: zod.string().nullish(),
+                islamicDate: zod.string().nullish(),
+                islamicReturnDate: zod.string().nullish(),
+              }),
+            )
+            .optional(),
         })
         .nullish(),
       user: zod
@@ -2256,6 +2452,21 @@ export const GetPilgrimResponse = zod
               countdownAction: zod.enum(["disable", "both"]),
               isRegistrationClosed: zod.boolean(),
               createdAt: zod.string(),
+              packageDates: zod
+                .array(
+                  zod.object({
+                    id: zod.string(),
+                    packageId: zod.string().nullish(),
+                    outbound: zod.string(),
+                    outboundRoute: zod.string().nullish(),
+                    returnDate: zod.string().nullish(),
+                    returnRoute: zod.string().nullish(),
+                    airline: zod.string().nullish(),
+                    islamicDate: zod.string().nullish(),
+                    islamicReturnDate: zod.string().nullish(),
+                  }),
+                )
+                .optional(),
             })
             .nullish(),
           user: zod
@@ -2363,6 +2574,21 @@ export const GetPilgrimResponse = zod
                   countdownAction: zod.enum(["disable", "both"]),
                   isRegistrationClosed: zod.boolean(),
                   createdAt: zod.string(),
+                  packageDates: zod
+                    .array(
+                      zod.object({
+                        id: zod.string(),
+                        packageId: zod.string().nullish(),
+                        outbound: zod.string(),
+                        outboundRoute: zod.string().nullish(),
+                        returnDate: zod.string().nullish(),
+                        returnRoute: zod.string().nullish(),
+                        airline: zod.string().nullish(),
+                        islamicDate: zod.string().nullish(),
+                        islamicReturnDate: zod.string().nullish(),
+                      }),
+                    )
+                    .optional(),
                 })
                 .nullish(),
               user: zod
