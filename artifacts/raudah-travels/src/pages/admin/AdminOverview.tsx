@@ -47,9 +47,9 @@ const statusStyle: Record<string, string> = {
 };
 
 export default function AdminOverview() {
-  const { data: overview, isLoading } = useGetAdminOverview({ query: { queryKey: getGetAdminOverviewQueryKey() } });
-  const { data: bookingsData } = useListBookings({ limit: 5 } as Record<string, unknown>, { query: { queryKey: getListBookingsQueryKey({ limit: 5 } as Record<string, unknown>) } });
-  const { data: paymentsData } = useListPayments({ status: "pending" } as Record<string, unknown>, { query: { queryKey: getListPaymentsQueryKey({ status: "pending" } as Record<string, unknown>) } });
+  const { data: overview, isLoading } = useGetAdminOverview({ query: { queryKey: getGetAdminOverviewQueryKey(), staleTime: 0, refetchOnMount: true } });
+  const { data: bookingsData } = useListBookings({ limit: 5 } as Record<string, unknown>, { query: { queryKey: getListBookingsQueryKey({ limit: 5 } as Record<string, unknown>), staleTime: 0 } });
+  const { data: paymentsData } = useListPayments({ status: "pending" } as Record<string, unknown>, { query: { queryKey: getListPaymentsQueryKey({ status: "pending" } as Record<string, unknown>), staleTime: 0 } });
 
   const rawRevenue = overview?.totalRevenue || 0;
   const fmtRev = (n: number) =>
@@ -231,7 +231,7 @@ export default function AdminOverview() {
                 </div>
                 <p className="text-[#94A3B8] text-sm">All clear — no pending payments</p>
               </div>
-            ) : paymentsData.payments.map(p => (
+            ) : paymentsData.payments.slice(0, 5).map(p => (
               <div key={p.id} className="flex items-center justify-between px-5 py-3.5 hover:bg-[#F8F9FF] transition-colors">
                 <div>
                   <p className="font-bold text-[#0F172A] text-sm">₦{p.amount.toLocaleString()}</p>

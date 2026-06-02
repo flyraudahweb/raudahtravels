@@ -319,7 +319,6 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
       toast({ title: "Pilgrim info updated successfully" });
       qc.invalidateQueries({ queryKey: ["admin-pilgrims"] });
       setIsEditing(false);
-      onClose();
     } catch (e: any) {
       toast({ title: e.message || "Failed to save", variant: "destructive" });
     } finally { setIsSaving(false); }
@@ -1581,6 +1580,16 @@ export default function AdminPilgrims() {
   const pilgrims   = (data?.pilgrims   ?? []) as PilgrimRow[];
   const total      = data?.total      ?? 0;
   const totalPages = data?.totalPages ?? 1;
+
+  // Keep the selected dialog updated automatically when background data changes
+  useEffect(() => {
+    if (selected) {
+      const fresh = pilgrims.find(p => p.id === selected.id);
+      if (fresh && JSON.stringify(fresh) !== JSON.stringify(selected)) {
+        setSelected(fresh);
+      }
+    }
+  }, [pilgrims, selected]);
 
   const activeFilters = [filterStatus, filterType, filterPayment, filterGender, filterVisa, filterAgent, filterStaff].filter(f => f !== FILTER_ALL).length + (search ? 1 : 0);
 
