@@ -144,6 +144,42 @@ function DetailSection({ title, icon: Icon, accent = "#2D3199", children }: {
   );
 }
 
+function EditField({ label, field, icon: Icon, full = false, type = "text", options, fallback, isEditing, value: rawValue, onChange }: {
+  label: string; field: string; icon?: React.ElementType; full?: boolean;
+  type?: "text" | "date" | "select" | "textarea";
+  options?: { value: string; label: string }[];
+  fallback?: string | null;
+  isEditing: boolean;
+  value: string;
+  onChange: (field: string, value: string) => void;
+}) {
+  const val = isEditing ? rawValue : (rawValue || fallback || "");
+  if (!isEditing && !val) return null;
+  return (
+    <div className={`${full ? "col-span-2" : ""} group`}>
+      <p className="text-[9px] font-black text-[#94A3B8] uppercase tracking-[.12em] mb-1 flex items-center gap-1">
+        {Icon && <Icon className="w-2.5 h-2.5" />}{label}
+      </p>
+      {isEditing ? (
+        type === "select" && options ? (
+          <Select value={val} onValueChange={(v) => onChange(field, v)}>
+            <SelectTrigger className="h-8 text-sm rounded-lg border-[#DCE3F0]"><SelectValue placeholder={`Select ${label.toLowerCase()}`} /></SelectTrigger>
+            <SelectContent>{options.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+          </Select>
+        ) : type === "textarea" ? (
+          <Textarea value={val} onChange={e => onChange(field, e.target.value)}
+            className="text-sm rounded-lg border-[#DCE3F0] resize-none" rows={2} />
+        ) : (
+          <input type={type} value={val} onChange={e => onChange(field, e.target.value)}
+            className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-[#DCE3F0] bg-white focus:outline-none focus:ring-2 focus:ring-[#2D3199]/20 focus:border-[#2D3199] font-semibold text-[#0F172A]" />
+        )
+      ) : (
+        <p className="text-sm font-semibold text-[#0F172A] break-words leading-snug">{val}</p>
+      )}
+    </div>
+  );
+}
+
 function resolveDisplayName(p: PilgrimRow) {
   if (p.fullName) return p.fullName;
   const parts = [p.civility, p.firstName, p.lastName].filter(Boolean);
@@ -395,39 +431,8 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
     finally { setIsUpgrading(false); }
   };
 
-  // ── Editable field component ──
-  const EditField = ({ label, field, icon: Icon, full = false, type = "text", options, fallback }: {
-    label: string; field: string; icon?: React.ElementType; full?: boolean;
-    type?: "text" | "date" | "select" | "textarea";
-    options?: { value: string; label: string }[];
-    fallback?: string | null;
-  }) => {
-    const val = isEditing ? (editData[field] ?? "") : ((pilgrim as any)[field] || fallback || "");
-    if (!isEditing && !val) return null;
-    return (
-      <div className={`${full ? "col-span-2" : ""} group`}>
-        <p className="text-[9px] font-black text-[#94A3B8] uppercase tracking-[.12em] mb-1 flex items-center gap-1">
-          {Icon && <Icon className="w-2.5 h-2.5" />}{label}
-        </p>
-        {isEditing ? (
-          type === "select" && options ? (
-            <Select value={val} onValueChange={(v) => updateField(field, v)}>
-              <SelectTrigger className="h-8 text-sm rounded-lg border-[#DCE3F0]"><SelectValue placeholder={`Select ${label.toLowerCase()}`} /></SelectTrigger>
-              <SelectContent>{options.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
-            </Select>
-          ) : type === "textarea" ? (
-            <Textarea value={val} onChange={e => updateField(field, e.target.value)}
-              className="text-sm rounded-lg border-[#DCE3F0] resize-none" rows={2} />
-          ) : (
-            <input type={type} value={val} onChange={e => updateField(field, e.target.value)}
-              className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-[#DCE3F0] bg-white focus:outline-none focus:ring-2 focus:ring-[#2D3199]/20 focus:border-[#2D3199] font-semibold text-[#0F172A]" />
-          )
-        ) : (
-          <p className="text-sm font-semibold text-[#0F172A] break-words leading-snug">{val}</p>
-        )}
-      </div>
-    );
-  };
+  // Helper to get field value for EditField
+  const efVal = (field: string) => isEditing ? (editData[field] ?? "") : ((pilgrim as any)[field] ?? "");
 
   const { data: visaData } = useQuery({
     queryKey: ["pilgrim-visa-detail", pilgrim.id],
@@ -759,36 +764,36 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
                   <EditField label="Civility" field="civility" type="select" options={[
                     { value: "Mr", label: "Mr" }, { value: "Mrs", label: "Mrs" },
                     { value: "Miss", label: "Miss" }, { value: "Dr", label: "Dr" },
-                  ]} />
-                  <EditField label="First Name" field="firstName" />
-                  <EditField label="Last Name" field="lastName" />
-                  <EditField label="Full Name" field="fullName" icon={User} full />
+                  ]}  isEditing={isEditing} value={efVal("civility")} onChange={updateField} />
+                  <EditField label="First Name" field="firstName"  isEditing={isEditing} value={efVal("firstName")} onChange={updateField} />
+                  <EditField label="Last Name" field="lastName"  isEditing={isEditing} value={efVal("lastName")} onChange={updateField} />
+                  <EditField label="Full Name" field="fullName" icon={User} full  isEditing={isEditing} value={efVal("fullName")} onChange={updateField} />
                   <EditField label="Gender" field="gender" type="select" options={[
                     { value: "male", label: "Male" }, { value: "female", label: "Female" },
-                  ]} />
-                  <EditField label="Date of Birth" field="dateOfBirth" type="date" icon={Calendar} />
-                  <EditField label="Place of Birth" field="placeOfBirth" />
-                  <EditField label="Nationality" field="nationality" icon={Globe} />
-                  <EditField label="Ethnic Group" field="ethnicGroup" />
+                  ]}  isEditing={isEditing} value={efVal("gender")} onChange={updateField} />
+                  <EditField label="Date of Birth" field="dateOfBirth" type="date" icon={Calendar}  isEditing={isEditing} value={efVal("dateOfBirth")} onChange={updateField} />
+                  <EditField label="Place of Birth" field="placeOfBirth"  isEditing={isEditing} value={efVal("placeOfBirth")} onChange={updateField} />
+                  <EditField label="Nationality" field="nationality" icon={Globe}  isEditing={isEditing} value={efVal("nationality")} onChange={updateField} />
+                  <EditField label="Ethnic Group" field="ethnicGroup"  isEditing={isEditing} value={efVal("ethnicGroup")} onChange={updateField} />
                   <EditField label="Marital Status" field="maritalStatus" type="select" options={[
                     { value: "single", label: "Single" }, { value: "married", label: "Married" },
                     { value: "divorced", label: "Divorced" }, { value: "widowed", label: "Widowed" },
-                  ]} />
-                  <EditField label="Level of Study" field="levelOfStudy" />
-                  <EditField label="Occupation" field="occupation" />
+                  ]}  isEditing={isEditing} value={efVal("maritalStatus")} onChange={updateField} />
+                  <EditField label="Level of Study" field="levelOfStudy"  isEditing={isEditing} value={efVal("levelOfStudy")} onChange={updateField} />
+                  <EditField label="Occupation" field="occupation"  isEditing={isEditing} value={efVal("occupation")} onChange={updateField} />
                 </DetailSection>
                 <DetailSection title="Contact & Location" icon={Phone} accent="#10B981">
-                  <EditField label="Phone (WhatsApp)" field="phone" icon={Phone} fallback={pilgrim.user?.phone} />
-                  <EditField label="Email" field="email" icon={Mail} full fallback={pilgrim.user?.email} />
-                  <EditField label="Country" field="country" icon={Globe} />
-                  <EditField label="City" field="city" icon={MapPin} />
-                  <EditField label="Address" field="address" icon={MapPin} full type="textarea" />
+                  <EditField label="Phone (WhatsApp)" field="phone" icon={Phone} fallback={pilgrim.user?.phone}  isEditing={isEditing} value={efVal("phone")} onChange={updateField} />
+                  <EditField label="Email" field="email" icon={Mail} full fallback={pilgrim.user?.email}  isEditing={isEditing} value={efVal("email")} onChange={updateField} />
+                  <EditField label="Country" field="country" icon={Globe}  isEditing={isEditing} value={efVal("country")} onChange={updateField} />
+                  <EditField label="City" field="city" icon={MapPin}  isEditing={isEditing} value={efVal("city")} onChange={updateField} />
+                  <EditField label="Address" field="address" icon={MapPin} full type="textarea"  isEditing={isEditing} value={efVal("address")} onChange={updateField} />
                 </DetailSection>
                 {(isEditing || pilgrim.partner || pilgrim.underCover || pilgrim.observation) && (
                   <DetailSection title="Additional Notes" icon={Badge} accent="#8B5CF6">
-                    <EditField label="Partner / Mahram" field="partner" />
-                    <EditField label="Under Cover" field="underCover" />
-                    <EditField label="Observation" field="observation" full type="textarea" />
+                    <EditField label="Partner / Mahram" field="partner"  isEditing={isEditing} value={efVal("partner")} onChange={updateField} />
+                    <EditField label="Under Cover" field="underCover"  isEditing={isEditing} value={efVal("underCover")} onChange={updateField} />
+                    <EditField label="Observation" field="observation" full type="textarea"  isEditing={isEditing} value={efVal("observation")} onChange={updateField} />
                   </DetailSection>
                 )}
               </div>
@@ -798,12 +803,12 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
             {tab === "travel" && (
               <div className="space-y-4">
                 <DetailSection title="Passport & Documents" icon={FileText} accent="#FF3B00">
-                  <EditField label="Passport Number" field="passportNumber" icon={FileText} />
-                  <EditField label="Date of Issue" field="passportIssueDate" type="date" icon={Calendar} />
-                  <EditField label="Passport Expiry" field="passportExpiry" type="date" icon={Calendar} />
-                  <EditField label="Issuing Authority" field="passportIssuingAuthority" />
-                  <EditField label="Nationality" field="nationality" icon={Globe} />
-                  <EditField label="N° Visa" field="visaNumber" />
+                  <EditField label="Passport Number" field="passportNumber" icon={FileText}  isEditing={isEditing} value={efVal("passportNumber")} onChange={updateField} />
+                  <EditField label="Date of Issue" field="passportIssueDate" type="date" icon={Calendar}  isEditing={isEditing} value={efVal("passportIssueDate")} onChange={updateField} />
+                  <EditField label="Passport Expiry" field="passportExpiry" type="date" icon={Calendar}  isEditing={isEditing} value={efVal("passportExpiry")} onChange={updateField} />
+                  <EditField label="Issuing Authority" field="passportIssuingAuthority"  isEditing={isEditing} value={efVal("passportIssuingAuthority")} onChange={updateField} />
+                  <EditField label="Nationality" field="nationality" icon={Globe}  isEditing={isEditing} value={efVal("nationality")} onChange={updateField} />
+                  <EditField label="N° Visa" field="visaNumber"  isEditing={isEditing} value={efVal("visaNumber")} onChange={updateField} />
                 </DetailSection>
 
                 {/* Document Images with upload in edit mode */}
@@ -863,8 +868,8 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
                 )}
 
                 <DetailSection title="Travel Preferences" icon={Plane} accent="#2D3199">
-                  <EditField label="Departure City" field="departureCity" icon={MapPin} />
-                  <EditField label="Room Preference" field="roomPreference" icon={Home} />
+                  <EditField label="Departure City" field="departureCity" icon={MapPin}  isEditing={isEditing} value={efVal("departureCity")} onChange={updateField} />
+                  <EditField label="Room Preference" field="roomPreference" icon={Home}  isEditing={isEditing} value={efVal("roomPreference")} onChange={updateField} />
                   {!isEditing && <DetailField label="Package" value={pilgrim.package?.name} icon={BookOpen} full />}
                 </DetailSection>
 
@@ -938,26 +943,26 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
               <div className="space-y-4">
                 {(isEditing || pilgrim.partner || pilgrim.underCover) ? (
                   <DetailSection title="Partner / Mahram" icon={UserCheck} accent="#2D3199">
-                    <EditField label="Partner / Mahram Name" field="partner" full />
-                    <EditField label="Under Cover" field="underCover" />
+                    <EditField label="Partner / Mahram Name" field="partner" full  isEditing={isEditing} value={efVal("partner")} onChange={updateField} />
+                    <EditField label="Under Cover" field="underCover"  isEditing={isEditing} value={efVal("underCover")} onChange={updateField} />
                   </DetailSection>
                 ) : null}
                 {(isEditing || pilgrim.fathersName || pilgrim.mothersName) ? (
                   <DetailSection title="Family Details" icon={Heart} accent="#8B5CF6">
-                    <EditField label="Father's Name" field="fathersName" />
-                    <EditField label="Mother's Name" field="mothersName" />
+                    <EditField label="Father's Name" field="fathersName"  isEditing={isEditing} value={efVal("fathersName")} onChange={updateField} />
+                    <EditField label="Mother's Name" field="mothersName"  isEditing={isEditing} value={efVal("mothersName")} onChange={updateField} />
                   </DetailSection>
                 ) : null}
                 {(isEditing || pilgrim.mahramName || pilgrim.mahramRelationship) ? (
                   <DetailSection title="Mahram Details" icon={UserCheck} accent="#2D3199">
-                    <EditField label="Mahram Name" field="mahramName" />
-                    <EditField label="Mahram Relationship" field="mahramRelationship" />
+                    <EditField label="Mahram Name" field="mahramName"  isEditing={isEditing} value={efVal("mahramName")} onChange={updateField} />
+                    <EditField label="Mahram Relationship" field="mahramRelationship"  isEditing={isEditing} value={efVal("mahramRelationship")} onChange={updateField} />
                   </DetailSection>
                 ) : null}
                 {(isEditing || pilgrim.emergencyContactName) ? (
                   <DetailSection title="Emergency Contact" icon={Phone} accent="#FF3B00">
-                    <EditField label="Contact Name" field="emergencyContactName" />
-                    <EditField label="Contact Phone" field="emergencyContactPhone" icon={Phone} />
+                    <EditField label="Contact Name" field="emergencyContactName"  isEditing={isEditing} value={efVal("emergencyContactName")} onChange={updateField} />
+                    <EditField label="Contact Phone" field="emergencyContactPhone" icon={Phone}  isEditing={isEditing} value={efVal("emergencyContactPhone")} onChange={updateField} />
                   </DetailSection>
                 ) : null}
                 {!isEditing && !pilgrim.partner && !pilgrim.fathersName && !pilgrim.mothersName && !pilgrim.mahramName && !pilgrim.emergencyContactName && (
