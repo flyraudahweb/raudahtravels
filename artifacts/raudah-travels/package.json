@@ -77,7 +77,10 @@
   "dependencies": {
     "@clerk/react": "^6.4.7",
     "@tanstack/react-virtual": "^3.13.24",
+    "@types/file-saver": "^2.0.7",
     "browser-image-compression": "^2.0.2",
+    "exceljs": "^4.4.0",
+    "file-saver": "^2.0.5",
     "html2canvas": "^1.4.1",
     "qrcode.react": "^4.2.0",
     "react-image-crop": "^11.0.10"

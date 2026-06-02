@@ -4,6 +4,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -1295,6 +1297,415 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
   );
 }
 
+const EXPORT_FIELD_GROUPS = [
+  {
+    id: "passport",
+    label: "Passport Data",
+    fields: [
+      { id: "fullName", label: "Full Name" },
+      { id: "passportNumber", label: "Passport Number" },
+      { id: "nationality", label: "Nationality" },
+      { id: "dateOfBirth", label: "Date of Birth" },
+      { id: "gender", label: "Gender" },
+      { id: "placeOfBirth", label: "Place of Birth" },
+      { id: "passportIssueDate", label: "Passport Issue Date" },
+      { id: "passportExpiry", label: "Passport Expiry Date" },
+      { id: "passportIssuingAuthority", label: "Issuing Authority" },
+      { id: "visaNumber", label: "Visa Number" },
+    ],
+  },
+  {
+    id: "personal",
+    label: "Personal Info",
+    fields: [
+      { id: "civility", label: "Civility" },
+      { id: "firstName", label: "First Name" },
+      { id: "lastName", label: "Last Name" },
+      { id: "ethnicGroup", label: "Ethnic Group" },
+      { id: "levelOfStudy", label: "Level of Study" },
+      { id: "maritalStatus", label: "Marital Status" },
+      { id: "occupation", label: "Occupation" },
+    ],
+  },
+  {
+    id: "contact",
+    label: "Contact",
+    fields: [
+      { id: "phone", label: "Phone" },
+      { id: "email", label: "Email" },
+      { id: "country", label: "Country" },
+      { id: "city", label: "City" },
+      { id: "address", label: "Address" },
+    ],
+  },
+  {
+    id: "family",
+    label: "Family",
+    fields: [
+      { id: "fathersName", label: "Father's Name" },
+      { id: "mothersName", label: "Mother's Name" },
+      { id: "mahramName", label: "Mahram Name" },
+      { id: "mahramRelationship", label: "Mahram Relationship" },
+      { id: "emergencyContactName", label: "Emergency Contact Name" },
+      { id: "emergencyContactPhone", label: "Emergency Contact Phone" },
+    ],
+  },
+  {
+    id: "package",
+    label: "Package & Travel",
+    fields: [
+      { id: "packageName", label: "Package Name" },
+      { id: "packageType", label: "Package Type" },
+      { id: "packageCategory", label: "Category" },
+      { id: "departureCity", label: "Departure City" },
+      { id: "roomPreference", label: "Room Preference" },
+      { id: "flightSchedule", label: "Flight Schedule" },
+    ],
+  },
+  {
+    id: "financial",
+    label: "Financial",
+    fields: [
+      { id: "totalPrice", label: "Total Price" },
+      { id: "amountPaid", label: "Amount Paid" },
+      { id: "paymentStatus", label: "Payment Status" },
+    ],
+  },
+  {
+    id: "booking",
+    label: "Booking",
+    fields: [
+      { id: "reference", label: "Reference" },
+      { id: "status", label: "Status" },
+      { id: "agent", label: "Agent" },
+      { id: "staff", label: "Staff" },
+      { id: "registered", label: "Registration Date" },
+    ],
+  },
+];
+
+async function exportSelectedExcel(pilgrims: PilgrimRow[], selectedFields: Record<string, boolean>, groupBy: "none" | "agent" | "staff") {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Pilgrims");
+
+  const columns: { header: string; key: string; width: number }[] = [];
+  
+  if (selectedFields["fullName"]) columns.push({ header: "Full Name", key: "fullName", width: 25 });
+  if (selectedFields["passportNumber"]) columns.push({ header: "Passport No", key: "passportNumber", width: 15 });
+  if (selectedFields["nationality"]) columns.push({ header: "Nationality", key: "nationality", width: 15 });
+  if (selectedFields["dateOfBirth"]) columns.push({ header: "Date of Birth", key: "dateOfBirth", width: 15 });
+  if (selectedFields["gender"]) columns.push({ header: "Gender", key: "gender", width: 10 });
+  if (selectedFields["placeOfBirth"]) columns.push({ header: "Place of Birth", key: "placeOfBirth", width: 20 });
+  if (selectedFields["passportIssueDate"]) columns.push({ header: "Date of Issue", key: "passportIssueDate", width: 15 });
+  if (selectedFields["passportExpiry"]) columns.push({ header: "Passport Expiry", key: "passportExpiry", width: 15 });
+  if (selectedFields["passportIssuingAuthority"]) columns.push({ header: "Issuing Authority", key: "passportIssuingAuthority", width: 20 });
+  if (selectedFields["visaNumber"]) columns.push({ header: "N° Visa", key: "visaNumber", width: 15 });
+  if (selectedFields["civility"]) columns.push({ header: "Civility", key: "civility", width: 10 });
+  if (selectedFields["firstName"]) columns.push({ header: "First Name", key: "firstName", width: 20 });
+  if (selectedFields["lastName"]) columns.push({ header: "Last Name", key: "lastName", width: 20 });
+  if (selectedFields["ethnicGroup"]) columns.push({ header: "Ethnic Group", key: "ethnicGroup", width: 15 });
+  if (selectedFields["levelOfStudy"]) columns.push({ header: "Level of Study", key: "levelOfStudy", width: 15 });
+  if (selectedFields["maritalStatus"]) columns.push({ header: "Marital Status", key: "maritalStatus", width: 15 });
+  if (selectedFields["occupation"]) columns.push({ header: "Occupation", key: "occupation", width: 20 });
+  if (selectedFields["phone"]) columns.push({ header: "Phone", key: "phone", width: 15 });
+  if (selectedFields["email"]) columns.push({ header: "Email", key: "email", width: 25 });
+  if (selectedFields["country"]) columns.push({ header: "Country", key: "country", width: 15 });
+  if (selectedFields["city"]) columns.push({ header: "City", key: "city", width: 15 });
+  if (selectedFields["address"]) columns.push({ header: "Address", key: "address", width: 30 });
+  if (selectedFields["fathersName"]) columns.push({ header: "Father's Name", key: "fathersName", width: 20 });
+  if (selectedFields["mothersName"]) columns.push({ header: "Mother's Name", key: "mothersName", width: 20 });
+  if (selectedFields["mahramName"]) columns.push({ header: "Mahram Name", key: "mahramName", width: 20 });
+  if (selectedFields["mahramRelationship"]) columns.push({ header: "Mahram Relationship", key: "mahramRelationship", width: 20 });
+  if (selectedFields["emergencyContactName"]) columns.push({ header: "Emergency Contact Name", key: "emergencyContactName", width: 20 });
+  if (selectedFields["emergencyContactPhone"]) columns.push({ header: "Emergency Contact Phone", key: "emergencyContactPhone", width: 15 });
+  if (selectedFields["packageName"]) columns.push({ header: "Package Name", key: "packageName", width: 25 });
+  if (selectedFields["packageType"]) columns.push({ header: "Package Type", key: "packageType", width: 15 });
+  if (selectedFields["packageCategory"]) columns.push({ header: "Category", key: "packageCategory", width: 15 });
+  if (selectedFields["departureCity"]) columns.push({ header: "Departure City", key: "departureCity", width: 15 });
+  if (selectedFields["roomPreference"]) columns.push({ header: "Room Preference", key: "roomPreference", width: 15 });
+  if (selectedFields["flightSchedule"]) columns.push({ header: "Flight Schedule", key: "flightSchedule", width: 30 });
+  if (selectedFields["totalPrice"]) columns.push({ header: "Total Price", key: "totalPrice", width: 15 });
+  if (selectedFields["amountPaid"]) columns.push({ header: "Amount Paid", key: "amountPaid", width: 15 });
+  if (selectedFields["paymentStatus"]) columns.push({ header: "Payment Status", key: "paymentStatus", width: 15 });
+  if (selectedFields["reference"]) columns.push({ header: "Reference", key: "reference", width: 15 });
+  if (selectedFields["status"]) columns.push({ header: "Status", key: "status", width: 15 });
+  if (selectedFields["agent"]) columns.push({ header: "Agent", key: "agent", width: 20 });
+  if (selectedFields["staff"]) columns.push({ header: "Staff", key: "staff", width: 20 });
+  if (selectedFields["registered"]) columns.push({ header: "Registered", key: "registered", width: 15 });
+
+  ws.columns = columns;
+
+  // Header styling
+  ws.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+  ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2D3199" } };
+
+  // Organize data
+  let groupedPilgrims: { groupName: string; pilgrims: PilgrimRow[] }[] = [];
+  
+  if (groupBy === "agent") {
+    const map = new Map<string, PilgrimRow[]>();
+    for (const p of pilgrims) {
+      const g = (p as any).agentBusinessName || "No Agent";
+      if (!map.has(g)) map.set(g, []);
+      map.get(g)!.push(p);
+    }
+    groupedPilgrims = Array.from(map.entries()).map(([groupName, groupPilgrims]) => ({ groupName, pilgrims: groupPilgrims }));
+  } else if (groupBy === "staff") {
+    const map = new Map<string, PilgrimRow[]>();
+    for (const p of pilgrims) {
+      const g = (p as any).registeredByStaffName || "No Staff";
+      if (!map.has(g)) map.set(g, []);
+      map.get(g)!.push(p);
+    }
+    groupedPilgrims = Array.from(map.entries()).map(([groupName, groupPilgrims]) => ({ groupName, pilgrims: groupPilgrims }));
+  } else {
+    groupedPilgrims = [{ groupName: "All", pilgrims }];
+  }
+
+  const colors = ["FFF0F8FF", "FFF5FFFA", "FFFFF0F5", "FFFFFAF0", "FFF0FFF0", "FFF8F8FF"];
+  let rowIdx = 2; // start after header
+
+  groupedPilgrims.forEach((group, gIdx) => {
+    if (groupBy !== "none") {
+      const groupRow = ws.getRow(rowIdx);
+      groupRow.values = [group.groupName];
+      groupRow.font = { bold: true, size: 14, color: { argb: "FF111111" } };
+      groupRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFDDDDDD" } };
+      ws.mergeCells(rowIdx, 1, rowIdx, columns.length);
+      rowIdx++;
+    }
+
+    const groupColor = colors[gIdx % colors.length];
+
+    group.pilgrims.forEach(p => {
+      const paid = paymentStatus(p);
+      const rowData: any = {};
+      
+      if (selectedFields["fullName"]) rowData.fullName = p.fullName || "";
+      if (selectedFields["passportNumber"]) rowData.passportNumber = p.passportNumber || "";
+      if (selectedFields["nationality"]) rowData.nationality = p.nationality || "";
+      if (selectedFields["dateOfBirth"]) rowData.dateOfBirth = p.dateOfBirth || "";
+      if (selectedFields["gender"]) rowData.gender = p.gender || "";
+      if (selectedFields["placeOfBirth"]) rowData.placeOfBirth = p.placeOfBirth || "";
+      if (selectedFields["passportIssueDate"]) rowData.passportIssueDate = p.passportIssueDate || "";
+      if (selectedFields["passportExpiry"]) rowData.passportExpiry = p.passportExpiry || "";
+      if (selectedFields["passportIssuingAuthority"]) rowData.passportIssuingAuthority = p.passportIssuingAuthority || "";
+      if (selectedFields["visaNumber"]) rowData.visaNumber = p.visaNumber || "";
+
+      if (selectedFields["civility"]) rowData.civility = p.civility || "";
+      if (selectedFields["firstName"]) rowData.firstName = p.firstName || "";
+      if (selectedFields["lastName"]) rowData.lastName = p.lastName || "";
+      if (selectedFields["ethnicGroup"]) rowData.ethnicGroup = p.ethnicGroup || "";
+      if (selectedFields["levelOfStudy"]) rowData.levelOfStudy = p.levelOfStudy || "";
+      if (selectedFields["maritalStatus"]) rowData.maritalStatus = p.maritalStatus || "";
+      if (selectedFields["occupation"]) rowData.occupation = p.occupation || "";
+
+      if (selectedFields["phone"]) rowData.phone = p.phone || p.user?.phone || "";
+      if (selectedFields["email"]) rowData.email = p.email || p.user?.email || "";
+      if (selectedFields["country"]) rowData.country = p.country || "";
+      if (selectedFields["city"]) rowData.city = p.city || "";
+      if (selectedFields["address"]) rowData.address = p.address || "";
+
+      if (selectedFields["fathersName"]) rowData.fathersName = p.fathersName || "";
+      if (selectedFields["mothersName"]) rowData.mothersName = p.mothersName || "";
+      if (selectedFields["mahramName"]) rowData.mahramName = p.mahramName || "";
+      if (selectedFields["mahramRelationship"]) rowData.mahramRelationship = p.mahramRelationship || "";
+      if (selectedFields["emergencyContactName"]) rowData.emergencyContactName = p.emergencyContactName || "";
+      if (selectedFields["emergencyContactPhone"]) rowData.emergencyContactPhone = p.emergencyContactPhone || "";
+
+      if (selectedFields["packageName"]) rowData.packageName = p.package?.name || "";
+      if (selectedFields["packageType"]) rowData.packageType = p.package?.type || "";
+      if (selectedFields["packageCategory"]) rowData.packageCategory = p.package?.category || "";
+      if (selectedFields["departureCity"]) rowData.departureCity = p.departureCity || "";
+      if (selectedFields["roomPreference"]) rowData.roomPreference = p.roomPreference || "";
+      if (selectedFields["flightSchedule"]) rowData.flightSchedule = p.packageDate ? `${p.packageDate.airline} (${p.packageDate.outboundRoute} - ${p.packageDate.returnRoute})` : "";
+
+      if (selectedFields["totalPrice"]) rowData.totalPrice = p.totalPrice;
+      if (selectedFields["amountPaid"]) rowData.amountPaid = p.amountPaid;
+      if (selectedFields["paymentStatus"]) rowData.paymentStatus = paid === "paid" ? "Paid" : paid === "partial" ? "Partial" : "Unpaid";
+
+      if (selectedFields["reference"]) rowData.reference = p.reference || "";
+      if (selectedFields["status"]) rowData.status = p.status;
+      if (selectedFields["agent"]) rowData.agent = (p as any).agentBusinessName || "";
+      if (selectedFields["staff"]) rowData.staff = (p as any).registeredByStaffName || "";
+      if (selectedFields["registered"]) rowData.registered = new Date(p.createdAt).toLocaleDateString("en-GB");
+
+      const row = ws.addRow(rowData);
+      
+      if (groupBy !== "none") {
+        row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: groupColor } };
+      }
+
+      rowIdx++;
+    });
+
+    if (groupBy !== "none") {
+      const summaryRow = ws.getRow(rowIdx);
+      summaryRow.values = [`Total for ${group.groupName}: ${group.pilgrims.length} pilgrim${group.pilgrims.length !== 1 ? "s" : ""}`];
+      summaryRow.font = { italic: true, color: { argb: "FF666666" } };
+      ws.mergeCells(rowIdx, 1, rowIdx, columns.length);
+      rowIdx++;
+    }
+  });
+
+  const buffer = await wb.xlsx.writeBuffer();
+  saveAs(new Blob([buffer]), `raudah-visa-export-${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+function ExportDialog({ open, onClose, selectedMap, agentsList, staffList, onSelectMore, onExport }: any) {
+  const [selectedFields, setSelectedFields] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {};
+    EXPORT_FIELD_GROUPS.find(g => g.id === "passport")?.fields.forEach(f => {
+      init[f.id] = true;
+    });
+    return init;
+  });
+  const [groupBy, setGroupBy] = useState<"none" | "agent" | "staff">("none");
+  const [addingPilgrims, setAddingPilgrims] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState("");
+  const [selectedStaff, setSelectedStaff] = useState("");
+
+  const toggleField = (id: string, checked: boolean) => {
+    setSelectedFields(prev => ({ ...prev, [id]: checked }));
+  };
+
+  const toggleGroup = (groupId: string, checked: boolean) => {
+    setSelectedFields(prev => {
+      const next = { ...prev };
+      EXPORT_FIELD_GROUPS.find(g => g.id === groupId)?.fields.forEach(f => {
+        next[f.id] = checked;
+      });
+      return next;
+    });
+  };
+
+  const handleAddAgent = async (agentId: string) => {
+    if (!agentId || agentId === FILTER_ALL) return;
+    setAddingPilgrims(true);
+    try {
+      const r = await fetch(`/api/admin/pilgrims?exportAll=true&agentId=${agentId}`);
+      const d = await r.json();
+      onSelectMore((d.pilgrims || []) as PilgrimRow[]);
+    } finally {
+      setAddingPilgrims(false);
+      setSelectedAgent("");
+    }
+  };
+
+  const handleAddStaff = async (staffId: string) => {
+    if (!staffId || staffId === FILTER_ALL) return;
+    setAddingPilgrims(true);
+    try {
+      const r = await fetch(`/api/admin/pilgrims?exportAll=true&registeredByStaffId=${staffId}`);
+      const d = await r.json();
+      onSelectMore((d.pilgrims || []) as PilgrimRow[]);
+    } finally {
+      setAddingPilgrims(false);
+      setSelectedStaff("");
+    }
+  };
+
+  const numCols = Object.values(selectedFields).filter(Boolean).length;
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent aria-describedby={undefined} className="sm:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+        <DialogTitle className="px-6 py-4 border-b bg-white text-lg font-black text-[#0F172A] flex justify-between items-center sticky top-0 z-10">
+          <span>Export {selectedMap.size} Pilgrims</span>
+          <button onClick={onClose} className="text-[#94A3B8] hover:text-[#0F172A]"><X className="w-5 h-5" /></button>
+        </DialogTitle>
+        <div className="flex-1 overflow-y-auto p-6 space-y-8 bg-[#F8FAFC]">
+          
+          <div className="space-y-3">
+            <h3 className="text-xs font-black text-[#64748B] uppercase tracking-widest">1. Quick Add by Agent/Staff</h3>
+            <div className="flex gap-4">
+              <div className="flex-1 bg-white p-3 rounded-xl border border-[#DCE3F0] shadow-sm">
+                <label className="text-xs font-bold text-[#0F172A] mb-2 block">Add all pilgrims for Agent:</label>
+                <Select value={selectedAgent} onValueChange={handleAddAgent} disabled={addingPilgrims}>
+                  <SelectTrigger className="w-full h-9"><SelectValue placeholder="Select an Agent..." /></SelectTrigger>
+                  <SelectContent className="max-h-[200px]">
+                    {agentsList.map((a: any) => <SelectItem key={a.id} value={a.id}>{a.businessName}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1 bg-white p-3 rounded-xl border border-[#DCE3F0] shadow-sm">
+                <label className="text-xs font-bold text-[#0F172A] mb-2 block">Add all pilgrims for Staff:</label>
+                <Select value={selectedStaff} onValueChange={handleAddStaff} disabled={addingPilgrims}>
+                  <SelectTrigger className="w-full h-9"><SelectValue placeholder="Select Staff..." /></SelectTrigger>
+                  <SelectContent className="max-h-[200px]">
+                    {staffList.map((s: any) => <SelectItem key={s.id} value={s.id}>{s.fullName || "Staff"}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="text-xs font-black text-[#64748B] uppercase tracking-widest">2. Choose Columns to Export</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {EXPORT_FIELD_GROUPS.map(group => {
+                const groupSelectedCount = group.fields.filter(f => selectedFields[f.id]).length;
+                const allSelected = groupSelectedCount === group.fields.length;
+                return (
+                  <div key={group.id} className="bg-white rounded-xl border border-[#DCE3F0] overflow-hidden shadow-sm">
+                    <div className="px-3 py-2 border-b bg-[#F8F9FF] flex justify-between items-center">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" className="w-3.5 h-3.5 rounded text-[#2D3199]" 
+                          checked={allSelected} 
+                          ref={(input) => { if (input) input.indeterminate = groupSelectedCount > 0 && !allSelected; }}
+                          onChange={(e) => toggleGroup(group.id, e.target.checked)} />
+                        <span className="text-xs font-black text-[#0F172A]">{group.label}</span>
+                      </label>
+                    </div>
+                    <div className="p-3 space-y-2 max-h-[160px] overflow-y-auto">
+                      {group.fields.map(f => (
+                        <label key={f.id} className="flex items-center gap-2 cursor-pointer group">
+                          <input type="checkbox" className="w-3 h-3 rounded text-[#2D3199]" 
+                            checked={!!selectedFields[f.id]} onChange={e => toggleField(f.id, e.target.checked)} />
+                          <span className="text-xs text-[#334155] group-hover:text-[#0F172A]">{f.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="text-xs font-black text-[#64748B] uppercase tracking-widest">3. Grouping Options</h3>
+            <div className="flex gap-4">
+              {(["none", "agent", "staff"] as const).map(g => (
+                <label key={g} className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-xl border cursor-pointer transition-all ${groupBy === g ? "border-[#2D3199] bg-[#EEF0FF]" : "border-[#DCE3F0] bg-white hover:bg-[#F8FAFC]"}`}>
+                  <input type="radio" name="groupBy" value={g} checked={groupBy === g} onChange={() => setGroupBy(g)} className="w-4 h-4 text-[#2D3199]" />
+                  <span className={`text-sm font-bold ${groupBy === g ? "text-[#2D3199]" : "text-[#334155]"}`}>
+                    {g === "none" ? "No Grouping" : g === "agent" ? "Group by Agent" : "Group by Staff"}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+        </div>
+        <div className="p-5 border-t bg-white flex justify-between items-center">
+          <p className="text-sm font-semibold text-[#64748B]">
+            {numCols === 0 ? "Select at least 1 column" : `Exporting ${numCols} column${numCols !== 1 ? "s" : ""} for ${selectedMap.size} pilgrim${selectedMap.size !== 1 ? "s" : ""}`}
+          </p>
+          <div className="flex gap-3">
+            <button onClick={onClose} className="px-5 py-2.5 rounded-xl border text-sm font-bold text-[#64748B] hover:bg-[#F8FAFC]">Cancel</button>
+            <button 
+              onClick={() => onExport(selectedFields, groupBy)}
+              disabled={numCols === 0 || selectedMap.size === 0}
+              className="px-6 py-2.5 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white text-sm font-black disabled:opacity-50 flex items-center gap-2">
+              <Download className="w-4 h-4" /> Export Excel
+            </button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function exportExcel(pilgrims: PilgrimRow[]) {
   const headers = [
     "Reference","Civility","First Name","Last Name","Full Name",
@@ -1644,6 +2055,11 @@ export default function AdminPilgrims() {
   const [page, setPage]                   = useState(1);
   const [selected, setSelected]           = useState<PilgrimRow | null>(null);
 
+  // New state for multi-select and export
+  const [selectedMap, setSelectedMap] = useState<Map<string, PilgrimRow>>(new Map());
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
   // Fetch agents and staff for filter dropdowns
   const { data: agentsData } = useQuery<{ agents: { id: string; businessName: string }[] }>({
     queryKey: ["admin-agents-list"],
@@ -1685,6 +2101,50 @@ export default function AdminPilgrims() {
   const pilgrims   = (data?.pilgrims   ?? []) as PilgrimRow[];
   const total      = data?.total      ?? 0;
   const totalPages = data?.totalPages ?? 1;
+
+  const allPageSelected = pilgrims.length > 0 && pilgrims.every(p => selectedMap.has(p.id));
+
+  function togglePage(checked: boolean) {
+    setSelectedMap(m => {
+      const n = new Map(m);
+      if (checked) pilgrims.forEach(p => n.set(p.id, p));
+      else pilgrims.forEach(p => n.delete(p.id));
+      return n;
+    });
+  }
+
+  async function selectAllMatching() {
+    const p = new URLSearchParams({ exportAll: "true" });
+    if (search)                         p.set("search",        search);
+    if (filterStatus  !== FILTER_ALL)   p.set("status",        filterStatus);
+    if (filterGender  !== FILTER_ALL)   p.set("gender",        filterGender);
+    if (filterType    !== FILTER_ALL)   p.set("packageType",   filterType);
+    if (filterPayment !== FILTER_ALL)   p.set("paymentStatus", filterPayment);
+    if (filterVisa    !== FILTER_ALL)   p.set("visaStatus",    filterVisa);
+    if (filterAgent   !== FILTER_ALL)   p.set("agentId",       filterAgent);
+    if (filterStaff   !== FILTER_ALL)   p.set("registeredByStaffId", filterStaff);
+    if (filterArchived)                 p.set("isArchived",    "true");
+    
+    const r = await fetch(`/api/admin/pilgrims?${p}`, { credentials: "include" });
+    const d = await r.json();
+    setSelectedMap(m => {
+      const n = new Map(m);
+      (d.pilgrims ?? []).forEach((p: PilgrimRow) => n.set(p.id, p));
+      return n;
+    });
+  }
+
+  const handleExportSelected = async (selectedFields: Record<string, boolean>, groupBy: "none" | "agent" | "staff") => {
+    setIsExporting(true);
+    try {
+      await exportSelectedExcel(Array.from(selectedMap.values()), selectedFields, groupBy);
+      setShowExportDialog(false);
+    } catch (e: any) {
+      console.error(e);
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   // Keep the selected dialog updated automatically when background data changes
   useEffect(() => {
@@ -1839,9 +2299,39 @@ export default function AdminPilgrims() {
         </div>
       </div>
 
+      {/* Selection Toolbar */}
+      {selectedMap.size > 0 && (
+        <div className="bg-[#EEF0FF] rounded-2xl border border-[#C7CCF5] p-3 flex flex-wrap items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-[#2D3199] text-white flex items-center justify-center font-black text-sm">
+              {selectedMap.size}
+            </div>
+            <p className="font-bold text-[#2D3199]">Pilgrims Selected</p>
+            {total > pilgrims.length && selectedMap.size < total && (
+              <button onClick={selectAllMatching} className="text-xs font-bold text-[#2D3199] underline hover:no-underline ml-2 border-l border-[#C7CCF5] pl-4">
+                Select all {total} matching records
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setSelectedMap(new Map())} className="px-4 py-2 text-sm font-bold text-[#64748B] hover:text-[#0F172A] hover:bg-white/50 rounded-xl transition-colors">
+              Clear
+            </button>
+            <button 
+              onClick={() => setShowExportDialog(true)}
+              disabled={isExporting}
+              className="px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-white text-sm font-black rounded-xl transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50">
+              {isExporting ? <><Loader2 className="w-4 h-4 animate-spin" /> Exporting...</> : <><Download className="w-4 h-4" /> Export Selected</>}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Count bar + pagination */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2.5 bg-white rounded-xl border border-[#DCE3F0] px-4 py-2 shadow-sm">
+          <input type="checkbox" checked={allPageSelected} onChange={e => togglePage(e.target.checked)} className="w-4 h-4 rounded accent-[#2D3199] cursor-pointer" />
+          <div className="w-px h-4 bg-[#DCE3F0] mx-1"></div>
           <Users className="w-4 h-4 text-[#2D3199]" />
           <span className="font-black text-[#0F172A] text-sm">{total.toLocaleString()}</span>
           <span className="text-[#94A3B8] text-sm">pilgrim{total !== 1 ? "s" : ""}</span>
@@ -1894,11 +2384,20 @@ export default function AdminPilgrims() {
             return (
               <div
                 key={pilgrim.id}
-                className="bg-white rounded-2xl border border-[#DCE3F0] shadow-[0_2px_12px_rgba(45,49,153,0.04)] p-4 flex items-center justify-between gap-4 cursor-pointer hover:shadow-[0_4px_20px_rgba(45,49,153,0.10)] hover:border-[#B8C0E8] transition-all"
+                className={`bg-white rounded-2xl border ${selectedMap.has(pilgrim.id) ? "border-[#2D3199] bg-[#F0F2FF]" : "border-[#DCE3F0] hover:border-[#B8C0E8] hover:shadow-[0_4px_20px_rgba(45,49,153,0.10)]"} shadow-[0_2px_12px_rgba(45,49,153,0.04)] p-4 flex items-center justify-between gap-4 cursor-pointer transition-all`}
                 onClick={() => setSelected(pilgrim)}
                 data-testid={`row-pilgrim-${pilgrim.id}`}
               >
                 <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="flex items-center justify-center shrink-0 pr-1" onClick={e => e.stopPropagation()}>
+                    <input type="checkbox" checked={selectedMap.has(pilgrim.id)}
+                      onChange={e => setSelectedMap(m => {
+                        const n = new Map(m);
+                        e.target.checked ? n.set(pilgrim.id, pilgrim) : n.delete(pilgrim.id);
+                        return n;
+                      })}
+                      className="w-5 h-5 rounded accent-[#2D3199] cursor-pointer" />
+                  </div>
                   {pilgrim.profilePhotoUrl ? (
                     <img src={pilgrim.profilePhotoUrl} alt={resolveDisplayName(pilgrim)}
                          className="h-11 w-11 rounded-xl object-cover shrink-0 border border-[#DCE3F0]" />
@@ -1959,6 +2458,22 @@ export default function AdminPilgrims() {
       )}
 
       {selected && <PilgrimDetailDialog pilgrim={selected} onClose={() => setSelected(null)} />}
+      
+      <ExportDialog 
+        open={showExportDialog} 
+        onClose={() => setShowExportDialog(false)} 
+        selectedMap={selectedMap} 
+        agentsList={agentsList} 
+        staffList={staffList} 
+        onSelectMore={(morePilgrims: PilgrimRow[]) => {
+          setSelectedMap(m => {
+            const n = new Map(m);
+            morePilgrims.forEach(p => n.set(p.id, p));
+            return n;
+          });
+        }}
+        onExport={handleExportSelected}
+      />
     </div>
   );
 }
