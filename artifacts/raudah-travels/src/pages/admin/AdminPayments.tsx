@@ -1053,7 +1053,7 @@ export default function AdminPayments() {
               <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Reason for reinstating</Label>
               <Textarea value={reinstateReason} onChange={e => setReinstateReason(e.target.value)}
                 className="mt-1.5 rounded-xl border-[#DCE3F0] resize-none"
-                placeholder="e.g. Payment was mistakenly rejected…"
+                placeholder="Mistakenly rejected"
                 rows={3} />
             </div>
             <div className="grid grid-cols-2 gap-3">
