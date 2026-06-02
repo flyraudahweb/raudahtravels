@@ -85,7 +85,9 @@ export default function AgentPackages() {
             }
 
             // Calculate commission deduction (applied as price reduction)
-            const hasCommission = commissionRate > 0;
+            // RULE: Package discount OVERRIDES commission. If a package discount exists,
+            // only the package discount applies. Commission only applies when there is no package discount.
+            const hasCommission = commissionRate > 0 && !hasSpecialDiscount;
             let commissionDeduction = 0;
             if (hasCommission) {
               const priceAfterDiscount = pkg.price - discountAmount;

@@ -334,6 +334,10 @@ export default function AgentClients() {
   const selectedDiscount = selectedPkg ? discountMap[selectedPkg.id] : undefined;
   const commissionRate = discountData?.commissionRate || 0;
   const commissionType = discountData?.commissionType || "percentage";
+  // RULE: Package discount OVERRIDES commission.
+  // If a per-package discount exists, only the package discount applies.
+  // Commission only reduces the price when there is NO package discount.
+  const hasPackageDiscount = !!selectedDiscount;
   const effectivePrice = selectedPkg ? (() => {
     let p = selectedPkg.price;
     // Apply per-package discount first
@@ -344,8 +348,8 @@ export default function AgentClients() {
         p = Math.max(0, p - selectedDiscount.discountValue);
       }
     }
-    // Apply commission as price reduction
-    if (commissionRate > 0) {
+    // Apply commission as price reduction ONLY if no package discount exists
+    if (commissionRate > 0 && !hasPackageDiscount) {
       const commDeduction = commissionType === "percentage"
         ? Math.round(p * commissionRate / 100 * 100) / 100
         : Math.min(commissionRate, p);
@@ -1751,13 +1755,13 @@ export default function AgentClients() {
                           </p>
                         </div>
                         <div className="text-right">
-                          {(selectedDiscount || commissionRate > 0) && (
+                          {(selectedDiscount || (commissionRate > 0 && !hasPackageDiscount)) && (
                             <p className="text-xs text-[#94A3B8] line-through mb-0.5">₦{selectedPkg.price.toLocaleString()}</p>
                           )}
                           <p className="font-black text-[#2D3199] text-xl">₦{effectivePrice.toLocaleString()}</p>
                         </div>
                       </div>
-                      {(selectedDiscount || commissionRate > 0) && (
+                      {(selectedDiscount || (commissionRate > 0 && !hasPackageDiscount)) && (
                         <div className="mt-2 pt-2 border-t border-[#C7CCF5]/30 space-y-1">
                           {selectedDiscount && (
                             <div className="flex justify-between text-[10px]">
@@ -1767,7 +1771,7 @@ export default function AgentClients() {
                               </span>
                             </div>
                           )}
-                          {commissionRate > 0 && (
+                          {commissionRate > 0 && !hasPackageDiscount && (
                             <div className="flex justify-between text-[10px]">
                               <span className="text-emerald-700 font-semibold">Commission Discount</span>
                               <span className="font-black text-emerald-700">

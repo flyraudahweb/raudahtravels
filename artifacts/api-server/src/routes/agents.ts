@@ -551,9 +551,10 @@ router.post("/agent/register-client", async (req, res) => {
         }
 
         // Apply agent commission as price reduction
+        // RULE: Package discount OVERRIDES commission. Commission only applies when no package discount.
         const commRate = Number(agent.commissionRate);
         let commissionAmount = 0;
-        if (commRate > 0) {
+        if (commRate > 0 && !agentDiscount) {
           commissionAmount = agent.commissionType === "percentage"
             ? Math.round(price * commRate / 100 * 100) / 100
             : Math.min(commRate, price);
@@ -737,9 +738,10 @@ router.post("/agent/register-client", async (req, res) => {
       }
 
       // Apply agent commission as price reduction
+      // RULE: Package discount OVERRIDES commission. Commission only applies when no package discount.
       const commRate = Number(agent.commissionRate);
       let commissionAmount = 0;
-      if (commRate > 0) {
+      if (commRate > 0 && !agentDiscount) {
         commissionAmount = agent.commissionType === "percentage"
           ? Math.round(price * commRate / 100 * 100) / 100
           : Math.min(commRate, price);
