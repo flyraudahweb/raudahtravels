@@ -30,7 +30,7 @@ export default function AgentPackages() {
 
       {/* Commission banner */}
       {commissionRate > 0 && (
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#2D3199] to-[#4C56B8] p-5 text-white shadow-lg">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 p-5 text-white shadow-lg">
           <div className="absolute -top-6 -right-6 w-28 h-28 rounded-full bg-white/10" />
           <div className="absolute -bottom-8 right-16 w-32 h-32 rounded-full bg-white/5" />
           <div className="relative flex items-center gap-4">
@@ -38,16 +38,17 @@ export default function AgentPackages() {
               {commissionType === "percentage" ? <Percent className="w-6 h-6 text-white" /> : <DollarSign className="w-6 h-6 text-white" />}
             </div>
             <div className="flex-1">
-              <p className="font-black text-white text-sm">Your Default Commission Rate</p>
+              <p className="font-black text-white text-sm">Your Commission Discount</p>
               <p className="text-white/70 text-xs mt-0.5">
-                You earn {commissionType === "percentage" ? `${commissionRate}%` : `₦${commissionRate.toLocaleString()}`} on every booking.
-                Individual package earnings are highlighted below.
+                You get {commissionType === "percentage" ? `${commissionRate}%` : `₦${commissionRate.toLocaleString()}`} off every package price.
+                This discount is automatically applied when you book for clients.
               </p>
             </div>
             <div className="shrink-0">
               <p className="text-3xl font-black text-white">
                 {commissionType === "percentage" ? `${commissionRate}%` : `₦${Number(commissionRate).toLocaleString()}`}
               </p>
+              <p className="text-[10px] text-white/70 font-bold text-right uppercase tracking-wider">OFF</p>
             </div>
           </div>
         </div>

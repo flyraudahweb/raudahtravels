@@ -887,12 +887,19 @@ export default function AgentClients() {
                             <span className="font-bold text-[#0F172A]">{p.name}</span>
                             <span className="ml-2 font-mono text-[#64748B]"> — ₦{p.price.toLocaleString()}</span>
                             {discount && <span className="ml-2 text-emerald-600 font-bold text-xs">(Your discount: {discount.discountType === "percentage" ? `${discount.discountValue}%` : `₦${discount.discountValue.toLocaleString()}`})</span>}
+                            {!discount && commissionRate > 0 && <span className="ml-2 text-emerald-600 font-bold text-xs">(Commission discount applied)</span>}
                           </SelectItem>
                         );
                       })}
                     </SelectContent>
                   </Select>
-                  {selectedPkg && (
+                  {selectedPkg && (() => {
+                    // Calculate what the agent actually pays for this package
+                    const pkgDiscount = discountMap[selectedPkg.id];
+                    const hasDiscount = !!pkgDiscount;
+                    const hasComm = commissionRate > 0 && !hasDiscount;
+                    const showReduced = hasDiscount || hasComm;
+                    return (
                     <div className="mt-3 p-4 bg-white border border-[#E2E8F0] rounded-xl flex items-center justify-between shadow-sm">
                       <div>
                         <p className="text-sm font-black text-[#0F172A]">{selectedPkg.name}</p>
@@ -901,15 +908,28 @@ export default function AgentClients() {
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-black text-[#1C1F66]">₦{selectedPkg.price.toLocaleString()}</p>
-                        {discountMap[selectedPkg.id] && (
+                        {showReduced ? (
+                          <>
+                            <p className="text-xs text-[#94A3B8] line-through">₦{selectedPkg.price.toLocaleString()}</p>
+                            <p className="text-sm font-black text-emerald-700">₦{effectivePrice.toLocaleString()}</p>
+                          </>
+                        ) : (
+                          <p className="text-sm font-black text-[#1C1F66]">₦{selectedPkg.price.toLocaleString()}</p>
+                        )}
+                        {hasDiscount && (
                           <p className="text-[10px] text-emerald-600 font-bold mt-0.5 bg-emerald-50 px-2 py-0.5 rounded inline-block">
-                            Discount Applied
+                            Package Discount Applied
+                          </p>
+                        )}
+                        {hasComm && (
+                          <p className="text-[10px] text-emerald-600 font-bold mt-0.5 bg-emerald-50 px-2 py-0.5 rounded inline-block">
+                            Commission Discount Applied
                           </p>
                         )}
                       </div>
                     </div>
-                  )}
+                    );
+                  })()}
                   {selectedPkg?.type === "umrah" && selectedPkg.packageDates && selectedPkg.packageDates.length > 0 && (() => {
                     const departureCities = [...new Set(selectedPkg.packageDates.map((d: any) => (d.outboundRoute || "").split("-")[0].trim()).filter(Boolean))];
                     const filteredDates = departureCityFilter
