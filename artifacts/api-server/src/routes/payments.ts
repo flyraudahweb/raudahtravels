@@ -91,13 +91,18 @@ router.get("/payments", async (req, res) => {
   const profile = await getProfileByClerkId(clerkUserId);
   if (!profile) return res.status(404).json({ error: "Profile not found" });
 
-  const { bookingId, status, limit = "50", offset = "0" } = req.query as Record<string, string>;
+  const { bookingId, status, archived, limit = "50", offset = "0" } = req.query as Record<string, string>;
   const isAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
 
   const conditions: any[] = [];
   if (!isAdmin) conditions.push(eq(paymentsTable.userId, profile.id));
   if (bookingId) conditions.push(eq(paymentsTable.bookingId, bookingId));
   if (status) conditions.push(eq(paymentsTable.status, status as any));
+  if (archived === "true") {
+    conditions.push(eq(paymentsTable.isArchived, true));
+  } else {
+    conditions.push(eq(paymentsTable.isArchived, false));
+  }
 
   const where = conditions.length ? and(...conditions) : undefined;
 
@@ -221,6 +226,7 @@ router.get("/payments/outstanding", async (req, res) => {
   const conditions: any[] = [
     sql`${bookingsTable.amountPaid}::numeric < ${bookingsTable.totalPrice}::numeric`,
     sql`${bookingsTable.status} != 'cancelled'`,
+    eq(bookingsTable.isArchived, false),
   ];
 
   if (search) {
@@ -1011,6 +1017,77 @@ router.get("/payments/booking/:bookingId", async (req, res) => {
       status: booking.status,
     },
   });
+});
+
+router.put("/payments/:id/archive", async (req, res) => {
+  const { userId: clerkUserId } = getAuth(req);
+  if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
+  const actorProfile = await getProfileByClerkId(clerkUserId);
+  if (!actorProfile) return res.status(404).json({ error: "Profile not found" });
+  const isAdmin = ["admin", "super_admin", "staff"].includes(actorProfile.role);
+  if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+
+  const { archiveReason } = req.body;
+
+  let updatedPayment: typeof paymentsTable.$inferSelect | undefined;
+
+  await db.transaction(async (tx) => {
+    const [payment] = await tx.update(paymentsTable)
+      .set({ isArchived: true, archiveReason: archiveReason || null })
+      .where(eq(paymentsTable.id, req.params.id))
+      .returning();
+
+    if (!payment) return;
+    updatedPayment = payment;
+
+    // If it was verified, we must subtract the amount from the booking's amountPaid
+    // to keep revenue totals correct
+    if (payment.status === "verified" && payment.bookingId) {
+      await tx.update(bookingsTable)
+        .set({
+          amountPaid: sql`GREATEST(${bookingsTable.amountPaid} - ${payment.amount}::numeric, 0)`,
+          updatedAt: new Date()
+        })
+        .where(eq(bookingsTable.id, payment.bookingId));
+    }
+  });
+
+  if (!updatedPayment) return res.status(404).json({ error: "Payment not found" });
+  return res.json(toPaymentResponse(updatedPayment));
+});
+
+router.put("/payments/:id/restore", async (req, res) => {
+  const { userId: clerkUserId } = getAuth(req);
+  if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
+  const actorProfile = await getProfileByClerkId(clerkUserId);
+  if (!actorProfile) return res.status(404).json({ error: "Profile not found" });
+  const isAdmin = ["admin", "super_admin", "staff"].includes(actorProfile.role);
+  if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+
+  let updatedPayment: typeof paymentsTable.$inferSelect | undefined;
+
+  await db.transaction(async (tx) => {
+    const [payment] = await tx.update(paymentsTable)
+      .set({ isArchived: false, archiveReason: null })
+      .where(eq(paymentsTable.id, req.params.id))
+      .returning();
+
+    if (!payment) return;
+    updatedPayment = payment;
+
+    // If it was verified, we must re-add the amount to the booking's amountPaid
+    if (payment.status === "verified" && payment.bookingId) {
+      await tx.update(bookingsTable)
+        .set({
+          amountPaid: sql`${bookingsTable.amountPaid} + ${payment.amount}::numeric`,
+          updatedAt: new Date()
+        })
+        .where(eq(bookingsTable.id, payment.bookingId));
+    }
+  });
+
+  if (!updatedPayment) return res.status(404).json({ error: "Payment not found" });
+  return res.json(toPaymentResponse(updatedPayment));
 });
 
 export default router;

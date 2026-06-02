@@ -14,7 +14,7 @@ import {
   Users, Search, ChevronRight, BookOpen, Phone, CreditCard, Calendar,
   MapPin, Download, FileText, Globe, UserCheck, X, Filter, Plane, Home, User,
   Mail, Badge, Clock, Shield, Heart, AlertCircle, CheckCircle2, Printer,
-  Plus, Loader2, ChevronDown, Check, Edit3, Save, ArrowLeftRight, Upload, Camera, RotateCcw,
+  Plus, Loader2, ChevronDown, Check, Edit3, Save, ArrowLeftRight, Upload, Camera, RotateCcw, Archive, ArchiveRestore, RefreshCcw,
 } from "lucide-react";
 import ReactCrop, { type Crop, type PercentCrop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
@@ -58,6 +58,8 @@ type PilgrimRow = {
   phone?: string | null;
   country?: string | null;
   city?: string | null;
+  isArchived?: boolean;
+  archiveReason?: string | null;
   address?: string | null;
   placeOfBirth?: string | null;
   partner?: string | null;
@@ -232,6 +234,12 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [loadingPkgs, setLoadingPkgs] = useState(false);
 
+  // Archive state
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [archiveReason, setArchiveReason] = useState("");
+  const [isArchiving, setIsArchiving] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+
   const openRecordPay = () => {
     const bal = Math.max(0, pilgrim.totalPrice - pilgrim.amountPaid);
     setRpAmount(bal.toString());
@@ -273,12 +281,57 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
       qc.invalidateQueries({ queryKey: ["admin-pilgrims"] });
       qc.invalidateQueries({ queryKey: ["payments"] });
       qc.invalidateQueries({ queryKey: ["bookings"] });
+      qc.invalidateQueries({ queryKey: ["admin-dashboard"] });
       setShowRecordPay(false);
       onClose(); // Close detail to force refresh
     } catch (e: any) {
       toast({ title: e.message || "Failed to record payment", variant: "destructive" });
     } finally {
       setRpLoading(false);
+    }
+  };
+
+
+  const handleArchive = async () => {
+    if (!archiveReason.trim()) {
+      toast({ title: "Please enter a reason for archiving", variant: "destructive" });
+      return;
+    }
+    setIsArchiving(true);
+    try {
+      const res = await fetch(`/api/admin/bookings/${pilgrim.id}/archive`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archiveReason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to archive");
+      toast({ title: "Pilgrim Archived", description: "Pilgrim and their payments have been archived." });
+      setShowArchiveModal(false);
+      qc.invalidateQueries({ queryKey: ["admin-pilgrims"] });
+      onClose();
+    } catch (e: any) {
+      toast({ title: "Error archiving", description: e.message, variant: "destructive" });
+    } finally {
+      setIsArchiving(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    setIsRestoring(true);
+    try {
+      const res = await fetch(`/api/admin/bookings/${pilgrim.id}/restore`, {
+        method: "PUT",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to restore");
+      toast({ title: "Pilgrim Restored", description: "Pilgrim and their payments have been restored." });
+      qc.invalidateQueries({ queryKey: ["admin-pilgrims"] });
+      onClose();
+    } catch (e: any) {
+      toast({ title: "Error restoring", description: e.message, variant: "destructive" });
+    } finally {
+      setIsRestoring(false);
     }
   };
 
@@ -537,10 +590,26 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
                     </button>
                   </>
                 ) : (
-                  <button onClick={startEditing}
-                    className="h-8 px-3 rounded-full bg-white/10 hover:bg-white/20 text-white/80 hover:text-white text-xs font-bold transition-all flex items-center gap-1">
-                    <Edit3 className="w-3 h-3" /> Edit
-                  </button>
+                  <>
+                    {pilgrim.isArchived ? (
+                      <button onClick={handleRestore} disabled={isRestoring}
+                        className="h-8 px-3 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold transition-all flex items-center gap-1 disabled:opacity-50">
+                        {isRestoring ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCcw className="w-3 h-3" />}
+                        Restore
+                      </button>
+                    ) : (
+                      <>
+                        <button onClick={() => setShowArchiveModal(true)}
+                          className="h-8 px-3 rounded-full bg-red-500 hover:bg-red-600 text-white text-xs font-bold transition-all flex items-center gap-1">
+                          <Archive className="w-3 h-3" /> Archive
+                        </button>
+                        <button onClick={startEditing}
+                          className="h-8 px-3 rounded-full bg-white/10 hover:bg-white/20 text-white/80 hover:text-white text-xs font-bold transition-all flex items-center gap-1">
+                          <Edit3 className="w-3 h-3" /> Edit
+                        </button>
+                      </>
+                    )}
+                  </>
                 )}
                 <button onClick={onClose}
                   className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/70 hover:text-white transition-all">
@@ -1188,6 +1257,40 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ── Archive Dialog ── */}
+      <Dialog open={showArchiveModal} onOpenChange={setShowArchiveModal}>
+        <DialogContent className="sm:max-w-md rounded-3xl p-0 overflow-hidden">
+          <div className="p-6 bg-red-50 border-b border-red-100 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center shrink-0">
+              <Archive className="w-6 h-6 text-red-600" />
+            </div>
+            <div>
+              <DialogTitle className="text-lg font-black text-red-900">Archive Pilgrim</DialogTitle>
+              <p className="text-xs text-red-700 mt-0.5">This will soft-delete the pilgrim and their payments.</p>
+            </div>
+          </div>
+          <div className="p-6 space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-[#0F172A]">Reason for Archiving</Label>
+              <Textarea 
+                placeholder="e.g. Duplicate booking, mistake entry, etc." 
+                value={archiveReason} 
+                onChange={e => setArchiveReason(e.target.value)}
+                className="min-h-[100px] resize-none"
+              />
+            </div>
+          </div>
+          <div className="p-6 pt-0 flex gap-3">
+            <button onClick={() => setShowArchiveModal(false)}
+              className="flex-1 py-2.5 rounded-xl border border-[#DCE3F0] text-[#64748B] text-sm font-bold hover:bg-[#F8FAFC] transition-colors">Cancel</button>
+            <button onClick={handleArchive} disabled={isArchiving || !archiveReason.trim()}
+              className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+              {isArchiving ? <><Loader2 className="w-4 h-4 animate-spin" /> Archiving…</> : "Confirm Archive"}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -1537,6 +1640,7 @@ export default function AdminPilgrims() {
   const [filterVisa, setFilterVisa]       = useState(FILTER_ALL);
   const [filterAgent, setFilterAgent]     = useState(FILTER_ALL);
   const [filterStaff, setFilterStaff]     = useState(FILTER_ALL);
+  const [filterArchived, setFilterArchived] = useState(false);
   const [page, setPage]                   = useState(1);
   const [selected, setSelected]           = useState<PilgrimRow | null>(null);
 
@@ -1554,7 +1658,7 @@ export default function AdminPilgrims() {
   const agentsList = agentsData?.agents || [];
   const staffList = staffData?.staff || [];
 
-  useEffect(() => { setPage(1); }, [search, filterStatus, filterType, filterPayment, filterGender, filterVisa, filterAgent, filterStaff]);
+  useEffect(() => { setPage(1); }, [search, filterStatus, filterType, filterPayment, filterGender, filterVisa, filterAgent, filterStaff, filterArchived]);
 
   const queryParams = useMemo(() => {
     const p = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
@@ -1566,8 +1670,9 @@ export default function AdminPilgrims() {
     if (filterVisa    !== FILTER_ALL)   p.set("visaStatus",    filterVisa);
     if (filterAgent   !== FILTER_ALL)   p.set("agentId",       filterAgent);
     if (filterStaff   !== FILTER_ALL)   p.set("registeredByStaffId", filterStaff);
+    if (filterArchived)                 p.set("isArchived",    "true");
     return p.toString();
-  }, [search, filterStatus, filterType, filterPayment, filterGender, filterVisa, filterAgent, filterStaff, page]);
+  }, [search, filterStatus, filterType, filterPayment, filterGender, filterVisa, filterAgent, filterStaff, filterArchived, page]);
 
   const { data, isLoading } = useQuery<{ pilgrims: PilgrimRow[]; total: number; totalPages: number }>({
     queryKey: ["admin-pilgrims", queryParams],
@@ -1591,7 +1696,7 @@ export default function AdminPilgrims() {
     }
   }, [pilgrims, selected]);
 
-  const activeFilters = [filterStatus, filterType, filterPayment, filterGender, filterVisa, filterAgent, filterStaff].filter(f => f !== FILTER_ALL).length + (search ? 1 : 0);
+  const activeFilters = [filterStatus, filterType, filterPayment, filterGender, filterVisa, filterAgent, filterStaff].filter(f => f !== FILTER_ALL).length + (search ? 1 : 0) + (filterArchived ? 1 : 0);
 
   const exportParams = useMemo(() => {
     const p = new URLSearchParams({ exportAll: "true" });
@@ -1603,8 +1708,9 @@ export default function AdminPilgrims() {
     if (filterVisa    !== FILTER_ALL)   p.set("visaStatus",    filterVisa);
     if (filterAgent   !== FILTER_ALL)   p.set("agentId",       filterAgent);
     if (filterStaff   !== FILTER_ALL)   p.set("registeredByStaffId", filterStaff);
+    if (filterArchived)                 p.set("isArchived",    "true");
     return p.toString();
-  }, [search, filterStatus, filterType, filterPayment, filterGender, filterVisa, filterAgent, filterStaff]);
+  }, [search, filterStatus, filterType, filterPayment, filterGender, filterVisa, filterAgent, filterStaff, filterArchived]);
 
   const handleExportCSV = useCallback(async () => {
     const r = await fetch(`/api/admin/pilgrims?${exportParams}`);
@@ -1622,7 +1728,7 @@ export default function AdminPilgrims() {
     setFilterStatus(FILTER_ALL); setFilterType(FILTER_ALL);
     setFilterPayment(FILTER_ALL); setFilterGender(FILTER_ALL);
     setFilterVisa(FILTER_ALL); setFilterAgent(FILTER_ALL);
-    setFilterStaff(FILTER_ALL); setSearch("");
+    setFilterStaff(FILTER_ALL); setSearch(""); setFilterArchived(false);
   };
 
   return (
@@ -1711,6 +1817,18 @@ export default function AdminPilgrims() {
               )}
             </div>
           ))}
+
+          <button
+            onClick={() => setFilterArchived(!filterArchived)}
+            className={`flex items-center gap-1.5 h-8 px-3 rounded-lg border text-xs font-bold transition-all shrink-0 ${
+              filterArchived 
+                ? "border-red-500 bg-red-50 text-red-700" 
+                : "border-[#DCE3F0] bg-white text-[#64748B] hover:bg-[#F8FAFC]"
+            }`}
+          >
+            <Archive className="w-3.5 h-3.5" />
+            Show Archived
+          </button>
 
           {activeFilters > 0 && (
             <button onClick={clearFilters}

@@ -110,6 +110,10 @@ export const bookingsTable = pgTable("bookings", {
   ticketDeliveryMessage: text("ticket_delivery_message"),
   ticketUploadedAt: timestamp("ticket_uploaded_at"),
 
+  // Archiving
+  isArchived: boolean("is_archived").default(false).notNull(),
+  archiveReason: text("archive_reason"),
+
   // ID Tag number (sequential, assigned at booking confirmation)
   idNumber: integer("id_number"),
 

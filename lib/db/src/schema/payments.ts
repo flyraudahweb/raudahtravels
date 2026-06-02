@@ -4,6 +4,7 @@ import {
   timestamp,
   numeric,
   pgEnum,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -41,6 +42,8 @@ export const paymentsTable = pgTable("payments", {
   verifiedBy: text("verified_by").references(() => profilesTable.id),
   verifiedAt: timestamp("verified_at"),
   notes: text("notes"),
+  isArchived: boolean("is_archived").default(false).notNull(),
+  archiveReason: text("archive_reason"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

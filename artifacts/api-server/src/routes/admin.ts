@@ -368,6 +368,9 @@ router.get("/admin/pilgrims", async (req, res) => {
   if (departureDateFrom) conditions.push(gte(packagesTable.departureDate, departureDateFrom));
   if (departureDateTo)   conditions.push(lte(packagesTable.departureDate, departureDateTo));
 
+  const isArchivedFilter = req.query.isArchived === "true";
+  conditions.push(eq(bookingsTable.isArchived, isArchivedFilter));
+
   const whereClause = conditions.length ? and(...conditions) : undefined;
 
   // Use aliased tables for agent and staff joins to avoid collision with profiles
@@ -1312,8 +1315,8 @@ router.put("/admin/staff/:id/profile", async (req, res) => {
 
 router.get("/admin/analytics", async (req, res) => {
   const { period = "month", month, year } = req.query as Record<string, string>;
-  const allBookings = await db.query.bookingsTable.findMany();
-  const allPayments = await db.query.paymentsTable.findMany();
+  const allBookings = await db.query.bookingsTable.findMany({ where: eq(bookingsTable.isArchived, false) });
+  const allPayments = await db.query.paymentsTable.findMany({ where: eq(paymentsTable.isArchived, false) });
   const allProfiles = await db.query.profilesTable.findMany({ where: eq(profilesTable.role, "user") });
   const allPackages = await db.query.packagesTable.findMany();
 
@@ -2030,6 +2033,10 @@ router.get("/admin/visa", async (req, res) => {
     ilike(bookingsTable.passportNumber, `%${search}%`),
     ilike(bookingsTable.reference,      `%${search}%`),
   ));
+  
+  const isArchivedFilter = req.query.isArchived === "true";
+  conds.push(eq(bookingsTable.isArchived, isArchivedFilter));
+
   const where = conds.length ? and(...conds) : undefined;
 
   const [visas, [{ count }]] = await Promise.all([

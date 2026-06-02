@@ -24,11 +24,11 @@ router.get("/dashboard/summary", async (req, res) => {
   if (!profile) return res.status(404).json({ error: "Profile not found" });
 
   const myBookings = await db.query.bookingsTable.findMany({
-    where: eq(bookingsTable.userId, profile.id),
+    where: and(eq(bookingsTable.userId, profile.id), eq(bookingsTable.isArchived, false)),
   });
 
   const myPayments = await db.query.paymentsTable.findMany({
-    where: eq(paymentsTable.userId, profile.id),
+    where: and(eq(paymentsTable.userId, profile.id), eq(paymentsTable.isArchived, false)),
     limit: 5,
   });
 
@@ -62,8 +62,8 @@ router.get("/dashboard/admin-overview", async (req, res) => {
     return res.status(403).json({ error: "Admin access required" });
   }
 
-  const allBookings = await db.query.bookingsTable.findMany();
-  const allPayments = await db.query.paymentsTable.findMany();
+  const allBookings = await db.query.bookingsTable.findMany({ where: eq(bookingsTable.isArchived, false) });
+  const allPayments = await db.query.paymentsTable.findMany({ where: eq(paymentsTable.isArchived, false) });
   const allPackages = await db.query.packagesTable.findMany();
   const allAgents = await db.query.agentsTable.findMany();
   const allTickets = await db.query.supportTicketsTable.findMany();
@@ -143,7 +143,7 @@ router.get("/dashboard/agent-overview", async (req, res) => {
 
   const [myBookings, agentCommissions, walletRecord] = await Promise.all([
     db.query.bookingsTable.findMany({
-      where: agent ? eq(bookingsTable.agentId, agent.id) : eq(bookingsTable.userId, profile.id),
+      where: agent ? and(eq(bookingsTable.agentId, agent.id), eq(bookingsTable.isArchived, false)) : and(eq(bookingsTable.userId, profile.id), eq(bookingsTable.isArchived, false)),
       orderBy: [desc(bookingsTable.createdAt)],
     }),
     agent
@@ -188,8 +188,8 @@ router.get("/dashboard/activity", async (req, res) => {
   }
 
   const { limit = "20" } = req.query as Record<string, string>;
-  const recentBookings = await db.query.bookingsTable.findMany({ limit: 5, orderBy: bookingsTable.createdAt });
-  const recentPayments = await db.query.paymentsTable.findMany({ limit: 5, orderBy: paymentsTable.createdAt });
+  const recentBookings = await db.query.bookingsTable.findMany({ where: eq(bookingsTable.isArchived, false), limit: 5, orderBy: bookingsTable.createdAt });
+  const recentPayments = await db.query.paymentsTable.findMany({ where: eq(paymentsTable.isArchived, false), limit: 5, orderBy: paymentsTable.createdAt });
 
   const activities = [
     ...recentBookings.map((b) => ({
@@ -232,6 +232,7 @@ router.get("/my-visa", async (req, res) => {
     .innerJoin(bookingsTable, and(
       eq(visaApplicationsTable.bookingId, bookingsTable.id),
       eq(bookingsTable.userId, profile.id),
+      eq(bookingsTable.isArchived, false)
     ))
     .leftJoin(packagesTable, eq(bookingsTable.packageId, packagesTable.id))
     .orderBy(desc(visaApplicationsTable.createdAt));
@@ -261,7 +262,7 @@ router.get("/dashboard/amendments", async (req, res) => {
     })
     .from(bookingAmendmentRequestsTable)
     .leftJoin(bookingsTable, eq(bookingAmendmentRequestsTable.bookingId, bookingsTable.id))
-    .where(eq(bookingAmendmentRequestsTable.userId, profile.id))
+    .where(and(eq(bookingAmendmentRequestsTable.userId, profile.id), eq(bookingsTable.isArchived, false)))
     .orderBy(desc(bookingAmendmentRequestsTable.createdAt));
 
   return res.json({

@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   CreditCard, CheckCircle2, XCircle, Clock, ExternalLink,
   DollarSign, ArrowUpRight, Printer, Search, Plus, History, AlertTriangle, TrendingDown, Users,
-  ChevronLeft, ChevronRight, Check
+  ChevronLeft, ChevronRight, Check, Archive
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -629,12 +629,16 @@ export default function AdminPayments() {
   const [viewingProof, setViewingProof] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [page, setPage] = useState(1);
+  const [filterArchived, setFilterArchived] = useState(false);
 
   /* ── Tab state ── */
   const [activeTab, setActiveTab] = useState<"all" | "outstanding">("all");
 
-  const params = statusFilter !== "all" ? { status: statusFilter } : {};
-  const { data, isLoading } = useListPayments(params as Record<string, unknown>, { query: { queryKey: getListPaymentsQueryKey(params as Record<string, unknown>) } });
+  const params: Record<string, string> = {};
+  if (statusFilter !== "all") params.status = statusFilter;
+  if (filterArchived) params.archived = "true";
+
+  const { data, isLoading } = useListPayments(params, { query: { queryKey: getListPaymentsQueryKey(params) } });
   const verifyPayment = useVerifyPayment();
   const allPayments = data?.payments || [];
 
@@ -776,7 +780,7 @@ export default function AdminPayments() {
                 className="w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-[#DCE3F0] bg-white focus:outline-none focus:ring-2 focus:ring-[#2D3199]/20 focus:border-[#2D3199]"
               />
             </div>
-            <div className="flex gap-1.5 bg-white rounded-xl border border-[#DCE3F0] p-1">
+            <div className="flex gap-1.5 bg-white rounded-xl border border-[#DCE3F0] p-1 flex-wrap">
               {["all", "pending", "verified", "rejected"].map(s => (
                 <button key={s} onClick={() => { setStatusFilter(s); setPage(1); }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all capitalize whitespace-nowrap ${statusFilter === s ? "bg-[#2D3199] text-white shadow-sm" : "text-[#64748B] hover:text-[#2D3199]"}`}
@@ -785,6 +789,18 @@ export default function AdminPayments() {
                 </button>
               ))}
             </div>
+            
+            <button
+              onClick={() => { setFilterArchived(!filterArchived); setPage(1); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all h-full ${
+                filterArchived 
+                  ? "border-red-500 bg-red-50 text-red-700" 
+                  : "border-[#DCE3F0] bg-white text-[#64748B] hover:bg-[#F8FAFC]"
+              }`}
+            >
+              <Archive className="w-3.5 h-3.5" />
+              Show Archived
+            </button>
           </div>
 
           {/* List */}

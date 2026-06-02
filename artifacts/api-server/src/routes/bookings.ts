@@ -103,13 +103,19 @@ router.get("/bookings", async (req, res) => {
   const profile = await getProfileByClerkId(clerkUserId);
   if (!profile) return res.status(404).json({ error: "Profile not found" });
 
-  const { status, packageId, limit = "20", offset = "0" } = req.query as Record<string, string>;
+  const { status, packageId, archived, limit = "20", offset = "0" } = req.query as Record<string, string>;
   const conditions: any[] = [];
 
   const isAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
   if (!isAdmin) conditions.push(eq(bookingsTable.userId, profile.id));
   if (status) conditions.push(eq(bookingsTable.status, status as any));
   if (packageId) conditions.push(eq(bookingsTable.packageId, packageId));
+  
+  if (archived === "true") {
+    conditions.push(eq(bookingsTable.isArchived, true));
+  } else {
+    conditions.push(eq(bookingsTable.isArchived, false));
+  }
 
   const bookings = await db.select()
     .from(bookingsTable)
@@ -366,6 +372,56 @@ router.delete("/bookings/:id", async (req, res) => {
   await db.delete(bookingsTable).where(eq(bookingsTable.id, booking.id));
 
   return res.json({ success: true });
+});
+
+router.put("/bookings/:id/archive", async (req, res) => {
+  const { userId: clerkUserId } = getAuth(req);
+  if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
+  const actorProfile = await getProfileByClerkId(clerkUserId);
+  if (!actorProfile) return res.status(404).json({ error: "Profile not found" });
+  const isAdmin = ["admin", "super_admin", "staff"].includes(actorProfile.role);
+  if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+
+  const { archiveReason } = req.body;
+
+  const [booking] = await db.update(bookingsTable)
+    .set({ isArchived: true, archiveReason: archiveReason || null, updatedAt: new Date() })
+    .where(eq(bookingsTable.id, req.params.id))
+    .returning();
+
+  if (!booking) return res.status(404).json({ error: "Booking not found" });
+
+  // Cascade archive to payments
+  const { paymentsTable } = await import("@workspace/db");
+  await db.update(paymentsTable)
+    .set({ isArchived: true, archiveReason: archiveReason || "Archived with booking" })
+    .where(eq(paymentsTable.bookingId, booking.id));
+
+  return res.json(toBookingResponse(booking));
+});
+
+router.put("/bookings/:id/restore", async (req, res) => {
+  const { userId: clerkUserId } = getAuth(req);
+  if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
+  const actorProfile = await getProfileByClerkId(clerkUserId);
+  if (!actorProfile) return res.status(404).json({ error: "Profile not found" });
+  const isAdmin = ["admin", "super_admin", "staff"].includes(actorProfile.role);
+  if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+
+  const [booking] = await db.update(bookingsTable)
+    .set({ isArchived: false, archiveReason: null, updatedAt: new Date() })
+    .where(eq(bookingsTable.id, req.params.id))
+    .returning();
+
+  if (!booking) return res.status(404).json({ error: "Booking not found" });
+
+  // Cascade restore to payments
+  const { paymentsTable } = await import("@workspace/db");
+  await db.update(paymentsTable)
+    .set({ isArchived: false, archiveReason: null })
+    .where(eq(paymentsTable.bookingId, booking.id));
+
+  return res.json(toBookingResponse(booking));
 });
 
 export default router;
