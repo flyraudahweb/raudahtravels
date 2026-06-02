@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
@@ -14,8 +14,11 @@ import {
   Users, Search, ChevronRight, BookOpen, Phone, CreditCard, Calendar,
   MapPin, Download, FileText, Globe, UserCheck, X, Filter, Plane, Home, User,
   Mail, Badge, Clock, Shield, Heart, AlertCircle, CheckCircle2, Printer,
-  Plus, Loader2, ChevronDown, Check,
+  Plus, Loader2, ChevronDown, Check, Edit3, Save, ArrowLeftRight, Upload, Camera, RotateCcw,
 } from "lucide-react";
+import ReactCrop, { type Crop, type PercentCrop } from "react-image-crop";
+import "react-image-crop/dist/ReactCrop.css";
+import { uploadFile } from "@/lib/upload";
 
 const statusStyle: Record<string, string> = {
   confirmed: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -170,6 +173,29 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
   const [rpVerify, setRpVerify] = useState(true);
   const [rpLoading, setRpLoading] = useState(false);
 
+  // Edit mode state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState<Record<string, any>>({});
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Profile photo crop state
+  const [showCropDialog, setShowCropDialog] = useState(false);
+  const [cropImageSrc, setCropImageSrc] = useState<string>("");
+  const [crop, setCrop] = useState<Crop>();
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const cropImgRef = useRef<HTMLImageElement>(null);
+  const profileInputRef = useRef<HTMLInputElement>(null);
+  const passportInputRef = useRef<HTMLInputElement>(null);
+
+  // Package upgrade state
+  const [showPackageUpgrade, setShowPackageUpgrade] = useState(false);
+  const [availablePackages, setAvailablePackages] = useState<any[]>([]);
+  const [packageDatesForUpgrade, setPackageDatesForUpgrade] = useState<any[]>([]);
+  const [selectedNewPkg, setSelectedNewPkg] = useState<string>("");
+  const [selectedNewDate, setSelectedNewDate] = useState<string>("");
+  const [isUpgrading, setIsUpgrading] = useState(false);
+  const [loadingPkgs, setLoadingPkgs] = useState(false);
+
   const openRecordPay = () => {
     const bal = Math.max(0, pilgrim.totalPrice - pilgrim.amountPaid);
     setRpAmount(bal.toString());
@@ -218,6 +244,189 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
     } finally {
       setRpLoading(false);
     }
+  };
+
+  // ── Edit mode helpers ──
+  const startEditing = () => {
+    setEditData({
+      civility: pilgrim.civility || "", firstName: pilgrim.firstName || "", lastName: pilgrim.lastName || "",
+      fullName: pilgrim.fullName || "", dateOfBirth: pilgrim.dateOfBirth || "", gender: pilgrim.gender || "",
+      nationality: pilgrim.nationality || "", placeOfBirth: pilgrim.placeOfBirth || "",
+      ethnicGroup: pilgrim.ethnicGroup || "", maritalStatus: pilgrim.maritalStatus || "",
+      levelOfStudy: pilgrim.levelOfStudy || "", occupation: pilgrim.occupation || "",
+      email: pilgrim.email || pilgrim.user?.email || "", phone: pilgrim.phone || pilgrim.user?.phone || "",
+      country: pilgrim.country || "", city: pilgrim.city || "", address: pilgrim.address || "",
+      observation: pilgrim.observation || "", partner: pilgrim.partner || "", underCover: pilgrim.underCover || "",
+      fathersName: pilgrim.fathersName || "", mothersName: pilgrim.mothersName || "",
+      mahramName: pilgrim.mahramName || "", mahramRelationship: pilgrim.mahramRelationship || "",
+      emergencyContactName: pilgrim.emergencyContactName || "", emergencyContactPhone: pilgrim.emergencyContactPhone || "",
+      passportNumber: pilgrim.passportNumber || "", passportIssueDate: pilgrim.passportIssueDate || "",
+      passportExpiry: pilgrim.passportExpiry || "", passportIssuingAuthority: pilgrim.passportIssuingAuthority || "",
+      visaNumber: pilgrim.visaNumber || "", departureCity: pilgrim.departureCity || "",
+      roomPreference: pilgrim.roomPreference || "",
+      profilePhotoUrl: pilgrim.profilePhotoUrl || "", passportCopyUrl: pilgrim.passportCopyUrl || "",
+    });
+    setIsEditing(true);
+  };
+  const cancelEditing = () => { setEditData({}); setIsEditing(false); };
+  const updateField = (field: string, value: string) => setEditData(prev => ({ ...prev, [field]: value }));
+
+  const handleSave = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      const res = await fetch(`/api/admin/bookings/${pilgrim.id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify(editData),
+      });
+      if (!res.ok) { const err = await res.json().catch(() => ({ error: "Failed" })); throw new Error(err.error || "Failed to save"); }
+      toast({ title: "Pilgrim info updated successfully" });
+      qc.invalidateQueries({ queryKey: ["admin-pilgrims"] });
+      setIsEditing(false);
+      onClose();
+    } catch (e: any) {
+      toast({ title: e.message || "Failed to save", variant: "destructive" });
+    } finally { setIsSaving(false); }
+  };
+
+  // ── Crop helpers ──
+  function generateCroppedImage(image: HTMLImageElement, cropData: Crop): string {
+    const canvas = document.createElement("canvas");
+    const scaleX = image.naturalWidth / image.width;
+    const scaleY = image.naturalHeight / image.height;
+    const isPercent = (cropData as PercentCrop).unit === "%";
+    const pxX = isPercent ? (cropData.x / 100) * image.width : cropData.x;
+    const pxY = isPercent ? (cropData.y / 100) * image.height : cropData.y;
+    const pxW = isPercent ? (cropData.width / 100) * image.width : cropData.width;
+    const pxH = isPercent ? (cropData.height / 100) * image.height : cropData.height;
+    canvas.width = pxW * scaleX; canvas.height = pxH * scaleY;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return "";
+    ctx.drawImage(image, pxX * scaleX, pxY * scaleY, pxW * scaleX, pxH * scaleY, 0, 0, canvas.width, canvas.height);
+    const finalCanvas = document.createElement("canvas");
+    finalCanvas.width = 400; finalCanvas.height = 400;
+    const fCtx = finalCanvas.getContext("2d");
+    if (fCtx) { fCtx.fillStyle = "#fff"; fCtx.fillRect(0, 0, 400, 400); fCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, 400, 400); }
+    return finalCanvas.toDataURL("image/jpeg", 0.92);
+  }
+  function dataUrlToFile(dataUrl: string, filename: string): File {
+    const [header, base64] = dataUrl.split(",");
+    const mime = header.match(/:(.*?);/)?.[1] || "image/jpeg";
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new File([bytes], filename, { type: mime });
+  }
+
+  const handleProfilePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { if (typeof reader.result === "string") { setCropImageSrc(reader.result); setShowCropDialog(true); } };
+    reader.readAsDataURL(file);
+    if (e.target) e.target.value = "";
+  };
+
+  const handleCropConfirm = async () => {
+    if (!cropImgRef.current || !crop) return;
+    setIsUploadingPhoto(true);
+    try {
+      const b64 = generateCroppedImage(cropImgRef.current, crop);
+      const file = dataUrlToFile(b64, `profile-${Date.now()}.jpg`);
+      let url: string;
+      try { url = await uploadFile(file, "photos"); } catch { url = b64; }
+      updateField("profilePhotoUrl", url);
+      toast({ title: "Profile photo updated" });
+    } catch { toast({ title: "Failed to crop photo", variant: "destructive" }); }
+    finally { setIsUploadingPhoto(false); setShowCropDialog(false); setCropImageSrc(""); }
+  };
+
+  const handlePassportUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    try { const url = await uploadFile(file, "passports"); updateField("passportCopyUrl", url); toast({ title: "Passport document updated" }); }
+    catch { toast({ title: "Failed to upload passport", variant: "destructive" }); }
+    if (e.target) e.target.value = "";
+  };
+
+  // ── Package upgrade helpers ──
+  const openPackageUpgrade = async () => {
+    setLoadingPkgs(true); setShowPackageUpgrade(true); setSelectedNewPkg(""); setSelectedNewDate("");
+    try {
+      const res = await fetch("/api/packages", { credentials: "include" });
+      const data = await res.json();
+      const pkgs = (data.packages || data || []).filter((p: any) => p.status === "active" || p.isActive);
+      setAvailablePackages(pkgs);
+    } catch { toast({ title: "Failed to load packages", variant: "destructive" }); }
+    finally { setLoadingPkgs(false); }
+  };
+
+  const handleSelectNewPackage = async (pkgId: string) => {
+    setSelectedNewPkg(pkgId); setSelectedNewDate("");
+    // packageDates are already embedded in the package response from GET /packages
+    const cached = availablePackages.find((p: any) => p.id === pkgId);
+    if (cached?.packageDates?.length) {
+      setPackageDatesForUpgrade(cached.packageDates);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/packages/${pkgId}`, { credentials: "include" });
+      const data = await res.json();
+      setPackageDatesForUpgrade(data.packageDates || []);
+    } catch { setPackageDatesForUpgrade([]); }
+  };
+
+  const handleUpgradeConfirm = async () => {
+    if (!selectedNewPkg || isUpgrading) return;
+    setIsUpgrading(true);
+    try {
+      const res = await fetch(`/api/admin/bookings/${pilgrim.id}/upgrade-package`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify({ newPackageId: selectedNewPkg, newPackageDateId: selectedNewDate || null }),
+      });
+      if (!res.ok) { const err = await res.json().catch(() => ({ error: "Failed" })); throw new Error(err.error || "Failed to change package"); }
+      const result = await res.json();
+      const diff = result.priceDifference;
+      if (diff > 0) toast({ title: `Package upgraded! ₦${diff.toLocaleString()} extra payment pending.` });
+      else if (diff < 0) toast({ title: `Package changed. Total price reduced by ₦${Math.abs(diff).toLocaleString()}.` });
+      else toast({ title: "Package dates updated successfully" });
+      qc.invalidateQueries({ queryKey: ["admin-pilgrims"] });
+      qc.invalidateQueries({ queryKey: ["payments"] });
+      setShowPackageUpgrade(false); onClose();
+    } catch (e: any) { toast({ title: e.message, variant: "destructive" }); }
+    finally { setIsUpgrading(false); }
+  };
+
+  // ── Editable field component ──
+  const EditField = ({ label, field, icon: Icon, full = false, type = "text", options, fallback }: {
+    label: string; field: string; icon?: React.ElementType; full?: boolean;
+    type?: "text" | "date" | "select" | "textarea";
+    options?: { value: string; label: string }[];
+    fallback?: string | null;
+  }) => {
+    const val = isEditing ? (editData[field] ?? "") : ((pilgrim as any)[field] || fallback || "");
+    if (!isEditing && !val) return null;
+    return (
+      <div className={`${full ? "col-span-2" : ""} group`}>
+        <p className="text-[9px] font-black text-[#94A3B8] uppercase tracking-[.12em] mb-1 flex items-center gap-1">
+          {Icon && <Icon className="w-2.5 h-2.5" />}{label}
+        </p>
+        {isEditing ? (
+          type === "select" && options ? (
+            <Select value={val} onValueChange={(v) => updateField(field, v)}>
+              <SelectTrigger className="h-8 text-sm rounded-lg border-[#DCE3F0]"><SelectValue placeholder={`Select ${label.toLowerCase()}`} /></SelectTrigger>
+              <SelectContent>{options.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+            </Select>
+          ) : type === "textarea" ? (
+            <Textarea value={val} onChange={e => updateField(field, e.target.value)}
+              className="text-sm rounded-lg border-[#DCE3F0] resize-none" rows={2} />
+          ) : (
+            <input type={type} value={val} onChange={e => updateField(field, e.target.value)}
+              className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-[#DCE3F0] bg-white focus:outline-none focus:ring-2 focus:ring-[#2D3199]/20 focus:border-[#2D3199] font-semibold text-[#0F172A]" />
+          )
+        ) : (
+          <p className="text-sm font-semibold text-[#0F172A] break-words leading-snug">{val}</p>
+        )}
+      </div>
+    );
   };
 
   const { data: visaData } = useQuery({
@@ -309,8 +518,26 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
                 </div>
               </div>
 
-              {/* Right: close + print */}
+              {/* Right: edit + close */}
               <div className="flex items-center gap-2 shrink-0">
+                {isEditing ? (
+                  <>
+                    <button onClick={cancelEditing}
+                      className="h-8 px-3 rounded-full bg-white/10 hover:bg-white/20 text-white/80 hover:text-white text-xs font-bold transition-all flex items-center gap-1">
+                      <RotateCcw className="w-3 h-3" /> Cancel
+                    </button>
+                    <button onClick={handleSave} disabled={isSaving}
+                      className="h-8 px-3 rounded-full bg-[#10B981] hover:bg-[#059669] text-white text-xs font-bold transition-all flex items-center gap-1 disabled:opacity-50">
+                      {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                      {isSaving ? "Saving…" : "Save"}
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={startEditing}
+                    className="h-8 px-3 rounded-full bg-white/10 hover:bg-white/20 text-white/80 hover:text-white text-xs font-bold transition-all flex items-center gap-1">
+                    <Edit3 className="w-3 h-3" /> Edit
+                  </button>
+                )}
                 <button onClick={onClose}
                   className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/70 hover:text-white transition-all">
                   <X className="w-4 h-4" />
@@ -492,6 +719,12 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
                   </button>
                 )}
 
+                {/* Change Package button */}
+                <button onClick={openPackageUpgrade}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#2D3199] hover:bg-[#1C1F66] text-white text-sm font-bold rounded-2xl transition-colors shadow-sm">
+                  <ArrowLeftRight className="w-4 h-4" /> Change / Upgrade Package
+                </button>
+
                 {/* Visa note */}
                 {pilgrim.visaDeliveryMessage && (
                   <div className="bg-white rounded-2xl border border-[#E2E8F0] p-4 shadow-sm">
@@ -516,34 +749,46 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
             {/* ── PERSONAL TAB ── */}
             {tab === "personal" && (
               <div className="space-y-4">
+                {isEditing && (
+                  <div className="flex items-center gap-2 p-3 bg-[#EEF0FF] border border-[#C7CCF5] rounded-xl">
+                    <Edit3 className="w-4 h-4 text-[#2D3199]" />
+                    <p className="text-xs font-bold text-[#2D3199]">Edit mode active — modify fields below and click Save</p>
+                  </div>
+                )}
                 <DetailSection title="Identity" icon={User} accent="#2D3199">
-                  {pilgrim.civility && (
-                    <DetailField label="Civility" value={pilgrim.civility} />
-                  )}
-                  <DetailField label="First Name"     value={pilgrim.firstName} />
-                  <DetailField label="Last Name"      value={pilgrim.lastName} />
-                  <DetailField label="Full Name"      value={pilgrim.fullName} icon={User} full />
-                  <DetailField label="Gender"         value={pilgrim.gender ? pilgrim.gender.charAt(0).toUpperCase() + pilgrim.gender.slice(1) : null} />
-                  <DetailField label="Date of Birth"  value={pilgrim.dateOfBirth}    icon={Calendar} />
-                  <DetailField label="Place of Birth" value={pilgrim.placeOfBirth} />
-                  <DetailField label="Nationality"    value={pilgrim.nationality}    icon={Globe} />
-                  <DetailField label="Ethnic Group"   value={pilgrim.ethnicGroup} />
-                  <DetailField label="Marital Status" value={pilgrim.maritalStatus} />
-                  <DetailField label="Level of Study" value={pilgrim.levelOfStudy} />
-                  <DetailField label="Occupation"     value={pilgrim.occupation} />
+                  <EditField label="Civility" field="civility" type="select" options={[
+                    { value: "Mr", label: "Mr" }, { value: "Mrs", label: "Mrs" },
+                    { value: "Miss", label: "Miss" }, { value: "Dr", label: "Dr" },
+                  ]} />
+                  <EditField label="First Name" field="firstName" />
+                  <EditField label="Last Name" field="lastName" />
+                  <EditField label="Full Name" field="fullName" icon={User} full />
+                  <EditField label="Gender" field="gender" type="select" options={[
+                    { value: "male", label: "Male" }, { value: "female", label: "Female" },
+                  ]} />
+                  <EditField label="Date of Birth" field="dateOfBirth" type="date" icon={Calendar} />
+                  <EditField label="Place of Birth" field="placeOfBirth" />
+                  <EditField label="Nationality" field="nationality" icon={Globe} />
+                  <EditField label="Ethnic Group" field="ethnicGroup" />
+                  <EditField label="Marital Status" field="maritalStatus" type="select" options={[
+                    { value: "single", label: "Single" }, { value: "married", label: "Married" },
+                    { value: "divorced", label: "Divorced" }, { value: "widowed", label: "Widowed" },
+                  ]} />
+                  <EditField label="Level of Study" field="levelOfStudy" />
+                  <EditField label="Occupation" field="occupation" />
                 </DetailSection>
                 <DetailSection title="Contact & Location" icon={Phone} accent="#10B981">
-                  <DetailField label="Phone (WhatsApp)" value={pilgrim.phone || pilgrim.user?.phone} icon={Phone} />
-                  <DetailField label="Email"            value={pilgrim.email || pilgrim.user?.email} icon={Mail} full />
-                  <DetailField label="Country"          value={pilgrim.country}  icon={Globe} />
-                  <DetailField label="City"             value={pilgrim.city}     icon={MapPin} />
-                  <DetailField label="Address"          value={pilgrim.address}  icon={MapPin} full />
+                  <EditField label="Phone (WhatsApp)" field="phone" icon={Phone} fallback={pilgrim.user?.phone} />
+                  <EditField label="Email" field="email" icon={Mail} full fallback={pilgrim.user?.email} />
+                  <EditField label="Country" field="country" icon={Globe} />
+                  <EditField label="City" field="city" icon={MapPin} />
+                  <EditField label="Address" field="address" icon={MapPin} full type="textarea" />
                 </DetailSection>
-                {(pilgrim.partner || pilgrim.underCover || pilgrim.observation) && (
+                {(isEditing || pilgrim.partner || pilgrim.underCover || pilgrim.observation) && (
                   <DetailSection title="Additional Notes" icon={Badge} accent="#8B5CF6">
-                    <DetailField label="Partner / Mahram" value={pilgrim.partner} />
-                    <DetailField label="Under Cover"      value={pilgrim.underCover} />
-                    <DetailField label="Observation"      value={pilgrim.observation} full />
+                    <EditField label="Partner / Mahram" field="partner" />
+                    <EditField label="Under Cover" field="underCover" />
+                    <EditField label="Observation" field="observation" full type="textarea" />
                   </DetailSection>
                 )}
               </div>
@@ -553,45 +798,74 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
             {tab === "travel" && (
               <div className="space-y-4">
                 <DetailSection title="Passport & Documents" icon={FileText} accent="#FF3B00">
-                  <DetailField label="Passport Number"       value={pilgrim.passportNumber}         icon={FileText} />
-                  <DetailField label="Date of Issue"         value={pilgrim.passportIssueDate}      icon={Calendar} />
-                  <DetailField label="Passport Expiry"       value={pilgrim.passportExpiry}         icon={Calendar} />
-                  <DetailField label="Issuing Authority"     value={pilgrim.passportIssuingAuthority} />
-                  <DetailField label="Nationality"           value={pilgrim.nationality}            icon={Globe} />
-                  <DetailField label="N° Visa"               value={pilgrim.visaNumber} />
+                  <EditField label="Passport Number" field="passportNumber" icon={FileText} />
+                  <EditField label="Date of Issue" field="passportIssueDate" type="date" icon={Calendar} />
+                  <EditField label="Passport Expiry" field="passportExpiry" type="date" icon={Calendar} />
+                  <EditField label="Issuing Authority" field="passportIssuingAuthority" />
+                  <EditField label="Nationality" field="nationality" icon={Globe} />
+                  <EditField label="N° Visa" field="visaNumber" />
                 </DetailSection>
 
-                {(pilgrim.passportCopyUrl || pilgrim.profilePhotoUrl) && (
-                  <div className="rounded-2xl border border-[#E2E8F0] overflow-hidden">
-                    <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[#E2E8F0]" style={{ background: "#FF3B0008" }}>
-                      <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#FF3B00" }}>
-                        <FileText className="w-3 h-3 text-white" />
-                      </div>
-                      <h4 className="text-xs font-black text-[#0F172A] uppercase tracking-wide">Document Images</h4>
+                {/* Document Images with upload in edit mode */}
+                {(isEditing || pilgrim.passportCopyUrl || pilgrim.profilePhotoUrl) && (
+                <div className="rounded-2xl border border-[#E2E8F0] overflow-hidden">
+                  <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[#E2E8F0]" style={{ background: "#FF3B0008" }}>
+                    <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0" style={{ background: "#FF3B00" }}>
+                      <FileText className="w-3 h-3 text-white" />
                     </div>
-                    <div className="p-4 flex gap-4 flex-wrap">
-                      {pilgrim.profilePhotoUrl && (
-                        <div className="flex flex-col items-center gap-1.5">
-                          <img src={pilgrim.profilePhotoUrl} alt="Profile Photo"
-                               className="w-24 h-28 object-cover rounded-xl border border-[#E2E8F0] shadow-sm" />
-                          <p className="text-[9px] font-black text-[#94A3B8] uppercase tracking-widest">Profile Photo</p>
+                    <h4 className="text-xs font-black text-[#0F172A] uppercase tracking-wide">Document Images</h4>
+                  </div>
+                  <div className="p-4 flex gap-4 flex-wrap">
+                    {/* Profile Photo */}
+                    <div className="flex flex-col items-center gap-1.5">
+                      {(isEditing ? editData.profilePhotoUrl : pilgrim.profilePhotoUrl) ? (
+                        <img src={isEditing ? editData.profilePhotoUrl : pilgrim.profilePhotoUrl} alt="Profile Photo"
+                             className="w-24 h-28 object-cover rounded-xl border border-[#E2E8F0] shadow-sm" />
+                      ) : (
+                        <div className="w-24 h-28 rounded-xl border-2 border-dashed border-[#DCE3F0] flex items-center justify-center">
+                          <Camera className="w-6 h-6 text-[#94A3B8]" />
                         </div>
                       )}
-                      {pilgrim.passportCopyUrl && (
-                        <div className="flex flex-col items-center gap-1.5">
-                          <img src={pilgrim.passportCopyUrl} alt="Passport Copy"
-                               className="w-36 h-28 object-cover rounded-xl border border-[#E2E8F0] shadow-sm" />
-                          <p className="text-[9px] font-black text-[#94A3B8] uppercase tracking-widest">Passport Copy</p>
+                      <p className="text-[9px] font-black text-[#94A3B8] uppercase tracking-widest">Profile Photo</p>
+                      {isEditing && (
+                        <>
+                          <input ref={profileInputRef} type="file" accept="image/*" className="hidden" onChange={handleProfilePhotoSelect} />
+                          <button onClick={() => profileInputRef.current?.click()}
+                            className="text-[10px] font-bold text-[#2D3199] hover:underline flex items-center gap-1">
+                            <Camera className="w-3 h-3" /> {editData.profilePhotoUrl ? "Re-crop" : "Upload"}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                    {/* Passport Copy */}
+                    <div className="flex flex-col items-center gap-1.5">
+                      {(isEditing ? editData.passportCopyUrl : pilgrim.passportCopyUrl) ? (
+                        <img src={isEditing ? editData.passportCopyUrl : pilgrim.passportCopyUrl} alt="Passport Copy"
+                             className="w-36 h-28 object-cover rounded-xl border border-[#E2E8F0] shadow-sm" />
+                      ) : (
+                        <div className="w-36 h-28 rounded-xl border-2 border-dashed border-[#DCE3F0] flex items-center justify-center">
+                          <FileText className="w-6 h-6 text-[#94A3B8]" />
                         </div>
+                      )}
+                      <p className="text-[9px] font-black text-[#94A3B8] uppercase tracking-widest">Passport Copy</p>
+                      {isEditing && (
+                        <>
+                          <input ref={passportInputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handlePassportUpload} />
+                          <button onClick={() => passportInputRef.current?.click()}
+                            className="text-[10px] font-bold text-[#2D3199] hover:underline flex items-center gap-1">
+                            <Upload className="w-3 h-3" /> {editData.passportCopyUrl ? "Replace" : "Upload"}
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
+                </div>
                 )}
 
                 <DetailSection title="Travel Preferences" icon={Plane} accent="#2D3199">
-                  <DetailField label="Departure City"  value={pilgrim.departureCity}  icon={MapPin} />
-                  <DetailField label="Room Preference" value={pilgrim.roomPreference} icon={Home} />
-                  <DetailField label="Package"         value={pilgrim.package?.name}  icon={BookOpen} full />
+                  <EditField label="Departure City" field="departureCity" icon={MapPin} />
+                  <EditField label="Room Preference" field="roomPreference" icon={Home} />
+                  {!isEditing && <DetailField label="Package" value={pilgrim.package?.name} icon={BookOpen} full />}
                 </DetailSection>
 
                 {pilgrim.packageDate && (
@@ -662,31 +936,31 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
             {/* ── FAMILY TAB ── */}
             {tab === "family" && (
               <div className="space-y-4">
-                {(pilgrim.partner || pilgrim.underCover) ? (
+                {(isEditing || pilgrim.partner || pilgrim.underCover) ? (
                   <DetailSection title="Partner / Mahram" icon={UserCheck} accent="#2D3199">
-                    <DetailField label="Partner / Mahram Name" value={pilgrim.partner} full />
-                    <DetailField label="Under Cover"           value={pilgrim.underCover} />
+                    <EditField label="Partner / Mahram Name" field="partner" full />
+                    <EditField label="Under Cover" field="underCover" />
                   </DetailSection>
                 ) : null}
-                {(pilgrim.fathersName || pilgrim.mothersName) ? (
+                {(isEditing || pilgrim.fathersName || pilgrim.mothersName) ? (
                   <DetailSection title="Family Details" icon={Heart} accent="#8B5CF6">
-                    <DetailField label="Father's Name" value={pilgrim.fathersName} />
-                    <DetailField label="Mother's Name" value={pilgrim.mothersName} />
+                    <EditField label="Father's Name" field="fathersName" />
+                    <EditField label="Mother's Name" field="mothersName" />
                   </DetailSection>
                 ) : null}
-                {(pilgrim.mahramName || pilgrim.mahramRelationship) ? (
+                {(isEditing || pilgrim.mahramName || pilgrim.mahramRelationship) ? (
                   <DetailSection title="Mahram Details" icon={UserCheck} accent="#2D3199">
-                    <DetailField label="Mahram Name"         value={pilgrim.mahramName} />
-                    <DetailField label="Mahram Relationship" value={pilgrim.mahramRelationship} />
+                    <EditField label="Mahram Name" field="mahramName" />
+                    <EditField label="Mahram Relationship" field="mahramRelationship" />
                   </DetailSection>
                 ) : null}
-                {pilgrim.emergencyContactName ? (
+                {(isEditing || pilgrim.emergencyContactName) ? (
                   <DetailSection title="Emergency Contact" icon={Phone} accent="#FF3B00">
-                    <DetailField label="Contact Name"  value={pilgrim.emergencyContactName} />
-                    <DetailField label="Contact Phone" value={pilgrim.emergencyContactPhone} icon={Phone} />
+                    <EditField label="Contact Name" field="emergencyContactName" />
+                    <EditField label="Contact Phone" field="emergencyContactPhone" icon={Phone} />
                   </DetailSection>
                 ) : null}
-                {!pilgrim.partner && !pilgrim.fathersName && !pilgrim.mothersName && !pilgrim.mahramName && !pilgrim.emergencyContactName && (
+                {!isEditing && !pilgrim.partner && !pilgrim.fathersName && !pilgrim.mothersName && !pilgrim.mahramName && !pilgrim.emergencyContactName && (
                   <div className="text-center py-12 text-[#94A3B8]">
                     <Heart className="w-8 h-8 mx-auto mb-3 opacity-30" />
                     <p className="text-sm font-semibold">No family or emergency contact recorded</p>
@@ -760,6 +1034,152 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
               disabled={rpLoading || !rpAmount || parseFloat(rpAmount) <= 0}
               className="flex-1 py-2.5 rounded-xl bg-[#FF3B00] hover:bg-[#CC2E00] text-white text-sm font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
               {rpLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Recording…</> : <><Plus className="w-4 h-4" /> Record Payment</>}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Profile Photo Crop Dialog ── */}
+      <Dialog open={showCropDialog} onOpenChange={() => { /* forced */ }}>
+        <DialogContent className="max-w-xl p-0 overflow-hidden bg-white rounded-3xl gap-0 border-0 [&>button]:hidden"
+          onInteractOutside={(e: Event) => e.preventDefault()}
+          onEscapeKeyDown={(e: KeyboardEvent) => e.preventDefault()}>
+          <DialogTitle className="p-5 pb-3 text-lg font-black text-[#0F172A] flex items-center gap-2">
+            <Camera className="w-5 h-5 text-[#2D3199]" /> Crop Profile Picture
+          </DialogTitle>
+          <div className="bg-[#1e293b] border-y border-[#334155] p-4 flex justify-center items-center relative min-h-[300px]">
+            {cropImageSrc && (
+              <ReactCrop crop={crop} onChange={(_, pc) => setCrop(pc)} aspect={1} className="max-h-[60vh]" keepSelection>
+                <img ref={cropImgRef} src={cropImageSrc} alt="Crop" className="max-w-full max-h-[60vh] object-contain rounded-lg shadow-xl"
+                  onLoad={() => setCrop({ unit: "%" as const, x: 10, y: 10, width: 80, height: 80 })} />
+              </ReactCrop>
+            )}
+          </div>
+          <div className="p-4 bg-white flex items-center justify-end gap-3">
+            <button onClick={() => { setShowCropDialog(false); setCropImageSrc(""); }}
+              className="h-10 px-4 rounded-xl border border-[#DCE3F0] text-[#64748B] text-sm font-bold hover:bg-[#F8FAFC] transition-colors">Cancel</button>
+            <button onClick={handleCropConfirm} disabled={isUploadingPhoto}
+              className="h-10 px-6 rounded-xl bg-[#2D3199] hover:bg-[#1C1F66] text-white text-sm font-bold transition-colors disabled:opacity-50 flex items-center gap-2">
+              {isUploadingPhoto ? <><Loader2 className="w-4 h-4 animate-spin" /> Uploading…</> : "Confirm Crop"}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Package Upgrade Dialog ── */}
+      <Dialog open={showPackageUpgrade} onOpenChange={setShowPackageUpgrade}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden rounded-3xl p-0 flex flex-col">
+          <DialogTitle className="px-6 pt-6 pb-4 border-b border-[#F1F5F9] font-black text-[#0F172A] flex items-center gap-2">
+            <ArrowLeftRight className="w-5 h-5 text-[#2D3199]" /> Change / Upgrade Package
+          </DialogTitle>
+          <div className="px-6 py-2 bg-[#F8F9FF] border-b border-[#E2E8F0]">
+            <p className="text-xs text-[#64748B]">Current: <strong className="text-[#0F172A]">{pilgrim.package?.name}</strong> · ₦{pilgrim.totalPrice.toLocaleString()}</p>
+          </div>
+          <div className="flex-1 overflow-y-auto p-6 space-y-3">
+            {loadingPkgs ? (
+              <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-[#2D3199]" /></div>
+            ) : availablePackages.length === 0 ? (
+              <p className="text-sm text-[#94A3B8] text-center py-8">No packages available</p>
+            ) : (
+              availablePackages.map((pkg: any) => {
+                const isCurrent = pkg.id === pilgrim.package?.id;
+                const isSelected = pkg.id === selectedNewPkg;
+                const diff = Number(pkg.price) - pilgrim.totalPrice;
+                return (
+                  <button key={pkg.id} onClick={() => !isCurrent && handleSelectNewPackage(pkg.id)}
+                    disabled={isCurrent}
+                    className={`w-full text-left p-4 rounded-2xl border-2 transition-all ${
+                      isCurrent ? "border-[#10B981] bg-emerald-50/50 opacity-70 cursor-default" :
+                      isSelected ? "border-[#2D3199] bg-[#F0F2FF] shadow-md" :
+                      "border-[#E2E8F0] bg-white hover:border-[#B8C0E8] hover:shadow-sm"
+                    }`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-bold text-[#0F172A] text-sm">{pkg.name}</p>
+                        <p className="text-xs text-[#64748B] capitalize mt-0.5">{pkg.type} · {pkg.category}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-black text-[#0F172A]">₦{Number(pkg.price).toLocaleString()}</p>
+                        {!isCurrent && (
+                          <p className={`text-[10px] font-bold mt-0.5 ${diff > 0 ? "text-[#FF3B00]" : diff < 0 ? "text-emerald-600" : "text-[#94A3B8]"}`}>
+                            {diff > 0 ? `+₦${diff.toLocaleString()} extra` : diff < 0 ? `-₦${Math.abs(diff).toLocaleString()} less` : "Same price"}
+                          </p>
+                        )}
+                        {isCurrent && <p className="text-[10px] font-bold text-emerald-600 mt-0.5">Current Package</p>}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+
+            {/* Date selection for selected package */}
+            {selectedNewPkg && packageDatesForUpgrade.length > 0 && (
+              <div className="mt-4 p-4 rounded-2xl bg-[#F8F9FF] border border-[#E2E8F0]">
+                <p className="text-xs font-black text-[#94A3B8] uppercase tracking-widest mb-3">Select Flight Date (Optional)</p>
+                <div className="space-y-2">
+                  <button onClick={() => setSelectedNewDate("")}
+                    className={`w-full text-left p-3 rounded-xl border transition-all text-sm ${
+                      !selectedNewDate ? "border-[#2D3199] bg-[#EEF0FF] font-bold text-[#2D3199]" : "border-[#DCE3F0] hover:border-[#B8C0E8]"
+                    }`}>
+                    Keep current flight date / No specific date
+                  </button>
+                  {packageDatesForUpgrade.map((d: any) => (
+                    <button key={d.id} onClick={() => setSelectedNewDate(d.id)}
+                      className={`w-full text-left p-3 rounded-xl border transition-all text-sm ${
+                        selectedNewDate === d.id ? "border-[#2D3199] bg-[#EEF0FF] font-bold text-[#2D3199]" : "border-[#DCE3F0] hover:border-[#B8C0E8]"
+                      }`}>
+                      <div className="flex justify-between items-center">
+                        <span>{d.airline} · {d.outboundRoute}</span>
+                        <span className="text-xs text-[#64748B]">{new Date(d.outbound).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Price difference warning */}
+            {selectedNewPkg && (() => {
+              const newPkg = availablePackages.find((p: any) => p.id === selectedNewPkg);
+              if (!newPkg) return null;
+              const diff = Number(newPkg.price) - pilgrim.totalPrice;
+              if (diff > 0) return (
+                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5" />
+                    <div>
+                      <p className="font-bold text-amber-700 text-sm">Additional Payment Required</p>
+                      <p className="text-xs text-amber-600 mt-1">
+                        Upgrading to {newPkg.name} requires an additional payment of <strong>₦{diff.toLocaleString()}</strong>. A pending payment record will be created automatically.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+              if (diff < 0) return (
+                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500 mt-0.5" />
+                    <div>
+                      <p className="font-bold text-emerald-700 text-sm">Price Decrease</p>
+                      <p className="text-xs text-emerald-600 mt-1">
+                        Switching to {newPkg.name} reduces the total by <strong>₦{Math.abs(diff).toLocaleString()}</strong>.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+              return null;
+            })()}
+          </div>
+          <div className="px-6 pb-5 pt-3 border-t border-[#F1F5F9] flex gap-3">
+            <button onClick={() => setShowPackageUpgrade(false)}
+              className="flex-1 py-2.5 rounded-xl border border-[#DCE3F0] text-[#64748B] text-sm font-bold hover:bg-[#F8FAFC] transition-colors">Cancel</button>
+            <button onClick={handleUpgradeConfirm}
+              disabled={!selectedNewPkg || isUpgrading || selectedNewPkg === pilgrim.package?.id}
+              className="flex-1 py-2.5 rounded-xl bg-[#2D3199] hover:bg-[#1C1F66] text-white text-sm font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+              {isUpgrading ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</> : <><ArrowLeftRight className="w-4 h-4" /> Confirm Change</>}
             </button>
           </div>
         </DialogContent>

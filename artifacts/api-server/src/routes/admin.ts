@@ -461,6 +461,202 @@ router.get("/admin/pilgrims", async (req, res) => {
   return res.json({ pilgrims: paginated, total, page, limit, totalPages });
 });
 
+// ── Update Booking (Pilgrim Edit) ─────────────────────────────────────────────
+
+router.put("/admin/bookings/:id", async (req, res) => {
+  try {
+    const { userId: callerClerkId } = getAuth(req);
+    if (!callerClerkId) return res.status(401).json({ error: "Unauthorized" });
+    const caller = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, callerClerkId) });
+    if (!caller) return res.status(404).json({ error: "Caller profile not found" });
+
+    const bookingId = req.params.id;
+    const booking = await db.query.bookingsTable.findFirst({ where: eq(bookingsTable.id, bookingId) });
+    if (!booking) return res.status(404).json({ error: "Booking not found" });
+
+    // Whitelist of editable fields
+    const EDITABLE_FIELDS = [
+      "civility", "firstName", "lastName", "fullName",
+      "dateOfBirth", "gender", "nationality", "placeOfBirth",
+      "ethnicGroup", "maritalStatus", "levelOfStudy", "occupation",
+      "email", "phone", "country", "city", "address", "observation",
+      "partner", "underCover", "fathersName", "mothersName",
+      "mahramName", "mahramRelationship", "mahramPassport",
+      "emergencyContactName", "emergencyContactPhone", "emergencyContactRelationship",
+      "departureCity", "roomPreference", "specialRequests", "packageDateId",
+      "passportNumber", "passportIssueDate", "passportExpiry", "passportIssuingAuthority",
+      "passportCopyUrl", "profilePhotoUrl", "visaNumber",
+    ] as const;
+
+    const updates: Record<string, any> = {};
+    for (const field of EDITABLE_FIELDS) {
+      if (field in req.body) {
+        updates[field] = req.body[field] === "" ? null : req.body[field];
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: "No valid fields to update" });
+    }
+
+    updates.updatedAt = new Date();
+
+    const [updated] = await db.update(bookingsTable)
+      .set(updates as any)
+      .where(eq(bookingsTable.id, bookingId))
+      .returning();
+
+    // Activity log
+    try {
+      await db.insert(userActivityTable).values({
+        id: randomUUID(),
+        userId: caller.id,
+        eventType: "booking_updated",
+        bookingId,
+        metadata: {
+          actorName: caller.fullName,
+          actorRole: caller.role,
+          targetName: updated.fullName || booking.fullName,
+          updatedFields: Object.keys(updates),
+        },
+      });
+    } catch (_) { /* non-blocking */ }
+
+    return res.json({ success: true, booking: { ...updated, totalPrice: Number(updated.totalPrice), amountPaid: Number(updated.amountPaid) } });
+  } catch (err: any) {
+    console.error("[booking-update] Error:", err);
+    return res.status(500).json({ error: err.message || "Failed to update booking" });
+  }
+});
+
+// ── Package Upgrade / Switch ──────────────────────────────────────────────────
+
+router.post("/admin/bookings/:id/upgrade-package", async (req, res) => {
+  try {
+    const { userId: callerClerkId } = getAuth(req);
+    if (!callerClerkId) return res.status(401).json({ error: "Unauthorized" });
+    const caller = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, callerClerkId) });
+    if (!caller) return res.status(404).json({ error: "Caller profile not found" });
+
+    const bookingId = req.params.id;
+    const { newPackageId, newPackageDateId } = req.body as { newPackageId: string; newPackageDateId?: string | null };
+
+    if (!newPackageId) return res.status(400).json({ error: "newPackageId is required" });
+
+    const booking = await db.query.bookingsTable.findFirst({ where: eq(bookingsTable.id, bookingId) });
+    if (!booking) return res.status(404).json({ error: "Booking not found" });
+
+    const newPackage = await db.query.packagesTable.findFirst({ where: eq(packagesTable.id, newPackageId) });
+    if (!newPackage) return res.status(404).json({ error: "New package not found" });
+
+    // Get old package for logging
+    const oldPackage = booking.packageId
+      ? await db.query.packagesTable.findFirst({ where: eq(packagesTable.id, booking.packageId) })
+      : null;
+
+    if (booking.packageId === newPackageId) {
+      // Same package — just update packageDateId if provided
+      if (newPackageDateId !== undefined) {
+        await db.update(bookingsTable)
+          .set({ packageDateId: newPackageDateId || null, updatedAt: new Date() })
+          .where(eq(bookingsTable.id, bookingId));
+      }
+      const updatedBooking = await db.query.bookingsTable.findFirst({ where: eq(bookingsTable.id, bookingId) });
+      return res.json({
+        success: true,
+        booking: updatedBooking ? { ...updatedBooking, totalPrice: Number(updatedBooking.totalPrice), amountPaid: Number(updatedBooking.amountPaid) } : null,
+        payment: null,
+        priceDifference: 0,
+      });
+    }
+
+    const oldPrice = Number(booking.totalPrice);
+    const newPrice = Number(newPackage.price);
+    const priceDifference = newPrice - oldPrice;
+    const currentPaid = Number(booking.amountPaid);
+
+    let paymentRecord: any = null;
+    let updatedBooking: typeof bookingsTable.$inferSelect | undefined;
+
+    await db.transaction(async (tx) => {
+      // Update booking to new package
+      const bookingUpdate: Record<string, any> = {
+        packageId: newPackageId,
+        packageDateId: newPackageDateId !== undefined ? (newPackageDateId || null) : booking.packageDateId,
+        totalPrice: String(newPrice),
+        updatedAt: new Date(),
+      };
+
+      // If downgrade and already overpaid, auto-confirm
+      if (currentPaid >= newPrice && newPrice > 0) {
+        bookingUpdate.status = "confirmed";
+      }
+
+      const [b] = await tx.update(bookingsTable)
+        .set(bookingUpdate)
+        .where(eq(bookingsTable.id, bookingId))
+        .returning();
+      updatedBooking = b;
+
+      // If upgrade (price increase), create a pending payment record for the difference
+      if (priceDifference > 0) {
+        const [p] = await tx.insert(paymentsTable).values({
+          id: randomUUID(),
+          bookingId,
+          userId: booking.userId,
+          amount: String(priceDifference),
+          method: "cash",
+          status: "pending",
+          reference: `UPGRADE-${randomUUID().slice(0, 8).toUpperCase()}`,
+          notes: `Package upgrade: ${oldPackage?.name || "Previous package"} → ${newPackage.name}`,
+        }).returning();
+        paymentRecord = { ...p, amount: Number(p.amount) };
+      }
+    });
+
+    // Activity log
+    try {
+      await db.insert(userActivityTable).values({
+        id: randomUUID(),
+        userId: caller.id,
+        eventType: "package_changed",
+        bookingId,
+        metadata: {
+          actorName: caller.fullName,
+          actorRole: caller.role,
+          targetName: booking.fullName,
+          oldPackage: oldPackage?.name,
+          newPackage: newPackage.name,
+          oldPrice,
+          newPrice,
+          priceDifference,
+        },
+      });
+    } catch (_) { /* non-blocking */ }
+
+    // Notify pilgrim
+    if (booking.userId) {
+      const fmt = (n: number) => `₦${n.toLocaleString()}`;
+      const msg = priceDifference > 0
+        ? `Your package has been upgraded to "${newPackage.name}". Additional payment of ${fmt(priceDifference)} is required.`
+        : priceDifference < 0
+          ? `Your package has been changed to "${newPackage.name}". Your new total is ${fmt(newPrice)}.`
+          : `Your package has been changed to "${newPackage.name}".`;
+      setImmediate(() => createNotification(booking.userId!, "Package Changed", msg, "booking"));
+    }
+
+    return res.json({
+      success: true,
+      booking: updatedBooking ? { ...updatedBooking, totalPrice: Number(updatedBooking.totalPrice), amountPaid: Number(updatedBooking.amountPaid) } : null,
+      payment: paymentRecord,
+      priceDifference,
+    });
+  } catch (err: any) {
+    console.error("[package-upgrade] Error:", err);
+    return res.status(500).json({ error: err.message || "Failed to upgrade package" });
+  }
+});
+
 // ── Passports ─────────────────────────────────────────────────────────────────
 
 router.get("/admin/passports/stats", async (req, res) => {
