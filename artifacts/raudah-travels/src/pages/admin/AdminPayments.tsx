@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   CreditCard, CheckCircle2, XCircle, Clock, ExternalLink,
   DollarSign, ArrowUpRight, Printer, Search, Plus, History, AlertTriangle, TrendingDown, Users,
-  ChevronLeft, ChevronRight, Check, Archive
+  ChevronLeft, ChevronRight, Check, Archive, RotateCcw, Loader2
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -631,6 +631,11 @@ export default function AdminPayments() {
   const [page, setPage] = useState(1);
   const [filterArchived, setFilterArchived] = useState(false);
 
+  // Reinstate rejected payment state
+  const [reinstateId, setReinstateId] = useState<string | null>(null);
+  const [reinstateReason, setReinstateReason] = useState("");
+  const [isReinstating, setIsReinstating] = useState(false);
+
   /* ── Tab state ── */
   const [activeTab, setActiveTab] = useState<"all" | "outstanding">("all");
 
@@ -669,6 +674,33 @@ export default function AdminPayments() {
       },
       onError: () => toast({ title: "Action failed", variant: "destructive" }),
     });
+  };
+
+  const handleReinstate = async () => {
+    if (!reinstateId || isReinstating) return;
+    setIsReinstating(true);
+    try {
+      const res = await fetch(`/api/payments/${reinstateId}/reinstate`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ reason: reinstateReason }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Failed" }));
+        throw new Error(err.error || "Failed to reinstate");
+      }
+      toast({ title: "Payment reinstated", description: "The payment is now pending review again." });
+      qc.invalidateQueries({ queryKey: getListPaymentsQueryKey({}) });
+      qc.invalidateQueries({ queryKey: getListPaymentsQueryKey({ status: "rejected" }) });
+      qc.invalidateQueries({ queryKey: getListPaymentsQueryKey({ status: "pending" }) });
+      setReinstateId(null);
+      setReinstateReason("");
+    } catch (e: any) {
+      toast({ title: e.message || "Failed to reinstate", variant: "destructive" });
+    } finally {
+      setIsReinstating(false);
+    }
   };
 
   const totalAll      = allPayments.reduce((s, p) => s + p.amount, 0);
@@ -889,6 +921,14 @@ export default function AdminPayments() {
                             <ArrowUpRight className="w-3.5 h-3.5" /> Review
                           </button>
                         )}
+
+                        {payment.status === "rejected" && (
+                          <button onClick={() => { setReinstateId(payment.id); setReinstateReason(""); }}
+                            className="flex items-center gap-1.5 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl transition-colors"
+                            data-testid={`button-reinstate-${payment.id}`}>
+                            <RotateCcw className="w-3.5 h-3.5" /> Reinstate
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -997,6 +1037,36 @@ export default function AdminPayments() {
             ) : (
               <img src={viewingProof || ""} alt="Payment Proof" className="max-w-full rounded-lg shadow-sm" />
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reinstate rejected payment dialog */}
+      <Dialog open={!!reinstateId} onOpenChange={o => { if (!o) { setReinstateId(null); setReinstateReason(""); } }}>
+        <DialogContent className="sm:max-w-md rounded-3xl p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-[#F1F5F9]">
+            <DialogTitle className="font-black text-[#0F172A]">Reinstate Payment</DialogTitle>
+            <p className="text-[#94A3B8] text-sm mt-0.5">This will move the rejected payment back to pending status for re-review.</p>
+          </DialogHeader>
+          <div className="px-6 py-5 space-y-4">
+            <div>
+              <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Reason for reinstating</Label>
+              <Textarea value={reinstateReason} onChange={e => setReinstateReason(e.target.value)}
+                className="mt-1.5 rounded-xl border-[#DCE3F0] resize-none"
+                placeholder="e.g. Payment was mistakenly rejected…"
+                rows={3} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => { setReinstateId(null); setReinstateReason(""); }}
+                className="flex items-center justify-center gap-2 py-3 bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#64748B] font-bold rounded-xl transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleReinstate} disabled={isReinstating}
+                className="flex items-center justify-center gap-2 py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl transition-colors disabled:opacity-50">
+                {isReinstating ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+                {isReinstating ? "Reinstating…" : "Reinstate"}
+              </button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

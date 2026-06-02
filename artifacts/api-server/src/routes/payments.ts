@@ -423,6 +423,68 @@ router.put("/payments/:id/verify", async (req, res) => {
   return res.json(toPaymentResponse(payment));
 });
 
+// ── Reinstate rejected payment ────────────────────────────────────────────────
+router.put("/payments/:id/reinstate", async (req, res) => {
+  const { userId: clerkUserId } = getAuth(req);
+  if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
+  const actorProfile = await getProfileByClerkId(clerkUserId);
+  if (!actorProfile) return res.status(404).json({ error: "Profile not found" });
+  if (!["admin", "super_admin", "staff"].includes(actorProfile.role)) {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+
+  const { reason } = req.body ?? {};
+
+  let payment: typeof paymentsTable.$inferSelect | undefined;
+
+  await db.transaction(async (tx) => {
+    // Only allow reinstating rejected payments
+    const [p] = await tx.update(paymentsTable)
+      .set({ status: "pending", notes: reason ? `Reinstated: ${reason}` : "Reinstated by admin" })
+      .where(and(eq(paymentsTable.id, req.params.id), eq(paymentsTable.status, "rejected")))
+      .returning();
+    if (!p) return;
+    payment = p;
+  });
+
+  if (!payment) return res.status(404).json({ error: "Payment not found or not in rejected status" });
+
+  // Notify the pilgrim
+  if (payment.userId) {
+    const amt = `₦${Number(payment.amount).toLocaleString()}`;
+    setImmediate(() => createNotification(
+      payment!.userId!,
+      "Payment Under Review",
+      `Your previously rejected payment of ${amt} has been reinstated and is now pending review.`,
+      "payment",
+    ));
+  }
+
+  // Log activity
+  try {
+    const pilgrimBooking = payment.bookingId
+      ? await db.query.bookingsTable.findFirst({ where: eq(bookingsTable.id, payment.bookingId) })
+      : undefined;
+    await db.insert(userActivityTable).values({
+      id: randomUUID(),
+      userId: actorProfile.id,
+      eventType: "payment_reinstated",
+      bookingId: payment.bookingId ?? undefined,
+      metadata: {
+        actorName: actorProfile.fullName,
+        actorRole: actorProfile.role,
+        amount: Number(payment.amount),
+        reference: payment.reference,
+        reason: reason || "No reason provided",
+        targetName: pilgrimBooking?.fullName,
+        targetPhone: pilgrimBooking?.phone,
+      },
+    });
+  } catch (_) { /* non-blocking */ }
+
+  return res.json(toPaymentResponse(payment));
+});
+
 router.post("/payments/paystack/initialize", async (req, res) => {
   const { userId: clerkUserId } = getAuth(req);
   if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
