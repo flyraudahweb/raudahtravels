@@ -30,9 +30,63 @@ interface Pilgrim {
   departureCity?: string;
   mahramName?: string;
   mahramRelationship?: string;
-  package?: { id?: string; name: string; type: string };
+  package?: { id?: string; name: string; type: string; category?: string };
   profilePhotoUrl?: string | null;
   user?: { email: string; avatarUrl?: string | null };
+}
+
+function getTheme(category?: string, name?: string) {
+  const cat = (category || "").toLowerCase();
+  const n = (name || "").toLowerCase();
+  if (cat === "premium" || n.includes("premium") || n.includes("gold")) {
+    return {
+      name: "gold",
+      headerBg: "linear-gradient(135deg, #BF953F 0%, #FCF6BA 25%, #B38728 50%, #FBF5B7 75%, #AA771C 100%)",
+      headerText: "#3E2700",
+      headerSubText: "rgba(62,39,0,0.75)",
+      border: "2px solid #B38728",
+      stripBg: "#FFF8E7",
+      stripText: "#8B6508",
+      footerBg: "#3E2700",
+      footerText: "#FBF5B7",
+      footerSubText: "rgba(251,245,183,0.6)",
+      photoBorder: "2px solid #B38728",
+      photoPlaceholderBg: "linear-gradient(160deg, #BF953F 0%, #AA771C 100%)",
+      photoPlaceholderText: "#FFFFFF"
+    };
+  }
+  if (cat === "standard" || n.includes("luxury") || n.includes("silver") || n.includes("chrome")) {
+    return {
+      name: "silver",
+      headerBg: "linear-gradient(135deg, #E0E0E0 0%, #FFFFFF 25%, #A0A0A0 50%, #F5F5F5 75%, #7A7A7A 100%)",
+      headerText: "#111827",
+      headerSubText: "rgba(17,24,39,0.75)",
+      border: "2px solid #9CA3AF",
+      stripBg: "#F3F4F6",
+      stripText: "#374151",
+      footerBg: "#1F2937",
+      footerText: "#E5E7EB",
+      footerSubText: "rgba(229,231,235,0.6)",
+      photoBorder: "2px solid #9CA3AF",
+      photoPlaceholderBg: "linear-gradient(160deg, #D1D5DB 0%, #9CA3AF 100%)",
+      photoPlaceholderText: "#111827"
+    };
+  }
+  return {
+    name: "economy",
+    headerBg: "#2D3199",
+    headerText: "#FFFFFF",
+    headerSubText: "rgba(255,255,255,0.55)",
+    border: "2px solid #2D3199",
+    stripBg: "#EEF0FF",
+    stripText: "#2D3199",
+    footerBg: "#1C1F66",
+    footerText: "#FFFFFF",
+    footerSubText: "rgba(255,255,255,0.4)",
+    photoBorder: "2px solid #2D3199",
+    photoPlaceholderBg: "linear-gradient(160deg, #2D3199 0%, #1C1F66 100%)",
+    photoPlaceholderText: "#FFFFFF"
+  };
 }
 
 interface PackageOption { id: string; name: string; type: string; departureDate?: string; }
@@ -64,6 +118,7 @@ function LandscapeCard({ pilgrim }: { pilgrim: Pilgrim }) {
   const initials  = [parts[0]?.[0], parts[parts.length - 1]?.[0]].filter(Boolean).join("").toUpperCase() || "??";
   const pkgName   = (pilgrim.package?.name || "—").toUpperCase();
   const regNum    = pilgrim.idNumber ? String(pilgrim.idNumber) : (pilgrim.reference || "—");
+  const t         = getTheme(pilgrim.package?.category, pilgrim.package?.name);
 
   const f = (label: string, value: string, fs = 20) => (
     <div style={{ marginBottom: 10 }}>
@@ -77,36 +132,36 @@ function LandscapeCard({ pilgrim }: { pilgrim: Pilgrim }) {
     <div data-pdf-card="landscape" style={{
       width: CARD_W_L, height: CARD_H_L, background: "#FFFFFF",
       display: "flex", flexDirection: "column",
-      border: "2px solid #2D3199", borderRadius: 12,
+      border: t.border, borderRadius: 12,
       overflow: "hidden", flexShrink: 0, boxSizing: "border-box",
     }}>
       {/* Header */}
-      <div style={{ height: 76, background: "#2D3199", display: "flex", alignItems: "center", padding: "0 18px", gap: 14, flexShrink: 0 }}>
+      <div style={{ height: 76, background: t.headerBg, display: "flex", alignItems: "center", padding: "0 18px", gap: 14, flexShrink: 0 }}>
         <div style={{ background: "#FFFFFF", borderRadius: 8, padding: "6px 10px", display: "flex", alignItems: "center", justifyContent: "center", minWidth: 130, height: 54 }}>
           <img src="/logo.png" alt="Raudah" style={{ height: 38, objectFit: "contain", display: "block" }} />
         </div>
         <div style={{ flex: 1, textAlign: "center" }}>
-          <div style={{ color: "#FFFFFF", fontSize: 21, fontWeight: 900, letterSpacing: "0.12em", fontFamily: "Arial, sans-serif", lineHeight: 1 }}>RAUDAH TRAVELS &amp; TOURS</div>
-          <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 10, letterSpacing: "0.2em", marginTop: 5, fontFamily: "Arial, sans-serif", textTransform: "uppercase" as const }}>PILGRIM IDENTIFICATION CARD</div>
+          <div style={{ color: t.headerText, fontSize: 21, fontWeight: 900, letterSpacing: "0.12em", fontFamily: "Arial, sans-serif", lineHeight: 1 }}>RAUDAH TRAVELS &amp; TOURS</div>
+          <div style={{ color: t.headerSubText, fontSize: 10, letterSpacing: "0.2em", marginTop: 5, fontFamily: "Arial, sans-serif", textTransform: "uppercase" as const }}>PILGRIM IDENTIFICATION CARD</div>
         </div>
         <div style={{ border: "2px solid rgba(255,255,255,0.35)", borderRadius: 6, overflow: "hidden", flexShrink: 0 }}>
           <NigerianFlag w={60} h={40} />
         </div>
       </div>
       {/* Package strip */}
-      <div style={{ height: 38, background: "#EEF0FF", display: "flex", alignItems: "center", justifyContent: "center", borderTop: "1.5px solid #BEC5EE", borderBottom: "1.5px solid #BEC5EE", flexShrink: 0 }}>
-        <span style={{ color: "#2D3199", fontSize: 15, fontWeight: 900, letterSpacing: "0.1em", fontFamily: "Arial, sans-serif" }}>{pkgName}</span>
+      <div style={{ height: 38, background: t.stripBg, display: "flex", alignItems: "center", justifyContent: "center", borderTop: "1.5px solid #BEC5EE", borderBottom: "1.5px solid #BEC5EE", flexShrink: 0 }}>
+        <span style={{ color: t.stripText, fontSize: 15, fontWeight: 900, letterSpacing: "0.1em", fontFamily: "Arial, sans-serif" }}>{pkgName}</span>
       </div>
       {/* Body */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         {/* Photo */}
         <div style={{ width: 178, background: "#F1F3FC", display: "flex", alignItems: "center", justifyContent: "center", borderRight: "1.5px solid #C7CCF0", flexShrink: 0, padding: 14 }}>
           {(pilgrim.profilePhotoUrl || pilgrim.user?.avatarUrl) ? (
-            <img src={pilgrim.profilePhotoUrl || pilgrim.user?.avatarUrl || ""} alt="" style={{ width: 142, height: 168, objectFit: "cover", border: "2px solid #2D3199", borderRadius: 4 }} />
+            <img src={pilgrim.profilePhotoUrl || pilgrim.user?.avatarUrl || ""} alt="" style={{ width: 142, height: 168, objectFit: "cover", border: t.photoBorder, borderRadius: 4 }} />
           ) : (
-            <div style={{ width: 142, height: 168, border: "2px solid #2D3199", borderRadius: 4, background: "linear-gradient(160deg,#2D3199 0%,#1C1F66 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-              <div style={{ color: "#FFFFFF", fontSize: 46, fontWeight: 900, fontFamily: "Arial, sans-serif", lineHeight: 1 }}>{initials}</div>
-              <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 9, letterSpacing: "0.15em", marginTop: 8, fontFamily: "Arial, sans-serif", textTransform: "uppercase" as const }}>NO PHOTO</div>
+            <div style={{ width: 142, height: 168, border: t.photoBorder, borderRadius: 4, background: t.photoPlaceholderBg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ color: t.photoPlaceholderText, fontSize: 46, fontWeight: 900, fontFamily: "Arial, sans-serif", lineHeight: 1 }}>{initials}</div>
+              <div style={{ color: t.photoPlaceholderText, opacity: 0.5, fontSize: 9, letterSpacing: "0.15em", marginTop: 8, fontFamily: "Arial, sans-serif", textTransform: "uppercase" as const }}>NO PHOTO</div>
             </div>
           )}
         </div>
@@ -118,7 +173,7 @@ function LandscapeCard({ pilgrim }: { pilgrim: Pilgrim }) {
           {pilgrim.departureCity && (
             <div>
               <div style={{ color: "#64748B", fontSize: 9, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" as const, fontFamily: "Arial, sans-serif" }}>DEPARTURE / DÉPART</div>
-              <div style={{ color: "#2D3199", fontSize: 14, fontWeight: 800, letterSpacing: "0.06em", marginTop: 3, fontFamily: "Arial, sans-serif" }}>{pilgrim.departureCity.toUpperCase()}</div>
+              <div style={{ color: t.stripText, fontSize: 14, fontWeight: 800, letterSpacing: "0.06em", marginTop: 3, fontFamily: "Arial, sans-serif" }}>{pilgrim.departureCity.toUpperCase()}</div>
             </div>
           )}
         </div>
@@ -134,10 +189,10 @@ function LandscapeCard({ pilgrim }: { pilgrim: Pilgrim }) {
         </div>
       </div>
       {/* Footer */}
-      <div style={{ height: 44, background: "#1C1F66", display: "flex", alignItems: "center", padding: "0 20px", flexShrink: 0, borderTop: "2px solid #2D3199" }}>
+      <div style={{ height: 44, background: t.footerBg, display: "flex", alignItems: "center", padding: "0 20px", flexShrink: 0, borderTop: t.border }}>
         <div style={{ width: 8, height: 20, background: "#FF3B00", borderRadius: 2, marginRight: 10, flexShrink: 0 }} />
-        <span style={{ color: "#FFFFFF", fontSize: 12, fontWeight: 900, letterSpacing: "0.1em", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const, fontFamily: "Arial, sans-serif" }}>PACKAGE : {pkgName}</span>
-        <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, letterSpacing: "0.08em", fontFamily: "Arial, sans-serif" }}>{SITE}</span>
+        <span style={{ color: t.footerText, fontSize: 12, fontWeight: 900, letterSpacing: "0.1em", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const, fontFamily: "Arial, sans-serif" }}>PACKAGE : {pkgName}</span>
+        <span style={{ color: t.footerSubText, fontSize: 10, letterSpacing: "0.08em", fontFamily: "Arial, sans-serif" }}>{SITE}</span>
       </div>
     </div>
   );
@@ -153,6 +208,7 @@ function PortraitCard({ pilgrim }: { pilgrim: Pilgrim }) {
   const pkgName   = (pilgrim.package?.name || "—").toUpperCase();
   const regNum    = pilgrim.idNumber ? String(pilgrim.idNumber) : (pilgrim.reference || "—");
   const partner   = pilgrim.mahramName || "";
+  const t         = getTheme(pilgrim.package?.category, pilgrim.package?.name);
 
   const pf = (label: string, value: string, fs = 16) => (
     <div style={{ marginBottom: 10 }}>
@@ -166,13 +222,13 @@ function PortraitCard({ pilgrim }: { pilgrim: Pilgrim }) {
     <div data-pdf-card="portrait" style={{
       width: CARD_W_P, height: CARD_H_P, background: "#FFFFFF",
       display: "flex", flexDirection: "column",
-      border: "2px solid #2D3199", borderRadius: 12,
+      border: t.border, borderRadius: 12,
       overflow: "hidden", flexShrink: 0, boxSizing: "border-box",
     }}>
       {/* Header */}
-      <div style={{ background: "#2D3199", padding: "12px 16px", display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
-        <div style={{ color: "#FFFFFF", fontSize: 22, fontWeight: 900, letterSpacing: "0.15em", fontFamily: "Arial, sans-serif", lineHeight: 1 }}>RAUDAH</div>
-        <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 9, letterSpacing: "0.18em", marginTop: 4, fontFamily: "Arial, sans-serif", textTransform: "uppercase" as const }}>TRAVEL AND TOURS LIMITED</div>
+      <div style={{ background: t.headerBg, padding: "12px 16px", display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+        <div style={{ color: t.headerText, fontSize: 22, fontWeight: 900, letterSpacing: "0.15em", fontFamily: "Arial, sans-serif", lineHeight: 1 }}>RAUDAH</div>
+        <div style={{ color: t.headerSubText, fontSize: 9, letterSpacing: "0.18em", marginTop: 4, fontFamily: "Arial, sans-serif", textTransform: "uppercase" as const }}>TRAVEL AND TOURS LIMITED</div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", marginTop: 10 }}>
           <div style={{ background: "#FFFFFF", borderRadius: 6, padding: "4px 8px", display: "flex", alignItems: "center", justifyContent: "center", height: 44 }}>
             <img src="/logo.png" alt="Raudah" style={{ height: 32, objectFit: "contain", display: "block" }} />
@@ -184,9 +240,9 @@ function PortraitCard({ pilgrim }: { pilgrim: Pilgrim }) {
       </div>
 
       {/* Package name bordered box */}
-      <div style={{ padding: "8px 14px", background: "#F8FAFF", borderBottom: "1.5px solid #BEC5EE", flexShrink: 0 }}>
-        <div style={{ border: "2px solid #2D3199", borderRadius: 6, padding: "5px 10px", textAlign: "center" }}>
-          <span style={{ color: "#2D3199", fontSize: 13, fontWeight: 900, letterSpacing: "0.1em", fontFamily: "Arial, sans-serif" }}>{pkgName}</span>
+      <div style={{ padding: "8px 14px", background: t.stripBg, borderBottom: "1.5px solid #BEC5EE", flexShrink: 0 }}>
+        <div style={{ border: t.border, borderRadius: 6, padding: "5px 10px", textAlign: "center" }}>
+          <span style={{ color: t.stripText, fontSize: 13, fontWeight: 900, letterSpacing: "0.1em", fontFamily: "Arial, sans-serif" }}>{pkgName}</span>
         </div>
       </div>
 
@@ -196,11 +252,11 @@ function PortraitCard({ pilgrim }: { pilgrim: Pilgrim }) {
         <div style={{ width: 128, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, flexShrink: 0 }}>
           {/* Photo */}
           {(pilgrim.profilePhotoUrl || pilgrim.user?.avatarUrl) ? (
-            <img src={pilgrim.profilePhotoUrl || pilgrim.user?.avatarUrl || ""} alt="" style={{ width: 114, height: 138, objectFit: "cover", border: "2px solid #2D3199", borderRadius: 4 }} />
+            <img src={pilgrim.profilePhotoUrl || pilgrim.user?.avatarUrl || ""} alt="" style={{ width: 114, height: 138, objectFit: "cover", border: t.photoBorder, borderRadius: 4 }} />
           ) : (
-            <div style={{ width: 114, height: 138, border: "2px solid #2D3199", borderRadius: 4, background: "linear-gradient(160deg,#2D3199 0%,#1C1F66 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-              <div style={{ color: "#FFFFFF", fontSize: 34, fontWeight: 900, fontFamily: "Arial, sans-serif", lineHeight: 1 }}>{initials}</div>
-              <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 8, letterSpacing: "0.1em", marginTop: 6, fontFamily: "Arial, sans-serif", textTransform: "uppercase" as const }}>NO PHOTO</div>
+            <div style={{ width: 114, height: 138, border: t.photoBorder, borderRadius: 4, background: t.photoPlaceholderBg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ color: t.photoPlaceholderText, fontSize: 34, fontWeight: 900, fontFamily: "Arial, sans-serif", lineHeight: 1 }}>{initials}</div>
+              <div style={{ color: t.photoPlaceholderText, opacity: 0.5, fontSize: 8, letterSpacing: "0.1em", marginTop: 6, fontFamily: "Arial, sans-serif", textTransform: "uppercase" as const }}>NO PHOTO</div>
             </div>
           )}
           {/* Reg number */}
@@ -224,16 +280,16 @@ function PortraitCard({ pilgrim }: { pilgrim: Pilgrim }) {
       </div>
 
       {/* Partner band */}
-      <div style={{ background: "#2D3199", padding: "8px 14px", flexShrink: 0 }}>
-        <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 8, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" as const, fontFamily: "Arial, sans-serif" }}>PARTNER / PARTENAIRE</div>
-        <div style={{ color: "#FFFFFF", fontSize: 14, fontWeight: 900, letterSpacing: "0.06em", marginTop: 2, fontFamily: "Arial, sans-serif" }}>{partner ? partner.toUpperCase() : "—"}</div>
+      <div style={{ background: t.headerBg, padding: "8px 14px", flexShrink: 0 }}>
+        <div style={{ color: t.headerSubText, fontSize: 8, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" as const, fontFamily: "Arial, sans-serif" }}>PARTNER / PARTENAIRE</div>
+        <div style={{ color: t.headerText, fontSize: 14, fontWeight: 900, letterSpacing: "0.06em", marginTop: 2, fontFamily: "Arial, sans-serif" }}>{partner ? partner.toUpperCase() : "—"}</div>
       </div>
 
       {/* Package footer */}
-      <div style={{ background: "#1C1F66", padding: "8px 14px", borderTop: "2px solid #2D3199", flexShrink: 0 }}>
-        <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 8, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" as const, fontFamily: "Arial, sans-serif" }}>PACKAGE</div>
-        <div style={{ color: "#FFFFFF", fontSize: 13, fontWeight: 900, letterSpacing: "0.08em", marginTop: 2, fontFamily: "Arial, sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{pkgName}</div>
-        <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 8, marginTop: 4, fontFamily: "Arial, sans-serif" }}>{SITE}</div>
+      <div style={{ background: t.footerBg, padding: "8px 14px", borderTop: t.border, flexShrink: 0 }}>
+        <div style={{ color: t.footerSubText, fontSize: 8, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" as const, fontFamily: "Arial, sans-serif" }}>PACKAGE</div>
+        <div style={{ color: t.footerText, fontSize: 13, fontWeight: 900, letterSpacing: "0.08em", marginTop: 2, fontFamily: "Arial, sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{pkgName}</div>
+        <div style={{ color: t.footerSubText, fontSize: 8, marginTop: 4, fontFamily: "Arial, sans-serif" }}>{SITE}</div>
       </div>
     </div>
   );
@@ -360,28 +416,29 @@ export default function AdminIdTags() {
       const last  = (parts.length > 1 ? parts[parts.length - 1] : "—").toUpperCase();
       const ini   = [parts[0]?.[0], parts[parts.length - 1]?.[0]].filter(Boolean).join("").toUpperCase() || "??";
       const pkg   = (p.package?.name || "—").toUpperCase();
+      const t = getTheme(p.package?.category, p.package?.name);
       const reg   = p.idNumber ? String(p.idNumber) : (p.reference || "—");
-      const dep   = p.departureCity ? `<div><div style="color:#64748B;font-size:9px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">DEPARTURE / DÉPART</div><div style="color:#2D3199;font-size:14px;font-weight:800;letter-spacing:0.06em;margin-top:3px;">${p.departureCity.toUpperCase()}</div></div>` : "";
-      const depP  = p.departureCity ? `<div style="margin-top:10px;"><div style="color:#64748B;font-size:8px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">DEPARTURE / DÉPART</div><div style="color:#2D3199;font-size:12px;font-weight:800;letter-spacing:0.06em;margin-top:3px;">${p.departureCity.toUpperCase()}</div></div>` : "";
+      const dep   = p.departureCity ? `<div><div style="color:#64748B;font-size:9px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">DEPARTURE / DÉPART</div><div style="color:${t.stripText};font-size:14px;font-weight:800;letter-spacing:0.06em;margin-top:3px;">${p.departureCity.toUpperCase()}</div></div>` : "";
+      const depP  = p.departureCity ? `<div style="margin-top:10px;"><div style="color:#64748B;font-size:8px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">DEPARTURE / DÉPART</div><div style="color:${t.stripText};font-size:12px;font-weight:800;letter-spacing:0.06em;margin-top:3px;">${p.departureCity.toUpperCase()}</div></div>` : "";
       const portrait = cardType === "portrait" || cardType === "both";
       const landscape = cardType === "landscape" || cardType === "both";
       
       const photoUrl = p.profilePhotoUrl || p.user?.avatarUrl;
       const lPhotoHtml = photoUrl
-        ? `<img src="${photoUrl}" style="width:142px;height:168px;object-fit:cover;border:2px solid #2D3199;border-radius:4px;" />`
-        : `<div style="width:142px;height:168px;border:2px solid #2D3199;border-radius:4px;background:linear-gradient(160deg,#2D3199,#1C1F66);display:flex;flex-direction:column;align-items:center;justify-content:center;"><div style="color:#fff;font-size:46px;font-weight:900;line-height:1;">${ini}</div><div style="color:rgba(255,255,255,0.4);font-size:9px;letter-spacing:0.15em;margin-top:8px;text-transform:uppercase;">NO PHOTO</div></div>`;
+        ? `<img src="${photoUrl}" style="width:142px;height:168px;object-fit:cover;border:${t.photoBorder};border-radius:4px;" />`
+        : `<div style="width:142px;height:168px;border:${t.photoBorder};border-radius:4px;background:${t.photoPlaceholderBg};display:flex;flex-direction:column;align-items:center;justify-content:center;"><div style="color:${t.photoPlaceholderText};font-size:46px;font-weight:900;line-height:1;">${ini}</div><div style="color:${t.photoPlaceholderText};opacity:0.5;font-size:9px;letter-spacing:0.15em;margin-top:8px;text-transform:uppercase;">NO PHOTO</div></div>`;
       
       const pPhotoHtml = photoUrl
-        ? `<img src="${photoUrl}" style="width:114px;height:138px;object-fit:cover;border:2px solid #2D3199;border-radius:4px;" />`
-        : `<div style="width:114px;height:138px;border:2px solid #2D3199;border-radius:4px;background:linear-gradient(160deg,#2D3199,#1C1F66);display:flex;flex-direction:column;align-items:center;justify-content:center;"><div style="color:#fff;font-size:34px;font-weight:900;line-height:1;">${ini}</div><div style="color:rgba(255,255,255,0.4);font-size:8px;letter-spacing:0.1em;margin-top:6px;text-transform:uppercase;">NO PHOTO</div></div>`;
+        ? `<img src="${photoUrl}" style="width:114px;height:138px;object-fit:cover;border:${t.photoBorder};border-radius:4px;" />`
+        : `<div style="width:114px;height:138px;border:${t.photoBorder};border-radius:4px;background:${t.photoPlaceholderBg};display:flex;flex-direction:column;align-items:center;justify-content:center;"><div style="color:${t.photoPlaceholderText};font-size:34px;font-weight:900;line-height:1;">${ini}</div><div style="color:${t.photoPlaceholderText};opacity:0.5;font-size:8px;letter-spacing:0.1em;margin-top:6px;text-transform:uppercase;">NO PHOTO</div></div>`;
 
-      const lCard = landscape ? `<div style="width:800px;height:450px;border:2px solid #2D3199;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;background:#fff;break-inside:avoid;transform-origin:top left;transform:scale(0.85);margin-bottom:-67px;margin-right:-120px;">
-  <div style="height:76px;background:#2D3199;display:flex;align-items:center;padding:0 18px;gap:14px;">
+      const lCard = landscape ? `<div style="width:800px;height:450px;border:${t.border};border-radius:12px;overflow:hidden;display:flex;flex-direction:column;background:#fff;break-inside:avoid;transform-origin:top left;transform:scale(0.85);margin-bottom:-67px;margin-right:-120px;">
+  <div style="height:76px;background:${t.headerBg};display:flex;align-items:center;padding:0 18px;gap:14px;">
     <div style="background:#fff;border-radius:8px;padding:6px 10px;display:flex;align-items:center;justify-content:center;min-width:130px;height:54px;"><img src="/logo.png" style="height:38px;object-fit:contain;display:block;" /></div>
-    <div style="flex:1;text-align:center;"><div style="color:#fff;font-size:21px;font-weight:900;letter-spacing:0.12em;line-height:1;">RAUDAH TRAVELS &amp; TOURS</div><div style="color:rgba(255,255,255,0.55);font-size:10px;letter-spacing:0.2em;margin-top:5px;text-transform:uppercase;">PILGRIM IDENTIFICATION CARD</div></div>
+    <div style="flex:1;text-align:center;"><div style="color:${t.headerText};font-size:21px;font-weight:900;letter-spacing:0.12em;line-height:1;">RAUDAH TRAVELS &amp; TOURS</div><div style="color:${t.headerSubText};font-size:10px;letter-spacing:0.2em;margin-top:5px;text-transform:uppercase;">PILGRIM IDENTIFICATION CARD</div></div>
     <div style="border:2px solid rgba(255,255,255,0.35);border-radius:6px;overflow:hidden;"><svg width="60" height="40" viewBox="0 0 3 2" style="display:block;border-radius:3px;"><rect width="1" height="2" fill="#008751"/><rect x="1" width="1" height="2" fill="#fff"/><rect x="2" width="1" height="2" fill="#008751"/></svg></div>
   </div>
-  <div style="height:38px;background:#EEF0FF;display:flex;align-items:center;justify-content:center;border-top:1.5px solid #BEC5EE;border-bottom:1.5px solid #BEC5EE;"><span style="color:#2D3199;font-size:15px;font-weight:900;letter-spacing:0.1em;">${pkg}</span></div>
+  <div style="height:38px;background:${t.stripBg};display:flex;align-items:center;justify-content:center;border-top:1.5px solid #BEC5EE;border-bottom:1.5px solid #BEC5EE;"><span style="color:${t.stripText};font-size:15px;font-weight:900;letter-spacing:0.1em;">${pkg}</span></div>
   <div style="flex:1;display:flex;overflow:hidden;">
     <div style="width:178px;background:#F1F3FC;display:flex;align-items:center;justify-content:center;border-right:1.5px solid #C7CCF0;padding:14px;">
       ${lPhotoHtml}
@@ -400,25 +457,25 @@ export default function AdminIdTags() {
       <div style="border:2px solid #0F172A;border-radius:6px;padding:5px;background:#fff;"><img src="https://api.qrserver.com/v1/create-qr-code/?size=118x118&data=https://${SITE}/verify/${reg}" width="118" height="118" /></div>
     </div>
   </div>
-  <div style="height:44px;background:#1C1F66;display:flex;align-items:center;padding:0 20px;border-top:2px solid #2D3199;">
+  <div style="height:44px;background:${t.footerBg};display:flex;align-items:center;padding:0 20px;border-top:${t.border};">
     <div style="width:8px;height:20px;background:#FF3B00;border-radius:2px;margin-right:10px;flex-shrink:0;"></div>
-    <span style="color:#fff;font-size:12px;font-weight:900;letter-spacing:0.1em;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">PACKAGE : ${pkg}</span>
-    <span style="color:rgba(255,255,255,0.4);font-size:10px;letter-spacing:0.08em;">${SITE}</span>
+    <span style="color:${t.footerText};font-size:12px;font-weight:900;letter-spacing:0.1em;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">PACKAGE : ${pkg}</span>
+    <span style="color:${t.footerSubText};font-size:10px;letter-spacing:0.08em;">${SITE}</span>
   </div>
 </div>` : "";
 
-      const pCard = portrait ? `<div style="width:450px;height:640px;border:2px solid #2D3199;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;background:#fff;break-inside:avoid;transform-origin:top left;transform:scale(0.85);margin-bottom:-96px;margin-right:-67px;">
-  <div style="background:#2D3199;padding:12px 16px;display:flex;flex-direction:column;align-items:center;">
-    <div style="color:#fff;font-size:22px;font-weight:900;letter-spacing:0.15em;line-height:1;">RAUDAH</div>
-    <div style="color:rgba(255,255,255,0.7);font-size:9px;letter-spacing:0.18em;margin-top:4px;text-transform:uppercase;">TRAVEL AND TOURS LIMITED</div>
+      const pCard = portrait ? `<div style="width:450px;height:640px;border:${t.border};border-radius:12px;overflow:hidden;display:flex;flex-direction:column;background:#fff;break-inside:avoid;transform-origin:top left;transform:scale(0.85);margin-bottom:-96px;margin-right:-67px;">
+  <div style="background:${t.headerBg};padding:12px 16px;display:flex;flex-direction:column;align-items:center;">
+    <div style="color:${t.headerText};font-size:22px;font-weight:900;letter-spacing:0.15em;line-height:1;">RAUDAH</div>
+    <div style="color:${t.headerSubText};font-size:9px;letter-spacing:0.18em;margin-top:4px;text-transform:uppercase;">TRAVEL AND TOURS LIMITED</div>
     <div style="display:flex;align-items:center;justify-content:space-between;width:100%;margin-top:10px;">
       <div style="background:#fff;border-radius:6px;padding:4px 8px;height:44px;display:flex;align-items:center;"><img src="/logo.png" style="height:32px;object-fit:contain;display:block;" /></div>
       <div style="border:1.5px solid rgba(255,255,255,0.4);border-radius:5px;overflow:hidden;"><svg width="52" height="34" viewBox="0 0 3 2" style="display:block;border-radius:3px;"><rect width="1" height="2" fill="#008751"/><rect x="1" width="1" height="2" fill="#fff"/><rect x="2" width="1" height="2" fill="#008751"/></svg></div>
     </div>
   </div>
-  <div style="padding:8px 14px;background:#F8FAFF;border-bottom:1.5px solid #BEC5EE;">
-    <div style="border:2px solid #2D3199;border-radius:6px;padding:5px 10px;text-align:center;">
-      <span style="color:#2D3199;font-size:13px;font-weight:900;letter-spacing:0.1em;">${pkg}</span>
+  <div style="padding:8px 14px;background:${t.stripBg};border-bottom:1.5px solid #BEC5EE;">
+    <div style="border:${t.border};border-radius:6px;padding:5px 10px;text-align:center;">
+      <span style="color:${t.stripText};font-size:13px;font-weight:900;letter-spacing:0.1em;">${pkg}</span>
     </div>
   </div>
   <div style="flex:1;display:flex;padding:14px 14px 10px 14px;gap:12px;overflow:hidden;">
@@ -437,14 +494,14 @@ export default function AdminIdTags() {
       ${depP}
     </div>
   </div>
-  <div style="background:#2D3199;padding:8px 14px;flex-shrink:0;">
-    <div style="color:rgba(255,255,255,0.6);font-size:8px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">PARTNER / PARTENAIRE</div>
-    <div style="color:#fff;font-size:14px;font-weight:900;margin-top:2px;letter-spacing:0.06em;">${(p.mahramName || "—").toUpperCase()}</div>
+  <div style="background:${t.headerBg};padding:8px 14px;flex-shrink:0;">
+    <div style="color:${t.headerSubText};font-size:8px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;">PARTNER / PARTENAIRE</div>
+    <div style="color:${t.headerText};font-size:14px;font-weight:900;letter-spacing:0.06em;margin-top:2px;">${(p.mahramName || "—").toUpperCase()}</div>
   </div>
-  <div style="background:#1C1F66;padding:8px 14px;border-top:2px solid #2D3199;flex-shrink:0;">
-    <div style="color:rgba(255,255,255,0.55);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;">PACKAGE</div>
-    <div style="color:#fff;font-size:13px;font-weight:900;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:0.08em;">${pkg}</div>
-    <div style="color:rgba(255,255,255,0.35);font-size:8px;margin-top:4px;">${SITE}</div>
+  <div style="background:${t.footerBg};padding:8px 14px;border-top:${t.border};flex-shrink:0;">
+    <div style="color:${t.footerSubText};font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.14em;">PACKAGE</div>
+    <div style="color:${t.footerText};font-size:13px;font-weight:900;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:0.08em;">${pkg}</div>
+    <div style="color:${t.footerSubText};font-size:8px;margin-top:4px;">${SITE}</div>
   </div>
 </div>` : "";
       return `<div style="display:flex;gap:32px;flex-wrap:wrap;margin-bottom:32px;break-inside:avoid;">${lCard}${pCard}</div>`;
