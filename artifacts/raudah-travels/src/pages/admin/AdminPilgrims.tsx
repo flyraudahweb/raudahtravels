@@ -299,7 +299,7 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
     }
     setIsArchiving(true);
     try {
-      const res = await fetch(`/api/admin/bookings/${pilgrim.id}/archive`, {
+      const res = await fetch(`/api/bookings/${pilgrim.id}/archive`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ archiveReason }),
@@ -320,7 +320,7 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
   const handleRestore = async () => {
     setIsRestoring(true);
     try {
-      const res = await fetch(`/api/admin/bookings/${pilgrim.id}/restore`, {
+      const res = await fetch(`/api/bookings/${pilgrim.id}/restore`, {
         method: "PUT",
       });
       const data = await res.json();
@@ -513,7 +513,7 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
   return (
     <>
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-3xl max-h-[92vh] overflow-hidden rounded-3xl p-0 flex flex-col">
+      <DialogContent aria-describedby={undefined} className="sm:max-w-3xl max-h-[92vh] overflow-hidden rounded-3xl p-0 flex flex-col">
         <DialogTitle className="sr-only">Pilgrim Profile — {pilgrim.fullName}</DialogTitle>
 
         {/* ── Hero Banner ── */}
@@ -1048,7 +1048,7 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
 
       {/* ── Record Payment Dialog ── */}
       <Dialog open={showRecordPay} onOpenChange={setShowRecordPay}>
-        <DialogContent className="sm:max-w-md rounded-3xl p-0 overflow-hidden">
+        <DialogContent aria-describedby={undefined} className="sm:max-w-md rounded-3xl p-0 overflow-hidden">
           <div className="px-6 pt-6 pb-4 border-b border-[#F1F5F9]">
             <DialogTitle className="font-black text-[#0F172A]">Record Payment</DialogTitle>
             <div className="mt-1.5 space-y-0.5">
@@ -1114,7 +1114,7 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
 
       {/* ── Profile Photo Crop Dialog ── */}
       <Dialog open={showCropDialog} onOpenChange={() => { /* forced */ }}>
-        <DialogContent className="max-w-xl p-0 overflow-hidden bg-white rounded-3xl gap-0 border-0 [&>button]:hidden"
+        <DialogContent aria-describedby={undefined} className="max-w-xl p-0 overflow-hidden bg-white rounded-3xl gap-0 border-0 [&>button]:hidden"
           onInteractOutside={(e: Event) => e.preventDefault()}
           onEscapeKeyDown={(e: KeyboardEvent) => e.preventDefault()}>
           <DialogTitle className="p-5 pb-3 text-lg font-black text-[#0F172A] flex items-center gap-2">
@@ -1141,7 +1141,7 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
 
       {/* ── Package Upgrade Dialog ── */}
       <Dialog open={showPackageUpgrade} onOpenChange={setShowPackageUpgrade}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden rounded-3xl p-0 flex flex-col">
+        <DialogContent aria-describedby={undefined} className="sm:max-w-2xl max-h-[85vh] overflow-hidden rounded-3xl p-0 flex flex-col">
           <DialogTitle className="px-6 pt-6 pb-4 border-b border-[#F1F5F9] font-black text-[#0F172A] flex items-center gap-2">
             <ArrowLeftRight className="w-5 h-5 text-[#2D3199]" /> Change / Upgrade Package
           </DialogTitle>
@@ -1260,7 +1260,7 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
 
       {/* ── Archive Dialog ── */}
       <Dialog open={showArchiveModal} onOpenChange={setShowArchiveModal}>
-        <DialogContent className="sm:max-w-md rounded-3xl p-0 overflow-hidden">
+        <DialogContent aria-describedby={undefined} className="sm:max-w-md rounded-3xl p-0 overflow-hidden">
           <div className="p-6 bg-red-50 border-b border-red-100 flex items-center gap-4">
             <div className="w-12 h-12 rounded-2xl bg-red-100 flex items-center justify-center shrink-0">
               <Archive className="w-6 h-6 text-red-600" />
