@@ -766,7 +766,12 @@ router.post("/agent/register-client", async (req, res) => {
         agentId: agent.id,
         status: "pending",
         totalPrice: String(price),
-        amountPaid: String(clampedPaid),
+        // BUG FIX: Do NOT pre-populate amountPaid here. The payment record is created
+        // as "pending" (below) and when it's verified via PUT /payments/:id/verify,
+        // the verify handler accumulates amountPaid via SQL `amountPaid + payment.amount`.
+        // Setting amountPaid here would cause double-counting: once from this INSERT,
+        // and again when the payment is verified.
+        amountPaid: "0",
         pilgrimCount: 1,
         fullName: resolvedFullName || undefined,
         civility: nullify(civility),

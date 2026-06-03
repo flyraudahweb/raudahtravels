@@ -2368,7 +2368,12 @@ router.post("/admin/book-pilgrim", async (req, res) => {
         // PARTIAL PAYMENT FIX: Only confirm booking when fully paid
         status: markVerified && (Number(amountPaid) || price) >= price ? "confirmed" : "pending",
         totalPrice: String(price),
-        amountPaid: markVerified ? String(amountPaid || price) : String(amountPaid || 0),
+        // BUG FIX: When markVerified=false, payment is created as "pending" below and
+        // the verify handler will accumulate amountPaid via `amountPaid + payment.amount`.
+        // Pre-populating amountPaid here would cause double-counting.
+        // When markVerified=true, payment is inserted as "verified" (no future accumulation),
+        // so pre-populating is correct.
+        amountPaid: markVerified ? String(amountPaid || price) : "0",
         pilgrimCount: 1,
         // name / civility
         civility:                      nullify(civility) as string | undefined,
