@@ -342,8 +342,8 @@ router.put("/payments/:id/verify", async (req, res) => {
       // PARTIAL PAYMENT FIX: Only transition to 'confirmed' when fully paid.
       const [booking] = await tx.update(bookingsTable)
         .set({
-          amountPaid: sql`COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${p.bookingId} AND status = 'verified'), 0)`,
-          status: sql`CASE WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${p.bookingId} AND status = 'verified'), 0) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed' ELSE ${bookingsTable.status} END`,
+          amountPaid: sql`COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${p.bookingId} AND status = 'verified' AND is_archived = false), 0)`,
+          status: sql`CASE WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${p.bookingId} AND status = 'verified' AND is_archived = false), 0) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed' ELSE ${bookingsTable.status} END`,
           updatedAt: new Date(),
         })
         .where(eq(bookingsTable.id, p.bookingId))
@@ -635,8 +635,8 @@ router.post("/payments/paystack/verify", async (req, res) => {
     if (bookingId) {
       const [booking] = await trx.update(bookingsTable)
         .set({
-          amountPaid: sql`COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${bookingId} AND status = 'verified'), 0)`,
-          status: sql`CASE WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${bookingId} AND status = 'verified'), 0) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed' ELSE ${bookingsTable.status} END`,
+          amountPaid: sql`COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${bookingId} AND status = 'verified' AND is_archived = false), 0)`,
+          status: sql`CASE WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${bookingId} AND status = 'verified' AND is_archived = false), 0) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed' ELSE ${bookingsTable.status} END`,
           updatedAt: new Date(),
         })
         .where(eq(bookingsTable.id, bookingId))
@@ -761,8 +761,8 @@ router.post("/payments/paystack/webhook", async (req, res) => {
             // PARTIAL PAYMENT FIX: Only transition to 'confirmed' when fully paid.
             const [booking] = await tx.update(bookingsTable)
               .set({
-                amountPaid: sql`COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${bookingId} AND status = 'verified'), 0)`,
-                status: sql`CASE WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${bookingId} AND status = 'verified'), 0) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed' ELSE ${bookingsTable.status} END`,
+                amountPaid: sql`COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${bookingId} AND status = 'verified' AND is_archived = false), 0)`,
+                status: sql`CASE WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${bookingId} AND status = 'verified' AND is_archived = false), 0) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed' ELSE ${bookingsTable.status} END`,
                 updatedAt: new Date(),
               })
               .where(eq(bookingsTable.id, bookingId))
@@ -958,8 +958,8 @@ router.post("/payments/admin-record", async (req, res) => {
       // BUG FIX: Recalculate amountPaid from SUM of verified payments (idempotent).
       const [b] = await tx.update(bookingsTable)
         .set({
-          amountPaid: sql`COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${bookingId} AND status = 'verified'), 0)`,
-          status: sql`CASE WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${bookingId} AND status = 'verified'), 0) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed' ELSE ${bookingsTable.status} END`,
+          amountPaid: sql`COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${bookingId} AND status = 'verified' AND is_archived = false), 0)`,
+          status: sql`CASE WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${bookingId} AND status = 'verified' AND is_archived = false), 0) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed' ELSE ${bookingsTable.status} END`,
           updatedAt: new Date(),
         })
         .where(eq(bookingsTable.id, bookingId))
@@ -1105,12 +1105,12 @@ router.put("/payments/:id/archive", async (req, res) => {
     if (!payment) return;
     updatedPayment = payment;
 
-    // If it was verified, we must subtract the amount from the booking's amountPaid
-    // to keep revenue totals correct
+    // BUG FIX: Recalculate amountPaid from SUM of non-archived verified payments (idempotent).
     if (payment.status === "verified" && payment.bookingId) {
       await tx.update(bookingsTable)
         .set({
-          amountPaid: sql`GREATEST(${bookingsTable.amountPaid} - ${payment.amount}::numeric, 0)`,
+          amountPaid: sql`COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${payment.bookingId} AND status = 'verified' AND is_archived = false), 0)`,
+          status: sql`CASE WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${payment.bookingId} AND status = 'verified' AND is_archived = false), 0) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed'::booking_status ELSE 'pending'::booking_status END`,
           updatedAt: new Date()
         })
         .where(eq(bookingsTable.id, payment.bookingId));
@@ -1140,11 +1140,12 @@ router.put("/payments/:id/restore", async (req, res) => {
     if (!payment) return;
     updatedPayment = payment;
 
-    // If it was verified, we must re-add the amount to the booking's amountPaid
+    // BUG FIX: Recalculate amountPaid from SUM of non-archived verified payments (idempotent).
     if (payment.status === "verified" && payment.bookingId) {
       await tx.update(bookingsTable)
         .set({
-          amountPaid: sql`${bookingsTable.amountPaid} + ${payment.amount}::numeric`,
+          amountPaid: sql`COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${payment.bookingId} AND status = 'verified' AND is_archived = false), 0)`,
+          status: sql`CASE WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${payment.bookingId} AND status = 'verified' AND is_archived = false), 0) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed'::booking_status ELSE 'pending'::booking_status END`,
           updatedAt: new Date()
         })
         .where(eq(bookingsTable.id, payment.bookingId));

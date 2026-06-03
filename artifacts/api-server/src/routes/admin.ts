@@ -2496,6 +2496,12 @@ router.post("/admin/book-pilgrim", async (req, res) => {
             targetPhone: booking.phone,
             reference: booking.reference,
             packageId: booking.packageId,
+            packageName: pkg.name,
+            originalPrice: Number(pkg.price),
+            totalPrice: price,
+            amountPaid: markVerified ? (amountPaid || price) : 0,
+            paymentMethod: method || "N/A",
+            markVerified: !!markVerified,
           },
         });
       }

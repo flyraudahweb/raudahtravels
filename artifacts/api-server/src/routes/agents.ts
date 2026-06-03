@@ -654,7 +654,17 @@ router.post("/agent/register-client", async (req, res) => {
           eventType: "agent_client_registered",
           packageId,
           bookingId: booking.id,
-          metadata: { clientName: resolvedFullName, packageName: pkg.name, amount: walletPaid, paymentMethod: "wallet", reference: bookingReference },
+          metadata: {
+            clientName: resolvedFullName, packageName: pkg.name, reference: bookingReference,
+            // Payment breakdown
+            originalPrice: Number(pkg.price), roomSurcharge: surcharge,
+            discountAmount: agentDiscount ? (Number(pkg.price) + surcharge - price - commissionAmount) : 0,
+            discountType: agentDiscount?.discountType || null,
+            discountValue: agentDiscount ? Number(agentDiscount.discountValue) : 0,
+            commissionAmount, commissionType: agent.commissionType, commissionRate: commRate,
+            totalPrice: price, amount: walletPaid, paymentMethod: "wallet",
+            pilgrimType: pilgrimType || "adult",
+          },
         });
 
         // Create commission record for this booking (commissionAmount calculated above)
@@ -854,7 +864,17 @@ router.post("/agent/register-client", async (req, res) => {
         eventType: "agent_client_registered",
         packageId,
         bookingId: booking.id,
-        metadata: { clientName: resolvedFullName, packageName: pkg.name, amount: clampedPaid, paymentMethod: paymentMethod || "cash", reference: bookingReference },
+        metadata: {
+          clientName: resolvedFullName, packageName: pkg.name, reference: bookingReference,
+          // Payment breakdown
+          originalPrice: Number(pkg.price), roomSurcharge: surcharge,
+          discountAmount: agentDiscount ? (Number(pkg.price) + surcharge - price - commissionAmount) : 0,
+          discountType: agentDiscount?.discountType || null,
+          discountValue: agentDiscount ? Number(agentDiscount.discountValue) : 0,
+          commissionAmount, commissionType: agent.commissionType, commissionRate: commRate,
+          totalPrice: price, amount: clampedPaid, paymentMethod: paymentMethod || "cash",
+          pilgrimType: pilgrimType || "adult",
+        },
       });
 
       // Create commission record for this booking (commissionAmount calculated above)

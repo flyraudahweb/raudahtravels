@@ -278,7 +278,8 @@ router.put("/bookings/:id", async (req, res) => {
   const updateData: any = { updatedAt: new Date() };
   if (status !== undefined) updateData.status = status;
   if (notes !== undefined) updateData.notes = notes;
-  if (amountPaid != null) updateData.amountPaid = String(amountPaid);
+  // amountPaid is now derived from SUM(verified payments) — direct override removed
+  // to maintain data integrity. Use the payment recording flow instead.
   if (visaDeliveryMessage !== undefined) updateData.visaDeliveryMessage = visaDeliveryMessage;
   if (ticketDocumentUrl !== undefined) updateData.ticketDocumentUrl = ticketDocumentUrl;
 

@@ -1221,8 +1221,16 @@ function formatActivityDetail(eventType: string, metadata: any): string {
   const m = metadata as Record<string, any>;
 
   switch (eventType) {
-    case "agent_client_registered":
-      return `Registered ${m.clientName || "client"} for ${m.packageName || "package"}${m.amount ? ` — ₦${Number(m.amount).toLocaleString()} via ${m.paymentMethod || "payment"}` : ""}`;
+    case "agent_client_registered": {
+      let detail = `Registered ${m.clientName || "client"} for ${m.packageName || "package"}`;
+      if (m.totalPrice) detail += ` — Total: ₦${Number(m.totalPrice).toLocaleString()}`;
+      if (m.discountAmount > 0) detail += ` (Discount: -₦${Number(m.discountAmount).toLocaleString()}`;
+      if (m.discountAmount > 0 && m.discountType) detail += ` ${m.discountType === "percentage" ? `${m.discountValue}%` : "fixed"}`;
+      if (m.discountAmount > 0) detail += `)`;
+      if (m.commissionAmount > 0) detail += ` | Commission: ₦${Number(m.commissionAmount).toLocaleString()}`;
+      if (m.amount != null) detail += ` | Paid: ₦${Number(m.amount).toLocaleString()} via ${m.paymentMethod || "payment"}`;
+      return detail;
+    }
     case "agent_application_submitted":
       return `Application submitted — ${m.businessName || "Business"}${m.contactPerson ? ` (${m.contactPerson})` : ""}`;
     case "wallet_topup":
@@ -1233,8 +1241,15 @@ function formatActivityDetail(eventType: string, metadata: any): string {
     case "payment_rejected":
     case "payment_failed":
       return `Payment of ₦${Number(m.amount || 0).toLocaleString()} ${eventType === "payment_rejected" ? "rejected" : "failed"}${m.targetName ? ` for ${m.targetName}` : ""}`;
-    case "pilgrim_registered":
-      return `Pilgrim registered: ${m.targetName || "Unknown"}${m.reference ? ` (${m.reference})` : ""}${m.actorName ? ` by ${m.actorName}` : ""}`;
+    case "pilgrim_registered": {
+      let detail = `Registered ${m.targetName || "Unknown"}`;
+      if (m.packageName) detail += ` for ${m.packageName}`;
+      if (m.reference) detail += ` (${m.reference})`;
+      if (m.totalPrice) detail += ` — Total: ₦${Number(m.totalPrice).toLocaleString()}`;
+      if (m.amountPaid > 0) detail += ` | Paid: ₦${Number(m.amountPaid).toLocaleString()} via ${m.paymentMethod || "N/A"}`;
+      if (m.actorName) detail += ` | by ${m.actorName}`;
+      return detail;
+    }
     case "booking_confirmed":
       return `Booking confirmed: ${m.targetName || "Unknown"}${m.reference ? ` (${m.reference})` : ""}`;
     case "booking_cancelled":
