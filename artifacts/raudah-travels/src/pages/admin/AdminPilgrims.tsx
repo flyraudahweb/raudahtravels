@@ -861,7 +861,6 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
                     </div>
                   </div>
                 )}
-                </div>
               </>
             )}
 
