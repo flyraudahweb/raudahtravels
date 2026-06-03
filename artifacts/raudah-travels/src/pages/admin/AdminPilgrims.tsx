@@ -78,10 +78,12 @@ type PilgrimRow = {
   agentId?: string | null;
   registeredByStaffId?: string | null;
   agentBusinessName?: string | null;
+  commissionAmount?: number | null;
+  packagePrice?: number | null;
   registeredByStaffName?: string | null;
   visaDeliveryMessage?: string | null;
   createdAt: string;
-  package?: { id: string; name: string; type: string; category: string } | null;
+  package?: { id: string; name: string; type: string; category: string; price?: number | null } | null;
   packageDate?: {
     id: string;
     outbound: string;
@@ -815,8 +817,50 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
                   <Clock className="w-3.5 h-3.5" />
                   Registered {new Date(pilgrim.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })}
                   {pilgrim.agentId && (
-                    <span className="ml-3 text-[#2D3199] font-bold">· Via Agent</span>
+                    <span className="ml-3 text-[#2D3199] font-bold">· Via {pilgrim.agentBusinessName || "Agent"}</span>
                   )}
+                </div>
+
+                {/* Agent & Pricing Breakdown */}
+                {pilgrim.agentId && (
+                  <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+                    <div className="flex items-center gap-3 p-4 border-b border-[#F1F5F9]">
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "linear-gradient(135deg, #8B5CF6, #7C3AED)" }}>
+                        <Badge className="w-4 h-4 text-white" />
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-black text-[#94A3B8] uppercase tracking-widest">Agent</p>
+                        <p className="text-sm font-bold text-[#0F172A]">{pilgrim.agentBusinessName || "Unknown Agent"}</p>
+                      </div>
+                    </div>
+                    <div className="p-4 space-y-2.5">
+                      {pilgrim.packagePrice != null && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-[#64748B]">Package Base Price</span>
+                          <span className="text-xs font-bold text-[#0F172A]">₦{pilgrim.packagePrice.toLocaleString()}</span>
+                        </div>
+                      )}
+                      {pilgrim.packagePrice != null && pilgrim.packagePrice !== pilgrim.totalPrice && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-[#64748B]">Discount Applied</span>
+                          <span className="text-xs font-bold text-emerald-600">
+                            -₦{(pilgrim.packagePrice - pilgrim.totalPrice - (pilgrim.commissionAmount || 0)).toLocaleString()}
+                          </span>
+                        </div>
+                      )}
+                      {pilgrim.commissionAmount != null && pilgrim.commissionAmount > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-[#64748B]">Agent Commission</span>
+                          <span className="text-xs font-bold text-[#8B5CF6]">₦{pilgrim.commissionAmount.toLocaleString()}</span>
+                        </div>
+                      )}
+                      <div className="border-t border-[#F1F5F9] pt-2 flex items-center justify-between">
+                        <span className="text-xs font-bold text-[#0F172A]">Final Price</span>
+                        <span className="text-sm font-black text-[#0F172A]">₦{pilgrim.totalPrice.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 </div>
               </>
             )}

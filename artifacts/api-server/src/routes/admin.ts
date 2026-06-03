@@ -386,6 +386,7 @@ router.get("/admin/pilgrims", async (req, res) => {
       name: packagesTable.name,
       type: packagesTable.type,
       category: packagesTable.category,
+      price: packagesTable.price,
     },
     packageDate: {
       id: packageDatesTable.id,
@@ -405,12 +406,14 @@ router.get("/admin/pilgrims", async (req, res) => {
       avatarUrl: profilesTable.avatarUrl,
     },
     agentBusinessName: agentsTable.businessName,
+    commissionAmount: commissionsTable.amount,
   })
     .from(bookingsTable)
     .leftJoin(packagesTable, eq(bookingsTable.packageId, packagesTable.id))
     .leftJoin(packageDatesTable, eq(bookingsTable.packageDateId, packageDatesTable.id))
     .leftJoin(profilesTable, eq(bookingsTable.userId, profilesTable.id))
     .leftJoin(agentsTable, eq(bookingsTable.agentId, agentsTable.id))
+    .leftJoin(commissionsTable, eq(commissionsTable.bookingId, bookingsTable.id))
     .where(whereClause)
     .orderBy(desc(bookingsTable.createdAt));
 
@@ -436,6 +439,8 @@ router.get("/admin/pilgrims", async (req, res) => {
     packageDate: row.packageDate || null,
     user: row.user,
     agentBusinessName: row.agentBusinessName || null,
+    commissionAmount: row.commissionAmount ? Number(row.commissionAmount) : null,
+    packagePrice: row.package?.price ? Number(row.package.price) : null,
     registeredByStaffName: row.booking.registeredByStaffId ? (staffMap.get(row.booking.registeredByStaffId) || null) : null,
   }));
 
