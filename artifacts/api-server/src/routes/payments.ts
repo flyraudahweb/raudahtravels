@@ -84,6 +84,36 @@ async function ensureVisaApplication(bookingId: string, pilgrimName?: string | n
   }
 }
 
+// ── Payment stats (true aggregates, independent of pagination) ────────────────
+router.get("/payments/stats", async (req, res) => {
+  const { userId: clerkUserId } = getAuth(req);
+  if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
+  const profile = await getProfileByClerkId(clerkUserId);
+  if (!profile) return res.status(404).json({ error: "Profile not found" });
+  const isAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
+  if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
+
+  const [totalRow, verifiedRow, pendingRow, rejectedRow, countRow, verifiedCountRow, pendingCountRow] = await Promise.all([
+    db.select({ sum: sql<string>`COALESCE(SUM(amount::numeric), 0)` }).from(paymentsTable).where(eq(paymentsTable.isArchived, false)),
+    db.select({ sum: sql<string>`COALESCE(SUM(amount::numeric), 0)` }).from(paymentsTable).where(and(eq(paymentsTable.isArchived, false), eq(paymentsTable.status, "verified"))),
+    db.select({ sum: sql<string>`COALESCE(SUM(amount::numeric), 0)` }).from(paymentsTable).where(and(eq(paymentsTable.isArchived, false), eq(paymentsTable.status, "pending"))),
+    db.select({ sum: sql<string>`COALESCE(SUM(amount::numeric), 0)` }).from(paymentsTable).where(and(eq(paymentsTable.isArchived, false), eq(paymentsTable.status, "rejected"))),
+    db.select({ count: sql<number>`COUNT(*)` }).from(paymentsTable).where(eq(paymentsTable.isArchived, false)),
+    db.select({ count: sql<number>`COUNT(*)` }).from(paymentsTable).where(and(eq(paymentsTable.isArchived, false), eq(paymentsTable.status, "verified"))),
+    db.select({ count: sql<number>`COUNT(*)` }).from(paymentsTable).where(and(eq(paymentsTable.isArchived, false), eq(paymentsTable.status, "pending"))),
+  ]);
+
+  return res.json({
+    totalAmount: Number(totalRow[0].sum),
+    verifiedAmount: Number(verifiedRow[0].sum),
+    pendingAmount: Number(pendingRow[0].sum),
+    rejectedAmount: Number(rejectedRow[0].sum),
+    totalCount: Number(countRow[0].count),
+    verifiedCount: Number(verifiedCountRow[0].count),
+    pendingCount: Number(pendingCountRow[0].count),
+  });
+});
+
 router.get("/payments", async (req, res) => {
   const { userId: clerkUserId } = getAuth(req);
   if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });

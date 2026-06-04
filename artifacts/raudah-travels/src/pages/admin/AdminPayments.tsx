@@ -643,6 +643,16 @@ export default function AdminPayments() {
   if (statusFilter !== "all") params.status = statusFilter;
   if (filterArchived) params.archived = "true";
 
+  // ── True aggregate stats (independent of pagination) ──
+  const { data: statsData } = useQuery<{
+    totalAmount: number; verifiedAmount: number; pendingAmount: number;
+    totalCount: number; verifiedCount: number; pendingCount: number;
+  }>({
+    queryKey: ["payments", "stats"],
+    queryFn: () => fetch("/api/payments/stats", { credentials: "include" }).then(r => r.json()),
+    staleTime: 30_000,
+  });
+
   const { data, isLoading } = useListPayments(params, { query: { queryKey: getListPaymentsQueryKey(params) } });
   const verifyPayment = useVerifyPayment();
   const allPayments = data?.payments || [];
@@ -670,6 +680,7 @@ export default function AdminPayments() {
         toast({ title: action === "verified" ? "Payment verified ✓" : "Payment rejected" });
         qc.invalidateQueries({ queryKey: getListPaymentsQueryKey({}) });
         qc.invalidateQueries({ queryKey: getListPaymentsQueryKey({ status: "pending" }) });
+        qc.invalidateQueries({ queryKey: ["payments", "stats"] });
         setVerifyingId(null); setNotes("");
       },
       onError: () => toast({ title: "Action failed", variant: "destructive" }),
@@ -694,6 +705,7 @@ export default function AdminPayments() {
       qc.invalidateQueries({ queryKey: getListPaymentsQueryKey({}) });
       qc.invalidateQueries({ queryKey: getListPaymentsQueryKey({ status: "rejected" }) });
       qc.invalidateQueries({ queryKey: getListPaymentsQueryKey({ status: "pending" }) });
+      qc.invalidateQueries({ queryKey: ["payments", "stats"] });
       setReinstateId(null);
       setReinstateReason("");
     } catch (e: any) {
@@ -703,9 +715,13 @@ export default function AdminPayments() {
     }
   };
 
-  const totalAll      = allPayments.reduce((s, p) => s + p.amount, 0);
-  const totalPending  = allPayments.filter(p => p.status === "pending").reduce((s, p) => s + p.amount, 0);
-  const totalVerified = allPayments.filter(p => p.status === "verified").reduce((s, p) => s + p.amount, 0);
+  // Use server-side stats for accurate header totals (not limited by pagination)
+  const totalAll      = statsData?.totalAmount ?? 0;
+  const totalPending  = statsData?.pendingAmount ?? 0;
+  const totalVerified = statsData?.verifiedAmount ?? 0;
+  const countAll      = statsData?.totalCount ?? allPayments.length;
+  const countPending  = statsData?.pendingCount ?? allPayments.filter(p => p.status === "pending").length;
+  const countVerified = statsData?.verifiedCount ?? allPayments.filter(p => p.status === "verified").length;
 
   const handlePrint = (payment: typeof allPayments[0]) => {
     printReceipt({
@@ -781,7 +797,7 @@ export default function AdminPayments() {
                 <DollarSign className="w-4 h-4 text-white/50" />
               </div>
               <p className="text-2xl font-black">₦{totalAll.toLocaleString()}</p>
-              <p className="text-white/60 text-xs mt-1">{allPayments.length} records</p>
+              <p className="text-white/60 text-xs mt-1">{countAll} records</p>
             </div>
             <div className="bg-gradient-to-br from-amber-500 to-amber-400 rounded-2xl p-5 text-white">
               <div className="flex items-center justify-between mb-3">
@@ -789,7 +805,7 @@ export default function AdminPayments() {
                 <Clock className="w-4 h-4 text-white/50" />
               </div>
               <p className="text-2xl font-black">₦{totalPending.toLocaleString()}</p>
-              <p className="text-white/60 text-xs mt-1">{allPayments.filter(p => p.status === "pending").length} payments</p>
+              <p className="text-white/60 text-xs mt-1">{countPending} payments</p>
             </div>
             <div className="bg-gradient-to-br from-emerald-600 to-emerald-500 rounded-2xl p-5 text-white">
               <div className="flex items-center justify-between mb-3">
@@ -797,7 +813,7 @@ export default function AdminPayments() {
                 <CheckCircle2 className="w-4 h-4 text-white/50" />
               </div>
               <p className="text-2xl font-black">₦{totalVerified.toLocaleString()}</p>
-              <p className="text-white/60 text-xs mt-1">{allPayments.filter(p => p.status === "verified").length} payments</p>
+              <p className="text-white/60 text-xs mt-1">{countVerified} payments</p>
             </div>
           </div>
 

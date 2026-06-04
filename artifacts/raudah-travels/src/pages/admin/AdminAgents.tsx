@@ -1385,10 +1385,10 @@ export default function AdminAgents() {
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "Pending", value: pending.length, color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-200" },
-          { label: "Approved", value: applications.filter(a => a.status === "approved").length, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-200" },
-          { label: "Rejected", value: rejectedApps.length, color: "text-red-600", bg: "bg-red-50", border: "border-red-200" },
-          { label: "Total", value: applications.length, color: "text-[#2D3199]", bg: "bg-[#EEF0FF]", border: "border-[#C7CBF5]" },
+          { label: "Active Agents", value: (agentsData as any)?.counts?.active ?? activeAgents.length, color: "text-emerald-600", bg: "bg-emerald-50", border: "border-emerald-200" },
+          { label: "Pending Apps", value: pending.length, color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-200" },
+          { label: "Suspended", value: ((agentsData as any)?.counts?.suspended ?? 0) + ((agentsData as any)?.counts?.blocked ?? 0), color: "text-red-600", bg: "bg-red-50", border: "border-red-200" },
+          { label: "Total Agents", value: (agentsData as any)?.counts?.active + ((agentsData as any)?.counts?.suspended ?? 0) + ((agentsData as any)?.counts?.blocked ?? 0) || agents.length, color: "text-[#2D3199]", bg: "bg-[#EEF0FF]", border: "border-[#C7CBF5]" },
         ].map(s => (
           <div key={s.label} className={`rounded-2xl border p-4 ${s.bg} ${s.border}`}>
             <p className={`text-xs font-bold ${s.color} mb-1`}>{s.label}</p>
