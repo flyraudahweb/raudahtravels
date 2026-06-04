@@ -4,7 +4,7 @@ import {
   agentsTable, commissionsTable, profilesTable, bookingsTable,
   visaApplicationsTable, packagesTable, agentWalletsTable,
   walletTransactionsTable, agentApplicationsTable, agentPackageDiscountsTable,
-  paymentsTable, userActivityTable,
+  paymentsTable, userActivityTable, siteSettingsTable,
 } from "@workspace/db";
 import { getAuth } from "@clerk/express";
 import { eq, and, sql, desc } from "drizzle-orm";
