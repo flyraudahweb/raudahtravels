@@ -776,12 +776,10 @@ router.post("/agent/register-client", async (req, res) => {
         agentId: agent.id,
         status: "pending",
         totalPrice: String(price),
-        // BUG FIX: For non-online payments (cash, bank_transfer), auto-verify the payment
-        // since the agent has already collected the money from the pilgrim.
-        // Online (Paystack) payments stay pending until confirmed via webhook/verify.
-        // For auto-verified payments, set amountPaid = clampedPaid (same as wallet flow).
-        // For online payments, set amountPaid = 0 (will be set when verified).
-        amountPaid: (!isOnlinePayment && clampedPaid > 0) ? String(clampedPaid) : "0",
+        // Non-wallet payments (cash, bank_transfer, online) start with amountPaid=0.
+        // The payment record is created as "pending" below and must be verified by admin.
+        // Only wallet payments are auto-verified at registration time.
+        amountPaid: "0",
         pilgrimCount: 1,
         fullName: resolvedFullName || undefined,
         civility: nullify(civility),
@@ -835,28 +833,12 @@ router.post("/agent/register-client", async (req, res) => {
           .where(eq(packagesTable.id, packageId));
       }
 
-      // For non-online fully-paid bookings, generate idNumber and update visa status
-      const isAutoVerified = !isOnlinePayment && clampedPaid > 0;
-      const isFullyPaid = isAutoVerified && clampedPaid >= price;
-      if (isFullyPaid) {
-        // Update booking status to confirmed
-        await tx.update(bookingsTable)
-          .set({ status: "confirmed" })
-          .where(eq(bookingsTable.id, booking.id));
-        // Generate idNumber for fully paid bookings
-        await tx.execute(sql`
-          UPDATE bookings 
-          SET id_number = nextval('bookings_id_number_seq') 
-          WHERE id = ${booking.id} AND id_number IS NULL
-        `);
-      }
-
       await tx.insert(visaApplicationsTable).values({
         id: randomUUID(),
         bookingId: booking.id,
         pilgrimName: booking.fullName ?? null,
         passportNumber: booking.passportNumber ?? null,
-        status: isFullyPaid ? "pending" : "awaiting_payment",
+        status: "awaiting_payment",
       });
 
       if (clampedPaid > 0) {
@@ -866,15 +848,10 @@ router.post("/agent/register-client", async (req, res) => {
           userId: walkInUser.id,
           amount: String(clampedPaid),
           method: paymentMethod || "cash",
-          // BUG FIX: Auto-verify non-online payments (cash/bank_transfer).
-          // The agent has already collected money — no reason to leave it pending.
-          // Online (Paystack) payments stay pending for webhook verification.
-          status: isOnlinePayment ? "pending" : "verified",
+          status: "pending",
           reference: paymentReference || `INIT-${booking.reference}`,
           proofUrl: paymentProofUrl || null,
-          notes: isOnlinePayment
-            ? "Initial payment during agent registration"
-            : `Payment collected by agent during registration (auto-verified)`,
+          notes: "Initial payment during agent registration",
         });
       }
 

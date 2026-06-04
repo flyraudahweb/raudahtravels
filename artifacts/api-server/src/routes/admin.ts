@@ -427,6 +427,26 @@ router.get("/admin/pilgrims", async (req, res) => {
     staffRows.forEach(r => staffMap.set(r.id, r.fullName || "Staff"));
   }
 
+  // Batch-fetch initial payment info (method + status) for each booking
+  const bookingIds = bookings.map(r => r.booking.id);
+  const paymentMethodMap = new Map<string, { method: string; status: string }>();
+  if (bookingIds.length > 0) {
+    const paymentRows = await db.select({
+      bookingId: paymentsTable.bookingId,
+      method: paymentsTable.method,
+      status: paymentsTable.status,
+    })
+      .from(paymentsTable)
+      .where(and(inArray(paymentsTable.bookingId, bookingIds), eq(paymentsTable.isArchived, false)))
+      .orderBy(paymentsTable.createdAt);
+    // Keep the first (initial) payment per booking
+    paymentRows.forEach(r => {
+      if (r.bookingId && !paymentMethodMap.has(r.bookingId)) {
+        paymentMethodMap.set(r.bookingId, { method: r.method || "unknown", status: r.status || "pending" });
+      }
+    });
+  }
+
   const {
     paymentStatus: paymentFilter, visaStatus: visaFilter,
   } = req.query as Record<string, string>;
@@ -441,6 +461,8 @@ router.get("/admin/pilgrims", async (req, res) => {
     agentBusinessName: row.agentBusinessName || null,
     commissionAmount: row.commissionAmount ? Number(row.commissionAmount) : null,
     packagePrice: row.package?.price ? Number(row.package.price) : null,
+    paymentMethod: paymentMethodMap.get(row.booking.id)?.method || null,
+    paymentVerified: paymentMethodMap.get(row.booking.id)?.status === "verified",
     registeredByStaffName: row.booking.registeredByStaffId ? (staffMap.get(row.booking.registeredByStaffId) || null) : null,
   }));
 

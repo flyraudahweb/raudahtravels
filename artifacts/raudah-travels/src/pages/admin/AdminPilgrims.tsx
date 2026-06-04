@@ -80,6 +80,8 @@ type PilgrimRow = {
   agentBusinessName?: string | null;
   commissionAmount?: number | null;
   packagePrice?: number | null;
+  paymentMethod?: string | null;
+  paymentVerified?: boolean;
   registeredByStaffName?: string | null;
   visaDeliveryMessage?: string | null;
   createdAt: string;
@@ -784,6 +786,14 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
                       }`}>
                         {paid === "paid" ? "Fully Paid" : paid === "partial" ? "Partial" : "Unpaid"}
                       </p>
+                      {pilgrim.paymentMethod && (
+                        <p className="text-[10px] text-[#94A3B8] mt-0.5 capitalize">
+                          via {pilgrim.paymentMethod.replace(/_/g, " ")}
+                          {pilgrim.paymentVerified === false && pilgrim.amountPaid === 0 && (
+                            <span className="ml-1 text-amber-500 font-bold">(pending verification)</span>
+                          )}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -834,6 +844,17 @@ function PilgrimDetailDialog({ pilgrim, onClose }: { pilgrim: PilgrimRow; onClos
                       </div>
                     </div>
                     <div className="p-4 space-y-2.5">
+                      {pilgrim.paymentMethod && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-[#64748B]">Payment Method</span>
+                          <span className="text-xs font-bold text-[#0F172A] capitalize">
+                            {pilgrim.paymentMethod.replace(/_/g, " ")}
+                            {pilgrim.paymentVerified === false && pilgrim.amountPaid === 0 && (
+                              <span className="ml-1.5 text-[10px] font-bold text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-full">Awaiting Verification</span>
+                            )}
+                          </span>
+                        </div>
+                      )}
                       {pilgrim.packagePrice != null && (
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-[#64748B]">Package Base Price</span>
