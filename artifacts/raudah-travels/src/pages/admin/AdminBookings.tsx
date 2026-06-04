@@ -81,11 +81,15 @@ export default function AdminBookings() {
   );
   const updateBooking = useUpdateBooking();
   const allBookings = data?.bookings || [];
+  const serverStatusCounts = (data as any)?.statusCounts;
 
-  const counts = useMemo(() => Object.keys(STATUS_CONFIG).reduce((acc, k) => {
-    acc[k] = allBookings.filter(b => b.status === k).length;
-    return acc;
-  }, {} as Record<string, number>), [allBookings]);
+  const counts = useMemo(() => {
+    if (serverStatusCounts) return serverStatusCounts as Record<string, number>;
+    return Object.keys(STATUS_CONFIG).reduce((acc, k) => {
+      acc[k] = allBookings.filter(b => b.status === k).length;
+      return acc;
+    }, {} as Record<string, number>);
+  }, [allBookings, serverStatusCounts]);
 
   const filtered = useMemo(() => {
     let list = allBookings;

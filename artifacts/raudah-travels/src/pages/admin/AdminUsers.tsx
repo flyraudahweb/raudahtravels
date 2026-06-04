@@ -88,6 +88,7 @@ export default function AdminUsers() {
   const users = data?.users || [];
   const total = data?.total || 0;
   const totalPages = data?.totalPages || 1;
+  const serverCounts = (data as any)?.counts;
 
   const handleStatusChange = (userId: string, newStatus: string) => {
     fetch(`/api/admin/users/${userId}/status`, {
@@ -161,9 +162,9 @@ export default function AdminUsers() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: "Total Users", value: total, gradient: "from-[#2D3199] to-[#4C56B8]", icon: Users },
-          { label: "Active", value: users.filter(u => u.accountStatus === "active").length, gradient: "from-emerald-500 to-teal-600", icon: ShieldCheck },
-          { label: "Suspended", value: users.filter(u => u.accountStatus === "suspended").length, gradient: "from-amber-500 to-orange-500", icon: ShieldBan },
-          { label: "Blocked", value: users.filter(u => u.accountStatus === "blocked").length, gradient: "from-red-500 to-rose-600", icon: Ban },
+          { label: "Active", value: serverCounts?.active ?? users.filter(u => u.accountStatus === "active").length, gradient: "from-emerald-500 to-teal-600", icon: ShieldCheck },
+          { label: "Suspended", value: serverCounts?.suspended ?? users.filter(u => u.accountStatus === "suspended").length, gradient: "from-amber-500 to-orange-500", icon: ShieldBan },
+          { label: "Blocked", value: serverCounts?.blocked ?? users.filter(u => u.accountStatus === "blocked").length, gradient: "from-red-500 to-rose-600", icon: Ban },
         ].map(s => {
           const Icon = s.icon;
           return (

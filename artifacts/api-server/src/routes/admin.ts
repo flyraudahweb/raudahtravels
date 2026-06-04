@@ -86,7 +86,21 @@ router.get("/admin/users", async (req, res) => {
     .limit(limit)
     .offset((page - 1) * limit);
 
-  return res.json({ users, total, page, limit, totalPages: Math.ceil(total / limit) });
+  // Status counts (independent of pagination filters — always reflect the full dataset)
+  const [activeCount, suspendedCount, blockedCount] = await Promise.all([
+    db.select({ count: sql<number>`count(*)::int` }).from(profilesTable).where(eq(profilesTable.accountStatus, "active")),
+    db.select({ count: sql<number>`count(*)::int` }).from(profilesTable).where(eq(profilesTable.accountStatus, "suspended")),
+    db.select({ count: sql<number>`count(*)::int` }).from(profilesTable).where(eq(profilesTable.accountStatus, "blocked")),
+  ]);
+
+  return res.json({
+    users, total, page, limit, totalPages: Math.ceil(total / limit),
+    counts: {
+      active: activeCount[0]?.count ?? 0,
+      suspended: suspendedCount[0]?.count ?? 0,
+      blocked: blockedCount[0]?.count ?? 0,
+    },
+  });
 });
 
 router.put("/admin/users/:id/status", async (req, res) => {

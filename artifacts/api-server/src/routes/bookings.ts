@@ -141,6 +141,24 @@ router.get("/bookings", async (req, res) => {
   const userMap = Object.fromEntries(users.map(u => [u.id, u]));
   const dateMap = Object.fromEntries(packageDates.map(d => [d.id, d]));
 
+  // Status counts (independent of pagination — always reflect full non-archived dataset for admin)
+  let statusCounts: Record<string, number> | undefined;
+  if (isAdmin) {
+    const archiveCondition = archived === "true" ? eq(bookingsTable.isArchived, true) : eq(bookingsTable.isArchived, false);
+    const [pendingC, confirmedC, cancelledC, completedC] = await Promise.all([
+      db.select({ count: sql<number>`count(*)::int` }).from(bookingsTable).where(and(archiveCondition, eq(bookingsTable.status, "pending"))),
+      db.select({ count: sql<number>`count(*)::int` }).from(bookingsTable).where(and(archiveCondition, eq(bookingsTable.status, "confirmed"))),
+      db.select({ count: sql<number>`count(*)::int` }).from(bookingsTable).where(and(archiveCondition, eq(bookingsTable.status, "cancelled"))),
+      db.select({ count: sql<number>`count(*)::int` }).from(bookingsTable).where(and(archiveCondition, eq(bookingsTable.status, "completed"))),
+    ]);
+    statusCounts = {
+      pending: pendingC[0]?.count ?? 0,
+      confirmed: confirmedC[0]?.count ?? 0,
+      cancelled: cancelledC[0]?.count ?? 0,
+      completed: completedC[0]?.count ?? 0,
+    };
+  }
+
   return res.json({
     bookings: bookings.map(b => toBookingResponse(
       b,
@@ -149,6 +167,7 @@ router.get("/bookings", async (req, res) => {
       b.packageDateId ? dateMap[b.packageDateId] : undefined
     )),
     total: Number(total[0].count),
+    ...(statusCounts ? { statusCounts } : {}),
   });
 });
 
