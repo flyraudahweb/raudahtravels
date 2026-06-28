@@ -2116,6 +2116,8 @@ export default function AdminPilgrims() {
   const [filterAgent, setFilterAgent]     = useState(FILTER_ALL);
   const [filterStaff, setFilterStaff]     = useState(FILTER_ALL);
   const [filterArchived, setFilterArchived] = useState(false);
+  const [departureDateFrom, setDepartureDateFrom] = useState("");
+  const [departureDateTo, setDepartureDateTo] = useState("");
   const [page, setPage]                   = useState(1);
   const [selected, setSelected]           = useState<PilgrimRow | null>(null);
 
@@ -2138,7 +2140,7 @@ export default function AdminPilgrims() {
   const agentsList = agentsData?.agents || [];
   const staffList = staffData?.staff || [];
 
-  useEffect(() => { setPage(1); }, [search, filterStatus, filterType, filterPayment, filterGender, filterVisa, filterAgent, filterStaff, filterArchived]);
+  useEffect(() => { setPage(1); }, [search, filterStatus, filterType, filterPayment, filterGender, filterVisa, filterAgent, filterStaff, filterArchived, departureDateFrom, departureDateTo]);
 
   const queryParams = useMemo(() => {
     const p = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
@@ -2151,8 +2153,10 @@ export default function AdminPilgrims() {
     if (filterAgent   !== FILTER_ALL)   p.set("agentId",       filterAgent);
     if (filterStaff   !== FILTER_ALL)   p.set("registeredByStaffId", filterStaff);
     if (filterArchived)                 p.set("isArchived",    "true");
+    if (departureDateFrom)              p.set("departureDateFrom", departureDateFrom);
+    if (departureDateTo)                p.set("departureDateTo",   departureDateTo);
     return p.toString();
-  }, [search, filterStatus, filterType, filterPayment, filterGender, filterVisa, filterAgent, filterStaff, filterArchived, page]);
+  }, [search, filterStatus, filterType, filterPayment, filterGender, filterVisa, filterAgent, filterStaff, filterArchived, departureDateFrom, departureDateTo, page]);
 
   const { data, isLoading } = useQuery<{ pilgrims: PilgrimRow[]; total: number; totalPages: number }>({
     queryKey: ["admin-pilgrims", queryParams],
@@ -2210,6 +2214,37 @@ export default function AdminPilgrims() {
     }
   };
 
+  // Bulk Print ID Tags for selected pilgrims
+  function bulkPrintIdTags() {
+    const pilgrims = Array.from(selectedMap.values());
+    if (pilgrims.length === 0) return;
+    const tagHtml = pilgrims.map(p => {
+      const name = p.fullName || [p.civility, p.firstName, p.lastName].filter(Boolean).join(" ") || "—";
+      const photo = p.profilePhotoUrl ? `<img src="${p.profilePhotoUrl}" style="width:80px;height:100px;object-fit:cover;border-radius:8px;border:2px solid #2D3199;"/>` : `<div style="width:80px;height:100px;background:#f1f5f9;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:32px;color:#94a3b8;border:2px solid #e2e8f0;">👤</div>`;
+      return `<div style="border:2px solid #2D3199;border-radius:16px;padding:20px;width:340px;display:inline-block;margin:8px;page-break-inside:avoid;font-family:system-ui,sans-serif;">
+        <div style="display:flex;gap:16px;align-items:flex-start;">
+          ${photo}
+          <div style="flex:1;">
+            <div style="font-size:16px;font-weight:800;color:#0f172a;margin-bottom:4px;">${name}</div>
+            <div style="font-size:11px;color:#64748b;margin-bottom:2px;">📘 ${p.passportNumber || "N/A"}</div>
+            <div style="font-size:11px;color:#64748b;margin-bottom:2px;">📦 ${p.package?.name || "—"}</div>
+            <div style="font-size:11px;color:#64748b;margin-bottom:2px;">🔖 ${p.reference || "—"}</div>
+            <div style="font-size:11px;color:#64748b;">${p.phone || "—"}</div>
+          </div>
+        </div>
+        <div style="text-align:center;margin-top:12px;padding-top:12px;border-top:1px dashed #e2e8f0;">
+          <span style="font-size:10px;color:#2D3199;font-weight:700;letter-spacing:0.05em;">RAUDAH TRAVELS — ${p.package?.type?.toUpperCase() || ""} ${new Date().getFullYear()}</span>
+        </div>
+      </div>`;
+    }).join("");
+    const win = window.open("", "_blank");
+    if (win) {
+      win.document.write(`<html><head><title>ID Tags — ${pilgrims.length} Pilgrims</title><style>@media print{body{margin:0;}@page{margin:10mm;}}</style></head><body style="padding:16px;">${tagHtml}</body></html>`);
+      win.document.close();
+      setTimeout(() => win.print(), 400);
+    }
+  }
+
   // Keep the selected dialog updated automatically when background data changes
   useEffect(() => {
     if (selected) {
@@ -2220,7 +2255,7 @@ export default function AdminPilgrims() {
     }
   }, [pilgrims, selected]);
 
-  const activeFilters = [filterStatus, filterType, filterPayment, filterGender, filterVisa, filterAgent, filterStaff].filter(f => f !== FILTER_ALL).length + (search ? 1 : 0) + (filterArchived ? 1 : 0);
+  const activeFilters = [filterStatus, filterType, filterPayment, filterGender, filterVisa, filterAgent, filterStaff].filter(f => f !== FILTER_ALL).length + (search ? 1 : 0) + (filterArchived ? 1 : 0) + (departureDateFrom ? 1 : 0) + (departureDateTo ? 1 : 0);
 
   const exportParams = useMemo(() => {
     const p = new URLSearchParams({ exportAll: "true" });
@@ -2233,8 +2268,10 @@ export default function AdminPilgrims() {
     if (filterAgent   !== FILTER_ALL)   p.set("agentId",       filterAgent);
     if (filterStaff   !== FILTER_ALL)   p.set("registeredByStaffId", filterStaff);
     if (filterArchived)                 p.set("isArchived",    "true");
+    if (departureDateFrom)              p.set("departureDateFrom", departureDateFrom);
+    if (departureDateTo)                p.set("departureDateTo",   departureDateTo);
     return p.toString();
-  }, [search, filterStatus, filterType, filterPayment, filterGender, filterVisa, filterAgent, filterStaff, filterArchived]);
+  }, [search, filterStatus, filterType, filterPayment, filterGender, filterVisa, filterAgent, filterStaff, filterArchived, departureDateFrom, departureDateTo]);
 
   const handleExportCSV = useCallback(async () => {
     const r = await fetch(`/api/admin/pilgrims?${exportParams}`);
@@ -2253,6 +2290,7 @@ export default function AdminPilgrims() {
     setFilterPayment(FILTER_ALL); setFilterGender(FILTER_ALL);
     setFilterVisa(FILTER_ALL); setFilterAgent(FILTER_ALL);
     setFilterStaff(FILTER_ALL); setSearch(""); setFilterArchived(false);
+    setDepartureDateFrom(""); setDepartureDateTo("");
   };
 
   return (
@@ -2342,6 +2380,29 @@ export default function AdminPilgrims() {
             </div>
           ))}
 
+          <div className="flex items-center gap-1.5 shrink-0">
+            <label className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest">From</label>
+            <input
+              type="date"
+              value={departureDateFrom}
+              onChange={e => setDepartureDateFrom(e.target.value)}
+              className={`h-8 text-xs rounded-lg border px-2 w-[130px] bg-white outline-none focus:ring-2 focus:ring-[#2D3199]/20 focus:border-[#2D3199] ${
+                departureDateFrom ? "border-[#2D3199] bg-[#EEF0FF] text-[#2D3199] font-bold" : "border-[#DCE3F0] text-[#64748B]"
+              }`}
+            />
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <label className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest">To</label>
+            <input
+              type="date"
+              value={departureDateTo}
+              onChange={e => setDepartureDateTo(e.target.value)}
+              className={`h-8 text-xs rounded-lg border px-2 w-[130px] bg-white outline-none focus:ring-2 focus:ring-[#2D3199]/20 focus:border-[#2D3199] ${
+                departureDateTo ? "border-[#2D3199] bg-[#EEF0FF] text-[#2D3199] font-bold" : "border-[#DCE3F0] text-[#64748B]"
+              }`}
+            />
+          </div>
+
           <button
             onClick={() => setFilterArchived(!filterArchived)}
             className={`flex items-center gap-1.5 h-8 px-3 rounded-lg border text-xs font-bold transition-all shrink-0 ${
@@ -2386,6 +2447,11 @@ export default function AdminPilgrims() {
               disabled={isExporting}
               className="px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-white text-sm font-black rounded-xl transition-colors flex items-center gap-2 shadow-sm disabled:opacity-50">
               {isExporting ? <><Loader2 className="w-4 h-4 animate-spin" /> Exporting...</> : <><Download className="w-4 h-4" /> Export Selected</>}
+            </button>
+            <button 
+              onClick={bulkPrintIdTags}
+              className="px-4 py-2 bg-[#F59E0B] hover:bg-[#D97706] text-white text-sm font-black rounded-xl transition-colors flex items-center gap-2 shadow-sm">
+              <Printer className="w-4 h-4" /> Print ID Tags
             </button>
           </div>
         </div>

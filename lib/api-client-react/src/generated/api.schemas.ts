@@ -150,6 +150,7 @@ export interface TravelPackage {
   countdownEnabled: boolean;
   countdownExpiry?: string | null;
   countdownAction: TravelPackageCountdownAction;
+  pricingOverrides?: Record<string, unknown> | string | null;
   isRegistrationClosed: boolean;
   createdAt: string;
   packageDates?: PackageDate[];

@@ -52,6 +52,18 @@ function PackageFormDialog({ open, onClose, initial }: { open: boolean; onClose:
     countdownExpiry: initial.countdownExpiry ?? "",
     countdownAction: (initial.countdownAction ?? "disable") as "disable" | "both",
   } : emptyForm);
+  const [pricingOverrides, setPricingOverrides] = useState<{
+    roomSurcharges?: Record<string, number | undefined>;
+    childPrice?: number;
+    infantPrice?: number;
+  }>(() => {
+    if (initial?.pricingOverrides) {
+      try {
+        return typeof initial.pricingOverrides === 'string' ? JSON.parse(initial.pricingOverrides) : initial.pricingOverrides;
+      } catch { return {}; }
+    }
+    return {};
+  });
 
   const set = (k: keyof PackageForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
@@ -69,9 +81,21 @@ function PackageFormDialog({ open, onClose, initial }: { open: boolean; onClose:
       countdownEnabled: form.countdownEnabled,
       countdownExpiry: form.countdownEnabled && form.countdownExpiry ? form.countdownExpiry : null,
       countdownAction: form.countdownAction,
+      pricingOverrides: (() => {
+        const clean: Record<string, unknown> = {};
+        if (pricingOverrides.childPrice != null) clean.childPrice = pricingOverrides.childPrice;
+        if (pricingOverrides.infantPrice != null) clean.infantPrice = pricingOverrides.infantPrice;
+        const surcharges = pricingOverrides.roomSurcharges;
+        if (surcharges) {
+          const rs: Record<string, number> = {};
+          for (const [k, v] of Object.entries(surcharges)) { if (v != null) rs[k] = v; }
+          if (Object.keys(rs).length > 0) clean.roomSurcharges = rs;
+        }
+        return JSON.stringify(clean);
+      })(),
     };
     const opts = {
-      onSuccess: () => { toast({ title: initial ? "Package updated" : "Package created" }); qc.invalidateQueries({ queryKey: getListPackagesQueryKey() }); onClose(); },
+      onSuccess: () => { toast({ title: initial ? "Package updated" : "Package created" }); qc.invalidateQueries({ queryKey: getListPackagesQueryKey() }); setPricingOverrides({}); onClose(); },
       onError: () => toast({ title: "Error saving package", variant: "destructive" as const }),
     };
     if (initial) updatePackage.mutate({ id: initial.id, data }, opts);
@@ -199,6 +223,57 @@ function PackageFormDialog({ open, onClose, initial }: { open: boolean; onClose:
                   </div>
                 </div>
               )}
+            </div>
+
+            {/* Per-Package Pricing Overrides */}
+            <div className="sm:col-span-2 space-y-3 pt-4 border-t border-slate-200">
+              <h4 className="text-sm font-semibold text-slate-700">Pricing Overrides (Optional)</h4>
+              <p className="text-xs text-slate-500">Leave empty to use global site settings</p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-slate-600">Child Price (₦)</label>
+                  <input
+                    type="number"
+                    value={pricingOverrides.childPrice ?? ""}
+                    onChange={(e) => setPricingOverrides(prev => ({ ...prev, childPrice: e.target.value ? Number(e.target.value) : undefined }))}
+                    placeholder="Global default"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-600">Infant Price (₦)</label>
+                  <input
+                    type="number"
+                    value={pricingOverrides.infantPrice ?? ""}
+                    onChange={(e) => setPricingOverrides(prev => ({ ...prev, infantPrice: e.target.value ? Number(e.target.value) : undefined }))}
+                    placeholder="Global default"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-slate-600 mb-1 block">Room Surcharges (₦)</label>
+                {["Single", "Triple", "Quad", "Sharing"].map(roomType => (
+                  <div key={roomType} className="flex items-center gap-2 mb-2">
+                    <span className="text-sm text-slate-600 w-20">{roomType}</span>
+                    <input
+                      type="number"
+                      value={pricingOverrides.roomSurcharges?.[roomType] ?? ""}
+                      onChange={(e) => setPricingOverrides(prev => ({
+                        ...prev,
+                        roomSurcharges: {
+                          ...prev.roomSurcharges,
+                          [roomType]: e.target.value ? Number(e.target.value) : undefined,
+                        }
+                      }))}
+                      placeholder="Global default"
+                      className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
           <div className="flex gap-3 justify-end pt-2">

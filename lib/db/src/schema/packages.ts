@@ -6,6 +6,7 @@ import {
   numeric,
   boolean,
   pgEnum,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -56,6 +57,7 @@ export const packagesTable = pgTable("packages", {
   countdownEnabled: boolean("countdown_enabled").notNull().default(false),
   countdownExpiry: text("countdown_expiry"),
   countdownAction: text("countdown_action").notNull().default("disable"),
+  pricingOverrides: jsonb("pricing_overrides").default({}),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

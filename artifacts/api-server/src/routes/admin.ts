@@ -615,14 +615,69 @@ router.post("/admin/bookings/:id/upgrade-package", async (req, res) => {
     }
 
     const oldPrice = Number(booking.totalPrice);
-    const newPrice = Number(newPackage.price);
-    const priceDifference = newPrice - oldPrice;
     const currentPaid = Number(booking.amountPaid);
+
+    // BUG FIX: Recalculate new price with agent discounts and commissions
+    let newPrice = Number(newPackage.price);
+    // Preserve the existing room surcharge from the booking
+    const existingSurcharge = Number(booking.roomSurcharge) || 0;
+    newPrice += existingSurcharge;
+
+    let newCommissionAmount = 0;
 
     let paymentRecord: any = null;
     let updatedBooking: typeof bookingsTable.$inferSelect | undefined;
 
     await db.transaction(async (tx) => {
+      // If booking has an agent, apply agent pricing logic (same as register-client)
+      if (booking.agentId) {
+        const agent = await tx.query.agentsTable.findFirst({
+          where: eq(agentsTable.id, booking.agentId),
+        });
+
+        if (agent) {
+          // Check for per-package discount
+          const agentDiscount = await tx.query.agentPackageDiscountsTable.findFirst({
+            where: and(
+              eq(agentPackageDiscountsTable.agentId, agent.id),
+              eq(agentPackageDiscountsTable.packageId, newPackageId),
+            ),
+          });
+
+          if (agentDiscount) {
+            const dv = Number(agentDiscount.discountValue);
+            if (agentDiscount.discountType === "percentage") {
+              newPrice = Math.round((newPrice - (newPrice * dv / 100)) * 100) / 100;
+            } else {
+              newPrice = Math.max(0, newPrice - dv);
+            }
+          }
+
+          // Apply agent commission as price reduction (only when no package discount)
+          const commRate = Number(agent.commissionRate);
+          if (commRate > 0 && !agentDiscount) {
+            newCommissionAmount = agent.commissionType === "percentage"
+              ? Math.round(newPrice * commRate / 100 * 100) / 100
+              : Math.min(commRate, newPrice);
+            newPrice = Math.max(0, newPrice - newCommissionAmount);
+          }
+
+          // Delete old commission and insert recalculated one
+          await tx.delete(commissionsTable).where(eq(commissionsTable.bookingId, bookingId));
+          if (newCommissionAmount > 0) {
+            await tx.insert(commissionsTable).values({
+              id: randomUUID(),
+              agentId: agent.id,
+              bookingId,
+              amount: String(newCommissionAmount),
+              status: "pending",
+            });
+          }
+        }
+      }
+
+      const priceDifference = newPrice - oldPrice;
+
       // Update booking to new package
       const bookingUpdate: Record<string, any> = {
         packageId: newPackageId,
@@ -660,6 +715,7 @@ router.post("/admin/bookings/:id/upgrade-package", async (req, res) => {
 
     // Activity log
     try {
+      const priceDiff = updatedBooking ? Number(updatedBooking.totalPrice) - oldPrice : 0;
       await db.insert(userActivityTable).values({
         id: randomUUID(),
         userId: caller.id,
@@ -672,19 +728,24 @@ router.post("/admin/bookings/:id/upgrade-package", async (req, res) => {
           oldPackage: oldPackage?.name,
           newPackage: newPackage.name,
           oldPrice,
-          newPrice,
-          priceDifference,
+          newPrice: updatedBooking ? Number(updatedBooking.totalPrice) : newPrice,
+          priceDifference: priceDiff,
+          commissionRecalculated: newCommissionAmount > 0,
+          newCommissionAmount,
+          isAgentBooking: !!booking.agentId,
         },
       });
     } catch (_) { /* non-blocking */ }
 
     // Notify pilgrim
-    if (booking.userId) {
+    if (booking.userId && updatedBooking) {
       const fmt = (n: number) => `₦${n.toLocaleString()}`;
-      const msg = priceDifference > 0
-        ? `Your package has been upgraded to "${newPackage.name}". Additional payment of ${fmt(priceDifference)} is required.`
-        : priceDifference < 0
-          ? `Your package has been changed to "${newPackage.name}". Your new total is ${fmt(newPrice)}.`
+      const actualNewPrice = Number(updatedBooking.totalPrice);
+      const actualDiff = actualNewPrice - oldPrice;
+      const msg = actualDiff > 0
+        ? `Your package has been upgraded to "${newPackage.name}". Additional payment of ${fmt(actualDiff)} is required.`
+        : actualDiff < 0
+          ? `Your package has been changed to "${newPackage.name}". Your new total is ${fmt(actualNewPrice)}.`
           : `Your package has been changed to "${newPackage.name}".`;
       setImmediate(() => createNotification(booking.userId!, "Package Changed", msg, "booking"));
     }
@@ -693,7 +754,7 @@ router.post("/admin/bookings/:id/upgrade-package", async (req, res) => {
       success: true,
       booking: updatedBooking ? { ...updatedBooking, totalPrice: Number(updatedBooking.totalPrice), amountPaid: Number(updatedBooking.amountPaid) } : null,
       payment: paymentRecord,
-      priceDifference,
+      priceDifference: updatedBooking ? Number(updatedBooking.totalPrice) - oldPrice : 0,
     });
   } catch (err: any) {
     console.error("[package-upgrade] Error:", err);
@@ -2302,6 +2363,8 @@ router.post("/admin/book-pilgrim", async (req, res) => {
     // New: room surcharge, pilgrim type, batch support
     roomSurcharge: clientRoomSurcharge,
     pilgrimType, parentBookingId, batchId,
+    // Enhancement 2: optional custom commission override when registering under agent
+    customCommission,
   } = req.body;
 
   // Validate proof size: R2 URLs are short paths, but legacy base64 could be huge
@@ -2351,25 +2414,45 @@ router.post("/admin/book-pilgrim", async (req, res) => {
       price += surcharge;
 
       // Apply infant/child pricing if applicable
+      // Enhancement 5: Check package-level overrides first, then fall back to global settings
       if (pilgrimType === "infant" || pilgrimType === "child") {
-        const pricingSetting = await tx.query.siteSettingsTable.findFirst({
-          where: eq(siteSettingsTable.key, "child_infant_pricing"),
-        });
-        if (pricingSetting && pricingSetting.value) {
-          try {
-            const pricing = JSON.parse(pricingSetting.value);
-            if (pilgrimType === "infant" && pricing.infantPrice) {
-              price += Number(pricing.infantPrice);
-            } else if (pilgrimType === "child" && pricing.childPrice) {
-              price += Number(pricing.childPrice);
+        const pkgOverrides = pkgRow.pricing_overrides || {};
+        const hasOverride = pilgrimType === "infant" ? pkgOverrides.infantPrice != null : pkgOverrides.childPrice != null;
+
+        if (hasOverride) {
+          // Use package-level pricing override
+          const overridePrice = pilgrimType === "infant" ? Number(pkgOverrides.infantPrice) : Number(pkgOverrides.childPrice);
+          if (overridePrice) price += overridePrice;
+        } else {
+          // Fall back to global site settings
+          const pricingSetting = await tx.query.siteSettingsTable.findFirst({
+            where: eq(siteSettingsTable.key, "child_infant_pricing"),
+          });
+          if (pricingSetting && pricingSetting.value) {
+            try {
+              const pricing = JSON.parse(pricingSetting.value);
+              if (pilgrimType === "infant" && pricing.infantPrice) {
+                price += Number(pricing.infantPrice);
+              } else if (pilgrimType === "child" && pricing.childPrice) {
+                price += Number(pricing.childPrice);
+              }
+            } catch (e) {
+              // Ignore parse error
             }
-          } catch (e) {
-            // Ignore parse error
           }
         }
       }
 
+      // Enhancement 2: Apply agent pricing (discount + commission) same as agent self-registration
+      let commissionAmount = 0;
+      let agentRecord: any = null;
+      let hasAgentDiscount = false;
+
       if (agentIdValue) {
+        agentRecord = await tx.query.agentsTable.findFirst({
+          where: eq(agentsTable.id, agentIdValue),
+        });
+
         const agentDiscount = await tx.query.agentPackageDiscountsTable.findFirst({
           where: and(
             eq(agentPackageDiscountsTable.agentId, agentIdValue),
@@ -2377,10 +2460,29 @@ router.post("/admin/book-pilgrim", async (req, res) => {
           ),
         });
         if (agentDiscount) {
+          hasAgentDiscount = true;
           if (agentDiscount.discountType === "percentage") {
             price = Math.round((price - (price * Number(agentDiscount.discountValue) / 100)) * 100) / 100;
           } else {
             price = Math.max(0, price - Number(agentDiscount.discountValue));
+          }
+        }
+
+        // Apply commission as price reduction (same rule as agent self-register)
+        // RULE: Package discount OVERRIDES commission. Commission only applies when no package discount.
+        if (agentRecord) {
+          if (customCommission != null && Number(customCommission) >= 0) {
+            // Admin specified a custom commission amount
+            commissionAmount = Number(customCommission);
+            price = Math.max(0, price - commissionAmount);
+          } else if (!hasAgentDiscount) {
+            const commRate = Number(agentRecord.commissionRate);
+            if (commRate > 0) {
+              commissionAmount = agentRecord.commissionType === "percentage"
+                ? Math.round(price * commRate / 100 * 100) / 100
+                : Math.min(commRate, price);
+              price = Math.max(0, price - commissionAmount);
+            }
           }
         }
       }
@@ -2507,7 +2609,18 @@ router.post("/admin/book-pilgrim", async (req, res) => {
           status: markVerified ? "verified" : "pending",
           reference: paymentReference || `INIT-${booking.reference}`,
           proofUrl: paymentProofUrl || null,
-          notes: "Initial payment during registration",
+          notes: agentIdValue ? "Initial payment during admin-agent registration" : "Initial payment during registration",
+        });
+      }
+
+      // Enhancement 2: Create commission record for agent bookings
+      if (agentIdValue && commissionAmount > 0) {
+        await tx.insert(commissionsTable).values({
+          id: randomUUID(),
+          agentId: agentIdValue,
+          bookingId: booking.id,
+          amount: String(commissionAmount),
+          status: "pending",
         });
       }
     });
@@ -2537,12 +2650,10 @@ router.post("/admin/book-pilgrim", async (req, res) => {
             targetPhone: booking.phone,
             reference: booking.reference,
             packageId: booking.packageId,
-            packageName: pkg.name,
-            originalPrice: Number(pkg.price),
-            totalPrice: price,
-            amountPaid: markVerified ? (amountPaid || price) : 0,
-            paymentMethod: method || "N/A",
-            markVerified: !!markVerified,
+            totalPrice: Number(booking.totalPrice),
+            amountPaid: Number(booking.amountPaid),
+            paymentMethod: req.body.paymentMethod || "N/A",
+            markVerified: !!req.body.markVerified,
           },
         });
       }

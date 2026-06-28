@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, date } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, date, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { packagesTable } from "./packages";
@@ -14,6 +14,8 @@ export const packageDatesTable = pgTable("package_dates", {
   airline: text("airline"),
   islamicDate: text("islamic_date"),
   islamicReturnDate: text("islamic_return_date"),
+  capacity: integer("capacity"),
+  status: text("status").notNull().default("open"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

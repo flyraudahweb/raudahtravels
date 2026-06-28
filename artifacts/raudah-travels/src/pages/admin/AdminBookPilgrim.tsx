@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   CheckCircle2, ChevronRight, ChevronLeft, UserPlus, Package, User,
   CreditCard, BookOpen, Phone, Camera, FileText, Upload, X, AlertTriangle, Search,
-  WifiOff, Wifi, Baby, AlertCircle, Loader2, Trash2
+  WifiOff, Wifi, Baby, AlertCircle, Loader2, Trash2, Users
 } from "lucide-react";
 import PassportScanner from "@/components/PassportScanner";
 import BatchPassportUpload, { type BatchPilgrim } from "@/components/BatchPassportUpload";
@@ -319,6 +319,8 @@ export default function AdminBookPilgrim() {
   const [pilgrimType, setPilgrimType] = useState<"adult" | "child" | "infant">("adult");
   const [isCustomAmount, setIsCustomAmount] = useState(false);
   const [aiFields, setAiFields] = useState<string[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState<string>("");
+  const [customCommission, setCustomCommission] = useState<string>("");
   // Child / Infant entries for single mode
   const [childEntries, setChildEntries] = useState<Array<{
     id: string;
@@ -376,6 +378,8 @@ export default function AdminBookPilgrim() {
         if (parsed.phoneCode) setPhoneCode(parsed.phoneCode);
         if (parsed.pilgrimType) setPilgrimType(parsed.pilgrimType);
         if (parsed.childEntries) setChildEntries(parsed.childEntries);
+        if (parsed.selectedAgentId) setSelectedAgentId(parsed.selectedAgentId);
+        if (parsed.customCommission) setCustomCommission(parsed.customCommission);
       }
     } catch (e) {
       // ignore
@@ -391,10 +395,19 @@ export default function AdminBookPilgrim() {
       localStorage.removeItem("admin_pilgrim_draft");
       return;
     }
-    localStorage.setItem("admin_pilgrim_draft", JSON.stringify({ packageId, packageDateId, pilgrim, travel, payment, step, phoneCode, pilgrimType, childEntries }));
-  }, [packageId, packageDateId, pilgrim, travel, payment, step, phoneCode, isRestored, pilgrimType, childEntries]);
+    localStorage.setItem("admin_pilgrim_draft", JSON.stringify({ packageId, packageDateId, pilgrim, travel, payment, step, phoneCode, pilgrimType, childEntries, selectedAgentId, customCommission }));
+  }, [packageId, packageDateId, pilgrim, travel, payment, step, phoneCode, isRestored, pilgrimType, childEntries, selectedAgentId, customCommission]);
 
   const { data: pkgData } = useQuery({ queryKey: ["packages-for-booking"], queryFn: fetchPackages });
+
+  const { data: agentsList } = useQuery({
+    queryKey: ["admin-agents-list"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/agents-list", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch agents");
+      return res.json();
+    },
+  });
   
   const { data: bankAccountsData } = useQuery<{ accounts: any[] }>({
     queryKey: ["public-bank-accounts"],
@@ -620,6 +633,8 @@ export default function AdminBookPilgrim() {
       amountPaid: payment.method === "online" ? 0 : (payment.amountPaid ? Number(payment.amountPaid) : undefined),
       totalPrice: singleTotalPrice,
       pilgrimType,
+      agentId: selectedAgentId || undefined,
+      customCommission: customCommission ? Number(customCommission) : undefined,
       customData: {
         childrenExtra: childrenTotalSingle,
         childrenCount: childEntries.length,
@@ -674,6 +689,7 @@ export default function AdminBookPilgrim() {
   const resetForm = () => {
     localStorage.removeItem("admin_pilgrim_draft");
     setStep(1); setResult(null); setPackageId(""); setPackageDateId("");
+    setSelectedAgentId(""); setCustomCommission("");
     setPilgrim(DEFAULT_PILGRIM);
     setTravel({ departureCity: "", roomPreference: "Quad", specialRequests: "" });
     setPayment({ method: "cash", markVerified: true, amountPaid: "", paymentReference: "", paymentProofUrl: "" });
@@ -906,6 +922,38 @@ export default function AdminBookPilgrim() {
                 })()}
               </>
             )}
+
+            {/* Optional: Register Under Agent */}
+            <div className="mt-6 p-4 border border-slate-200 rounded-xl bg-slate-50/50">
+              <h4 className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Register Under Agent (Optional)
+              </h4>
+              <select
+                value={selectedAgentId}
+                onChange={(e) => setSelectedAgentId(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="">Direct Registration (No Agent)</option>
+                {agentsList?.agents?.filter((a: any) => a.status === 'active').map((agent: any) => (
+                  <option key={agent.id} value={agent.id}>
+                    {agent.businessName} ({agent.agentCode || 'No code'}) — Commission: {agent.commissionRate}% ({agent.commissionType})
+                  </option>
+                ))}
+              </select>
+              {selectedAgentId && (
+                <div className="mt-3">
+                  <label className="text-xs text-slate-500">Custom Commission Override (optional, leave empty for default)</label>
+                  <input
+                    type="number"
+                    value={customCommission}
+                    onChange={(e) => setCustomCommission(e.target.value)}
+                    placeholder="Leave empty for agent's default commission"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm mt-1"
+                  />
+                </div>
+              )}
+            </div>
           </div>
         )}
 

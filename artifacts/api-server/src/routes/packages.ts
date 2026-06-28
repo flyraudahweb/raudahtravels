@@ -56,6 +56,7 @@ function toPackageResponse(p: any) {
     countdownExpiry: p.countdownExpiry ?? null,
     countdownAction: p.countdownAction ?? "disable",
     isRegistrationClosed: !!(p.countdownEnabled && p.countdownExpiry && new Date(p.countdownExpiry) < new Date()),
+    pricingOverrides: p.pricingOverrides ?? {},
     createdAt: p.createdAt,
     packageDates: p.packageDates ?? [],
   };
@@ -196,7 +197,7 @@ router.post("/packages", requireAdmin as any, async (req, res) => {
     depositAllowed, minimumDeposit, duration, durationDays, departureDate, returnDate,
     capacity, maxCapacity, inclusions, imageUrl, isActive, starRating,
     departureCities, airlines, agentDiscount, isFeatured, featured, status,
-    countdownEnabled, countdownExpiry, countdownAction,
+    countdownEnabled, countdownExpiry, countdownAction, pricingOverrides,
   } = req.body;
   const cap = capacity ?? maxCapacity ?? 0;
   const [pkg] = await db.insert(packagesTable).values({
@@ -213,6 +214,7 @@ router.post("/packages", requireAdmin as any, async (req, res) => {
     countdownEnabled: countdownEnabled ?? false,
     countdownExpiry: countdownExpiry ?? null,
     countdownAction: countdownAction ?? "disable",
+    pricingOverrides: pricingOverrides ? (typeof pricingOverrides === "string" ? JSON.parse(pricingOverrides) : pricingOverrides) : {},
   }).returning();
   return res.status(201).json(toPackageResponse(pkg));
 });
@@ -223,7 +225,7 @@ router.put("/packages/:id", requireAdmin as any, async (req, res) => {
     depositAllowed, minimumDeposit, duration, durationDays, departureDate, returnDate,
     capacity, maxCapacity, inclusions, imageUrl, isActive, starRating,
     departureCities, airlines, agentDiscount, isFeatured, featured, status,
-    countdownEnabled, countdownExpiry, countdownAction,
+    countdownEnabled, countdownExpiry, countdownAction, pricingOverrides,
   } = req.body;
   const updates: any = { updatedAt: new Date() };
   if (name !== undefined) updates.name = name;
@@ -255,6 +257,7 @@ router.put("/packages/:id", requireAdmin as any, async (req, res) => {
   if (countdownEnabled !== undefined) updates.countdownEnabled = countdownEnabled;
   if (countdownExpiry !== undefined) updates.countdownExpiry = countdownExpiry || null;
   if (countdownAction !== undefined) updates.countdownAction = countdownAction;
+  if (pricingOverrides !== undefined) updates.pricingOverrides = typeof pricingOverrides === "string" ? JSON.parse(pricingOverrides) : pricingOverrides;
 
   const [pkg] = await db.update(packagesTable)
     .set(updates)

@@ -1031,8 +1031,19 @@ router.post("/payments/admin-record", async (req, res) => {
     setImmediate(() => sendBookingReceipt(updatedBooking!.id, parsedAmount, payment!.reference ?? undefined, method));
   }
 
-  // Activity log
+  // Activity log — enriched with agent context (Enhancement 4)
   try {
+    // Look up agent info if this is an agent-linked booking
+    let agentBusinessName: string | null = null;
+    let agentRecord: { userId: string; businessName: string } | null = null;
+    if (booking.agentId) {
+      const agent = await db.query.agentsTable.findFirst({ where: eq(agentsTable.id, booking.agentId) });
+      if (agent) {
+        agentBusinessName = agent.businessName;
+        agentRecord = agent;
+      }
+    }
+
     await db.insert(userActivityTable).values({
       id: randomUUID(),
       userId: actorProfile.id,
@@ -1045,8 +1056,23 @@ router.post("/payments/admin-record", async (req, res) => {
         reference: payment?.reference,
         targetName: booking.fullName,
         targetPhone: booking.phone,
+        isAgentPilgrim: !!booking.agentId,
+        agentId: booking.agentId || null,
+        agentBusinessName,
       },
     });
+
+    // Enhancement 4: Notify the agent when admin adds payment to their pilgrim
+    if (isAdmin && booking.agentId && agentRecord?.userId) {
+      const amt = `₦${parsedAmount.toLocaleString()}`;
+      const statusText = markVerified ? "recorded and verified" : "recorded (pending verification)";
+      setImmediate(() => createNotification(
+        agentRecord!.userId,
+        "Payment Added to Your Client",
+        `A payment of ${amt} has been ${statusText} for your client ${booking.fullName || "—"} (Ref: ${booking.reference}).`,
+        "payment",
+      ));
+    }
   } catch (_) { /* non-blocking */ }
 
   return res.status(201).json({

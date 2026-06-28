@@ -518,20 +518,29 @@ router.post("/agent/register-client", async (req, res) => {
         price += surcharge;
 
         // Apply infant/child pricing if applicable
+        // Enhancement 5: Check package-level overrides first, then fall back to global settings
         if (pilgrimType === "infant" || pilgrimType === "child") {
-          const pricingSetting = await tx.query.siteSettingsTable.findFirst({
-            where: eq(siteSettingsTable.key, "child_infant_pricing"),
-          });
-          if (pricingSetting && pricingSetting.value) {
-            try {
-              const pricing = JSON.parse(pricingSetting.value);
-              if (pilgrimType === "infant" && pricing.infantPrice) {
-                price += Number(pricing.infantPrice);
-              } else if (pilgrimType === "child" && pricing.childPrice) {
-                price += Number(pricing.childPrice);
+          const pkgOverrides = (pkg as any).pricingOverrides || {};
+          const hasOverride = pilgrimType === "infant" ? pkgOverrides.infantPrice != null : pkgOverrides.childPrice != null;
+
+          if (hasOverride) {
+            const overridePrice = pilgrimType === "infant" ? Number(pkgOverrides.infantPrice) : Number(pkgOverrides.childPrice);
+            if (overridePrice) price += overridePrice;
+          } else {
+            const pricingSetting = await tx.query.siteSettingsTable.findFirst({
+              where: eq(siteSettingsTable.key, "child_infant_pricing"),
+            });
+            if (pricingSetting && pricingSetting.value) {
+              try {
+                const pricing = JSON.parse(pricingSetting.value);
+                if (pilgrimType === "infant" && pricing.infantPrice) {
+                  price += Number(pricing.infantPrice);
+                } else if (pilgrimType === "child" && pricing.childPrice) {
+                  price += Number(pricing.childPrice);
+                }
+              } catch (e) {
+                // Ignore parse error
               }
-            } catch (e) {
-              // Ignore parse error
             }
           }
         }
@@ -715,20 +724,29 @@ router.post("/agent/register-client", async (req, res) => {
       price += surcharge;
 
       // Apply infant/child pricing if applicable
+      // Enhancement 5: Check package-level overrides first, then fall back to global settings
       if (pilgrimType === "infant" || pilgrimType === "child") {
-        const pricingSetting = await tx.query.siteSettingsTable.findFirst({
-          where: eq(siteSettingsTable.key, "child_infant_pricing"),
-        });
-        if (pricingSetting && pricingSetting.value) {
-          try {
-            const pricing = JSON.parse(pricingSetting.value);
-            if (pilgrimType === "infant" && pricing.infantPrice) {
-              price += Number(pricing.infantPrice);
-            } else if (pilgrimType === "child" && pricing.childPrice) {
-              price += Number(pricing.childPrice);
+        const pkgOverrides = (pkg as any).pricingOverrides || {};
+        const hasOverride = pilgrimType === "infant" ? pkgOverrides.infantPrice != null : pkgOverrides.childPrice != null;
+
+        if (hasOverride) {
+          const overridePrice = pilgrimType === "infant" ? Number(pkgOverrides.infantPrice) : Number(pkgOverrides.childPrice);
+          if (overridePrice) price += overridePrice;
+        } else {
+          const pricingSetting = await tx.query.siteSettingsTable.findFirst({
+            where: eq(siteSettingsTable.key, "child_infant_pricing"),
+          });
+          if (pricingSetting && pricingSetting.value) {
+            try {
+              const pricing = JSON.parse(pricingSetting.value);
+              if (pilgrimType === "infant" && pricing.infantPrice) {
+                price += Number(pricing.infantPrice);
+              } else if (pilgrimType === "child" && pricing.childPrice) {
+                price += Number(pricing.childPrice);
+              }
+            } catch (e) {
+              // Ignore parse error
             }
-          } catch (e) {
-            // Ignore parse error
           }
         }
       }
