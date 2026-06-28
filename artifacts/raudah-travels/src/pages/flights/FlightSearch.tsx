@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plane, Sparkles, Globe, SearchX } from "lucide-react";
@@ -13,6 +13,13 @@ export default function FlightSearch() {
   const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [totalAll, setTotalAll] = useState(0);
+  const resultsRef = useRef<HTMLDivElement>(null);
+
+  const scrollToResults = useCallback(() => {
+    setTimeout(() => {
+      resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 150);
+  }, []);
 
   // Store offers in a simple map so checkout can retrieve the selected one
   const storeOffers = useCallback((data: any[]) => {
@@ -37,6 +44,7 @@ export default function FlightSearch() {
     setIsLoading(true);
     setError(null);
     setHasSearched(true);
+    scrollToResults();
 
     try {
       const res = await fetch("/api/flights/search", {
@@ -103,6 +111,7 @@ export default function FlightSearch() {
       <SearchForm onSearch={handleSearch} isLoading={isLoading} />
 
       {/* Results */}
+      <div ref={resultsRef} className="scroll-mt-20" />
       <AnimatePresence mode="wait">
         {isLoading && (
           <motion.div
