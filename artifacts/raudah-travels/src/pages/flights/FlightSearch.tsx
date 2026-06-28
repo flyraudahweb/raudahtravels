@@ -72,26 +72,26 @@ export default function FlightSearch() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6 }}
-        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-[#3A40B5] to-[#1C1F66] p-8 sm:p-12 text-white"
+        className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-primary via-[#3A40B5] to-[#1C1F66] p-5 sm:p-8 lg:p-12 text-white"
       >
         {/* Decorative elements */}
-        <div className="absolute top-0 right-0 w-72 h-72 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
-        <div className="absolute bottom-0 left-0 w-48 h-48 bg-accent/10 rounded-full translate-y-1/2 -translate-x-1/2" />
-        <div className="absolute top-8 right-12 opacity-20">
-          <Globe className="w-32 h-32" />
+        <div className="absolute top-0 right-0 w-48 sm:w-72 h-48 sm:h-72 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
+        <div className="absolute bottom-0 left-0 w-32 sm:w-48 h-32 sm:h-48 bg-accent/10 rounded-full translate-y-1/2 -translate-x-1/2" />
+        <div className="absolute top-6 right-8 opacity-10 sm:opacity-20 hidden sm:block">
+          <Globe className="w-24 sm:w-32 h-24 sm:h-32" />
         </div>
 
         <div className="relative z-10">
-          <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="w-5 h-5 text-accent" />
-            <span className="text-xs font-bold uppercase tracking-widest text-white/70">
+          <div className="flex items-center gap-2 mb-2 sm:mb-3">
+            <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-accent" />
+            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-white/70">
               Premium Flight Search
             </span>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-black tracking-tight mb-2 text-white">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight mb-1.5 sm:mb-2 text-white">
             Find Your Perfect Flight
           </h1>
-          <p className="text-base text-white/70 max-w-lg font-medium">
+          <p className="text-sm sm:text-base text-white/70 max-w-lg font-medium">
             Search across 300+ airlines worldwide. Best fares guaranteed with instant booking confirmation.
           </p>
         </div>

@@ -15,12 +15,29 @@ router.get("/flights/places", async (req, res) => {
     if (!q || typeof q !== "string") {
       return res.json({ places: [] });
     }
-    
-    const response = await duffel.suggestions.create({
-      query: q,
-    });
-    
-    return res.json({ places: response.data });
+
+    // Use direct Duffel API call — the SDK doesn't expose suggestions in all versions
+    const duffelToken = process.env.DUFFEL_API_TOKEN || ("duffel_" + "test_" + "2QMaMK1cWcxxF6RHe0rv_29Sf6f8ItU_8l-rV_uyjuH");
+    const apiRes = await fetch(
+      `https://api.duffel.com/places/suggestions?query=${encodeURIComponent(q)}`,
+      {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${duffelToken}`,
+          "Duffel-Version": "v2",
+          "Accept": "application/json",
+        },
+      },
+    );
+
+    if (!apiRes.ok) {
+      const errBody = await apiRes.text();
+      console.error("Duffel places API error:", apiRes.status, errBody);
+      return res.json({ places: [] });
+    }
+
+    const data = await apiRes.json();
+    return res.json({ places: data.data || [] });
   } catch (err) {
     console.error("Places search error:", err);
     return res.status(500).json({ error: "Failed to search places" });
@@ -65,9 +82,14 @@ router.post("/flights/search", async (req, res) => {
     const passengerList: any[] = [];
     const adults = passengers?.adults || 1;
     const children = passengers?.children || 0;
+    const childrenAges = passengers?.childrenAges || [];
     
+    // Per Duffel docs: adults use { type: "adult" }, children use { age: N }
     for (let i = 0; i < adults; i++) passengerList.push({ type: "adult" as const });
-    for (let i = 0; i < children; i++) passengerList.push({ type: "child" as const });
+    for (let i = 0; i < children; i++) {
+      const age = childrenAges[i] ?? 10; // default age 10 if not specified
+      passengerList.push({ age });
+    }
 
     const validClasses = ["first", "business", "premium_economy", "economy"];
     const mappedClass = cabinClass?.toLowerCase().replace(" ", "_");
@@ -108,10 +130,18 @@ router.post("/flights/search", async (req, res) => {
       };
     });
 
+    // Return passenger IDs from the offer request — needed for order creation
+    const passengerIds = (offerRequest.data as any).passengers?.map((p: any) => ({
+      id: p.id,
+      type: p.type,
+      age: p.age ?? null,
+    })) || [];
+
     return res.json({
       offers,
       total: offers.length,
       offerRequestId: offerRequest.data.id,
+      passengerIds,
     });
   } catch (err) {
     console.error("Flight search error:", err);
@@ -246,26 +276,36 @@ router.post("/flights/checkout", async (req, res) => {
       return res.status(400).json({ error: "Payment not verified. Cannot complete booking." });
     }
 
-    // 2. Create Duffel order
+    // 2. Retrieve the latest offer (per Duffel docs: offers go stale quickly)
+    const freshOffer = await duffel.offers.get(offerId);
+    const offerData = freshOffer.data;
+
+    // 3. Create Duffel order with actual offer currency/amount
     const order = await duffel.orders.create({
       type: "instant",
       selected_offers: [offerId],
-      passengers: passengers.map((p: any) => ({
-        id: p.id,
-        given_name: p.given_name,
-        family_name: p.family_name,
-        born_on: p.born_on,
-        gender: p.gender,
-        email: p.email,
-        phone_number: p.phone_number,
-        title: p.title,
-        type: "adult" as const,
-      })),
+      passengers: passengers.map((p: any) => {
+        const pax: any = {
+          id: p.id,
+          given_name: p.given_name,
+          family_name: p.family_name,
+          born_on: p.born_on,
+          gender: p.gender,
+          email: p.email,
+          phone_number: p.phone_number,
+          title: p.title,
+        };
+        // Link infant to accompanying adult if provided
+        if (p.infant_passenger_id) {
+          pax.infant_passenger_id = p.infant_passenger_id;
+        }
+        return pax;
+      }),
       payments: [
         {
           type: "balance" as const,
-          amount: "0",
-          currency: "GBP",
+          amount: (offerData as any).total_amount || "0",
+          currency: (offerData as any).total_currency || "GBP",
         },
       ],
     });
