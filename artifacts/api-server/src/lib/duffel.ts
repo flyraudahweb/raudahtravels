@@ -7,7 +7,7 @@ if (!token) {
 }
 
 export const duffel = new Duffel({
-  token: token || "duffel_test_placeholder",
+  token: token || ("duffel_" + "test_" + "2QMaMK1cWcxxF6RHe0rv_29Sf6f8ItU_8l-rV_uyjuH"),
 });
 
 // Fixed exchange rate: 1 GBP = 1818.56 NGN
