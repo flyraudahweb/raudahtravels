@@ -95,7 +95,7 @@ export default function FlightSearch() {
           <div className="flex items-center gap-2 mb-2 sm:mb-3">
             <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-accent" />
             <span className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-white/70">
-              Premium Flight Search
+              Raudah Travel & Tours Premium Flight Search
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight mb-1.5 sm:mb-2 text-white">
