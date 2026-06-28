@@ -9,11 +9,11 @@ export default function FlightsModule() {
   return (
     <FlightsLayout>
       <Switch>
-        <Route path="/" component={FlightSearch} />
-        <Route path="/search" component={FlightSearch} />
-        <Route path="/checkout/:offerId" component={FlightCheckout} />
-        <Route path="/confirmation/:bookingId" component={FlightConfirmation} />
-        <Route path="/admin" component={FlightAdmin} />
+        <Route path="/flights" component={FlightSearch} />
+        <Route path="/flights/search" component={FlightSearch} />
+        <Route path="/flights/checkout/:offerId" component={FlightCheckout} />
+        <Route path="/flights/confirmation/:bookingId" component={FlightConfirmation} />
+        <Route path="/flights/admin" component={FlightAdmin} />
       </Switch>
     </FlightsLayout>
   );
