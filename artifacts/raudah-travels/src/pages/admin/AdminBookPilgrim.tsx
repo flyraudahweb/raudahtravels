@@ -634,7 +634,7 @@ export default function AdminBookPilgrim() {
       totalPrice: singleTotalPrice,
       pilgrimType,
       agentId: selectedAgentId || undefined,
-      customCommission: customCommission ? Number(customCommission) : undefined,
+      customCommission: customCommission !== "" ? Number(customCommission) : undefined,
       customData: {
         childrenExtra: childrenTotalSingle,
         childrenCount: childEntries.length,

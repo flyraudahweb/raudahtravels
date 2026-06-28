@@ -214,7 +214,7 @@ router.post("/packages", requireAdmin as any, async (req, res) => {
     countdownEnabled: countdownEnabled ?? false,
     countdownExpiry: countdownExpiry ?? null,
     countdownAction: countdownAction ?? "disable",
-    pricingOverrides: pricingOverrides ? (typeof pricingOverrides === "string" ? JSON.parse(pricingOverrides) : pricingOverrides) : {},
+    pricingOverrides: pricingOverrides ? (typeof pricingOverrides === "string" ? (() => { try { return JSON.parse(pricingOverrides); } catch { return {}; } })() : pricingOverrides) : {},
   }).returning();
   return res.status(201).json(toPackageResponse(pkg));
 });
@@ -257,7 +257,7 @@ router.put("/packages/:id", requireAdmin as any, async (req, res) => {
   if (countdownEnabled !== undefined) updates.countdownEnabled = countdownEnabled;
   if (countdownExpiry !== undefined) updates.countdownExpiry = countdownExpiry || null;
   if (countdownAction !== undefined) updates.countdownAction = countdownAction;
-  if (pricingOverrides !== undefined) updates.pricingOverrides = typeof pricingOverrides === "string" ? JSON.parse(pricingOverrides) : pricingOverrides;
+  if (pricingOverrides !== undefined) updates.pricingOverrides = typeof pricingOverrides === "string" ? (() => { try { return JSON.parse(pricingOverrides); } catch { return {}; } })() : pricingOverrides;
 
   const [pkg] = await db.update(packagesTable)
     .set(updates)

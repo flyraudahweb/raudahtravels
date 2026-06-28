@@ -2192,7 +2192,8 @@ export default function AdminPilgrims() {
     if (filterAgent   !== FILTER_ALL)   p.set("agentId",       filterAgent);
     if (filterStaff   !== FILTER_ALL)   p.set("registeredByStaffId", filterStaff);
     if (filterArchived)                 p.set("isArchived",    "true");
-    
+    if (departureDateFrom)              p.set("departureDateFrom", departureDateFrom);
+    if (departureDateTo)                p.set("departureDateTo",   departureDateTo);
     const r = await fetch(`/api/admin/pilgrims?${p}`, { credentials: "include" });
     const d = await r.json();
     setSelectedMap(m => {
@@ -2218,18 +2219,19 @@ export default function AdminPilgrims() {
   function bulkPrintIdTags() {
     const pilgrims = Array.from(selectedMap.values());
     if (pilgrims.length === 0) return;
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const tagHtml = pilgrims.map(p => {
-      const name = p.fullName || [p.civility, p.firstName, p.lastName].filter(Boolean).join(" ") || "—";
+      const name = esc(p.fullName || [p.civility, p.firstName, p.lastName].filter(Boolean).join(" ") || "—");
       const photo = p.profilePhotoUrl ? `<img src="${p.profilePhotoUrl}" style="width:80px;height:100px;object-fit:cover;border-radius:8px;border:2px solid #2D3199;"/>` : `<div style="width:80px;height:100px;background:#f1f5f9;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:32px;color:#94a3b8;border:2px solid #e2e8f0;">👤</div>`;
       return `<div style="border:2px solid #2D3199;border-radius:16px;padding:20px;width:340px;display:inline-block;margin:8px;page-break-inside:avoid;font-family:system-ui,sans-serif;">
         <div style="display:flex;gap:16px;align-items:flex-start;">
           ${photo}
           <div style="flex:1;">
             <div style="font-size:16px;font-weight:800;color:#0f172a;margin-bottom:4px;">${name}</div>
-            <div style="font-size:11px;color:#64748b;margin-bottom:2px;">📘 ${p.passportNumber || "N/A"}</div>
-            <div style="font-size:11px;color:#64748b;margin-bottom:2px;">📦 ${p.package?.name || "—"}</div>
-            <div style="font-size:11px;color:#64748b;margin-bottom:2px;">🔖 ${p.reference || "—"}</div>
-            <div style="font-size:11px;color:#64748b;">${p.phone || "—"}</div>
+            <div style="font-size:11px;color:#64748b;margin-bottom:2px;">📘 ${esc(p.passportNumber || "N/A")}</div>
+            <div style="font-size:11px;color:#64748b;margin-bottom:2px;">📦 ${esc(p.package?.name || "—")}</div>
+            <div style="font-size:11px;color:#64748b;margin-bottom:2px;">🔖 ${esc(p.reference || "—")}</div>
+            <div style="font-size:11px;color:#64748b;">${esc(p.phone || "—")}</div>
           </div>
         </div>
         <div style="text-align:center;margin-top:12px;padding-top:12px;border-top:1px dashed #e2e8f0;">
