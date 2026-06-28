@@ -7,6 +7,27 @@ import { duffel, GBP_TO_NGN_RATE, convertToNgn } from "../lib/duffel.js";
 const router = Router();
 
 // ---------------------------------------------------------------------------
+// GET /flights/places — Autocomplete airports/cities
+// ---------------------------------------------------------------------------
+router.get("/flights/places", async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || typeof q !== "string") {
+      return res.json({ places: [] });
+    }
+    
+    const response = await duffel.suggestions.create({
+      query: q,
+    });
+    
+    return res.json({ places: response.data });
+  } catch (err) {
+    console.error("Places search error:", err);
+    return res.status(500).json({ error: "Failed to search places" });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // POST /flights/search — Search for flight offers via Duffel
 // ---------------------------------------------------------------------------
 router.post("/flights/search", async (req, res) => {
@@ -15,25 +36,53 @@ router.post("/flights/search", async (req, res) => {
       origin = "LHR",
       destination = "JFK",
       departureDate,
-      passengers = 1,
+      returnDate,
+      journeyType = "one_way",
+      passengers = { adults: 1, children: 0 },
+      cabinClass = "economy",
     } = req.body;
 
     if (!departureDate) {
       return res.status(400).json({ error: "departureDate is required (YYYY-MM-DD)" });
     }
 
-    const offerRequest = await duffel.offerRequests.create({
-      slices: [
-        {
-          origin,
-          destination,
-          departure_date: departureDate,
-        },
-      ],
-      passengers: Array.from({ length: Number(passengers) }, () => ({ type: "adult" as const })),
-      cabin_class: "economy",
+    const slices: any[] = [
+      {
+        origin,
+        destination,
+        departure_date: departureDate,
+      },
+    ];
+
+    if (journeyType === "return" && returnDate) {
+      slices.push({
+        origin: destination,
+        destination: origin,
+        departure_date: returnDate,
+      });
+    }
+
+    const passengerList: any[] = [];
+    const adults = passengers?.adults || 1;
+    const children = passengers?.children || 0;
+    
+    for (let i = 0; i < adults; i++) passengerList.push({ type: "adult" as const });
+    for (let i = 0; i < children; i++) passengerList.push({ type: "child" as const });
+
+    const validClasses = ["first", "business", "premium_economy", "economy"];
+    const mappedClass = cabinClass?.toLowerCase().replace(" ", "_");
+    const cabin_class = validClasses.includes(mappedClass) ? mappedClass : undefined;
+
+    const offerRequestParams: any = {
+      slices,
+      passengers: passengerList,
       return_offers: true,
-    });
+    };
+    if (cabin_class) {
+      offerRequestParams.cabin_class = cabin_class;
+    }
+
+    const offerRequest = await duffel.offerRequests.create(offerRequestParams);
 
     const offers = (offerRequest.data.offers ?? []).map((offer: any) => {
       const firstSlice = offer.slices?.[0];

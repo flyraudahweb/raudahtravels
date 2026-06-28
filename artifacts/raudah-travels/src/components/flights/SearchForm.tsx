@@ -1,17 +1,22 @@
-import { useState } from "react";
-import { motion } from "framer-motion";
+import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   PlaneTakeoff,
   PlaneLanding,
-  ArrowRightLeft,
   CalendarDays,
   Users,
   Search,
   Loader2,
+  MapPin,
+  Check,
+  Plus,
+  Minus
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -19,34 +24,82 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useDebounce } from "use-debounce";
+
+interface Place {
+  id: string;
+  name: string;
+  iata_code: string;
+  type: string;
+}
 
 interface SearchFormProps {
   onSearch: (params: {
     origin: string;
     destination: string;
     departureDate: string;
-    passengers: number;
+    returnDate?: string;
+    journeyType: "one_way" | "return" | "multi_city";
+    passengers: { adults: number; children: number };
+    cabinClass: string;
   }) => void;
   isLoading: boolean;
 }
 
 export default function SearchForm({ onSearch, isLoading }: SearchFormProps) {
+  const [journeyType, setJourneyType] = useState<"one_way" | "return" | "multi_city">("return");
   const [origin, setOrigin] = useState("LHR");
   const [destination, setDestination] = useState("JFK");
   const [departureDate, setDepartureDate] = useState(
     new Date(Date.now() + 7 * 86400000).toISOString().split("T")[0]
   );
-  const [passengers, setPassengers] = useState(1);
+  const [returnDate, setReturnDate] = useState(
+    new Date(Date.now() + 14 * 86400000).toISOString().split("T")[0]
+  );
+  const [passengers, setPassengers] = useState({ adults: 1, children: 0 });
+  const [cabinClass, setCabinClass] = useState("economy");
 
-  function handleSwap() {
-    setOrigin(destination);
-    setDestination(origin);
-  }
+  // Autocomplete State
+  const [originQuery, setOriginQuery] = useState(origin);
+  const [destQuery, setDestQuery] = useState(destination);
+  const [debouncedOrigin] = useDebounce(originQuery, 300);
+  const [debouncedDest] = useDebounce(destQuery, 300);
+  const [originPlaces, setOriginPlaces] = useState<Place[]>([]);
+  const [destPlaces, setDestPlaces] = useState<Place[]>([]);
+  const [showOriginDropdown, setShowOriginDropdown] = useState(false);
+  const [showDestDropdown, setShowDestDropdown] = useState(false);
+
+  // Fetch places
+  useEffect(() => {
+    if (debouncedOrigin.length < 2) return;
+    fetch(`/api/flights/places?q=${debouncedOrigin}`)
+      .then((r) => r.json())
+      .then((d) => setOriginPlaces(d.places || []))
+      .catch(() => setOriginPlaces([]));
+  }, [debouncedOrigin]);
+
+  useEffect(() => {
+    if (debouncedDest.length < 2) return;
+    fetch(`/api/flights/places?q=${debouncedDest}`)
+      .then((r) => r.json())
+      .then((d) => setDestPlaces(d.places || []))
+      .catch(() => setDestPlaces([]));
+  }, [debouncedDest]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    onSearch({ origin, destination, departureDate, passengers });
+    onSearch({
+      origin,
+      destination,
+      departureDate,
+      returnDate: journeyType === "return" ? returnDate : undefined,
+      journeyType,
+      passengers,
+      cabinClass,
+    });
   }
+
+  const totalPassengers = passengers.adults + passengers.children;
 
   return (
     <motion.div
@@ -54,147 +107,254 @@ export default function SearchForm({ onSearch, isLoading }: SearchFormProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: "easeOut" }}
     >
-      <form onSubmit={handleSubmit} className="glass-card rounded-2xl p-6 sm:p-8">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-          {/* Origin */}
-          <motion.div
-            className="md:col-span-3"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.1, duration: 0.4 }}
+      <form onSubmit={handleSubmit} className="glass-card rounded-2xl p-6 sm:p-8 space-y-6">
+        
+        {/* Journey Type Selection */}
+        <div className="flex flex-col mb-4">
+          <Label className="text-sm font-bold text-foreground mb-3">Journey type</Label>
+          <RadioGroup
+            defaultValue="return"
+            value={journeyType}
+            onValueChange={(v: any) => setJourneyType(v)}
+            className="flex items-center gap-6"
           >
-            <Label htmlFor="origin" className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">
-              From
-            </Label>
-            <div className="relative">
-              <PlaneTakeoff className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary/60" />
-              <Input
-                id="origin"
-                value={origin}
-                onChange={(e) => setOrigin(e.target.value.toUpperCase())}
-                placeholder="LHR"
-                maxLength={3}
-                className="pl-10 h-12 text-lg font-bold tracking-widest uppercase bg-white/60 border-border/50 focus:border-primary focus:ring-primary/20 rounded-xl"
-              />
+            <div className="flex items-center space-x-2 cursor-pointer">
+              <RadioGroupItem value="one_way" id="one_way" className="border-border text-[#4CAF50] focus-visible:ring-[#4CAF50]" />
+              <Label htmlFor="one_way" className="cursor-pointer text-sm font-medium">One way</Label>
             </div>
-          </motion.div>
-
-          {/* Swap Button */}
-          <motion.div
-            className="md:col-span-1 flex justify-center"
-            initial={{ opacity: 0, scale: 0 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2, duration: 0.3, type: "spring" }}
-          >
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={handleSwap}
-              className="w-10 h-10 rounded-full bg-white/80 hover:bg-primary hover:text-white border-primary/20 transition-all duration-300 shadow-soft hover:shadow-brand mt-5 md:mt-0"
-            >
-              <ArrowRightLeft className="w-4 h-4" />
-            </Button>
-          </motion.div>
-
-          {/* Destination */}
-          <motion.div
-            className="md:col-span-3"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.1, duration: 0.4 }}
-          >
-            <Label htmlFor="destination" className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">
-              To
-            </Label>
-            <div className="relative">
-              <PlaneLanding className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary/60" />
-              <Input
-                id="destination"
-                value={destination}
-                onChange={(e) => setDestination(e.target.value.toUpperCase())}
-                placeholder="JFK"
-                maxLength={3}
-                className="pl-10 h-12 text-lg font-bold tracking-widest uppercase bg-white/60 border-border/50 focus:border-primary focus:ring-primary/20 rounded-xl"
-              />
+            <div className="flex items-center space-x-2 cursor-pointer">
+              <RadioGroupItem value="return" id="return" className="border-border text-[#4CAF50] focus-visible:ring-[#4CAF50]" />
+              <Label htmlFor="return" className="cursor-pointer text-sm font-medium">Return</Label>
             </div>
-          </motion.div>
+            <div className="flex items-center space-x-2 opacity-50 cursor-not-allowed">
+              <RadioGroupItem value="multi_city" id="multi_city" disabled className="border-border text-[#4CAF50]" />
+              <Label htmlFor="multi_city" className="cursor-not-allowed text-sm font-medium">Multi-city</Label>
+            </div>
+          </RadioGroup>
+        </div>
 
-          {/* Departure Date */}
-          <motion.div
-            className="md:col-span-2"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2, duration: 0.4 }}
-          >
-            <Label htmlFor="departure" className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">
-              Departure
-            </Label>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          {/* Origin / Destination Row */}
+          <div className="relative">
+            <Label className="text-xs font-bold text-muted-foreground mb-2 block">Origin</Label>
             <div className="relative">
-              <CalendarDays className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary/60" />
               <Input
-                id="departure"
+                value={originQuery}
+                onChange={(e) => {
+                  setOriginQuery(e.target.value);
+                  setShowOriginDropdown(true);
+                }}
+                onFocus={() => setShowOriginDropdown(true)}
+                onBlur={() => setTimeout(() => setShowOriginDropdown(false), 200)}
+                placeholder="City or airport..."
+                className="h-12 bg-white/80 border-border rounded-xl font-medium"
+              />
+              {showOriginDropdown && originPlaces.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-border rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto">
+                  {originPlaces.map((p) => (
+                    <div
+                      key={p.id}
+                      onClick={() => {
+                        setOrigin(p.iata_code);
+                        setOriginQuery(p.iata_code);
+                        setShowOriginDropdown(false);
+                      }}
+                      className="px-4 py-3 hover:bg-muted cursor-pointer flex items-center justify-between transition-colors"
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-sm text-foreground">{p.name}</span>
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <MapPin className="w-3 h-3" /> {p.type}
+                        </span>
+                      </div>
+                      <span className="font-bold text-primary bg-primary/10 px-2 py-1 rounded text-xs">
+                        {p.iata_code}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="relative">
+            <Label className="text-xs font-bold text-muted-foreground mb-2 block">Destination</Label>
+            <div className="relative">
+              <Input
+                value={destQuery}
+                onChange={(e) => {
+                  setDestQuery(e.target.value);
+                  setShowDestDropdown(true);
+                }}
+                onFocus={() => setShowDestDropdown(true)}
+                onBlur={() => setTimeout(() => setShowDestDropdown(false), 200)}
+                placeholder="City or airport..."
+                className="h-12 bg-white/80 border-border rounded-xl font-medium"
+              />
+              {showDestDropdown && destPlaces.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-border rounded-xl shadow-lg z-50 max-h-60 overflow-y-auto">
+                  {destPlaces.map((p) => (
+                    <div
+                      key={p.id}
+                      onClick={() => {
+                        setDestination(p.iata_code);
+                        setDestQuery(p.iata_code);
+                        setShowDestDropdown(false);
+                      }}
+                      className="px-4 py-3 hover:bg-muted cursor-pointer flex items-center justify-between transition-colors"
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-sm text-foreground">{p.name}</span>
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <MapPin className="w-3 h-3" /> {p.type}
+                        </span>
+                      </div>
+                      <span className="font-bold text-primary bg-primary/10 px-2 py-1 rounded text-xs">
+                        {p.iata_code}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Dates Row */}
+          <div>
+            <Label className="text-xs font-bold text-muted-foreground mb-2 block">Departure date</Label>
+            <div className="relative">
+              <CalendarDays className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
                 type="date"
                 value={departureDate}
                 onChange={(e) => setDepartureDate(e.target.value)}
                 min={new Date().toISOString().split("T")[0]}
-                className="pl-10 h-12 bg-white/60 border-border/50 focus:border-primary focus:ring-primary/20 rounded-xl font-semibold"
+                className="pl-10 h-12 bg-white/80 border-border rounded-xl font-medium"
               />
             </div>
-          </motion.div>
+          </div>
 
-          {/* Passengers */}
-          <motion.div
-            className="md:col-span-1"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25, duration: 0.4 }}
-          >
-            <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2 block">
-              Guests
-            </Label>
-            <Select
-              value={String(passengers)}
-              onValueChange={(v) => setPassengers(Number(v))}
-            >
-              <SelectTrigger className="h-12 bg-white/60 border-border/50 rounded-xl font-semibold">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-primary/60" />
-                  <SelectValue />
+          <div className={journeyType === "one_way" ? "opacity-40 pointer-events-none" : ""}>
+            <Label className="text-xs font-bold text-muted-foreground mb-2 block">Return date</Label>
+            <div className="relative">
+              <CalendarDays className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                type="date"
+                value={returnDate}
+                onChange={(e) => setReturnDate(e.target.value)}
+                min={departureDate}
+                className="pl-10 h-12 bg-white/80 border-border rounded-xl font-medium"
+              />
+            </div>
+          </div>
+
+          {/* Passengers & Class Row */}
+          <div>
+            <Label className="text-xs font-bold text-muted-foreground mb-2 block">Passengers</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-full h-12 justify-start text-left font-medium bg-white/80 border-border rounded-xl hover:bg-white"
+                >
+                  <Users className="w-4 h-4 mr-2 text-muted-foreground" />
+                  {totalPassengers} {totalPassengers === 1 ? "adult" : "passengers"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-4 rounded-xl border-border bg-white shadow-xl" align="start">
+                <div className="space-y-4">
+                  {/* Adults */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-sm">Adults</p>
+                      <p className="text-xs text-muted-foreground">18+</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 rounded bg-muted text-muted-foreground hover:bg-gray-200 border-0"
+                        onClick={() => setPassengers(p => ({ ...p, adults: Math.max(1, p.adults - 1) }))}
+                      >
+                        <Minus className="w-4 h-4" />
+                      </Button>
+                      <span className="w-4 text-center font-semibold text-sm">{passengers.adults}</span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 rounded bg-black text-white hover:bg-gray-800 border-0"
+                        onClick={() => setPassengers(p => ({ ...p, adults: Math.min(9, p.adults + 1) }))}
+                      >
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  {/* Children */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-sm">Children</p>
+                      <p className="text-xs text-muted-foreground">0–17</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 rounded bg-muted text-muted-foreground hover:bg-gray-200 border-0"
+                        onClick={() => setPassengers(p => ({ ...p, children: Math.max(0, p.children - 1) }))}
+                      >
+                        <Minus className="w-4 h-4" />
+                      </Button>
+                      <span className="w-4 text-center font-semibold text-sm">{passengers.children}</span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 rounded bg-black text-white hover:bg-gray-800 border-0"
+                        onClick={() => setPassengers(p => ({ ...p, children: Math.min(9, p.children + 1) }))}
+                      >
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
                 </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <div>
+            <Label className="text-xs font-bold text-muted-foreground mb-2 block">Class</Label>
+            <Select value={cabinClass} onValueChange={setCabinClass}>
+              <SelectTrigger className="w-full h-12 bg-white/80 border-border rounded-xl font-medium focus:ring-0">
+                <SelectValue />
               </SelectTrigger>
-              <SelectContent>
-                {Array.from({ length: 9 }, (_, i) => i + 1).map((n) => (
-                  <SelectItem key={n} value={String(n)}>
-                    {n}
-                  </SelectItem>
-                ))}
+              <SelectContent className="rounded-xl border-border bg-white shadow-xl">
+                <SelectItem value="economy">Economy</SelectItem>
+                <SelectItem value="premium_economy">Premium Economy</SelectItem>
+                <SelectItem value="business">Business</SelectItem>
+                <SelectItem value="first">First</SelectItem>
+                <SelectItem value="any">Any</SelectItem>
               </SelectContent>
             </Select>
-          </motion.div>
+          </div>
+        </div>
 
-          {/* Search Button */}
-          <motion.div
-            className="md:col-span-2"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.35, duration: 0.4, type: "spring" }}
+        {/* Submit Button */}
+        <div className="pt-4">
+          <Button
+            type="submit"
+            disabled={isLoading || !origin || !destination}
+            className="w-full h-14 bg-black hover:bg-gray-900 text-white font-bold text-lg rounded-xl shadow-lg transition-all duration-300"
           >
-            <Button
-              type="submit"
-              disabled={isLoading || !origin || !destination || !departureDate}
-              className="w-full h-12 bg-accent hover:bg-accent/90 text-white font-bold text-base rounded-xl shadow-cta hover:shadow-cta transition-all duration-300 border-0"
-            >
-              {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <>
-                  <Search className="w-5 h-5" />
-                  Search
-                </>
-              )}
-            </Button>
-          </motion.div>
+            {isLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+            ) : (
+              "Find available flights"
+            )}
+          </Button>
         </div>
       </form>
     </motion.div>

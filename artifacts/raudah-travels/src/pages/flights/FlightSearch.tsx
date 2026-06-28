@@ -28,7 +28,10 @@ export default function FlightSearch() {
     origin: string;
     destination: string;
     departureDate: string;
-    passengers: number;
+    returnDate?: string;
+    journeyType: "one_way" | "return" | "multi_city";
+    passengers: { adults: number; children: number };
+    cabinClass: string;
   }) {
     setIsLoading(true);
     setError(null);
