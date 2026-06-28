@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Plane, Search, Shield, Sparkles, Menu, X, ArrowLeft } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Footer } from "@/components/layout/Footer";
 
 const navLinks = [
   { href: "/flights", label: "Search", icon: Search },
@@ -152,6 +153,8 @@ export default function FlightsLayout({ children }: FlightsLayoutProps) {
           </motion.div>
         </AnimatePresence>
       </main>
+
+      <Footer />
     </div>
   );
 }
