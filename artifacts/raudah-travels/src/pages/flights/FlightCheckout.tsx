@@ -9,7 +9,7 @@ import PriceBreakdown from "@/components/flights/PriceBreakdown";
 const EXCHANGE_RATE = 1818.56;
 
 export default function FlightCheckout() {
-  const [, params] = useRoute("/checkout/:offerId");
+  const [, params] = useRoute("/flights/checkout/:offerId");
   const search = useSearch();
   const [, setLocation] = useLocation();
   const offerId = params?.offerId || "";

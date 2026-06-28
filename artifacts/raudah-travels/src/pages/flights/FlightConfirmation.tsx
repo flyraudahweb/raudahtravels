@@ -4,9 +4,8 @@ import { motion } from "framer-motion";
 import { CheckCircle2, Plane, Search, LayoutDashboard, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-
 export default function FlightConfirmation() {
-  const [, params] = useRoute("/confirmation/:bookingId");
+  const [, params] = useRoute("/flights/confirmation/:bookingId");
   const [, setLocation] = useLocation();
   const bookingId = params?.bookingId || "";
 
