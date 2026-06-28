@@ -6,6 +6,7 @@ import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
 import router from "./routes";
+import flightsRouter from "./routes/flights.js";
 import { logger } from "./lib/logger";
 import {
   CLERK_PROXY_PATH,
@@ -79,6 +80,9 @@ app.use(express.json({
   },
 }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+// Public flight routes — mounted BEFORE Clerk so they work without login
+app.use("/api", flightsRouter);
 
 app.use(
   clerkMiddleware((req) => ({
