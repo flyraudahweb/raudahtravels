@@ -16,8 +16,10 @@ export default function PriceBreakdown({ offer, exchangeRate, onPay, isLoading }
   const slice = offer.slices?.[0];
   const segment = slice?.segments?.[0];
   const airline = offer.owner?.name || segment?.marketing_carrier?.name || "Airline";
-  const origin = slice?.origin?.iata_code || segment?.origin?.iata_code || "---";
-  const dest = slice?.destination?.iata_code || segment?.destination?.iata_code || "---";
+  const originCode = slice?.origin?.iata_code || segment?.origin?.iata_code || "---";
+  const destCode = slice?.destination?.iata_code || segment?.destination?.iata_code || "---";
+  const originName = slice?.origin?.name || segment?.origin?.name || "";
+  const destName = slice?.destination?.name || segment?.destination?.name || "";
   const priceGBP = parseFloat(offer.total_amount || "0");
   const priceCurrency = offer.total_currency || "GBP";
   const priceNGN = priceCurrency === "GBP" ? priceGBP * exchangeRate : priceGBP;
@@ -41,14 +43,20 @@ export default function PriceBreakdown({ offer, exchangeRate, onPay, isLoading }
       </div>
 
       {/* Route */}
-      <div className="flex items-center justify-center gap-3 py-4 bg-primary/5 rounded-xl mb-4">
-        <span className="text-lg font-black text-primary">{origin}</span>
-        <div className="flex items-center gap-1 text-primary/50">
-          <div className="w-6 h-[2px] bg-primary/30 rounded-full" />
-          <Plane className="w-4 h-4 text-primary" />
-          <div className="w-6 h-[2px] bg-primary/30 rounded-full" />
+      <div className="flex flex-col gap-2 py-4 bg-primary/5 rounded-xl mb-4 px-4">
+        <div className="flex items-center justify-center gap-3">
+          <span className="text-xl font-black text-primary">{originCode}</span>
+          <div className="flex items-center gap-1 text-primary/50">
+            <div className="w-6 h-[2px] bg-primary/30 rounded-full" />
+            <Plane className="w-4 h-4 text-primary" />
+            <div className="w-6 h-[2px] bg-primary/30 rounded-full" />
+          </div>
+          <span className="text-xl font-black text-primary">{destCode}</span>
         </div>
-        <span className="text-lg font-black text-primary">{dest}</span>
+        <div className="flex items-center justify-between text-xs font-semibold text-primary/70 text-center">
+          <span className="flex-1 truncate pr-2">{originName}</span>
+          <span className="flex-1 truncate pl-2">{destName}</span>
+        </div>
       </div>
 
       {/* Airline */}
