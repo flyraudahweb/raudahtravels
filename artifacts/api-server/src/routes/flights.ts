@@ -106,25 +106,54 @@ router.post("/flights/search", async (req, res) => {
 
     const offerRequest = await duffel.offerRequests.create(offerRequestParams);
 
-    const offers = (offerRequest.data.offers ?? []).map((offer: any) => {
-      const firstSlice = offer.slices?.[0];
-      const firstSegment = firstSlice?.segments?.[0];
-      const lastSegment = firstSlice?.segments?.[firstSlice.segments.length - 1];
+    // Sort by price ascending and limit to 30 for performance
+    const rawOffers = (offerRequest.data.offers ?? [])
+      .sort((a: any, b: any) => parseFloat(a.total_amount) - parseFloat(b.total_amount))
+      .slice(0, 30);
+
+    const offers = rawOffers.map((offer: any) => {
+      // Map each slice with its segments for multi-leg display
+      const slices = (offer.slices ?? []).map((slice: any) => {
+        const segments = (slice.segments ?? []).map((seg: any) => ({
+          origin: { iata_code: seg.origin?.iata_code ?? "", name: seg.origin?.name ?? "" },
+          destination: { iata_code: seg.destination?.iata_code ?? "", name: seg.destination?.name ?? "" },
+          departing_at: seg.departing_at,
+          arriving_at: seg.arriving_at,
+          duration: seg.duration,
+          marketing_carrier: {
+            name: seg.marketing_carrier?.name ?? "Unknown",
+            iata_code: seg.marketing_carrier?.iata_code ?? "",
+          },
+          operating_carrier: {
+            name: seg.operating_carrier?.name ?? "",
+            iata_code: seg.operating_carrier?.iata_code ?? "",
+          },
+          aircraft: seg.aircraft ?? null,
+          passengers: (seg.passengers ?? []).map((p: any) => ({
+            cabin_class: p.cabin_class,
+            cabin_class_marketing_name: p.cabin_class_marketing_name,
+            baggages: p.baggages ?? [],
+          })),
+        }));
+
+        return {
+          id: slice.id,
+          origin: { iata_code: slice.origin?.iata_code ?? "", name: slice.origin?.name ?? "" },
+          destination: { iata_code: slice.destination?.iata_code ?? "", name: slice.destination?.name ?? "" },
+          duration: slice.duration,
+          segments,
+        };
+      });
 
       return {
         id: offer.id,
-        airline: firstSegment?.marketing_carrier?.name ?? "Unknown",
-        airlineCode: firstSegment?.marketing_carrier?.iata_code ?? "",
-        origin: firstSlice?.origin?.iata_code ?? origin,
-        destination: firstSlice?.destination?.iata_code ?? destination,
-        departureAt: firstSegment?.departing_at ?? null,
-        arrivalAt: lastSegment?.arriving_at ?? null,
-        duration: firstSlice?.duration ?? null,
-        stops: (firstSlice?.segments?.length ?? 1) - 1,
-        cabinClass: firstSegment?.passengers?.[0]?.cabin_class ?? "economy",
-        baggages: firstSegment?.passengers?.[0]?.baggages ?? [],
-        totalAmountGbp: offer.total_amount,
-        totalCurrency: offer.total_currency,
+        owner: {
+          name: offer.owner?.name ?? "",
+          iata_code: offer.owner?.iata_code ?? "",
+        },
+        slices,
+        total_amount: offer.total_amount,
+        total_currency: offer.total_currency,
         totalAmountNgn: String(convertToNgn(Number(offer.total_amount))),
         exchangeRate: String(GBP_TO_NGN_RATE),
       };
@@ -139,7 +168,8 @@ router.post("/flights/search", async (req, res) => {
 
     return res.json({
       offers,
-      total: offers.length,
+      total: rawOffers.length,
+      totalAll: (offerRequest.data.offers ?? []).length,
       offerRequestId: offerRequest.data.id,
       passengerIds,
     });

@@ -12,6 +12,7 @@ export default function FlightSearch() {
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [totalAll, setTotalAll] = useState(0);
 
   // Store offers in a simple map so checkout can retrieve the selected one
   const storeOffers = useCallback((data: any[]) => {
@@ -50,8 +51,9 @@ export default function FlightSearch() {
       }
 
       const data = await res.json();
-      const results = data.offers || data.data?.offers || data.data || [];
+      const results = data.offers || [];
       setOffers(results);
+      setTotalAll(data.totalAll || results.length);
       storeOffers(results);
     } catch (err: any) {
       setError(err.message || "Something went wrong");
@@ -158,13 +160,20 @@ export default function FlightSearch() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
               <div className="flex items-center gap-2">
                 <Plane className="w-4 h-4 text-primary" />
                 <span className="text-sm font-bold text-foreground">
-                  {offers.length} flight{offers.length !== 1 ? "s" : ""} found
+                  {totalAll > offers.length
+                    ? `Showing best ${offers.length} of ${totalAll.toLocaleString()} flights`
+                    : `${offers.length} flight${offers.length !== 1 ? "s" : ""} found`}
                 </span>
               </div>
+              {totalAll > offers.length && (
+                <span className="text-xs text-muted-foreground font-medium">
+                  Sorted by lowest price
+                </span>
+              )}
             </div>
             <div className="space-y-4">
               {offers.map((offer, i) => (
