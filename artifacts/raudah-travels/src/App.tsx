@@ -25,6 +25,7 @@ import AuthRedirectPage from "@/pages/auth/AuthRedirectPage";
 import UserDashboard from "@/pages/dashboard/UserDashboard";
 import AgentPortal from "@/pages/agent/AgentPortal";
 import AdminConsole from "@/pages/admin/AdminConsole";
+import FlightsModule from "@/pages/flights";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -116,6 +117,7 @@ function AppRoutes() {
       <Route path="/dashboard/*?" component={UserDashboard} />
       <Route path="/agent/*?" component={AgentPortal} />
       <Route path="/admin/*?" component={AdminConsole} />
+      <Route path="/flights/*?" component={FlightsModule} />
 
       <Route component={NotFound} />
     </Switch>
