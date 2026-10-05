@@ -10,7 +10,6 @@ const autoTableModule = require("../artifacts/raudah-travels/node_modules/jspdf-
 const autoTable = autoTableModule.default || autoTableModule;
 
 const outputPath = path.resolve("./docs/Raudah_App_Infrastructure_and_Engineering_Quotation.pdf");
-const publicOutputPath = path.resolve("./artifacts/raudah-travels/public/Raudah_App_Infrastructure_and_Engineering_Quotation.pdf");
 
 // Initialize A4 Portrait Document
 const doc = new jsPDF({
@@ -435,7 +434,6 @@ const pdfOutput = doc.output();
 const pdfBuffer = Buffer.from(pdfOutput, "binary");
 
 fs.writeFileSync(outputPath, pdfBuffer);
-fs.writeFileSync(publicOutputPath, pdfBuffer);
 
 // Also copy to brain artifact directory
 const brainDir = path.resolve("C:/Users/DEEPMIND/.gemini/antigravity-ide/brain/838d4c92-fb87-4e7b-8715-e788703b0e75");
@@ -445,5 +443,4 @@ if (fs.existsSync(brainDir)) {
 
 console.log("Quotation PDF Generation Complete!");
 console.log(`Saved to docs: ${outputPath}`);
-console.log(`Saved to public: ${publicOutputPath}`);
 console.log(`Total Pages: ${doc.internal.getNumberOfPages()}`);
