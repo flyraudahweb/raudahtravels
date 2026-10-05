@@ -4,7 +4,7 @@ import { useUser, UserButton } from "@clerk/react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useGetProfile, getGetProfileQueryKey } from "@workspace/api-client-react";
-import { Menu, Globe, Thermometer, MapPin, Clock, Calendar, ChevronRight } from "lucide-react";
+import { Menu, Globe, Thermometer, MapPin, Clock, Calendar, ChevronRight, Phone } from "lucide-react";
 
 interface NavbarProps {
   transparent?: boolean;
@@ -86,9 +86,17 @@ export function Navbar({ transparent = false }: NavbarProps) {
       <div className={`hidden md:block overflow-hidden transition-all duration-500 ${
         solid ? "h-0 opacity-0" : "h-9 opacity-100"
       }`}>
-        <div className={`h-9 border-b flex items-center justify-center gap-5 text-xs ${
+        <div className={`h-9 border-b flex items-center justify-center gap-4 lg:gap-5 text-xs ${
           solid ? "border-[#DCE3F0] bg-[#1C1F66] text-white/80" : "border-white/10 text-white/70"
         }`}>
+          <a href="tel:08036264607" className="flex items-center gap-1.5 hover:text-white transition-colors">
+            <Phone className="w-3 h-3 text-[#FF3B00]" /> 08036264607
+          </a>
+          <span className="w-px h-3 bg-white/20" />
+          <a href="tel:08034803504" className="flex items-center gap-1.5 hover:text-white transition-colors">
+            <Phone className="w-3 h-3 text-[#FF3B00]" /> 08034803504
+          </a>
+          <span className="w-px h-3 bg-white/20" />
           <span className="flex items-center gap-1.5 font-medium">
             <Thermometer className="w-3 h-3 text-[#FF3B00]" /> 38°C
           </span>
@@ -110,7 +118,15 @@ export function Navbar({ transparent = false }: NavbarProps) {
       {/* Solid top bar (visible when scrolled) */}
       {solid && (
         <div className="hidden md:block bg-[#1C1F66] h-8 overflow-hidden">
-          <div className="flex items-center justify-center gap-5 h-full text-xs text-white/70">
+          <div className="flex items-center justify-center gap-4 lg:gap-5 h-full text-xs text-white/70">
+            <a href="tel:08036264607" className="flex items-center gap-1.5 hover:text-white transition-colors">
+              <Phone className="w-3 h-3 text-[#FF3B00]" /> 08036264607
+            </a>
+            <span className="w-px h-3 bg-white/20" />
+            <a href="tel:08034803504" className="flex items-center gap-1.5 hover:text-white transition-colors">
+              <Phone className="w-3 h-3 text-[#FF3B00]" /> 08034803504
+            </a>
+            <span className="w-px h-3 bg-white/20" />
             <span className="flex items-center gap-1.5">
               <Thermometer className="w-3 h-3 text-[#FF3B00]" /> 38°C
             </span>
@@ -270,8 +286,20 @@ function MobileDrawer({ navLinks, isLoaded, isSignedIn, dashboardLink, onClose }
         </Link>
       )}
 
+      {/* Contact phone strip */}
+      <div className="mt-6 px-4 py-3 rounded-2xl bg-white/5 border border-white/8 flex flex-col gap-2 text-xs text-white/70">
+        <a href="tel:08036264607" className="flex items-center gap-2 hover:text-white transition-colors">
+          <Phone className="w-3.5 h-3.5 text-[#FF3B00] shrink-0" />
+          <span>08036264607</span>
+        </a>
+        <a href="tel:08034803504" className="flex items-center gap-2 hover:text-white transition-colors">
+          <Phone className="w-3.5 h-3.5 text-[#FF3B00] shrink-0" />
+          <span>08034803504</span>
+        </a>
+      </div>
+
       {/* Bottom weather strip */}
-      <div className="mt-6 px-4 py-3 rounded-2xl bg-white/5 border border-white/8 flex items-center gap-3 text-xs text-white/50">
+      <div className="mt-3 px-4 py-3 rounded-2xl bg-white/5 border border-white/8 flex items-center gap-3 text-xs text-white/50">
         <Thermometer className="w-3.5 h-3.5 text-[#FF3B00] shrink-0" />
         <span>38°C</span>
         <span className="w-px h-3 bg-white/20" />

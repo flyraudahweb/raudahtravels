@@ -1,6 +1,6 @@
 import { SignUp } from "@clerk/react";
 import { Link } from "wouter";
-import { Thermometer, MapPin, Clock, Calendar, CheckCircle2, ArrowLeft } from "lucide-react";
+import { Thermometer, MapPin, Clock, Calendar, CheckCircle2, ArrowLeft, Phone } from "lucide-react";
 import { useState, useEffect } from "react";
 
 export default function SignUpPage() {
@@ -26,7 +26,15 @@ export default function SignUpPage() {
     <div className="min-h-[100dvh] flex flex-col">
       {/* Top info bar */}
       <div className="hidden md:block bg-[#1C1F66] text-white/80 text-xs">
-        <div className="flex items-center justify-center gap-5 h-8">
+        <div className="flex items-center justify-center gap-4 lg:gap-5 h-8">
+          <a href="tel:08036264607" className="flex items-center gap-1.5 hover:text-white transition-colors">
+            <Phone className="w-3 h-3 text-[#FF3B00]" /> 08036264607
+          </a>
+          <span className="w-px h-3 bg-white/20" />
+          <a href="tel:08034803504" className="flex items-center gap-1.5 hover:text-white transition-colors">
+            <Phone className="w-3 h-3 text-[#FF3B00]" /> 08034803504
+          </a>
+          <span className="w-px h-3 bg-white/20" />
           <span className="flex items-center gap-1.5"><Thermometer className="w-3 h-3 text-[#FF3B00]" /> 38°C</span>
           <span className="w-px h-3 bg-white/20" />
           <span className="flex items-center gap-1.5"><Calendar className="w-3 h-3" /> {liveDate}</span>
