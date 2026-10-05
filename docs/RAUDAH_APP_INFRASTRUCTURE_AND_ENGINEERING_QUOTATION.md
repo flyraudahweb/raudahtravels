@@ -12,7 +12,7 @@
 
 | Field | Details |
 | :--- | :--- |
-| **TO (Recipient):** | **The Managing Director & Board of Directors**, Raudah Travels & Tours Limited |
+| **TO (Recipient):** | **The Chairman & CEO**, Raudah Travels & Tours Limited |
 | **FROM (Sender):** | **Aliyu Wada**, Lead Software Engineer (Raudah Travels & Tours) |
 | **SUBJECT:** | App Infrastructure, Multi-Airline Booking Engine, AI Subsystem & Full-Time Engineering Services |
 | **OPERATIONAL BASE:** | Kano State Head Office & On-Ground Operations |
@@ -88,6 +88,6 @@ Lead Software Engineer — Raudah Travels & Tours Limited
 <br>
 
 **Approved & Authorized by:**  
-**Managing Director / Chief Executive Officer**  
+**The Chairman & CEO**  
 Raudah Travels & Tours Limited  
 *Signature:* _____________________________ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; *Date:* _____ / 10 / 2026  

@@ -117,7 +117,7 @@ doc.setCharSpace(0);
 doc.setFont("helvetica", "bold");
 doc.setFontSize(8.2);
 doc.setTextColor(...COLOR_NAVY);
-doc.text("The Managing Director & Board of Directors", MARGIN_L + 5, currentY + 8.5);
+doc.text("The Chairman & CEO", MARGIN_L + 5, currentY + 8.5);
 
 doc.setFont("helvetica", "normal");
 doc.setFontSize(7.5);
@@ -416,7 +416,7 @@ doc.text("APPROVED & AUTHORIZED BY:", signRightX, currentY + 4.5);
 doc.setFont("helvetica", "bold");
 doc.setFontSize(8);
 doc.setTextColor(...COLOR_NAVY);
-doc.text("Managing Director / Chief Executive Officer", signRightX, currentY + 9);
+doc.text("The Chairman & CEO", signRightX, currentY + 9);
 
 doc.setFont("helvetica", "normal");
 doc.setFontSize(6.8);
