@@ -17,7 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import {
   UserCog, Shield, Crown, User, Plus, Pencil, Trash2,
-  Eye, Key, RefreshCw, ChevronRight, Tag, TicketCheck,
+  Eye, Key, RefreshCw, ChevronRight, Tag, TicketCheck, BookOpen,
 } from "lucide-react";
 
 /* ── Constants ───────────────────────────────────────────────────────────────── */
@@ -443,13 +443,25 @@ export default function AdminStaff() {
           <h1 className="text-2xl font-black text-[#0F172A]">Staff Management</h1>
           <p className="text-[#64748B] text-sm mt-0.5">Invite team members and control what each person can access.</p>
         </div>
-        <Button
-          onClick={() => setInviteOpen(true)}
-          className="bg-[#2D3199] hover:bg-[#242880] text-white font-bold rounded-xl shrink-0"
-          data-testid="button-invite-staff"
-        >
-          <Plus className="w-4 h-4 mr-2" /> Invite Staff
-        </Button>
+        <div className="flex items-center gap-2.5 shrink-0">
+          <a
+            href="/Raudah_Travels_Staff_Training_Manual.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#EEF0FF] border border-[#2D3199]/20 text-xs font-bold text-[#2D3199] hover:bg-[#2D3199] hover:text-white transition-all shadow-sm"
+            title="Download Staff Training Manual (PDF)"
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>Staff Manual (PDF)</span>
+          </a>
+          <Button
+            onClick={() => setInviteOpen(true)}
+            className="bg-[#2D3199] hover:bg-[#242880] text-white font-bold rounded-xl shrink-0"
+            data-testid="button-invite-staff"
+          >
+            <Plus className="w-4 h-4 mr-2" /> Invite Staff
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}

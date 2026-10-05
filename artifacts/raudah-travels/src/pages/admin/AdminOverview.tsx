@@ -4,7 +4,7 @@ import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell
 } from "recharts";
-import { DollarSign, Users, Package, Clock, UserCheck, LifeBuoy, TrendingUp, ArrowUpRight, CheckCircle2 } from "lucide-react";
+import { DollarSign, Users, Package, Clock, UserCheck, LifeBuoy, TrendingUp, ArrowUpRight, CheckCircle2, BookOpen } from "lucide-react";
 import { Link } from "wouter";
 
 const PIE_COLORS = ["#2D3199", "#FF3B00", "#10B981", "#F59E0B"];
@@ -95,9 +95,21 @@ export default function AdminOverview() {
           <h1 className="text-2xl font-black text-[#0F172A]">Platform Overview</h1>
           <p className="text-[#64748B] text-sm mt-0.5">Welcome back — here's what's happening today</p>
         </div>
-        <div className="hidden md:flex items-center gap-2 px-4 py-2 rounded-2xl bg-white border border-[#DCE3F0] text-sm text-[#64748B]">
-          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          System operational
+        <div className="flex items-center gap-2.5">
+          <a
+            href="/Raudah_Travels_Staff_Training_Manual.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-[#EEF0FF] border border-[#2D3199]/20 text-xs font-bold text-[#2D3199] hover:bg-[#2D3199] hover:text-white transition-all shadow-sm"
+            title="Download Staff Training Manual (PDF)"
+          >
+            <BookOpen className="w-3.5 h-3.5" />
+            <span>Staff Training Manual</span>
+          </a>
+          <div className="hidden md:flex items-center gap-2 px-4 py-2 rounded-2xl bg-white border border-[#DCE3F0] text-sm text-[#64748B]">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            System operational
+          </div>
         </div>
       </div>
 
