@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Settings, Phone, Mail, MapPin, MessageCircle, Globe, CreditCard, Save, CheckCircle2, Copy, Check, Eye, EyeOff, ExternalLink, Video, Layout, Plus, Trash2, Users, BarChart2, Image, Sparkles, Send, Loader2, Coins } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import RegistrationAgentSettings from "@/components/admin/RegistrationAgentSettings";
 
 async function fetchSettings(): Promise<{ settings: Record<string, any> }> {
   const r = await fetch("/api/admin/settings", { credentials: "include" });
@@ -222,6 +223,10 @@ export default function AdminSettings() {
         <h1 className="text-2xl font-black text-[#0F172A]">Settings</h1>
         <p className="text-[#64748B] text-sm mt-0.5">Configure site-wide settings and preferences</p>
       </div>
+
+      <Section title="AI Registration Agent" icon={MessageCircle}>
+        <RegistrationAgentSettings />
+      </Section>
 
       <Section title="Contact Information" icon={Phone}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

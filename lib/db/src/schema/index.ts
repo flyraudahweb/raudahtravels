@@ -17,3 +17,4 @@ export * from "./contact-messages";
 export * from "./backup-history";
 export * from "./login-sessions";
 export * from "./flight-bookings";
+export * from "./ai-registration";

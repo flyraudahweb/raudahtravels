@@ -17,6 +17,7 @@ import AdminStaff from "./AdminStaff";
 import AdminBankAccounts from "./AdminBankAccounts";
 import AdminActivity from "./AdminActivity";
 import AdminAmendments from "./AdminAmendments";
+import AdminAiRegistrations from "./AdminAiRegistrations";
 import AdminVisaManagement from "./AdminVisaManagement";
 import AdminIdTags from "./AdminIdTags";
 import AdminTeamChat from "./AdminTeamChat";
@@ -81,6 +82,7 @@ const ALL_NAV_GROUPS: (NavGroupDef & { permKey?: string })[] = [
       { href: "/admin/passports",       label: "Passports",       icon: FileImage,   permKey: "passports" },
       { href: "/admin/visa-management", label: "Visa Management", icon: ShieldCheck, permKey: "visa_management" },
       { href: "/admin/amendments",      label: "Amendments",      icon: Pencil,       permKey: "amendments" },
+      { href: "/admin/ai-registrations", label: "AI Registrations", icon: Bot,        permKey: "ai_registrations" },
     ] as any[],
   },
   {
@@ -481,6 +483,7 @@ export default function AdminConsole() {
               <Route path="/admin/bank-accounts"component={AdminBankAccounts} />
               <Route path="/admin/activity"     component={AdminActivity} />
               <Route path="/admin/amendments"   component={AdminAmendments} />
+              <Route path="/admin/ai-registrations" component={AdminAiRegistrations} />
               <Route path="/admin/visa-management" component={AdminVisaManagement} />
               <Route path="/admin/id-tags"      component={AdminIdTags} />
               <Route path="/admin/chat"         component={AdminTeamChat} />

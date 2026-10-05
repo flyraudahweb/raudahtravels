@@ -1,25 +1,34 @@
+import { getRegistrationConfig, type RegistrationConfig } from "../services/registration/config";
 import { S3Client, PutObjectCommand, GetObjectCommand, HeadBucketCommand, CreateBucketCommand } from "@aws-sdk/client-s3";
 import { logger } from "./logger";
 
-const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || "";
-const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID || "";
-const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY || "";
-const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || "raudah-uploads";
-const R2_ENDPOINT = process.env.R2_ENDPOINT || `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
+export const BUCKET_NAME = process.env.R2_BUCKET_NAME || "raudah-uploads";
 
-export const r2Client = new S3Client({
-  region: "auto",
-  endpoint: R2_ENDPOINT,
-  credentials: {
-    accessKeyId: R2_ACCESS_KEY_ID,
-    secretAccessKey: R2_SECRET_ACCESS_KEY,
+// Resolve credentials and bucket for every operation so rotations apply without
+// restarting. The proxy preserves the SDK command/result types for callers.
+let cached: { identity: string; client: S3Client } | undefined;
+export const r2Client = new Proxy({} as S3Client, {
+  get(_target, property) {
+    if (property !== "send") throw new Error("Only R2 send operations are supported");
+    return async (command: any, options?: any) => {
+      const config = await getRegistrationConfig();
+      if (!await isR2Configured(config)) throw new Error("Passport storage unavailable");
+      const endpoint = process.env.R2_ENDPOINT || `https://${config.r2AccountId}.r2.cloudflarestorage.com`;
+      const identity = JSON.stringify([endpoint, config.r2AccessKeyId, config.r2SecretAccessKey]);
+      if (!cached || cached.identity !== identity) {
+        cached?.client.destroy();
+        cached = { identity, client: new S3Client({ region: "auto", endpoint,
+          credentials: { accessKeyId: config.r2AccessKeyId, secretAccessKey: config.r2SecretAccessKey } }) };
+      }
+      command.input.Bucket = config.r2BucketName;
+      return cached.client.send(command, options);
+    };
   },
 });
 
-export const BUCKET_NAME = R2_BUCKET_NAME;
-
-export function isR2Configured(): boolean {
-  return !!(R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_ACCOUNT_ID);
+export async function isR2Configured(config?: RegistrationConfig): Promise<boolean> {
+  config ??= await getRegistrationConfig();
+  return Boolean(config.r2AccessKeyId && config.r2SecretAccessKey && config.r2AccountId);
 }
 
 /**
@@ -27,7 +36,7 @@ export function isR2Configured(): boolean {
  * Called once on server startup.
  */
 export async function ensureBucket(): Promise<void> {
-  if (!R2_ACCESS_KEY_ID) {
+  if (!await isR2Configured()) {
     logger.warn("R2 credentials not configured — file uploads will fail");
     return;
   }

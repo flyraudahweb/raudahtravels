@@ -8,6 +8,7 @@ import { getAuth } from "@clerk/express";
 import { eq, sql, inArray } from "drizzle-orm";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Mistral } from "@mistralai/mistralai";
+import { extractPassport } from "../services/passport/PassportExtractionService";
 
 const router = Router();
 
@@ -155,25 +156,6 @@ Tone: Professional, concise, knowledgeable. Use Islamic greetings when appropria
 
 /* ── POST /passport/extract ────────────────────────────────────────────────── */
 
-const PASSPORT_PROMPT = `You are a passport data extraction assistant. Analyze this passport image carefully.
-
-First evaluate image quality:
-- If the image is blurry, severely cropped (missing MRZ or photo), or has unreadable glare: set isAcceptableQuality to false and describe why in rejectionReason
-- Otherwise: set isAcceptableQuality to true and leave rejectionReason as an empty string
-
-Then extract these fields (use empty string if a field is genuinely not readable or absent):
-- firstName: given names exactly as printed
-- lastName: surname/family name exactly as printed
-- documentNumber: passport number (alphanumeric, e.g. A12345678)
-- nationality: full nationality as printed (e.g. "NIGERIAN", "BRITISH CITIZEN")
-- dateOfBirth: in strict YYYY-MM-DD format
-- sex: exactly "M" or "F"
-- dateOfIssue: in strict YYYY-MM-DD format
-- dateOfExpiry: in strict YYYY-MM-DD format
-- faceBoundingBox: the bounding box around the person's photo/face on the passport page, as normalized coordinates from 0.0 to 1.0: { ymin, xmin, ymax, xmax }
-
-Return valid JSON only — no markdown, no code fences, no extra text.`;
-
 router.post("/passport/extract", async (req, res) => {
   const { userId: clerkUserId } = getAuth(req);
   if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
@@ -181,87 +163,14 @@ router.post("/passport/extract", async (req, res) => {
   const { imageBase64, mimeType } = req.body;
   if (!imageBase64) return res.status(400).json({ error: "imageBase64 is required" });
 
-  const config = await getAiConfig();
-  const mime = (mimeType as string) || "image/jpeg";
+  const outcome = await extractPassport(imageBase64, mimeType, { strict: false });
 
-  /* ── Gemini OCR ── */
-  if (config.provider === "gemini") {
-    if (!config.geminiKey) {
-      return res.status(503).json({ error: "Gemini API key not configured. Add it in Settings → AI Integration or switch to Mistral." });
-    }
-    try {
-      const genAI = new GoogleGenerativeAI(config.geminiKey);
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.0-flash",
-        generationConfig: { responseMimeType: "application/json" },
-      });
-      const result = await model.generateContent([
-        { inlineData: { data: imageBase64, mimeType: mime } },
-        PASSPORT_PROMPT,
-      ]);
-      const text = result.response.text();
-      try {
-        return res.json(JSON.parse(text));
-      } catch {
-        return res.status(422).json({ error: "Could not parse AI response. Please try a clearer image." });
-      }
-    } catch (err: any) {
-      const msg = err?.message || "";
-      if (msg.includes("RESOURCE_EXHAUSTED") || msg.includes("429") || msg.includes("quota")) {
-        return res.status(429).json({ error: "Gemini quota reached. Switch to Mistral in Settings → AI Integration." });
-      }
-      if (msg.includes("API_KEY") || msg.includes("INVALID_ARGUMENT") || msg.includes("API key not valid")) {
-        return res.status(503).json({ error: "Invalid Gemini API key. Please update it in Settings." });
-      }
-      return res.status(500).json({ error: "AI extraction failed. Please fill in the details manually." });
-    }
+  if (!outcome.ok) {
+    req.log.error({ error: outcome.error }, "Passport extraction error");
+    return res.status(outcome.error!.status).json({ error: outcome.error!.message });
   }
 
-  /* ── Mistral OCR ── */
-  if (!config.mistralKey) {
-    return res.status(503).json({ error: "Mistral API key not configured. Add it in Settings → AI Integration." });
-  }
-  try {
-    const client = new Mistral({ apiKey: config.mistralKey });
-
-    const result = await client.chat.complete({
-      model: "mistral-small-latest",
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image_url",
-              imageUrl: `data:${mime};base64,${imageBase64}`,
-            } as any,
-            {
-              type: "text",
-              text: PASSPORT_PROMPT,
-            },
-          ],
-        },
-      ],
-    });
-
-    const raw = result.choices?.[0]?.message?.content ?? "";
-    const text = typeof raw === "string" ? raw : JSON.stringify(raw);
-    const cleaned = text.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-    try {
-      return res.json(JSON.parse(cleaned));
-    } catch {
-      return res.status(422).json({ error: "Could not parse AI response. Please try a clearer image." });
-    }
-  } catch (err: any) {
-    const msg = err?.message ?? "";
-    req.log.error({ err }, "Mistral OCR error");
-    if (msg.includes("401") || msg.includes("Unauthorized") || msg.includes("API key")) {
-      return res.status(503).json({ error: "Invalid Mistral API key. Update it in Settings." });
-    }
-    if (msg.includes("429") || msg.includes("rate limit")) {
-      return res.status(429).json({ error: "Mistral rate limit reached. Please try again shortly." });
-    }
-    return res.status(500).json({ error: "AI extraction failed. Please fill in the details manually." });
-  }
+  return res.json(outcome.data);
 });
 
 export default router;

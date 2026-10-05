@@ -66,6 +66,8 @@ catalog:
 autoInstallPeers: false
 
 onlyBuiltDependencies:
+  - '@embedded-postgres/linux-x64'
+  - '@embedded-postgres/windows-x64'
   - '@swc/core'
   - esbuild
   - msw

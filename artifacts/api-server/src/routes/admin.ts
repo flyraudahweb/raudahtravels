@@ -1,8 +1,14 @@
-import { Router, type Request, type Response, type NextFunction } from "express";
+import { registrationTransaction, registrationDb } from "../services/registration/database";
+﻿import { Router, type Request, type Response, type NextFunction } from "express";
 import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
 import { sendEmail, sendAgentApprovalEmail, sendStaffWelcomeEmail } from "../utils/email.js";
 import { createNotification } from "../utils/notify.js";
+import { createBooking, RegistrationError } from "../services/registration/RegistrationService";
+import { CONFIG_KEY, getRegistrationConfig, registrationConfigSchema, secretFields, encryptSetting, redactConfig } from "../services/registration/config";
+import { assertRegistrationReady } from "../services/registration/readiness";
+import { checkRegistrationConnections } from "../services/registration/ConnectionChecks";
+import { allowChannelMessage } from "../services/channels/channelRateLimit";
 
 import {
   profilesTable, staffPermissionsTable, bookingsTable, paymentsTable,
@@ -47,9 +53,16 @@ async function requireAdmin(req: Request, res: Response, next: NextFunction) {
     where: eq(profilesTable.clerkUserId, clerkUserId),
   });
   if (!profile) return res.status(404).json({ error: "Profile not found" });
-  if (!["admin", "super_admin", "staff"].includes(profile.role)) {
+  if (profile.accountStatus !== "active" || !["admin", "super_admin", "staff"].includes(profile.role)) {
     return res.status(403).json({ error: "Admin access required" });
   }
+  (req as any).adminProfile = profile;
+  return next();
+}
+function requireAccountAdmin(req: Request, res: Response, next: NextFunction) {
+  const actor = (req as any).adminProfile;
+  if (!actor || !["admin", "super_admin"].includes(actor.role)) return res.status(403).json({ error: "Only administrators can manage roles and permissions" });
+  if (req.body?.role === "super_admin" && actor.role !== "super_admin") return res.status(403).json({ error: "Only super admins can grant super_admin" });
   return next();
 }
 
@@ -243,7 +256,7 @@ router.delete("/admin/users/:id", async (req, res) => {
 
 // ── Change User Role ──────────────────────────────────────────────────────────
 
-router.put("/admin/users/:id/role", async (req, res) => {
+router.put("/admin/users/:id/role", requireAccountAdmin as any, async (req, res) => {
   try {
     const { userId: callerClerkId } = getAuth(req);
     if (!callerClerkId) return res.status(401).json({ error: "Unauthorized" });
@@ -1097,7 +1110,7 @@ router.get("/admin/staff/my-permissions", async (req, res) => {
   });
 });
 
-router.post("/admin/staff", async (req, res) => {
+router.post("/admin/staff", requireAccountAdmin as any, async (req, res) => {
   try {
     const { fullName, email, role = "staff", password, permissions = [], specialties = [] } = req.body as {
       fullName: string; email: string; role: string; password: string;
@@ -1281,7 +1294,7 @@ router.delete("/admin/staff/:id", async (req, res) => {
   }
 });
 
-router.put("/admin/staff/:id/permissions", async (req, res) => {
+router.put("/admin/staff/:id/permissions", requireAccountAdmin as any, async (req, res) => {
   try {
     const { permissions } = req.body as { permissions: string[] };
     const userId = req.params.id;
@@ -1326,7 +1339,7 @@ router.put("/admin/staff/:id/specialties", async (req, res) => {
 
 // SECURITY FIX #6: Validate role against allowed enum values.
 // Only super_admin can assign super_admin role.
-router.put("/admin/staff/:id/role", async (req, res) => {
+router.put("/admin/staff/:id/role", requireAccountAdmin as any, async (req, res) => {
   try {
     const { role } = req.body;
     const ALLOWED_ROLES = ["user", "staff", "moderator", "admin", "super_admin", "agent"];
@@ -1619,10 +1632,64 @@ router.delete("/admin/enquiries/:id", async (req, res) => {
 
 // ── Site Settings ─────────────────────────────────────────────────────────────
 
+router.get("/admin/registration-settings", requireAccountAdmin, async (_req, res) => {
+  return res.json(redactConfig(await getRegistrationConfig()));
+});
+router.put("/admin/registration-settings", requireAccountAdmin, async (req, res) => {
+  const parsed = registrationConfigSchema.partial().safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid registration settings", fields: parsed.error.issues.map(i => i.path.join(".")) });
+  try {
+    await registrationTransaction(async () => {
+      const tx = registrationDb;
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(746281011)`);
+      const current = await getRegistrationConfig();
+      const patch = Object.fromEntries(Object.entries(parsed.data).filter(([key]) => Object.hasOwn(req.body, key))) as typeof parsed.data;
+      // Empty password inputs preserve the saved value. Replacement is explicit.
+      for (const field of secretFields) if (!patch[field]) delete patch[field];
+      const next = registrationConfigSchema.parse({ ...current, ...patch });
+      if (current.r2AccountId && current.r2AccessKeyId && current.r2SecretAccessKey &&
+          (next.r2AccountId !== current.r2AccountId || next.r2BucketName !== current.r2BucketName)) {
+        throw new Error("Storage location is already configured. Moving existing passport files requires a deployment migration; only rotate access credentials here.");
+      }
+      await assertRegistrationReady(next);
+      const stored = { ...next };
+      for (const field of secretFields) if (stored[field]) stored[field] = encryptSetting(stored[field], field);
+      await tx.insert(siteSettingsTable).values({ id: randomUUID(), key: CONFIG_KEY, value: stored })
+        .onConflictDoUpdate({ target: siteSettingsTable.key, set: { value: stored, updatedAt: new Date() } });
+      await tx.insert(userActivityTable).values({ id: randomUUID(), userId: (req as any).adminProfile.id,
+        eventType: "settings_updated", metadata: { settingKey: CONFIG_KEY, changedFields: Object.keys(patch) } });
+    });
+    return res.json(redactConfig(await getRegistrationConfig()));
+  } catch (err) {
+    const message = err instanceof Error && /^(Storage location is already configured|Set SETTINGS_ENCRYPTION_KEY|AI registration requires|WhatsApp requires|Invalid AI registration)/.test(err.message)
+      ? err.message : "Could not save settings. Check encryption key, storage and database migrations.";
+    return res.status(400).json({ error: message });
+  }
+});
+router.post("/admin/registration-settings/check", requireAccountAdmin, async (_req, res) => {
+  try {
+    await assertRegistrationReady({ ...await getRegistrationConfig(), enabled: true });
+    return res.json({ ready: true, message: "Configuration and database checks passed. Next, test a real private chat and staff review." });
+  } catch (err) {
+    const message = err instanceof Error && /^(AI registration requires|WhatsApp requires|Invalid AI registration|Set SETTINGS_ENCRYPTION_KEY)/.test(err.message)
+      ? err.message : "Check storage configuration, encryption key and registration migrations.";
+    return res.status(400).json({ ready: false, error: message });
+  }
+});
+router.post("/admin/registration-settings/test-connections", requireAccountAdmin, async (req, res) => {
+  if (!allowChannelMessage("registration-connection-check", (req as any).adminProfile.id, 3)) return res.status(429).json({ error: "Wait a minute before testing again." });
+  try { return res.json({ checks: await checkRegistrationConnections() }); }
+  catch { return res.status(400).json({ error: "Could not read saved configuration. Check the encryption key and database." }); }
+});
+
 router.get("/admin/settings", async (_req, res) => {
   const settings = await db.query.siteSettingsTable.findMany();
   const map: Record<string, any> = {};
   settings.forEach(s => { map[s.key] = s.value; });
+  delete map[CONFIG_KEY];
+  for (const key of ["whatsapp_verify_token", "telegram_webhook_secret"]) {
+    if (map[key]) { map[`${key}_set`] = true; delete map[key]; }
+  }
   if (map.paystack_secret_key) {
     const raw = String(map.paystack_secret_key);
     map.paystack_secret_key = raw.slice(0, 7) + "••••••••" + raw.slice(-4);
@@ -1655,6 +1722,25 @@ router.get("/admin/settings", async (_req, res) => {
     const raw = String(map.mistral_api_key);
     map.mistral_api_key = raw.slice(0, 5) + "••••••••" + raw.slice(-4);
     map.mistral_api_key_set = true;
+  }
+  // AI registration channel keys are never returned in full. Env-sourced values
+  // are reported as set/not-set only, since they may be actual tokens.
+  if (map.whatsapp_access_token || map.whatsapp_app_secret || map.whatsapp_phone_number_id) {
+    delete map.whatsapp_access_token;
+    delete map.whatsapp_app_secret;
+    map.whatsapp_configured = Boolean(map.whatsapp_phone_number_id);
+  }
+  if (map.telegram_bot_token) {
+    delete map.telegram_bot_token;
+    map.telegram_bot_token_set = true;
+  }
+  if (process.env.WHATSAPP_ACCESS_TOKEN) {
+    map.whatsapp_configured = true;
+    map.whatsapp_source = "env";
+  }
+  if (process.env.TELEGRAM_BOT_TOKEN) {
+    map.telegram_bot_token_set = true;
+    map.telegram_bot_token_source = "env";
   }
   return res.json({ settings: map });
 });
@@ -1714,7 +1800,7 @@ router.get("/admin/email/debug", async (req, res) => {
     value: r.key.includes("pass") || r.key.includes("api_key")
       ? (r.value ? `${String(r.value).substring(0, 6)}...` : "(empty)")
       : r.value,
-    rawJSON: JSON.stringify(r.value),
+    rawJSON: r.key.includes("pass") || r.key.includes("api_key") ? "[redacted]" : JSON.stringify(r.value),
   }));
   return res.json({
     totalSettingsFound: rows.length,
@@ -1723,10 +1809,12 @@ router.get("/admin/email/debug", async (req, res) => {
   });
 });
 
-router.put("/admin/settings/:key", async (req, res) => {
+router.put("/admin/settings/:key", requireAccountAdmin, async (req, res) => {
+  const key = String(req.params.key);
+  if (key === CONFIG_KEY || /^(whatsapp_|telegram_)/.test(key)) return res.status(400).json({ error: "Use Registration Agent settings to manage channel credentials securely" });
   const { value } = req.body;
   const existing = await db.query.siteSettingsTable.findFirst({
-    where: eq(siteSettingsTable.key, req.params.key),
+    where: eq(siteSettingsTable.key, key),
   });
 
   let result: any;
@@ -1734,13 +1822,13 @@ router.put("/admin/settings/:key", async (req, res) => {
   if (existing) {
     const [updated] = await db.update(siteSettingsTable)
       .set({ value, updatedAt: new Date() })
-      .where(eq(siteSettingsTable.key, req.params.key))
+      .where(eq(siteSettingsTable.key, key))
       .returning();
     result = updated;
   } else {
     const [created] = await db.insert(siteSettingsTable).values({
       id: randomUUID(),
-      key: req.params.key,
+      key: key,
       value,
     }).returning();
     result = created;
@@ -1748,7 +1836,7 @@ router.put("/admin/settings/:key", async (req, res) => {
   }
 
   // Activity log
-  try { const { userId: _clk } = getAuth(req); if (_clk) { const _c = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, _clk) }); if (_c) await db.insert(userActivityTable).values({ id: randomUUID(), userId: _c.id, eventType: "settings_updated", metadata: { actorName: _c.fullName, actorRole: _c.role, settingKey: req.params.key } }); } } catch (_) { /* non-blocking */ }
+  try { const { userId: _clk } = getAuth(req); if (_clk) { const _c = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, _clk) }); if (_c) await db.insert(userActivityTable).values({ id: randomUUID(), userId: _c.id, eventType: "settings_updated", metadata: { actorName: _c.fullName, actorRole: _c.role, settingKey: key } }); } } catch (_) { /* non-blocking */ }
 
   return res.status(statusCode).json(result);
 });
@@ -2335,12 +2423,10 @@ router.post("/admin/chat/messages", async (req, res) => {
 
 // ── Admin Direct Booking ──────────────────────────────────────────────────────
 
-const nullify = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v);
-
 router.post("/admin/book-pilgrim", async (req, res) => {
   const {
     packageId, packageDateId, agentId, paymentMethod, markVerified,
-    totalPrice, amountPaid, paymentReference, paymentProofUrl,
+    amountPaid, paymentReference, paymentProofUrl,
     // name / civility
     civility, firstName, lastName, fullName,
     // passport
@@ -2382,252 +2468,34 @@ router.post("/admin/book-pilgrim", async (req, res) => {
     }
   } catch (_) { /* non-blocking */ }
 
-  // SECURITY FIX #12: Always use canonical package price. Client totalPrice is ignored.
-  // BUG FIX #8: If registering under an agent, apply the agent's per-package discount.
-  const agentIdValue = nullify(agentId) as string | undefined;
-
-  const reference = `RDH-${randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase()}`;
-
-  const resolvedFullName = nullify(fullName) as string | undefined
-    || [nullify(firstName), nullify(lastName)].filter(Boolean).join(" ")
-    || undefined;
-
   let booking: any;
+  let reference: string;
 
   try {
-    await db.transaction(async (tx) => {
-      // BUG FIX #4: Row-level lock on the package to prevent overbooking race condition
-      const lockResult = await tx.execute(
-        sql`SELECT * FROM packages WHERE id = ${packageId} FOR UPDATE`
-      );
-      const pkgRow = (lockResult as any).rows?.[0] ?? (Array.isArray(lockResult) ? lockResult[0] : null);
-      if (!pkgRow) throw new Error("Package not found");
-
-      // Capacity check — with row lock, this is now race-condition-proof
-      if (pkgRow.capacity && (pkgRow.current_bookings || 0) >= pkgRow.capacity) {
-        throw new Error("Package is fully booked — no more capacity available");
-      }
-
-      let price = Number(pkgRow.price);
-      // Apply room surcharge if provided
-      const surcharge = Number(clientRoomSurcharge) || 0;
-      price += surcharge;
-
-      // Apply infant/child pricing if applicable
-      // Enhancement 5: Check package-level overrides first, then fall back to global settings
-      if (pilgrimType === "infant" || pilgrimType === "child") {
-        const pkgOverrides = pkgRow.pricing_overrides || {};
-        const hasOverride = pilgrimType === "infant" ? pkgOverrides.infantPrice != null : pkgOverrides.childPrice != null;
-
-        if (hasOverride) {
-          // Use package-level pricing override
-          const overridePrice = pilgrimType === "infant" ? Number(pkgOverrides.infantPrice) : Number(pkgOverrides.childPrice);
-          if (overridePrice) price += overridePrice;
-        } else {
-          // Fall back to global site settings
-          const pricingSetting = await tx.query.siteSettingsTable.findFirst({
-            where: eq(siteSettingsTable.key, "child_infant_pricing"),
-          });
-          if (pricingSetting && pricingSetting.value) {
-            try {
-              const pricing = JSON.parse(pricingSetting.value);
-              if (pilgrimType === "infant" && pricing.infantPrice) {
-                price += Number(pricing.infantPrice);
-              } else if (pilgrimType === "child" && pricing.childPrice) {
-                price += Number(pricing.childPrice);
-              }
-            } catch (e) {
-              // Ignore parse error
-            }
-          }
-        }
-      }
-
-      // Enhancement 2: Apply agent pricing (discount + commission) same as agent self-registration
-      let commissionAmount = 0;
-      let agentRecord: any = null;
-      let hasAgentDiscount = false;
-
-      if (agentIdValue) {
-        agentRecord = await tx.query.agentsTable.findFirst({
-          where: eq(agentsTable.id, agentIdValue),
-        });
-
-        const agentDiscount = await tx.query.agentPackageDiscountsTable.findFirst({
-          where: and(
-            eq(agentPackageDiscountsTable.agentId, agentIdValue),
-            eq(agentPackageDiscountsTable.packageId, packageId),
-          ),
-        });
-        if (agentDiscount) {
-          hasAgentDiscount = true;
-          if (agentDiscount.discountType === "percentage") {
-            price = Math.round((price - (price * Number(agentDiscount.discountValue) / 100)) * 100) / 100;
-          } else {
-            price = Math.max(0, price - Number(agentDiscount.discountValue));
-          }
-        }
-
-        // Apply commission as price reduction (same rule as agent self-register)
-        // RULE: Package discount OVERRIDES commission. Commission only applies when no package discount.
-        if (agentRecord) {
-          if (customCommission != null && Number(customCommission) >= 0) {
-            // Admin specified a custom commission amount
-            commissionAmount = Number(customCommission);
-            price = Math.max(0, price - commissionAmount);
-          } else if (!hasAgentDiscount) {
-            const commRate = Number(agentRecord.commissionRate);
-            if (commRate > 0) {
-              commissionAmount = agentRecord.commissionType === "percentage"
-                ? Math.round(price * commRate / 100 * 100) / 100
-                : Math.min(commRate, price);
-              price = Math.max(0, price - commissionAmount);
-            }
-          }
-        }
-      }
-
-      let userId = req.body.userId;
-      if (!userId) {
-        const walkinUuid = randomUUID();
-        const [newProfile] = await tx.insert(profilesTable).values({
-          id: randomUUID(),
-          clerkUserId: `walkin-${walkinUuid}`,
-          email: `walkin-${walkinUuid}@raudah.internal`,
-          fullName: fullName || "Walk-in Pilgrim",
-          role: "user",
-        }).returning();
-        userId = newProfile.id;
-      }
-
-      [booking] = await tx.insert(bookingsTable).values({
-        id: randomUUID(),
-        reference,
-        userId,
-        packageId,
-        packageDateId:                 nullify(packageDateId) as string | undefined,
-        agentId:                       nullify(agentId) as string | undefined,
-        registeredByStaffId:           staffProfileId || undefined,
-        // PARTIAL PAYMENT FIX: Only confirm booking when fully paid
-        status: markVerified && (Number(amountPaid) || price) >= price ? "confirmed" : "pending",
-        totalPrice: String(price),
-        // BUG FIX: When markVerified=false, payment is created as "pending" below and
-        // the verify handler will accumulate amountPaid via `amountPaid + payment.amount`.
-        // Pre-populating amountPaid here would cause double-counting.
-        // When markVerified=true, payment is inserted as "verified" (no future accumulation),
-        // so pre-populating is correct.
-        amountPaid: markVerified ? String(amountPaid || price) : "0",
-        pilgrimCount: 1,
-        // name / civility
-        civility:                      nullify(civility) as string | undefined,
-        firstName:                     nullify(firstName) as string | undefined,
-        lastName:                      nullify(lastName) as string | undefined,
-        fullName:                      resolvedFullName,
-        // passport
-        passportNumber:                nullify(passportNumber) as string | undefined,
-        passportIssueDate:             nullify(passportIssueDate) as string | undefined,
-        passportExpiry:                nullify(passportExpiry) as string | undefined,
-        passportIssuingAuthority:      nullify(passportIssuingAuthority) as string | undefined,
-        passportCopyUrl:               nullify(passportCopyUrl) as string | undefined,
-        profilePhotoUrl:               nullify(profilePhotoUrl) as string | undefined,
-        // personal
-        dateOfBirth:                   nullify(dateOfBirth) as string | undefined,
-        placeOfBirth:                  nullify(placeOfBirth) as string | undefined,
-        gender:                        nullify(gender) as string | undefined,
-        nationality:                   nullify(nationality) as string | undefined,
-        ethnicGroup:                   nullify(ethnicGroup) as string | undefined,
-        maritalStatus:                 nullify(maritalStatus) as string | undefined,
-        levelOfStudy:                  nullify(levelOfStudy) as string | undefined,
-        visaNumber:                    nullify(visaNumber) as string | undefined,
-        observation:                   nullify(observation) as string | undefined,
-        // partner / cover
-        partner:                       nullify(partner) as string | undefined,
-        underCover:                    nullify(underCover) as string | undefined,
-        // contact & address
-        phone:                         nullify(phone) as string | undefined,
-        email:                         nullify(email) as string | undefined,
-        country:                       nullify(country) as string | undefined,
-        city:                          nullify(city) as string | undefined,
-        address:                       nullify(address) as string | undefined,
-        // travel
-        departureCity:                 nullify(departureCity) as string | undefined,
-        roomPreference:                nullify(roomPreference) as string | undefined,
-        specialRequests:               nullify(specialRequests) as string | undefined,
-        // emergency
-        emergencyContactName:          nullify(emergencyContactName) as string | undefined,
-        emergencyContactPhone:         nullify(emergencyContactPhone) as string | undefined,
-        emergencyContactRelationship:  nullify(emergencyContactRelationship) as string | undefined,
-        // health / family
-        meningitisVaccineDate:         nullify(meningitisVaccineDate) as string | undefined,
-        fathersName:                   nullify(fathersName) as string | undefined,
-        mothersName:                   nullify(mothersName) as string | undefined,
-        mahramName:                    nullify(mahramName) as string | undefined,
-        mahramRelationship:            nullify(mahramRelationship) as string | undefined,
-        mahramPassport:                nullify(mahramPassport) as string | undefined,
-        // room surcharge, pilgrim type, batch
-        roomSurcharge:                 String(surcharge),
-        pilgrimType:                   pilgrimType || "adult",
-        parentBookingId:               nullify(parentBookingId) as string | undefined,
-        batchId:                       nullify(batchId) as string | undefined,
-      }).returning();
-
-      await tx.update(packagesTable)
-        .set({ currentBookings: sql`${packagesTable.currentBookings} + 1` })
-        .where(eq(packagesTable.id, packageId));
-
-      const isFullyPaid = Number(booking.amountPaid) >= price;
-      if (markVerified && isFullyPaid) {
-        // Generate an idNumber for fully paid bookings
-        await tx.execute(sql`
-          UPDATE bookings 
-          SET id_number = nextval('bookings_id_number_seq') 
-          WHERE id = ${booking.id} AND id_number IS NULL
-        `);
-      }
-
-      const existingVisa = await tx.query.visaApplicationsTable.findFirst({
-        where: eq(visaApplicationsTable.bookingId, booking.id),
-      });
-      if (!existingVisa) {
-        await tx.insert(visaApplicationsTable).values({
-          id: randomUUID(),
-          bookingId: booking.id,
-          pilgrimName: booking.fullName ?? null,
-          passportNumber: booking.passportNumber ?? null,
-          status: (markVerified && isFullyPaid) ? "pending" : "awaiting_payment",
-        });
-      }
-
-      const initialAmountPaid = Number(booking.amountPaid);
-      if (initialAmountPaid > 0) {
-        await tx.insert(paymentsTable).values({
-          id: randomUUID(),
-          bookingId: booking.id,
-          userId: booking.userId,
-          amount: String(initialAmountPaid),
-          method: paymentMethod || "cash",
-          status: markVerified ? "verified" : "pending",
-          reference: paymentReference || `INIT-${booking.reference}`,
-          proofUrl: paymentProofUrl || null,
-          notes: agentIdValue ? "Initial payment during admin-agent registration" : "Initial payment during registration",
-        });
-      }
-
-      // Enhancement 2: Create commission record for agent bookings
-      if (agentIdValue && commissionAmount > 0) {
-        await tx.insert(commissionsTable).values({
-          id: randomUUID(),
-          agentId: agentIdValue,
-          bookingId: booking.id,
-          amount: String(commissionAmount),
-          status: "pending",
-        });
-      }
+    const result = await createBooking({
+      packageId, packageDateId, agentId, paymentMethod, markVerified,
+      amountPaid, paymentReference, paymentProofUrl, userId: req.body.userId,
+      civility, firstName, lastName, fullName,
+      passportNumber, passportIssueDate, passportExpiry, passportIssuingAuthority,
+      passportCopyUrl, profilePhotoUrl,
+      dateOfBirth, placeOfBirth, gender, nationality, ethnicGroup,
+      maritalStatus, levelOfStudy, visaNumber, observation,
+      partner, underCover,
+      phone, email, country, city, address,
+      departureCity, roomPreference, specialRequests,
+      emergencyContactName, emergencyContactPhone, emergencyContactRelationship,
+      meningitisVaccineDate, fathersName, mothersName,
+      mahramName, mahramRelationship, mahramPassport,
+      roomSurcharge: clientRoomSurcharge,
+      pilgrimType, parentBookingId, batchId,
+      customCommission,
+      registeredByStaffId: staffProfileId,
     });
+    booking = result.booking;
+    reference = result.reference;
   } catch (err: any) {
-    // Capacity-full is a 409, other errors are 400
-    if (err.message?.includes("fully booked")) {
-      return res.status(409).json({ error: err.message });
+    if (err instanceof RegistrationError) {
+      return res.status(err.status).json({ error: err.message });
     }
     return res.status(400).json({ error: err.message || "Registration failed" });
   }

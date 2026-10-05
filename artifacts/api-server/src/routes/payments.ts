@@ -882,7 +882,7 @@ router.post("/payments/admin-record", async (req, res) => {
   // Also allow agents — they'll be verified against their booking below
   let actorAgent: typeof agentsTable.$inferSelect | null = null;
   if (!isAdmin) {
-    actorAgent = await db.query.agentsTable.findFirst({ where: eq(agentsTable.userId, actorProfile.id) });
+    actorAgent = (await db.query.agentsTable.findFirst({ where: eq(agentsTable.userId, actorProfile.id) })) ?? null;
     if (!actorAgent || actorAgent.status !== "active") {
       return res.status(403).json({ error: "Admin or active agent access required" });
     }

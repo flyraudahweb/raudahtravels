@@ -72,7 +72,7 @@ router.post("/files/upload", (req, res, next) => {
     }
 
     // Check R2 configuration before attempting upload
-    if (!isR2Configured()) {
+    if (!await isR2Configured()) {
       logger.error('R2 storage is not configured. Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY environment variables.');
       res.status(503).json({ error: 'File storage is temporarily unavailable. Please contact support.' });
       return;

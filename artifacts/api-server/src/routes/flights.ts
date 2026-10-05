@@ -36,7 +36,7 @@ router.get("/flights/places", async (req, res) => {
       return res.json({ places: [] });
     }
 
-    const data = await apiRes.json();
+    const data = await apiRes.json() as { data?: unknown[] };
     return res.json({ places: data.data || [] });
   } catch (err) {
     console.error("Places search error:", err);
@@ -107,7 +107,7 @@ router.post("/flights/search", async (req, res) => {
     const offerRequest = await duffel.offerRequests.create(offerRequestParams);
 
     // Sort by price ascending and limit to 30 for performance
-    const rawOffers = (offerRequest.data.offers ?? [])
+    const rawOffers = ("offers" in offerRequest.data ? offerRequest.data.offers ?? [] : [])
       .sort((a: any, b: any) => parseFloat(a.total_amount) - parseFloat(b.total_amount))
       .slice(0, 30);
 
@@ -169,7 +169,7 @@ router.post("/flights/search", async (req, res) => {
     return res.json({
       offers,
       total: rawOffers.length,
-      totalAll: (offerRequest.data.offers ?? []).length,
+      totalAll: ("offers" in offerRequest.data ? offerRequest.data.offers ?? [] : []).length,
       offerRequestId: offerRequest.data.id,
       passengerIds,
     });
@@ -226,7 +226,7 @@ router.post("/flights/paystack/initialize", async (req, res) => {
       }),
     });
 
-    const data = await paystackRes.json();
+    const data = await paystackRes.json() as { status: boolean; message?: string; data: { authorization_url: string; reference: string; access_code: string } };
     if (!data.status) {
       return res.status(400).json({ error: data.message ?? "Paystack initialization failed" });
     }
@@ -268,7 +268,7 @@ router.post("/flights/paystack/verify", async (req, res) => {
       },
     );
 
-    const data = await paystackRes.json();
+    const data = await paystackRes.json() as { status: boolean; message?: string; data: { authorization_url: string; reference: string; access_code: string } };
     return res.json(data);
   } catch (err) {
     console.error("Paystack verify error:", err);
@@ -300,7 +300,7 @@ router.post("/flights/checkout", async (req, res) => {
         headers: { Authorization: `Bearer ${secretKey}` },
       },
     );
-    const verifyData = await verifyRes.json();
+    const verifyData = await verifyRes.json() as { status: boolean; data?: { status?: string; amount?: number; reference?: string } };
 
     if (!verifyData.status || verifyData.data?.status !== "success") {
       return res.status(400).json({ error: "Payment not verified. Cannot complete booking." });

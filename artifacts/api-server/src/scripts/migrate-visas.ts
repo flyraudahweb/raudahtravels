@@ -1,5 +1,5 @@
-import { db } from "../db/index.js";
-import { bookingsTable, visaApplicationsTable } from "../db/schema.js";
+import { db } from "@workspace/db";
+import { bookingsTable, visaApplicationsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 
 async function main() {

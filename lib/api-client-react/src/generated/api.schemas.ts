@@ -84,6 +84,11 @@ export interface SyncProfileBody {
   avatarUrl?: string;
 }
 
+/**
+ * @nullable
+ */
+export type TravelPackagePricingOverrides = { [key: string]: unknown } | null;
+
 export type TravelPackageType =
   (typeof TravelPackageType)[keyof typeof TravelPackageType];
 
@@ -125,6 +130,8 @@ export const TravelPackageCountdownAction = {
 } as const;
 
 export interface TravelPackage {
+  /** @nullable */
+  pricingOverrides?: TravelPackagePricingOverrides;
   id: string;
   name: string;
   type: TravelPackageType;
@@ -150,7 +157,6 @@ export interface TravelPackage {
   countdownEnabled: boolean;
   countdownExpiry?: string | null;
   countdownAction: TravelPackageCountdownAction;
-  pricingOverrides?: Record<string, unknown> | string | null;
   isRegistrationClosed: boolean;
   createdAt: string;
   packageDates?: PackageDate[];
@@ -951,6 +957,111 @@ export interface AnalyticsData {
   packageBreakdown: AnalyticsDataPackageBreakdownItem[];
 }
 
+export interface AiRegistrationReviewFields {
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  email?: string;
+  passportNumber?: string;
+  passportIssueDate?: string;
+  passportExpiry?: string;
+  dateOfBirth?: string;
+  nationality?: string;
+  gender?: string;
+  packageId?: string;
+  country?: string;
+  city?: string;
+  address?: string;
+  specialRequests?: string;
+}
+
+export interface AiRegistrationApproval {
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  email?: string;
+  passportNumber?: string;
+  passportIssueDate?: string;
+  passportExpiry?: string;
+  dateOfBirth?: string;
+  nationality?: string;
+  gender?: string;
+  packageId?: string;
+  country?: string;
+  city?: string;
+  address?: string;
+  specialRequests?: string;
+  packageDateId?: string;
+  agentId?: string;
+  duplicateOverrideReason?: string;
+}
+
+export interface AiRegistrationRejection {
+  /**
+   * @minLength 3
+   * @maxLength 1000
+   */
+  reason: string;
+}
+
+export type AiRegistrationSubmissionStatus =
+  (typeof AiRegistrationSubmissionStatus)[keyof typeof AiRegistrationSubmissionStatus];
+
+export const AiRegistrationSubmissionStatus = {
+  pending_review: "pending_review",
+  approved: "approved",
+  rejected: "rejected",
+} as const;
+
+export type AiRegistrationSubmissionSnapshot = { [key: string]: unknown };
+
+/**
+ * @nullable
+ */
+export type AiRegistrationSubmissionReviewData = {
+  [key: string]: unknown;
+} | null;
+
+export type AiRegistrationSubmissionChannel =
+  (typeof AiRegistrationSubmissionChannel)[keyof typeof AiRegistrationSubmissionChannel];
+
+export const AiRegistrationSubmissionChannel = {
+  whatsapp: "whatsapp",
+  telegram: "telegram",
+} as const;
+
+export type AiRegistrationSubmissionDuplicateMatchesItem = {
+  [key: string]: unknown;
+};
+
+export interface AiRegistrationSubmission {
+  id: string;
+  sessionId: string;
+  status: AiRegistrationSubmissionStatus;
+  snapshot: AiRegistrationSubmissionSnapshot;
+  /** @nullable */
+  reviewData?: AiRegistrationSubmissionReviewData;
+  createdAt: string;
+  channel?: AiRegistrationSubmissionChannel;
+  /** @nullable */
+  duplicateStatus?: string | null;
+  duplicateMatches?: AiRegistrationSubmissionDuplicateMatchesItem[];
+  /** @nullable */
+  extractionProvider?: string | null;
+  /** @nullable */
+  displayName?: string | null;
+  /** @nullable */
+  phone?: string | null;
+  /** @nullable */
+  rejectionReason?: string | null;
+  /** @nullable */
+  bookingId?: string | null;
+  /** @nullable */
+  passportImageR2Key?: string | null;
+}
+
 export type ListPackagesParams = {
   type?: ListPackagesType;
   available?: boolean;
@@ -1134,3 +1245,72 @@ export const GetAnalyticsPeriod = {
   quarter: "quarter",
   year: "year",
 } as const;
+
+export type ListAiRegistrationsParams = {
+  status?: string;
+  channel?: string;
+  duplicateStatus?: string;
+  q?: string;
+  page?: number;
+  limit?: number;
+};
+
+export type ListAiRegistrations200 = {
+  submissions?: AiRegistrationSubmission[];
+  total?: number;
+  page?: number;
+  limit?: number;
+};
+
+export type GetAiRegistrationStats200 = { [key: string]: unknown };
+
+export type ListFailedAiRegistrationJobs200 = { [key: string]: unknown };
+
+export type RetryAiRegistrationJob200 = {
+  retried?: boolean;
+};
+
+export type PurgeAiRegistrationMedia200 = {
+  purged?: number;
+};
+
+export type GetAiRegistration200Session = { [key: string]: unknown };
+
+export type GetAiRegistration200AuditItem = { [key: string]: unknown };
+
+export type GetAiRegistration200 = {
+  submission?: AiRegistrationSubmission;
+  session?: GetAiRegistration200Session;
+  /** @nullable */
+  passportImageUrl?: string | null;
+  audit?: GetAiRegistration200AuditItem[];
+};
+
+export type UpdateAiRegistration200 = {
+  submission?: AiRegistrationSubmission;
+};
+
+export type ApproveAiRegistration200Booking = { [key: string]: unknown };
+
+export type ApproveAiRegistration200 = {
+  submission?: AiRegistrationSubmission;
+  booking?: ApproveAiRegistration200Booking;
+};
+
+export type RejectAiRegistration200 = {
+  submission?: AiRegistrationSubmission;
+};
+
+export type RetryAiRegistrationExtraction200Extraction = {
+  [key: string]: unknown;
+};
+
+export type RetryAiRegistrationExtraction200 = {
+  submission?: AiRegistrationSubmission;
+  extraction?: RetryAiRegistrationExtraction200Extraction;
+  provider?: string;
+};
+
+export type SkipAiRegistrationJob200 = {
+  skipped?: boolean;
+};

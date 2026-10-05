@@ -15,6 +15,9 @@ import {
 } from "./middlewares/clerkProxyMiddleware";
 
 const app: Express = express();
+const proxyHops = Number(process.env.TRUST_PROXY_HOPS || 0);
+if (!Number.isInteger(proxyHops) || proxyHops < 0 || proxyHops > 5) throw new Error("Invalid TRUST_PROXY_HOPS");
+if (proxyHops) app.set("trust proxy", proxyHops);
 
 app.use(
   pinoHttp({

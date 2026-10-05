@@ -1424,6 +1424,294 @@ paths:
               schema:
                 $ref: "#/components/schemas/AnalyticsData"
 
+  /admin/ai-registrations:
+    get:
+      operationId: listAiRegistrations
+      tags: [admin]
+      summary: listAiRegistrations
+      parameters: [{"name": "status", "in": "query", "schema": {"type": "string"}}, {"name": "channel", "in": "query", "schema": {"type": "string"}}, {"name": "duplicateStatus", "in": "query", "schema": {"type": "string"}}, {"name": "q", "in": "query", "schema": {"type": "string"}}, {"name": "page", "in": "query", "schema": {"type": "integer"}}, {"name": "limit", "in": "query", "schema": {"type": "integer"}}]
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: {"type": "object", "properties": {"submissions": {"type": "array", "items": {"$ref": "#/components/schemas/AiRegistrationSubmission"}}, "total": {"type": "integer"}, "page": {"type": "integer"}, "limit": {"type": "integer"}}}
+        "400":
+          description: Invalid fields
+        "401":
+          description: Authentication required
+        "403":
+          description: Permission required
+        "404":
+          description: Not found
+        "409":
+          description: State conflict
+        "500":
+          description: Server error
+  /admin/ai-registrations/stats:
+    get:
+      operationId: getAiRegistrationStats
+      tags: [admin]
+      summary: getAiRegistrationStats
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: {"type": "object", "additionalProperties": true}
+        "400":
+          description: Invalid fields
+        "401":
+          description: Authentication required
+        "403":
+          description: Permission required
+        "404":
+          description: Not found
+        "409":
+          description: State conflict
+        "500":
+          description: Server error
+  /admin/ai-registrations/jobs:
+    get:
+      operationId: listFailedAiRegistrationJobs
+      tags: [admin]
+      summary: listFailedAiRegistrationJobs
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: {"type": "object", "additionalProperties": true}
+        "400":
+          description: Invalid fields
+        "401":
+          description: Authentication required
+        "403":
+          description: Permission required
+        "404":
+          description: Not found
+        "409":
+          description: State conflict
+        "500":
+          description: Server error
+  /admin/ai-registrations/jobs/{jobId}/retry:
+    post:
+      operationId: retryAiRegistrationJob
+      tags: [admin]
+      summary: retryAiRegistrationJob
+      parameters: [{"name": "jobId", "in": "path", "required": true, "schema": {"type": "string"}}]
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: {"type": "object", "properties": {"retried": {"type": "boolean"}}}
+        "400":
+          description: Invalid fields
+        "401":
+          description: Authentication required
+        "403":
+          description: Permission required
+        "404":
+          description: Not found
+        "409":
+          description: State conflict
+        "500":
+          description: Server error
+  /admin/ai-registrations/purge:
+    post:
+      operationId: purgeAiRegistrationMedia
+      tags: [admin]
+      summary: purgeAiRegistrationMedia
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: {"type": "object", "properties": {"purged": {"type": "integer"}}}
+        "400":
+          description: Invalid fields
+        "401":
+          description: Authentication required
+        "403":
+          description: Permission required
+        "404":
+          description: Not found
+        "409":
+          description: State conflict
+        "500":
+          description: Server error
+  /admin/ai-registrations/{id}:
+    get:
+      operationId: getAiRegistration
+      tags: [admin]
+      summary: getAiRegistration
+      parameters: [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}]
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: {"type": "object", "properties": {"submission": {"$ref": "#/components/schemas/AiRegistrationSubmission"}, "session": {"type": "object", "additionalProperties": true}, "passportImageUrl": {"type": ["string", "null"]}, "audit": {"type": "array", "items": {"type": "object", "additionalProperties": true}}}}
+        "400":
+          description: Invalid fields
+        "401":
+          description: Authentication required
+        "403":
+          description: Permission required
+        "404":
+          description: Not found
+        "409":
+          description: State conflict
+        "500":
+          description: Server error
+    put:
+      operationId: updateAiRegistration
+      tags: [admin]
+      summary: updateAiRegistration
+      parameters: [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}]
+      requestBody: {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AiRegistrationReviewFields"}}}}
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: {"type": "object", "properties": {"submission": {"$ref": "#/components/schemas/AiRegistrationSubmission"}}}
+        "400":
+          description: Invalid fields
+        "401":
+          description: Authentication required
+        "403":
+          description: Permission required
+        "404":
+          description: Not found
+        "409":
+          description: State conflict
+        "500":
+          description: Server error
+  /admin/ai-registrations/{id}/approve:
+    post:
+      operationId: approveAiRegistration
+      tags: [admin]
+      summary: approveAiRegistration
+      parameters: [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}]
+      requestBody: {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AiRegistrationApproval"}}}}
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: {"type": "object", "properties": {"submission": {"$ref": "#/components/schemas/AiRegistrationSubmission"}, "booking": {"type": "object", "additionalProperties": true}}}
+        "400":
+          description: Invalid fields
+        "401":
+          description: Authentication required
+        "403":
+          description: Permission required
+        "404":
+          description: Not found
+        "409":
+          description: State conflict
+        "500":
+          description: Server error
+  /admin/ai-registrations/{id}/reject:
+    post:
+      operationId: rejectAiRegistration
+      tags: [admin]
+      summary: rejectAiRegistration
+      parameters: [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}]
+      requestBody: {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AiRegistrationRejection"}}}}
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: {"type": "object", "properties": {"submission": {"$ref": "#/components/schemas/AiRegistrationSubmission"}}}
+        "400":
+          description: Invalid fields
+        "401":
+          description: Authentication required
+        "403":
+          description: Permission required
+        "404":
+          description: Not found
+        "409":
+          description: State conflict
+        "500":
+          description: Server error
+  /admin/ai-registrations/{id}/retry-extraction:
+    post:
+      operationId: retryAiRegistrationExtraction
+      tags: [admin]
+      summary: retryAiRegistrationExtraction
+      parameters: [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}]
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: {"type": "object", "properties": {"submission": {"$ref": "#/components/schemas/AiRegistrationSubmission"}, "extraction": {"type": "object", "additionalProperties": true}, "provider": {"type": "string"}}}
+        "400":
+          description: Invalid fields
+        "401":
+          description: Authentication required
+        "403":
+          description: Permission required
+        "404":
+          description: Not found
+        "409":
+          description: State conflict
+        "500":
+          description: Server error
+  /admin/ai-registrations/{id}/passport-image:
+    get:
+      operationId: getAiRegistrationPassportImage
+      tags: [admin]
+      summary: getAiRegistrationPassportImage
+      parameters: [{"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}]
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema: {"type": "string", "format": "binary"}
+        "400":
+          description: Invalid fields
+        "401":
+          description: Authentication required
+        "403":
+          description: Permission required
+        "404":
+          description: Not found
+        "409":
+          description: State conflict
+        "500":
+          description: Server error
+
+  /admin/ai-registrations/jobs/{jobId}/skip:
+    post:
+      operationId: skipAiRegistrationJob
+      tags: [admin]
+      summary: Skip a failed channel message and unblock the sender
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AiRegistrationRejection' }
+      responses:
+        '200':
+          description: Skipped
+          content:
+            application/json:
+              schema: { type: object, properties: { skipped: { type: boolean } } }
+        '409':
+          description: Job is not failed
+
 components:
   schemas:
     PackageDate:
@@ -1569,6 +1857,10 @@ components:
     TravelPackage:
       type: object
       properties:
+        pricingOverrides:
+          type: [object, 'null']
+          additionalProperties: true
+
         id:
           type: string
         name:
@@ -2798,3 +3090,11 @@ components:
                 type: number
             required: [name, bookings, revenue]
       required: [period, totalRevenue, totalBookings, newPilgrims, revenueByPeriod, packageBreakdown]
+
+    AiRegistrationReviewFields: {"type": "object", "additionalProperties": false, "properties": {"fullName": {"type": "string"}, "firstName": {"type": "string"}, "lastName": {"type": "string"}, "phone": {"type": "string"}, "email": {"type": "string"}, "passportNumber": {"type": "string"}, "passportIssueDate": {"type": "string"}, "passportExpiry": {"type": "string"}, "dateOfBirth": {"type": "string"}, "nationality": {"type": "string"}, "gender": {"type": "string"}, "packageId": {"type": "string"}, "country": {"type": "string"}, "city": {"type": "string"}, "address": {"type": "string"}, "specialRequests": {"type": "string"}}}
+
+    AiRegistrationApproval: {"type": "object", "additionalProperties": false, "properties": {"fullName": {"type": "string"}, "firstName": {"type": "string"}, "lastName": {"type": "string"}, "phone": {"type": "string"}, "email": {"type": "string"}, "passportNumber": {"type": "string"}, "passportIssueDate": {"type": "string"}, "passportExpiry": {"type": "string"}, "dateOfBirth": {"type": "string"}, "nationality": {"type": "string"}, "gender": {"type": "string"}, "packageId": {"type": "string"}, "country": {"type": "string"}, "city": {"type": "string"}, "address": {"type": "string"}, "specialRequests": {"type": "string"}, "packageDateId": {"type": "string"}, "agentId": {"type": "string"}, "duplicateOverrideReason": {"type": "string"}}}
+
+    AiRegistrationRejection: {"type": "object", "additionalProperties": false, "required": ["reason"], "properties": {"reason": {"type": "string", "minLength": 3, "maxLength": 1000}}}
+
+    AiRegistrationSubmission: {"type": "object", "required": ["id", "sessionId", "status", "snapshot", "createdAt"], "properties": {"id": {"type": "string"}, "sessionId": {"type": "string"}, "status": {"type": "string", "enum": ["pending_review", "approved", "rejected"]}, "snapshot": {"type": "object", "additionalProperties": true}, "reviewData": {"type": ["object", "null"], "additionalProperties": true}, "createdAt": {"type": "string", "format": "date-time"}, "channel": {"type": "string", "enum": ["whatsapp", "telegram"]}, "duplicateStatus": {"type": ["string", "null"]}, "duplicateMatches": {"type": "array", "items": {"type": "object", "additionalProperties": true}}, "extractionProvider": {"type": ["string", "null"]}, "displayName": {"type": ["string", "null"]}, "phone": {"type": ["string", "null"]}, "rejectionReason": {"type": ["string", "null"]}, "bookingId": {"type": ["string", "null"]}, "passportImageR2Key": {"type": ["string", "null"]}}}

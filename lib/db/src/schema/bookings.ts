@@ -126,6 +126,18 @@ export const bookingsTable = pgTable("bookings", {
 
   // Registration tracking
   registeredByStaffId: text("registered_by_staff_id").references(() => profilesTable.id),
+  // ── AI-assisted registration (additive, nullable) ────────────────────
+  /** Which intake channel created this booking */
+  source: text("source").notNull().default("direct"),
+  /** FK to ai_registration_sessions.id when source is whatsapp_ai / telegram_ai */
+  aiSessionId: text("ai_session_id"),
+  /** Human-review state for AI-assisted registrations */
+  reviewStatus: text("review_status"),
+  reviewedById: text("reviewed_by_id").references(() => profilesTable.id),
+  reviewedAt: timestamp("reviewed_at"),
+  /** Duplicate-detection outcome at review time */
+  duplicateStatus: text("duplicate_status"),
+  duplicateMatches: json("duplicate_matches"),
 
   // Legacy / compat
   pilgrimDetails: text("pilgrim_details"),

@@ -27,8 +27,12 @@ import type {
   AgentOverview,
   AgentProfile,
   AgentWalletResponse,
+  AiRegistrationApproval,
+  AiRegistrationRejection,
+  AiRegistrationReviewFields,
   AnalyticsData,
   ApproveAgentBody,
+  ApproveAiRegistration200,
   ApproveApplicationBody,
   ApproveApplicationResponse,
   Booking,
@@ -52,14 +56,19 @@ import type {
   DeleteUser200,
   Document,
   DocumentListResponse,
+  GetAiRegistration200,
+  GetAiRegistrationStats200,
   GetAnalyticsParams,
   GetRecentActivityParams,
   HealthStatus,
   InviteStaffBody,
   ListAgentsParams,
+  ListAiRegistrations200,
+  ListAiRegistrationsParams,
   ListBookingsParams,
   ListCommissionsParams,
   ListDocumentsParams,
+  ListFailedAiRegistrationJobs200,
   ListNotificationsParams,
   ListPackageDates200,
   ListPackagesParams,
@@ -80,9 +89,14 @@ import type {
   PilgrimListResponse,
   PublicAgentApplicationBody,
   PublicApplyResponse,
+  PurgeAiRegistrationMedia200,
   RejectAgentApplication200,
+  RejectAiRegistration200,
   RejectApplicationBody,
+  RetryAiRegistrationExtraction200,
+  RetryAiRegistrationJob200,
   SetPackageDiscountBody,
+  SkipAiRegistrationJob200,
   StaffListResponse,
   StaffMember,
   SupportMessage,
@@ -92,6 +106,7 @@ import type {
   SyncProfileBody,
   TravelPackage,
   UpdateAgentProfileBody,
+  UpdateAiRegistration200,
   UpdateBookingBody,
   UpdateCommissionBody,
   UpdatePackageDateBody,
@@ -5880,3 +5895,1060 @@ export function useGetAnalytics<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary listAiRegistrations
+ */
+export const getListAiRegistrationsUrl = (
+  params?: ListAiRegistrationsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/ai-registrations?${stringifiedParams}`
+    : `/api/admin/ai-registrations`;
+};
+
+export const listAiRegistrations = async (
+  params?: ListAiRegistrationsParams,
+  options?: RequestInit,
+): Promise<ListAiRegistrations200> => {
+  return customFetch<ListAiRegistrations200>(
+    getListAiRegistrationsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListAiRegistrationsQueryKey = (
+  params?: ListAiRegistrationsParams,
+) => {
+  return [`/api/admin/ai-registrations`, ...(params ? [params] : [])] as const;
+};
+
+export const getListAiRegistrationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAiRegistrations>>,
+  TError = ErrorType<void>,
+>(
+  params?: ListAiRegistrationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAiRegistrations>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListAiRegistrationsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listAiRegistrations>>
+  > = ({ signal }) =>
+    listAiRegistrations(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAiRegistrations>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAiRegistrationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAiRegistrations>>
+>;
+export type ListAiRegistrationsQueryError = ErrorType<void>;
+
+/**
+ * @summary listAiRegistrations
+ */
+
+export function useListAiRegistrations<
+  TData = Awaited<ReturnType<typeof listAiRegistrations>>,
+  TError = ErrorType<void>,
+>(
+  params?: ListAiRegistrationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listAiRegistrations>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAiRegistrationsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary getAiRegistrationStats
+ */
+export const getGetAiRegistrationStatsUrl = () => {
+  return `/api/admin/ai-registrations/stats`;
+};
+
+export const getAiRegistrationStats = async (
+  options?: RequestInit,
+): Promise<GetAiRegistrationStats200> => {
+  return customFetch<GetAiRegistrationStats200>(
+    getGetAiRegistrationStatsUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetAiRegistrationStatsQueryKey = () => {
+  return [`/api/admin/ai-registrations/stats`] as const;
+};
+
+export const getGetAiRegistrationStatsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAiRegistrationStats>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAiRegistrationStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAiRegistrationStatsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAiRegistrationStats>>
+  > = ({ signal }) => getAiRegistrationStats({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAiRegistrationStats>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAiRegistrationStatsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAiRegistrationStats>>
+>;
+export type GetAiRegistrationStatsQueryError = ErrorType<void>;
+
+/**
+ * @summary getAiRegistrationStats
+ */
+
+export function useGetAiRegistrationStats<
+  TData = Awaited<ReturnType<typeof getAiRegistrationStats>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getAiRegistrationStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAiRegistrationStatsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary listFailedAiRegistrationJobs
+ */
+export const getListFailedAiRegistrationJobsUrl = () => {
+  return `/api/admin/ai-registrations/jobs`;
+};
+
+export const listFailedAiRegistrationJobs = async (
+  options?: RequestInit,
+): Promise<ListFailedAiRegistrationJobs200> => {
+  return customFetch<ListFailedAiRegistrationJobs200>(
+    getListFailedAiRegistrationJobsUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListFailedAiRegistrationJobsQueryKey = () => {
+  return [`/api/admin/ai-registrations/jobs`] as const;
+};
+
+export const getListFailedAiRegistrationJobsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listFailedAiRegistrationJobs>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listFailedAiRegistrationJobs>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListFailedAiRegistrationJobsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listFailedAiRegistrationJobs>>
+  > = ({ signal }) =>
+    listFailedAiRegistrationJobs({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listFailedAiRegistrationJobs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListFailedAiRegistrationJobsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listFailedAiRegistrationJobs>>
+>;
+export type ListFailedAiRegistrationJobsQueryError = ErrorType<void>;
+
+/**
+ * @summary listFailedAiRegistrationJobs
+ */
+
+export function useListFailedAiRegistrationJobs<
+  TData = Awaited<ReturnType<typeof listFailedAiRegistrationJobs>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listFailedAiRegistrationJobs>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListFailedAiRegistrationJobsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary retryAiRegistrationJob
+ */
+export const getRetryAiRegistrationJobUrl = (jobId: string) => {
+  return `/api/admin/ai-registrations/jobs/${jobId}/retry`;
+};
+
+export const retryAiRegistrationJob = async (
+  jobId: string,
+  options?: RequestInit,
+): Promise<RetryAiRegistrationJob200> => {
+  return customFetch<RetryAiRegistrationJob200>(
+    getRetryAiRegistrationJobUrl(jobId),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getRetryAiRegistrationJobMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryAiRegistrationJob>>,
+    TError,
+    { jobId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof retryAiRegistrationJob>>,
+  TError,
+  { jobId: string },
+  TContext
+> => {
+  const mutationKey = ["retryAiRegistrationJob"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof retryAiRegistrationJob>>,
+    { jobId: string }
+  > = (props) => {
+    const { jobId } = props ?? {};
+
+    return retryAiRegistrationJob(jobId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RetryAiRegistrationJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof retryAiRegistrationJob>>
+>;
+
+export type RetryAiRegistrationJobMutationError = ErrorType<void>;
+
+/**
+ * @summary retryAiRegistrationJob
+ */
+export const useRetryAiRegistrationJob = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryAiRegistrationJob>>,
+    TError,
+    { jobId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof retryAiRegistrationJob>>,
+  TError,
+  { jobId: string },
+  TContext
+> => {
+  return useMutation(getRetryAiRegistrationJobMutationOptions(options));
+};
+
+/**
+ * @summary purgeAiRegistrationMedia
+ */
+export const getPurgeAiRegistrationMediaUrl = () => {
+  return `/api/admin/ai-registrations/purge`;
+};
+
+export const purgeAiRegistrationMedia = async (
+  options?: RequestInit,
+): Promise<PurgeAiRegistrationMedia200> => {
+  return customFetch<PurgeAiRegistrationMedia200>(
+    getPurgeAiRegistrationMediaUrl(),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getPurgeAiRegistrationMediaMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof purgeAiRegistrationMedia>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof purgeAiRegistrationMedia>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["purgeAiRegistrationMedia"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof purgeAiRegistrationMedia>>,
+    void
+  > = () => {
+    return purgeAiRegistrationMedia(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PurgeAiRegistrationMediaMutationResult = NonNullable<
+  Awaited<ReturnType<typeof purgeAiRegistrationMedia>>
+>;
+
+export type PurgeAiRegistrationMediaMutationError = ErrorType<void>;
+
+/**
+ * @summary purgeAiRegistrationMedia
+ */
+export const usePurgeAiRegistrationMedia = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof purgeAiRegistrationMedia>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof purgeAiRegistrationMedia>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getPurgeAiRegistrationMediaMutationOptions(options));
+};
+
+/**
+ * @summary getAiRegistration
+ */
+export const getGetAiRegistrationUrl = (id: string) => {
+  return `/api/admin/ai-registrations/${id}`;
+};
+
+export const getAiRegistration = async (
+  id: string,
+  options?: RequestInit,
+): Promise<GetAiRegistration200> => {
+  return customFetch<GetAiRegistration200>(getGetAiRegistrationUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAiRegistrationQueryKey = (id: string) => {
+  return [`/api/admin/ai-registrations/${id}`] as const;
+};
+
+export const getGetAiRegistrationQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAiRegistration>>,
+  TError = ErrorType<void>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAiRegistration>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetAiRegistrationQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAiRegistration>>
+  > = ({ signal }) => getAiRegistration(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAiRegistration>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAiRegistrationQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAiRegistration>>
+>;
+export type GetAiRegistrationQueryError = ErrorType<void>;
+
+/**
+ * @summary getAiRegistration
+ */
+
+export function useGetAiRegistration<
+  TData = Awaited<ReturnType<typeof getAiRegistration>>,
+  TError = ErrorType<void>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAiRegistration>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAiRegistrationQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary updateAiRegistration
+ */
+export const getUpdateAiRegistrationUrl = (id: string) => {
+  return `/api/admin/ai-registrations/${id}`;
+};
+
+export const updateAiRegistration = async (
+  id: string,
+  aiRegistrationReviewFields: AiRegistrationReviewFields,
+  options?: RequestInit,
+): Promise<UpdateAiRegistration200> => {
+  return customFetch<UpdateAiRegistration200>(getUpdateAiRegistrationUrl(id), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(aiRegistrationReviewFields),
+  });
+};
+
+export const getUpdateAiRegistrationMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAiRegistration>>,
+    TError,
+    { id: string; data: BodyType<AiRegistrationReviewFields> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateAiRegistration>>,
+  TError,
+  { id: string; data: BodyType<AiRegistrationReviewFields> },
+  TContext
+> => {
+  const mutationKey = ["updateAiRegistration"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateAiRegistration>>,
+    { id: string; data: BodyType<AiRegistrationReviewFields> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateAiRegistration(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateAiRegistrationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateAiRegistration>>
+>;
+export type UpdateAiRegistrationMutationBody =
+  BodyType<AiRegistrationReviewFields>;
+export type UpdateAiRegistrationMutationError = ErrorType<void>;
+
+/**
+ * @summary updateAiRegistration
+ */
+export const useUpdateAiRegistration = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateAiRegistration>>,
+    TError,
+    { id: string; data: BodyType<AiRegistrationReviewFields> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateAiRegistration>>,
+  TError,
+  { id: string; data: BodyType<AiRegistrationReviewFields> },
+  TContext
+> => {
+  return useMutation(getUpdateAiRegistrationMutationOptions(options));
+};
+
+/**
+ * @summary approveAiRegistration
+ */
+export const getApproveAiRegistrationUrl = (id: string) => {
+  return `/api/admin/ai-registrations/${id}/approve`;
+};
+
+export const approveAiRegistration = async (
+  id: string,
+  aiRegistrationApproval: AiRegistrationApproval,
+  options?: RequestInit,
+): Promise<ApproveAiRegistration200> => {
+  return customFetch<ApproveAiRegistration200>(
+    getApproveAiRegistrationUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(aiRegistrationApproval),
+    },
+  );
+};
+
+export const getApproveAiRegistrationMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof approveAiRegistration>>,
+    TError,
+    { id: string; data: BodyType<AiRegistrationApproval> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof approveAiRegistration>>,
+  TError,
+  { id: string; data: BodyType<AiRegistrationApproval> },
+  TContext
+> => {
+  const mutationKey = ["approveAiRegistration"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof approveAiRegistration>>,
+    { id: string; data: BodyType<AiRegistrationApproval> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return approveAiRegistration(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ApproveAiRegistrationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof approveAiRegistration>>
+>;
+export type ApproveAiRegistrationMutationBody =
+  BodyType<AiRegistrationApproval>;
+export type ApproveAiRegistrationMutationError = ErrorType<void>;
+
+/**
+ * @summary approveAiRegistration
+ */
+export const useApproveAiRegistration = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof approveAiRegistration>>,
+    TError,
+    { id: string; data: BodyType<AiRegistrationApproval> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof approveAiRegistration>>,
+  TError,
+  { id: string; data: BodyType<AiRegistrationApproval> },
+  TContext
+> => {
+  return useMutation(getApproveAiRegistrationMutationOptions(options));
+};
+
+/**
+ * @summary rejectAiRegistration
+ */
+export const getRejectAiRegistrationUrl = (id: string) => {
+  return `/api/admin/ai-registrations/${id}/reject`;
+};
+
+export const rejectAiRegistration = async (
+  id: string,
+  aiRegistrationRejection: AiRegistrationRejection,
+  options?: RequestInit,
+): Promise<RejectAiRegistration200> => {
+  return customFetch<RejectAiRegistration200>(getRejectAiRegistrationUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(aiRegistrationRejection),
+  });
+};
+
+export const getRejectAiRegistrationMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof rejectAiRegistration>>,
+    TError,
+    { id: string; data: BodyType<AiRegistrationRejection> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof rejectAiRegistration>>,
+  TError,
+  { id: string; data: BodyType<AiRegistrationRejection> },
+  TContext
+> => {
+  const mutationKey = ["rejectAiRegistration"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof rejectAiRegistration>>,
+    { id: string; data: BodyType<AiRegistrationRejection> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return rejectAiRegistration(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RejectAiRegistrationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof rejectAiRegistration>>
+>;
+export type RejectAiRegistrationMutationBody =
+  BodyType<AiRegistrationRejection>;
+export type RejectAiRegistrationMutationError = ErrorType<void>;
+
+/**
+ * @summary rejectAiRegistration
+ */
+export const useRejectAiRegistration = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof rejectAiRegistration>>,
+    TError,
+    { id: string; data: BodyType<AiRegistrationRejection> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof rejectAiRegistration>>,
+  TError,
+  { id: string; data: BodyType<AiRegistrationRejection> },
+  TContext
+> => {
+  return useMutation(getRejectAiRegistrationMutationOptions(options));
+};
+
+/**
+ * @summary retryAiRegistrationExtraction
+ */
+export const getRetryAiRegistrationExtractionUrl = (id: string) => {
+  return `/api/admin/ai-registrations/${id}/retry-extraction`;
+};
+
+export const retryAiRegistrationExtraction = async (
+  id: string,
+  options?: RequestInit,
+): Promise<RetryAiRegistrationExtraction200> => {
+  return customFetch<RetryAiRegistrationExtraction200>(
+    getRetryAiRegistrationExtractionUrl(id),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getRetryAiRegistrationExtractionMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryAiRegistrationExtraction>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof retryAiRegistrationExtraction>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  const mutationKey = ["retryAiRegistrationExtraction"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof retryAiRegistrationExtraction>>,
+    { id: string }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return retryAiRegistrationExtraction(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RetryAiRegistrationExtractionMutationResult = NonNullable<
+  Awaited<ReturnType<typeof retryAiRegistrationExtraction>>
+>;
+
+export type RetryAiRegistrationExtractionMutationError = ErrorType<void>;
+
+/**
+ * @summary retryAiRegistrationExtraction
+ */
+export const useRetryAiRegistrationExtraction = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof retryAiRegistrationExtraction>>,
+    TError,
+    { id: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof retryAiRegistrationExtraction>>,
+  TError,
+  { id: string },
+  TContext
+> => {
+  return useMutation(getRetryAiRegistrationExtractionMutationOptions(options));
+};
+
+/**
+ * @summary getAiRegistrationPassportImage
+ */
+export const getGetAiRegistrationPassportImageUrl = (id: string) => {
+  return `/api/admin/ai-registrations/${id}/passport-image`;
+};
+
+export const getAiRegistrationPassportImage = async (
+  id: string,
+  options?: RequestInit,
+): Promise<Blob> => {
+  return customFetch<Blob>(getGetAiRegistrationPassportImageUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAiRegistrationPassportImageQueryKey = (id: string) => {
+  return [`/api/admin/ai-registrations/${id}/passport-image`] as const;
+};
+
+export const getGetAiRegistrationPassportImageQueryOptions = <
+  TData = Awaited<ReturnType<typeof getAiRegistrationPassportImage>>,
+  TError = ErrorType<void>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAiRegistrationPassportImage>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetAiRegistrationPassportImageQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getAiRegistrationPassportImage>>
+  > = ({ signal }) =>
+    getAiRegistrationPassportImage(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getAiRegistrationPassportImage>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetAiRegistrationPassportImageQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getAiRegistrationPassportImage>>
+>;
+export type GetAiRegistrationPassportImageQueryError = ErrorType<void>;
+
+/**
+ * @summary getAiRegistrationPassportImage
+ */
+
+export function useGetAiRegistrationPassportImage<
+  TData = Awaited<ReturnType<typeof getAiRegistrationPassportImage>>,
+  TError = ErrorType<void>,
+>(
+  id: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getAiRegistrationPassportImage>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetAiRegistrationPassportImageQueryOptions(
+    id,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Skip a failed channel message and unblock the sender
+ */
+export const getSkipAiRegistrationJobUrl = (jobId: string) => {
+  return `/api/admin/ai-registrations/jobs/${jobId}/skip`;
+};
+
+export const skipAiRegistrationJob = async (
+  jobId: string,
+  aiRegistrationRejection: AiRegistrationRejection,
+  options?: RequestInit,
+): Promise<SkipAiRegistrationJob200> => {
+  return customFetch<SkipAiRegistrationJob200>(
+    getSkipAiRegistrationJobUrl(jobId),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(aiRegistrationRejection),
+    },
+  );
+};
+
+export const getSkipAiRegistrationJobMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof skipAiRegistrationJob>>,
+    TError,
+    { jobId: string; data: BodyType<AiRegistrationRejection> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof skipAiRegistrationJob>>,
+  TError,
+  { jobId: string; data: BodyType<AiRegistrationRejection> },
+  TContext
+> => {
+  const mutationKey = ["skipAiRegistrationJob"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof skipAiRegistrationJob>>,
+    { jobId: string; data: BodyType<AiRegistrationRejection> }
+  > = (props) => {
+    const { jobId, data } = props ?? {};
+
+    return skipAiRegistrationJob(jobId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SkipAiRegistrationJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof skipAiRegistrationJob>>
+>;
+export type SkipAiRegistrationJobMutationBody =
+  BodyType<AiRegistrationRejection>;
+export type SkipAiRegistrationJobMutationError = ErrorType<void>;
+
+/**
+ * @summary Skip a failed channel message and unblock the sender
+ */
+export const useSkipAiRegistrationJob = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof skipAiRegistrationJob>>,
+    TError,
+    { jobId: string; data: BodyType<AiRegistrationRejection> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof skipAiRegistrationJob>>,
+  TError,
+  { jobId: string; data: BodyType<AiRegistrationRejection> },
+  TContext
+> => {
+  return useMutation(getSkipAiRegistrationJobMutationOptions(options));
+};

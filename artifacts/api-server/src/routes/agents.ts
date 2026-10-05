@@ -532,7 +532,7 @@ router.post("/agent/register-client", async (req, res) => {
             });
             if (pricingSetting && pricingSetting.value) {
               try {
-                const pricing = JSON.parse(pricingSetting.value);
+                const pricing = JSON.parse(String(pricingSetting.value));
                 if (pilgrimType === "infant" && pricing.infantPrice) {
                   price += Number(pricing.infantPrice);
                 } else if (pilgrimType === "child" && pricing.childPrice) {
@@ -738,7 +738,7 @@ router.post("/agent/register-client", async (req, res) => {
           });
           if (pricingSetting && pricingSetting.value) {
             try {
-              const pricing = JSON.parse(pricingSetting.value);
+              const pricing = JSON.parse(String(pricingSetting.value));
               if (pilgrimType === "infant" && pricing.infantPrice) {
                 price += Number(pricing.infantPrice);
               } else if (pilgrimType === "child" && pricing.childPrice) {

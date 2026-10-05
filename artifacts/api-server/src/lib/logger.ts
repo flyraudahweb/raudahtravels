@@ -7,7 +7,26 @@ export const logger = pino({
   redact: [
     "req.headers.authorization",
     "req.headers.cookie",
+    "req.headers['x-telegram-bot-api-secret-token']",
+    "req.body",
     "res.headers['set-cookie']",
+    // PII redaction for AI registration channels
+    "req.body.entry",
+    "req.body.messages",
+    "req.body.text",
+    "req.body.image",
+    "req.body.document",
+    "collectedData",
+    "extractionResult",
+    "snapshot",
+    "passportNumber",
+    "passport_number",
+    "ninNumber",
+    "nin_number",
+    "phone",
+    "email",
+    "dateOfBirth",
+    "date_of_birth",
   ],
   ...(isProduction
     ? {}

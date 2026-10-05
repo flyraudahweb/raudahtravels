@@ -6,10 +6,10 @@ services:
   - type: web
     name: raudah-travels
     runtime: node
-    plan: free # Change to "starter" ($7/mo) for always-on
+    plan: starter # Always-on service required for webhook processing
     buildCommand: chmod +x render-build.sh && ./render-build.sh
     startCommand: node --enable-source-maps artifacts/api-server/dist/index.mjs
-    healthCheckPath: /api/healthz
+    healthCheckPath: /api/readyz
     envVars:
       - key: NODE_ENV
         value: production
@@ -25,8 +25,13 @@ services:
         sync: false
       - key: SESSION_SECRET
         generateValue: true # Render auto-generates a random value
+      - key: SETTINGS_ENCRYPTION_KEY
+        sync: false # Persistent 64-character hex key for encrypted admin credentials
       - key: APP_URL
-        fromService:
-          type: web
-          name: raudah-travels
-          property: host
+        sync: false # Full HTTPS origin, e.g. https://your-service.onrender.com
+      - key: AI_REGISTRATION_ENABLED
+        value: "false" # Enable after migrations, credentials and smoke checks
+      - key: GEMINI_PASSPORT_MODEL
+        value: gemini-3.8-flash
+      - key: TRUST_PROXY_HOPS
+        value: "1"

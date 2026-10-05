@@ -109,6 +109,7 @@ export const ListPackagesQueryParams = zod.object({
 export const ListPackagesResponse = zod.object({
   packages: zod.array(
     zod.object({
+      pricingOverrides: zod.record(zod.string(), zod.unknown()).nullish(),
       id: zod.string(),
       name: zod.string(),
       type: zod.enum([
@@ -275,6 +276,7 @@ export const GetPackageParams = zod.object({
 });
 
 export const GetPackageResponse = zod.object({
+  pricingOverrides: zod.record(zod.string(), zod.unknown()).nullish(),
   id: zod.string(),
   name: zod.string(),
   type: zod.enum([
@@ -365,6 +367,7 @@ export const UpdatePackageBody = zod.object({
 });
 
 export const UpdatePackageResponse = zod.object({
+  pricingOverrides: zod.record(zod.string(), zod.unknown()).nullish(),
   id: zod.string(),
   name: zod.string(),
   type: zod.enum([
@@ -466,6 +469,7 @@ export const ListBookingsResponse = zod.object({
       updatedAt: zod.string(),
       package: zod
         .object({
+          pricingOverrides: zod.record(zod.string(), zod.unknown()).nullish(),
           id: zod.string(),
           name: zod.string(),
           type: zod.enum([
@@ -578,6 +582,7 @@ export const GetBookingResponse = zod.object({
   updatedAt: zod.string(),
   package: zod
     .object({
+      pricingOverrides: zod.record(zod.string(), zod.unknown()).nullish(),
       id: zod.string(),
       name: zod.string(),
       type: zod.enum([
@@ -679,6 +684,7 @@ export const UpdateBookingResponse = zod.object({
   updatedAt: zod.string(),
   package: zod
     .object({
+      pricingOverrides: zod.record(zod.string(), zod.unknown()).nullish(),
       id: zod.string(),
       name: zod.string(),
       type: zod.enum([
@@ -789,6 +795,9 @@ export const ListPaymentsResponse = zod.object({
           updatedAt: zod.string(),
           package: zod
             .object({
+              pricingOverrides: zod
+                .record(zod.string(), zod.unknown())
+                .nullish(),
               id: zod.string(),
               name: zod.string(),
               type: zod.enum([
@@ -917,6 +926,7 @@ export const GetPaymentResponse = zod.object({
       updatedAt: zod.string(),
       package: zod
         .object({
+          pricingOverrides: zod.record(zod.string(), zod.unknown()).nullish(),
           id: zod.string(),
           name: zod.string(),
           type: zod.enum([
@@ -1029,6 +1039,7 @@ export const VerifyPaymentResponse = zod.object({
       updatedAt: zod.string(),
       package: zod
         .object({
+          pricingOverrides: zod.record(zod.string(), zod.unknown()).nullish(),
           id: zod.string(),
           name: zod.string(),
           type: zod.enum([
@@ -1909,6 +1920,9 @@ export const ListCommissionsResponse = zod.object({
           updatedAt: zod.string(),
           package: zod
             .object({
+              pricingOverrides: zod
+                .record(zod.string(), zod.unknown())
+                .nullish(),
               id: zod.string(),
               name: zod.string(),
               type: zod.enum([
@@ -2017,6 +2031,7 @@ export const GetDashboardSummaryResponse = zod.object({
       updatedAt: zod.string(),
       package: zod
         .object({
+          pricingOverrides: zod.record(zod.string(), zod.unknown()).nullish(),
           id: zod.string(),
           name: zod.string(),
           type: zod.enum([
@@ -2116,6 +2131,9 @@ export const GetDashboardSummaryResponse = zod.object({
           updatedAt: zod.string(),
           package: zod
             .object({
+              pricingOverrides: zod
+                .record(zod.string(), zod.unknown())
+                .nullish(),
               id: zod.string(),
               name: zod.string(),
               type: zod.enum([
@@ -2248,6 +2266,7 @@ export const GetAgentOverviewResponse = zod.object({
       updatedAt: zod.string(),
       package: zod
         .object({
+          pricingOverrides: zod.record(zod.string(), zod.unknown()).nullish(),
           id: zod.string(),
           name: zod.string(),
           type: zod.enum([
@@ -2416,6 +2435,9 @@ export const GetPilgrimResponse = zod
           updatedAt: zod.string(),
           package: zod
             .object({
+              pricingOverrides: zod
+                .record(zod.string(), zod.unknown())
+                .nullish(),
               id: zod.string(),
               name: zod.string(),
               type: zod.enum([
@@ -2538,6 +2560,9 @@ export const GetPilgrimResponse = zod
               updatedAt: zod.string(),
               package: zod
                 .object({
+                  pricingOverrides: zod
+                    .record(zod.string(), zod.unknown())
+                    .nullish(),
                   id: zod.string(),
                   name: zod.string(),
                   type: zod.enum([
@@ -2754,4 +2779,321 @@ export const GetAnalyticsResponse = zod.object({
       revenue: zod.number(),
     }),
   ),
+});
+
+/**
+ * @summary listAiRegistrations
+ */
+export const ListAiRegistrationsQueryParams = zod.object({
+  status: zod.coerce.string().optional(),
+  channel: zod.coerce.string().optional(),
+  duplicateStatus: zod.coerce.string().optional(),
+  q: zod.coerce.string().optional(),
+  page: zod.coerce.number().optional(),
+  limit: zod.coerce.number().optional(),
+});
+
+export const ListAiRegistrationsResponse = zod.object({
+  submissions: zod
+    .array(
+      zod.object({
+        id: zod.string(),
+        sessionId: zod.string(),
+        status: zod.enum(["pending_review", "approved", "rejected"]),
+        snapshot: zod.record(zod.string(), zod.unknown()),
+        reviewData: zod.record(zod.string(), zod.unknown()).nullish(),
+        createdAt: zod.coerce.date(),
+        channel: zod.enum(["whatsapp", "telegram"]).optional(),
+        duplicateStatus: zod.string().nullish(),
+        duplicateMatches: zod
+          .array(zod.record(zod.string(), zod.unknown()))
+          .optional(),
+        extractionProvider: zod.string().nullish(),
+        displayName: zod.string().nullish(),
+        phone: zod.string().nullish(),
+        rejectionReason: zod.string().nullish(),
+        bookingId: zod.string().nullish(),
+        passportImageR2Key: zod.string().nullish(),
+      }),
+    )
+    .optional(),
+  total: zod.number().optional(),
+  page: zod.number().optional(),
+  limit: zod.number().optional(),
+});
+
+/**
+ * @summary getAiRegistrationStats
+ */
+export const GetAiRegistrationStatsResponse = zod.record(
+  zod.string(),
+  zod.unknown(),
+);
+
+/**
+ * @summary listFailedAiRegistrationJobs
+ */
+export const ListFailedAiRegistrationJobsResponse = zod.record(
+  zod.string(),
+  zod.unknown(),
+);
+
+/**
+ * @summary retryAiRegistrationJob
+ */
+export const RetryAiRegistrationJobParams = zod.object({
+  jobId: zod.coerce.string(),
+});
+
+export const RetryAiRegistrationJobResponse = zod.object({
+  retried: zod.boolean().optional(),
+});
+
+/**
+ * @summary purgeAiRegistrationMedia
+ */
+export const PurgeAiRegistrationMediaResponse = zod.object({
+  purged: zod.number().optional(),
+});
+
+/**
+ * @summary getAiRegistration
+ */
+export const GetAiRegistrationParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetAiRegistrationResponse = zod.object({
+  submission: zod
+    .object({
+      id: zod.string(),
+      sessionId: zod.string(),
+      status: zod.enum(["pending_review", "approved", "rejected"]),
+      snapshot: zod.record(zod.string(), zod.unknown()),
+      reviewData: zod.record(zod.string(), zod.unknown()).nullish(),
+      createdAt: zod.coerce.date(),
+      channel: zod.enum(["whatsapp", "telegram"]).optional(),
+      duplicateStatus: zod.string().nullish(),
+      duplicateMatches: zod
+        .array(zod.record(zod.string(), zod.unknown()))
+        .optional(),
+      extractionProvider: zod.string().nullish(),
+      displayName: zod.string().nullish(),
+      phone: zod.string().nullish(),
+      rejectionReason: zod.string().nullish(),
+      bookingId: zod.string().nullish(),
+      passportImageR2Key: zod.string().nullish(),
+    })
+    .optional(),
+  session: zod.record(zod.string(), zod.unknown()).optional(),
+  passportImageUrl: zod.string().nullish(),
+  audit: zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+});
+
+/**
+ * @summary updateAiRegistration
+ */
+export const UpdateAiRegistrationParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const UpdateAiRegistrationBody = zod.object({
+  fullName: zod.string().optional(),
+  firstName: zod.string().optional(),
+  lastName: zod.string().optional(),
+  phone: zod.string().optional(),
+  email: zod.string().optional(),
+  passportNumber: zod.string().optional(),
+  passportIssueDate: zod.string().optional(),
+  passportExpiry: zod.string().optional(),
+  dateOfBirth: zod.string().optional(),
+  nationality: zod.string().optional(),
+  gender: zod.string().optional(),
+  packageId: zod.string().optional(),
+  country: zod.string().optional(),
+  city: zod.string().optional(),
+  address: zod.string().optional(),
+  specialRequests: zod.string().optional(),
+});
+
+export const UpdateAiRegistrationResponse = zod.object({
+  submission: zod
+    .object({
+      id: zod.string(),
+      sessionId: zod.string(),
+      status: zod.enum(["pending_review", "approved", "rejected"]),
+      snapshot: zod.record(zod.string(), zod.unknown()),
+      reviewData: zod.record(zod.string(), zod.unknown()).nullish(),
+      createdAt: zod.coerce.date(),
+      channel: zod.enum(["whatsapp", "telegram"]).optional(),
+      duplicateStatus: zod.string().nullish(),
+      duplicateMatches: zod
+        .array(zod.record(zod.string(), zod.unknown()))
+        .optional(),
+      extractionProvider: zod.string().nullish(),
+      displayName: zod.string().nullish(),
+      phone: zod.string().nullish(),
+      rejectionReason: zod.string().nullish(),
+      bookingId: zod.string().nullish(),
+      passportImageR2Key: zod.string().nullish(),
+    })
+    .optional(),
+});
+
+/**
+ * @summary approveAiRegistration
+ */
+export const ApproveAiRegistrationParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const ApproveAiRegistrationBody = zod.object({
+  fullName: zod.string().optional(),
+  firstName: zod.string().optional(),
+  lastName: zod.string().optional(),
+  phone: zod.string().optional(),
+  email: zod.string().optional(),
+  passportNumber: zod.string().optional(),
+  passportIssueDate: zod.string().optional(),
+  passportExpiry: zod.string().optional(),
+  dateOfBirth: zod.string().optional(),
+  nationality: zod.string().optional(),
+  gender: zod.string().optional(),
+  packageId: zod.string().optional(),
+  country: zod.string().optional(),
+  city: zod.string().optional(),
+  address: zod.string().optional(),
+  specialRequests: zod.string().optional(),
+  packageDateId: zod.string().optional(),
+  agentId: zod.string().optional(),
+  duplicateOverrideReason: zod.string().optional(),
+});
+
+export const ApproveAiRegistrationResponse = zod.object({
+  submission: zod
+    .object({
+      id: zod.string(),
+      sessionId: zod.string(),
+      status: zod.enum(["pending_review", "approved", "rejected"]),
+      snapshot: zod.record(zod.string(), zod.unknown()),
+      reviewData: zod.record(zod.string(), zod.unknown()).nullish(),
+      createdAt: zod.coerce.date(),
+      channel: zod.enum(["whatsapp", "telegram"]).optional(),
+      duplicateStatus: zod.string().nullish(),
+      duplicateMatches: zod
+        .array(zod.record(zod.string(), zod.unknown()))
+        .optional(),
+      extractionProvider: zod.string().nullish(),
+      displayName: zod.string().nullish(),
+      phone: zod.string().nullish(),
+      rejectionReason: zod.string().nullish(),
+      bookingId: zod.string().nullish(),
+      passportImageR2Key: zod.string().nullish(),
+    })
+    .optional(),
+  booking: zod.record(zod.string(), zod.unknown()).optional(),
+});
+
+/**
+ * @summary rejectAiRegistration
+ */
+export const RejectAiRegistrationParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const rejectAiRegistrationBodyReasonMin = 3;
+export const rejectAiRegistrationBodyReasonMax = 1000;
+
+export const RejectAiRegistrationBody = zod.object({
+  reason: zod
+    .string()
+    .min(rejectAiRegistrationBodyReasonMin)
+    .max(rejectAiRegistrationBodyReasonMax),
+});
+
+export const RejectAiRegistrationResponse = zod.object({
+  submission: zod
+    .object({
+      id: zod.string(),
+      sessionId: zod.string(),
+      status: zod.enum(["pending_review", "approved", "rejected"]),
+      snapshot: zod.record(zod.string(), zod.unknown()),
+      reviewData: zod.record(zod.string(), zod.unknown()).nullish(),
+      createdAt: zod.coerce.date(),
+      channel: zod.enum(["whatsapp", "telegram"]).optional(),
+      duplicateStatus: zod.string().nullish(),
+      duplicateMatches: zod
+        .array(zod.record(zod.string(), zod.unknown()))
+        .optional(),
+      extractionProvider: zod.string().nullish(),
+      displayName: zod.string().nullish(),
+      phone: zod.string().nullish(),
+      rejectionReason: zod.string().nullish(),
+      bookingId: zod.string().nullish(),
+      passportImageR2Key: zod.string().nullish(),
+    })
+    .optional(),
+});
+
+/**
+ * @summary retryAiRegistrationExtraction
+ */
+export const RetryAiRegistrationExtractionParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const RetryAiRegistrationExtractionResponse = zod.object({
+  submission: zod
+    .object({
+      id: zod.string(),
+      sessionId: zod.string(),
+      status: zod.enum(["pending_review", "approved", "rejected"]),
+      snapshot: zod.record(zod.string(), zod.unknown()),
+      reviewData: zod.record(zod.string(), zod.unknown()).nullish(),
+      createdAt: zod.coerce.date(),
+      channel: zod.enum(["whatsapp", "telegram"]).optional(),
+      duplicateStatus: zod.string().nullish(),
+      duplicateMatches: zod
+        .array(zod.record(zod.string(), zod.unknown()))
+        .optional(),
+      extractionProvider: zod.string().nullish(),
+      displayName: zod.string().nullish(),
+      phone: zod.string().nullish(),
+      rejectionReason: zod.string().nullish(),
+      bookingId: zod.string().nullish(),
+      passportImageR2Key: zod.string().nullish(),
+    })
+    .optional(),
+  extraction: zod.record(zod.string(), zod.unknown()).optional(),
+  provider: zod.string().optional(),
+});
+
+/**
+ * @summary getAiRegistrationPassportImage
+ */
+export const GetAiRegistrationPassportImageParams = zod.object({
+  id: zod.coerce.string(),
+});
+
+export const GetAiRegistrationPassportImageResponse = zod.instanceof(File);
+
+/**
+ * @summary Skip a failed channel message and unblock the sender
+ */
+export const SkipAiRegistrationJobParams = zod.object({
+  jobId: zod.coerce.string(),
+});
+
+export const skipAiRegistrationJobBodyReasonMin = 3;
+export const skipAiRegistrationJobBodyReasonMax = 1000;
+
+export const SkipAiRegistrationJobBody = zod.object({
+  reason: zod
+    .string()
+    .min(skipAiRegistrationJobBodyReasonMin)
+    .max(skipAiRegistrationJobBodyReasonMax),
+});
+
+export const SkipAiRegistrationJobResponse = zod.object({
+  skipped: zod.boolean().optional(),
 });

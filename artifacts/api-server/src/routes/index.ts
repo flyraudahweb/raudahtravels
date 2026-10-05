@@ -17,6 +17,9 @@ import adminRouter from "./admin";
 import aiRouter from "./ai";
 import backupRouter from "./backup";
 import uploadRouter from "./upload";
+import whatsappRouter from "./whatsapp";
+import telegramRouter from "./telegram";
+import aiRegistrationRouter from "./ai-registration";
 
 const router: IRouter = Router();
 
@@ -141,6 +144,9 @@ router.use(agentsRouter);
 router.use(documentsRouter);
 router.use(dashboardRouter);
 router.use(uploadRouter);
+router.use(whatsappRouter);
+router.use(telegramRouter);
+router.use(aiRegistrationRouter);
 router.use(adminRouter);
 router.use(backupRouter);
 

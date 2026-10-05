@@ -34,6 +34,7 @@ export const PAGE_PERMISSIONS = [
   { key: "id_tags",           label: "ID Tags",            desc: "Generate and manage ID tags" },
   { key: "visa_management",   label: "Visa Management",    desc: "Track and manage visa applications" },
   { key: "amendments",        label: "Amendments",         desc: "Handle booking amendment requests" },
+  { key: "ai_registrations",  label: "AI Registrations",   desc: "Review WhatsApp/Telegram AI-assisted registrations" },
   { key: "agents",            label: "Agent Applications", desc: "Review agent applications" },
   { key: "bank_accounts",     label: "Bank Accounts",      desc: "Manage bank account details" },
   { key: "support_tickets",   label: "Support Tickets",    desc: "Manage customer support tickets" },
