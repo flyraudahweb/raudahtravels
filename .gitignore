@@ -58,3 +58,6 @@ backups/
 scripts/*.mjs
 id_mapping.json
 *.backup.json
+
+# Local Scratch
+scratch/

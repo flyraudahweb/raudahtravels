@@ -2,7 +2,16 @@
  * Raudah Travels & Tours — Staff Operational Training Manual & Handbook
  * Version 1.0 (Official Release)
  *
- * Ultra-professional, clean, publication-grade executive handbook generator.
+ * Ultra-professional, executive-grade corporate handbook generator.
+ * Features:
+ * - High-contrast readable typography with generous line-height
+ * - Executive cover page with high-contrast visible compliance badge
+ * - Authentic high-resolution company logo with proper aspect ratio
+ * - Beautiful section headers with colored indicator ribbons & tracking
+ * - Circular numbered badges for process step cards
+ * - High-contrast styled tables with status badges
+ * - Exactly 10 carefully budgeted pages (1 page per core module)
+ * - Two-pass running headers & footers with page numbers
  */
 
 const fs = require("fs");
@@ -24,34 +33,32 @@ const doc = new jsPDF({
 
 const PAGE_W = 210;
 const PAGE_H = 297;
-const MARGIN_L = 18;
-const MARGIN_R = 18;
-const CONTENT_W = PAGE_W - MARGIN_L - MARGIN_R; // 174 mm
-const TOP_MARGIN = 24;
-const BOTTOM_MARGIN = 22;
+const MARGIN_L = 16;
+const MARGIN_R = 16;
+const CONTENT_W = PAGE_W - MARGIN_L - MARGIN_R; // 178 mm
+const TOP_MARGIN = 22;
+const BOTTOM_MARGIN = 20;
 
 // Premium Corporate Color Palette
-const COLOR_NAVY = [28, 31, 102];       // #1C1F66 Dark Corporate Indigo
-const COLOR_ROYAL = [45, 49, 153];      // #2D3199 Brand Royal Indigo
-const COLOR_ORANGE = [255, 59, 0];      // #FF3B00 Brand Accent Orange
-const COLOR_GOLD = [180, 130, 40];      // #B48228 Elegant Gold accent
-const COLOR_TEXT_MAIN = [30, 41, 59];   // #1E293B Slate 800 (Clean, high contrast)
-const COLOR_TEXT_MUTED = [100, 116, 139];// #64748B Slate 500 (Soft grey)
-const COLOR_BG_CARD = [248, 250, 252];  // #F8FAFC Ultra-light background
-const COLOR_BORDER = [226, 232, 240];   // #E2E8F0 Subtle border
-const COLOR_SUCCESS = [16, 185, 129];   // #10B981 Emerald
-const COLOR_WARNING = [245, 158, 11];   // #F59E0B Amber
-const COLOR_DANGER = [239, 68, 68];     // #EF4444 Red
+const COLOR_NAVY = [28, 31, 102];        // #1C1F66 Dark Corporate Indigo
+const COLOR_ROYAL = [45, 49, 153];       // #2D3199 Brand Royal Indigo
+const COLOR_ORANGE = [255, 59, 0];       // #FF3B00 Brand Accent Orange
+const COLOR_GOLD = [190, 140, 45];       // #BE8C2D Rich Gold accent
+const COLOR_TEXT_MAIN = [30, 41, 59];    // #1E293B Slate 800 (High contrast readability)
+const COLOR_TEXT_MUTED = [100, 116, 139];// #64748B Slate 500 (Clean secondary)
+const COLOR_BG_CARD = [248, 250, 252];   // #F8FAFC Ultra-light background
+const COLOR_BORDER = [226, 232, 240];    // #E2E8F0 Clean border line
+const COLOR_HEADER_BG = [241, 245, 249]; // #F1F5F9 Section banner fill
 
 let currentY = TOP_MARGIN;
 
-// Logo Base64
+// Load Authentic Logo from public/logo.png
 let logoDataUrl = null;
 try {
-  const logoBuf = fs.readFileSync("./logo.png");
+  const logoBuf = fs.readFileSync("./artifacts/raudah-travels/public/logo.png");
   logoDataUrl = "data:image/png;base64," + logoBuf.toString("base64");
 } catch (e) {
-  console.warn("Could not read logo.png:", e.message);
+  console.warn("Could not read logo.png from public folder:", e.message);
 }
 
 // Helper: Ensure Space on Page
@@ -66,208 +73,242 @@ function checkPageBreak(neededHeight) {
 
 // Helper: Chapter / Module Title Block
 function addChapterTitle(modNum, title, summary) {
-  checkPageBreak(40);
-
-  // Small Top Tag
+  // Module Pill Badge
   doc.setFillColor(...COLOR_ROYAL);
-  doc.roundedRect(MARGIN_L, currentY, 26, 5.5, 1.2, 1.2, "F");
+  doc.roundedRect(MARGIN_L, currentY, 28, 5.8, 1.2, 1.2, "F");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
+  doc.setFontSize(7);
+  doc.setCharSpace(0.2);
   doc.setTextColor(255, 255, 255);
-  doc.text(`MODULE ${modNum}`, MARGIN_L + 3.2, currentY + 3.9);
+  doc.text(`MODULE ${modNum}`, MARGIN_L + 3.8, currentY + 4.1);
+  doc.setCharSpace(0);
 
-  currentY += 9;
+  // Generous vertical spacing so the title NEVER touches or collides with the pill badge
+  currentY += 11;
 
   // Title
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(15);
+  doc.setFontSize(14);
+  doc.setCharSpace(0.1);
   doc.setTextColor(...COLOR_NAVY);
   doc.text(title, MARGIN_L, currentY);
-  currentY += 5.5;
+  doc.setCharSpace(0);
+  currentY += 5.2;
 
-  // Summary
+  // Summary with relaxed line height
   if (summary) {
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
+    doc.setFontSize(8.2);
     doc.setTextColor(...COLOR_TEXT_MUTED);
     const lines = doc.splitTextToSize(summary, CONTENT_W);
-    doc.text(lines, MARGIN_L, currentY);
-    currentY += lines.length * 4.2 + 4;
+    const lineH = 4.2;
+    for (let i = 0; i < lines.length; i++) {
+      doc.text(lines[i], MARGIN_L, currentY + i * lineH);
+    }
+    currentY += lines.length * lineH + 2.5;
   }
 
-  // Elegant divider rule
+  // Divider rule with subtle orange accent tick
   doc.setDrawColor(...COLOR_BORDER);
   doc.setLineWidth(0.4);
   doc.line(MARGIN_L, currentY, MARGIN_L + CONTENT_W, currentY);
 
-  // Tiny orange accent tick
   doc.setFillColor(...COLOR_ORANGE);
   doc.rect(MARGIN_L, currentY - 0.4, 18, 0.8, "F");
 
-  currentY += 6;
-}
-
-// Helper: Section Header (H2)
-function addSectionHeader(title) {
-  checkPageBreak(18);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.setTextColor(...COLOR_ROYAL);
-
-  // Left vertical accent bar
-  doc.setFillColor(...COLOR_ORANGE);
-  doc.rect(MARGIN_L, currentY - 3.2, 1.8, 4.5, "F");
-
-  doc.text(title, MARGIN_L + 4, currentY);
   currentY += 5.5;
 }
 
-// Helper: Sub-Section Header (H3)
-function addSubSectionHeader(title) {
-  checkPageBreak(12);
+// Helper: Modern Section Header (H2) with clean background ribbon
+function addSectionHeader(title) {
+  checkPageBreak(14);
+
+  const bannerH = 6.8;
+  doc.setFillColor(...COLOR_HEADER_BG);
+  doc.setDrawColor(...COLOR_BORDER);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(MARGIN_L, currentY - 2.2, CONTENT_W, bannerH, 1.2, 1.2, "FD");
+
+  // Left solid accent bar
+  doc.setFillColor(...COLOR_ORANGE);
+  doc.roundedRect(MARGIN_L, currentY - 2.2, 2.2, bannerH, 1, 1, "F");
+
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9.5);
+  doc.setFontSize(9);
+  doc.setCharSpace(0.1);
   doc.setTextColor(...COLOR_NAVY);
-  doc.text(title, MARGIN_L, currentY);
-  currentY += 4.5;
+  doc.text(title, MARGIN_L + 5, currentY + 2.3);
+  doc.setCharSpace(0);
+
+  currentY += bannerH + 3;
 }
 
-// Helper: Standard Paragraph
+// Helper: High-Readability Paragraph with Spacious Line Height
 function addParagraph(text, extraSpacing = 2.5) {
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
+  doc.setCharSpace(0);
   doc.setTextColor(...COLOR_TEXT_MAIN);
+
   const lines = doc.splitTextToSize(text, CONTENT_W);
-  checkPageBreak(lines.length * 4.1 + extraSpacing);
-  doc.text(lines, MARGIN_L, currentY);
-  currentY += lines.length * 4.1 + extraSpacing;
+  const lineH = 4.2; // Relaxed, comfortable line height
+
+  checkPageBreak(lines.length * lineH + extraSpacing);
+
+  for (let i = 0; i < lines.length; i++) {
+    doc.text(lines[i], MARGIN_L, currentY + i * lineH);
+  }
+
+  currentY += lines.length * lineH + extraSpacing;
 }
 
-// Helper: Bullet Point with Bold Tag
-function addBullet(tag, text, indent = 4) {
-  doc.setFontSize(8.5);
+// Helper: Clean Bullet Point with Proper Word Wrapping
+function addBullet(tag, text, indent = 4.5) {
+  doc.setFontSize(8);
+  doc.setCharSpace(0);
   const textW = CONTENT_W - indent;
-  const fullText = tag ? `${tag}: ${text}` : text;
-  const lines = doc.splitTextToSize(fullText, textW);
+  const lineH = 4.1;
 
-  checkPageBreak(lines.length * 4.1 + 1.8);
-
-  // Crisp diamond or circle bullet
+  // Clean bullet circle
   doc.setFillColor(...COLOR_ROYAL);
-  doc.circle(MARGIN_L + indent / 2, currentY - 1.1, 0.8, "F");
+  doc.circle(MARGIN_L + indent / 2, currentY - 0.9, 0.7, "F");
 
   if (tag) {
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...COLOR_NAVY);
-    doc.text(`${tag}: `, MARGIN_L + indent, currentY);
+    const tagStr = `${tag}: `;
+    const tagW = doc.getTextWidth(tagStr);
 
-    const tagWidth = doc.getTextWidth(`${tag}: `);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(...COLOR_TEXT_MAIN);
 
-    const firstLine = doc.splitTextToSize(text, textW - tagWidth)[0] || "";
-    doc.text(firstLine, MARGIN_L + indent + tagWidth, currentY);
+    // Compute lines properly
+    const fullText = tagStr + text;
+    const lines = doc.splitTextToSize(fullText, textW);
+    checkPageBreak(lines.length * lineH + 1.5);
 
-    if (lines.length > 1) {
-      const remaining = lines.slice(1);
-      doc.text(remaining, MARGIN_L + indent, currentY + 4.1);
+    // First line: bold tag + remainder of first line
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...COLOR_NAVY);
+    doc.text(tagStr, MARGIN_L + indent, currentY);
+
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...COLOR_TEXT_MAIN);
+    const line0AfterTag = lines[0].substring(tagStr.length);
+    doc.text(line0AfterTag, MARGIN_L + indent + tagW, currentY);
+
+    for (let i = 1; i < lines.length; i++) {
+      doc.text(lines[i], MARGIN_L + indent, currentY + i * lineH);
     }
+    currentY += lines.length * lineH + 1.8;
   } else {
     doc.setFont("helvetica", "normal");
     doc.setTextColor(...COLOR_TEXT_MAIN);
-    doc.text(lines, MARGIN_L + indent, currentY);
+    const lines = doc.splitTextToSize(text, textW);
+    checkPageBreak(lines.length * lineH + 1.5);
+    for (let i = 0; i < lines.length; i++) {
+      doc.text(lines[i], MARGIN_L + indent, currentY + i * lineH);
+    }
+    currentY += lines.length * lineH + 1.8;
   }
-
-  currentY += lines.length * 4.1 + 1.8;
 }
 
 // Helper: Styled Process Step Card
 function addStepCard(stepNumber, stepTitle, instructions) {
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.5);
+  doc.setFontSize(7.5);
+  doc.setCharSpace(0);
   const textLines = doc.splitTextToSize(instructions, CONTENT_W - 20);
-  const cardHeight = Math.max(15, textLines.length * 4.1 + 9);
+  const lineH = 3.8;
+  const cardHeight = Math.max(13, textLines.length * lineH + 8);
 
-  checkPageBreak(cardHeight + 3);
+  checkPageBreak(cardHeight + 2);
 
-  // Outer Card
+  // Outer Card Box
   doc.setFillColor(...COLOR_BG_CARD);
   doc.setDrawColor(...COLOR_BORDER);
   doc.setLineWidth(0.3);
-  doc.roundedRect(MARGIN_L, currentY, CONTENT_W, cardHeight, 1.8, 1.8, "FD");
+  doc.roundedRect(MARGIN_L, currentY, CONTENT_W, cardHeight, 1.5, 1.5, "FD");
 
-  // Step Number Badge (Pill)
+  // Step Number Circular Badge
   doc.setFillColor(...COLOR_ROYAL);
-  doc.roundedRect(MARGIN_L + 3.5, currentY + 3.5, 9, 8.5, 1.5, 1.5, "F");
+  doc.circle(MARGIN_L + 6.5, currentY + 6.5, 3.8, "F");
+
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.5);
+  doc.setFontSize(7.5);
   doc.setTextColor(255, 255, 255);
-  doc.text(String(stepNumber), MARGIN_L + 8 - doc.getTextWidth(String(stepNumber)) / 2, currentY + 9.2);
+  doc.text(String(stepNumber), MARGIN_L + 6.5 - doc.getTextWidth(String(stepNumber)) / 2, currentY + 7.7);
 
   // Step Header
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
+  doc.setFontSize(8.2);
   doc.setTextColor(...COLOR_NAVY);
-  doc.text(stepTitle, MARGIN_L + 15, currentY + 6.2);
+  doc.text(stepTitle, MARGIN_L + 13.5, currentY + 5.2);
 
-  // Step Content
+  // Step Body
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setTextColor(...COLOR_TEXT_MAIN);
-  doc.text(textLines, MARGIN_L + 15, currentY + 10.8);
+  for (let i = 0; i < textLines.length; i++) {
+    doc.text(textLines[i], MARGIN_L + 13.5, currentY + 9.5 + i * lineH);
+  }
 
-  currentY += cardHeight + 3;
+  currentY += cardHeight + 2.2;
 }
 
-// Helper: Refined Callout Box
-function addCalloutBox(type, header, message) {
-  let bg = [240, 244, 255];      // Indigo light
-  let bar = COLOR_ROYAL;
-  let textTitle = COLOR_ROYAL;
-  let tag = "OPERATIONAL NOTE";
-
+// Helper: Styled Callout / Warning Box
+function addCalloutBox(type, title, message) {
+  let strokeColor, fillColor, barColor, badgeText;
   if (type === "warning") {
-    bg = [255, 247, 237];        // Warm Orange light
-    bar = COLOR_ORANGE;
-    textTitle = [194, 65, 12];
-    tag = "MANDATORY COMPLIANCE";
+    strokeColor = [254, 215, 170];
+    fillColor = [255, 247, 237];
+    barColor = COLOR_ORANGE;
+    badgeText = "[COMPLIANCE ALERT]";
   } else if (type === "success") {
-    bg = [240, 253, 244];        // Emerald light
-    bar = COLOR_SUCCESS;
-    textTitle = [4, 120, 87];
-    tag = "STAFF BEST PRACTICE";
+    strokeColor = [187, 247, 208];
+    fillColor = [240, 253, 244];
+    barColor = [22, 163, 74];
+    badgeText = "[STAFF STANDARD]";
+  } else {
+    strokeColor = [191, 219, 254];
+    fillColor = [239, 246, 255];
+    barColor = COLOR_ROYAL;
+    badgeText = "[OPERATIONAL TIP]";
   }
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  const msgLines = doc.splitTextToSize(message, CONTENT_W - 14);
-  const boxH = msgLines.length * 3.9 + 10;
+  doc.setFontSize(7.5);
+  doc.setCharSpace(0);
+  const msgLines = doc.splitTextToSize(message, CONTENT_W - 12);
+  const lineH = 3.8;
+  const boxH = Math.max(16, msgLines.length * lineH + 9.5);
 
   checkPageBreak(boxH + 3);
 
-  // Box background
-  doc.setFillColor(...bg);
-  doc.setDrawColor(...COLOR_BORDER);
-  doc.setLineWidth(0.3);
-  doc.roundedRect(MARGIN_L, currentY, CONTENT_W, boxH, 1.8, 1.8, "FD");
+  doc.setFillColor(...fillColor);
+  doc.setDrawColor(...strokeColor);
+  doc.setLineWidth(0.4);
+  doc.roundedRect(MARGIN_L, currentY, CONTENT_W, boxH, 1.5, 1.5, "FD");
 
-  // Solid left indicator bar
-  doc.setFillColor(...bar);
-  doc.rect(MARGIN_L, currentY, 2.5, boxH, "F");
+  // Left solid color bar
+  doc.setFillColor(...barColor);
+  doc.roundedRect(MARGIN_L, currentY, 2.5, boxH, 1, 1, "F");
 
-  // Title
+  // Header Title
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.5);
-  doc.setTextColor(...textTitle);
-  doc.text(`[${tag}]  ${header}`, MARGIN_L + 6, currentY + 5.2);
+  doc.setFontSize(7.8);
+  doc.setTextColor(...barColor);
+  doc.text(`${badgeText}  ${title}`, MARGIN_L + 6, currentY + 5.2);
 
-  // Message
+  // Message Body
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setTextColor(...COLOR_TEXT_MAIN);
-  doc.text(msgLines, MARGIN_L + 6, currentY + 9.5);
+  for (let i = 0; i < msgLines.length; i++) {
+    doc.text(msgLines[i], MARGIN_L + 6, currentY + 9.2 + i * lineH);
+  }
 
-  currentY += boxH + 3.5;
+  currentY += boxH + 3;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -275,99 +316,122 @@ function addCalloutBox(type, header, message) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function renderExecutiveCover() {
-  // Top Navy Header Bar (Sleek 115mm deep)
+  // Top Navy Hero Header (116mm deep)
   doc.setFillColor(...COLOR_NAVY);
-  doc.rect(0, 0, PAGE_W, 115, "F");
+  doc.rect(0, 0, PAGE_W, 116, "F");
 
   // Crisp Accent Strip (Gold & Orange dual line)
   doc.setFillColor(...COLOR_GOLD);
-  doc.rect(0, 113, PAGE_W, 1, "F");
+  doc.rect(0, 114, PAGE_W, 1, "F");
   doc.setFillColor(...COLOR_ORANGE);
-  doc.rect(0, 114, PAGE_W, 1.5, "F");
+  doc.rect(0, 115, PAGE_W, 1.5, "F");
 
-  // Logo in Top Card (aspect ratio 1.93: 56mm x 29mm)
+  // Authentic Brand Logo in White Card (aspect ratio 1.96: 46mm x 23.4mm)
   if (logoDataUrl) {
     try {
       doc.setFillColor(255, 255, 255);
-      doc.roundedRect(MARGIN_L, 16, 64, 32, 2.5, 2.5, "F");
-      doc.addImage(logoDataUrl, "PNG", MARGIN_L + 4, 18, 56, 28);
+      doc.roundedRect(MARGIN_L, 14, 56, 30, 2.5, 2.5, "F");
+      doc.addImage(logoDataUrl, "PNG", MARGIN_L + 5, 17, 46, 23.5);
     } catch (e) {
       console.warn("Error rendering cover logo:", e);
     }
   }
 
-  // Official Compliance Chip
-  doc.setFillColor(255, 255, 255, 0.12);
-  doc.setDrawColor(255, 255, 255, 0.25);
-  doc.setLineWidth(0.3);
-  doc.roundedRect(MARGIN_L, 56, 92, 6.5, 1.5, 1.5, "FD");
+  // Official Compliance Badge (100% HIGH CONTRAST: Solid white card with gold border and deep navy text)
+  // Generous width 126mm so letter-spaced text fits with ample breathing room
+  const badgeText = "NAHCON LICENSED OPERATOR   |   NIGERIA & SAUDI ARABIA";
+  const badgeW = 126;
+  const badgeH = 7.5;
+  const badgeX = MARGIN_L;
+  const badgeY = 50;
+
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(...COLOR_GOLD);
+  doc.setLineWidth(0.7);
+  doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1.8, 1.8, "FD");
+
+  // Gold indicator dot
+  doc.setFillColor(...COLOR_GOLD);
+  doc.circle(badgeX + 4.5, badgeY + badgeH / 2, 1.4, "F");
+
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7.5);
-  doc.setTextColor(255, 255, 255);
-  doc.text("NAHCON LICENSED OPERATOR  •  NIGERIA & SAUDI ARABIA", MARGIN_L + 4, 60.5);
+  doc.setCharSpace(0.25);
+  doc.setTextColor(...COLOR_NAVY); // Deep crisp navy text
+  doc.text(badgeText, badgeX + 8, badgeY + 5.1);
+  doc.setCharSpace(0);
 
-  // Title
+  // Document Title
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(24);
+  doc.setFontSize(23);
+  doc.setCharSpace(0.15);
   doc.setTextColor(255, 255, 255);
-  doc.text("STAFF OPERATIONAL", MARGIN_L, 75);
-  doc.setTextColor(255, 120, 80); // Bright warm coral
-  doc.text("TRAINING MANUAL", MARGIN_L, 84);
+  doc.text("STAFF OPERATIONAL", MARGIN_L, 70);
+  doc.setTextColor(255, 130, 80); // Warm Coral Orange
+  doc.text("TRAINING MANUAL", MARGIN_L, 79);
+  doc.setCharSpace(0);
 
   // Subtitle
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
+  doc.setFontSize(9.5);
   doc.setTextColor(220, 228, 245);
-  doc.text("Standard Operating Procedures (SOP) & Comprehensive System Handbook", MARGIN_L, 93);
+  doc.text("Standard Operating Procedures (SOP) & Comprehensive System Handbook", MARGIN_L, 88);
 
   // Version 1.0 Highlight Badge (Exact user specification: "version is 1 not 2")
+  // Width 60mm ensures "VERSION 1.0 (OFFICIAL RELEASE)" fits with generous padding
   doc.setFillColor(...COLOR_ORANGE);
-  doc.roundedRect(MARGIN_L, 98, 38, 7, 1.5, 1.5, "F");
+  doc.roundedRect(MARGIN_L, 94, 60, 7.5, 1.5, 1.5, "F");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
+  doc.setCharSpace(0.2);
   doc.setTextColor(255, 255, 255);
-  doc.text("VERSION 1.0 (OFFICIAL)", MARGIN_L + 4, 102.8);
+  doc.text("VERSION 1.0 (OFFICIAL RELEASE)", MARGIN_L + 4.5, 99.1);
+  doc.setCharSpace(0);
 
-  // Lower Half: Crisp White Background with Cards
-  currentY = 128;
+  // Lower Half: White Body with Cards
+  currentY = 126;
 
   // Metadata Card
   doc.setFillColor(...COLOR_BG_CARD);
   doc.setDrawColor(...COLOR_BORDER);
   doc.setLineWidth(0.4);
-  doc.roundedRect(MARGIN_L, currentY, CONTENT_W, 34, 2.5, 2.5, "FD");
+  doc.roundedRect(MARGIN_L, currentY, CONTENT_W, 32, 2, 2, "FD");
 
   const metaData = [
     { label: "ORGANIZATION", val: "Raudah Travels & Tours Limited" },
     { label: "HEAD OFFICE", val: "City Scape/Shariff Plaza, Wuse 2, Abuja" },
     { label: "DOCUMENT REF", val: "RTT-SOP-2026-V1.0" },
-    { label: "DATE OF ISSUE", val: "October 2026" },
+    { label: "DATE OF ISSUE", val: "October 2026 (Official Edition)" },
   ];
 
   metaData.forEach((m, idx) => {
     const col = idx % 2;
     const row = Math.floor(idx / 2);
-    const x = MARGIN_L + 6 + col * 88;
-    const y = currentY + 7.5 + row * 14;
+    const x = MARGIN_L + 6 + col * 90;
+    const y = currentY + 7 + row * 13;
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(7);
+    doc.setFontSize(6.8);
+    doc.setCharSpace(0.2);
     doc.setTextColor(...COLOR_TEXT_MUTED);
     doc.text(m.label, x, y);
+    doc.setCharSpace(0);
 
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(8.5);
+    doc.setFontSize(8.2);
     doc.setTextColor(...COLOR_NAVY);
-    doc.text(m.val, x, y + 4.5);
+    doc.text(m.val, x, y + 4.2);
   });
 
-  currentY += 43;
+  currentY += 40;
 
   // Department Grid Preview
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(10.5);
+  doc.setFontSize(10);
+  doc.setCharSpace(0.1);
   doc.setTextColor(...COLOR_NAVY);
-  doc.text("Operational Department Modules Covered in this Edition:", MARGIN_L, currentY);
+  doc.text("Operational Department Modules Covered in this Manual:", MARGIN_L, currentY);
+  doc.setCharSpace(0);
   currentY += 6;
 
   const deptGrid = [
@@ -382,98 +446,101 @@ function renderExecutiveCover() {
   deptGrid.forEach((d, i) => {
     const col = i % 2;
     const row = Math.floor(i / 2);
-    const bx = MARGIN_L + col * 90;
+    const bx = MARGIN_L + col * 92;
     const by = currentY + row * 22;
 
     doc.setFillColor(255, 255, 255);
     doc.setDrawColor(...COLOR_BORDER);
     doc.setLineWidth(0.3);
-    doc.roundedRect(bx, by, 84, 18, 1.8, 1.8, "FD");
+    doc.roundedRect(bx, by, 86, 18, 1.5, 1.5, "FD");
 
     // Dot Accent
     doc.setFillColor(...COLOR_ORANGE);
-    doc.circle(bx + 4.5, by + 5.5, 1.3, "F");
+    doc.circle(bx + 4.5, by + 5.5, 1.2, "F");
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8);
     doc.setTextColor(...COLOR_ROYAL);
-    doc.text(d.title, bx + 8, by + 6.2);
+    doc.text(d.title, bx + 8, by + 6);
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
     doc.setTextColor(...COLOR_TEXT_MUTED);
-    const lines = doc.splitTextToSize(d.focus, 72);
-    doc.text(lines, bx + 8, by + 10.5);
+    const lines = doc.splitTextToSize(d.focus, 74);
+    for (let li = 0; li < lines.length; li++) {
+      doc.text(lines[li], bx + 8, by + 10.2 + li * 3.4);
+    }
   });
-
-  currentY += 3 * 22 + 10;
 
   // Cover Footer
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.5);
+  doc.setFontSize(7.2);
+  doc.setCharSpace(0.2);
   doc.setTextColor(...COLOR_TEXT_MUTED);
-  doc.text("CONFIDENTIAL  •  FOR INTERNAL RAUDAH STAFF TRAINING & COMPLIANCE ONLY", PAGE_W / 2, 282, { align: "center" });
+  doc.text("CONFIDENTIAL   |   FOR INTERNAL RAUDAH STAFF TRAINING & OPERATIONAL COMPLIANCE ONLY", PAGE_W / 2, 282, { align: "center" });
+  doc.setCharSpace(0);
 
   doc.addPage();
   currentY = TOP_MARGIN;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PAGE 2: TABLE OF CONTENTS & QUICK-START POLICY
+// PAGE 2: TABLE OF CONTENTS & OPERATIONAL POLICY
 // ═══════════════════════════════════════════════════════════════════════════
 
 function renderTableOfContents() {
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
+  doc.setFontSize(15);
+  doc.setCharSpace(0.1);
   doc.setTextColor(...COLOR_NAVY);
-  doc.text("TABLE OF CONTENTS", MARGIN_L, currentY);
-  currentY += 6;
+  doc.text("TABLE OF CONTENTS & OPERATIONAL STANDARDS", MARGIN_L, currentY);
+  doc.setCharSpace(0);
+  currentY += 5;
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.5);
+  doc.setFontSize(8);
   doc.setTextColor(...COLOR_TEXT_MUTED);
-  doc.text("Master reference guide to system functions, departmental responsibilities, and operational workflows.", MARGIN_L, currentY);
-  currentY += 7;
+  doc.text("Master reference index to core system modules, departmental duties, and operational workflows.", MARGIN_L, currentY);
+  currentY += 6;
 
   const tocList = [
-    { num: "01", title: "System Architecture & Login", scope: "Portals overview, Clerk auth, roles, and console layout", page: "03" },
-    { num: "02", title: "Registration & Front-Desk Department", scope: "Walk-in wizard, AI Passport OCR, batch upload, master list", page: "04" },
-    { num: "03", title: "Passport & Document Verification", scope: "Saudi 6-month rule, expiry warning flags, photo cropping", page: "06" },
-    { num: "04", title: "Visa Operations Department", scope: "Status pipeline, external providers, bulk approvals, e-Visa upload", page: "07" },
-    { num: "05", title: "Accounting & Finance Department", scope: "Bank transfer verification, Paystack, balances, receipts", page: "09" },
-    { num: "06", title: "Operations, Flights & Logistics", scope: "Package setup, departure dates, printable ID badges with QR", page: "11" },
-    { num: "07", title: "Customer Support & Team Communication", scope: "Ticket assignment, priority queues, internal team chat", page: "13" },
-    { num: "08", title: "Super Admin & Executive Tools", scope: "Staff roles & granular permissions, AI Assistant, audit logs", page: "14" },
-    { num: "09", title: "Troubleshooting Guide & Escalations", scope: "Common error resolution, emergency procedures, contacts", page: "15" },
+    { num: "01", title: "System Architecture & Navigation", scope: "Portals overview, Clerk auth, roles, and console layout", page: "03" },
+    { num: "02", title: "Registration & Front-Desk Department", scope: "5-Step walk-in wizard, AI Passport OCR, batch upload, master list", page: "04" },
+    { num: "03", title: "Passport & Document Verification", scope: "Saudi 6-month rule, expiry warning flags, photo cropping", page: "05" },
+    { num: "04", title: "Visa Operations Department", scope: "5-Stage pipeline, external providers, bulk approvals, e-Visa upload", page: "06" },
+    { num: "05", title: "Accounting & Finance Department", scope: "Bank transfer verification, Paystack, balances, receipts", page: "07" },
+    { num: "06", title: "Operations, Flights & Logistics", scope: "Package setup, departure dates, printable ID badges with QR", page: "08" },
+    { num: "07", title: "Customer Support & Team Communication", scope: "Ticket assignment, priority queues, internal team chat", page: "09" },
+    { num: "08", title: "Super Admin, Troubleshooting & Escalations", scope: "Staff roles & granular permissions, troubleshooting, emergency lines", page: "10" },
   ];
 
   autoTable(doc, {
     startY: currentY,
-    head: [["Mod", "Operational Module Title", "Summary Scope & Workflows", "Page"]],
+    head: [["Mod", "Operational Module Title", "Summary Scope & Key Workflows", "Page"]],
     body: tocList.map(t => [t.num, t.title, t.scope, t.page]),
     theme: "striped",
     headStyles: {
       fillColor: COLOR_NAVY,
       textColor: [255, 255, 255],
       fontStyle: "bold",
-      fontSize: 8.5,
-      cellPadding: 2.8,
+      fontSize: 8,
+      cellPadding: 2.5,
     },
     bodyStyles: {
-      fontSize: 8,
+      fontSize: 7.6,
       textColor: COLOR_TEXT_MAIN,
-      cellPadding: 2.3,
+      cellPadding: 2.2,
     },
     columnStyles: {
-      0: { cellWidth: 14, fontStyle: "bold", textColor: COLOR_ORANGE, halign: "center" },
-      1: { cellWidth: 60, fontStyle: "bold", textColor: COLOR_ROYAL },
-      2: { cellWidth: 86 },
-      3: { cellWidth: 14, halign: "center", fontStyle: "bold", textColor: COLOR_NAVY },
+      0: { cellWidth: 12, fontStyle: "bold", textColor: COLOR_ORANGE, halign: "center" },
+      1: { cellWidth: 62, fontStyle: "bold", textColor: COLOR_ROYAL },
+      2: { cellWidth: 92 },
+      3: { cellWidth: 12, halign: "center", fontStyle: "bold", textColor: COLOR_NAVY },
     },
     margin: { left: MARGIN_L, right: MARGIN_R },
   });
 
-  currentY = doc.lastAutoTable.finalY + 8;
+  currentY = doc.lastAutoTable.finalY + 6;
 
   addCalloutBox(
     "success",
@@ -481,12 +548,18 @@ function renderTableOfContents() {
     "All pilgrim records, passport photos, payment receipts, and e-visa documents must be uploaded and processed exclusively through the Raudah Web Application. Never store pilgrim passports or banking receipts on personal phones or personal spreadsheets. The application creates immutable audit trails for every transaction."
   );
 
+  addCalloutBox(
+    "info",
+    "Data Protection & Client Privacy Protocol",
+    "Pilgrim National Identification Numbers (NIN), international passport biodata, and home contact details are classified as confidential. Staff members must never export, screenshot, or share pilgrim manifests with third parties outside of verified NAHCON and consular submissions."
+  );
+
   doc.addPage();
   currentY = TOP_MARGIN;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MODULE 1: SYSTEM ARCHITECTURE & NAVIGATION
+// PAGE 3: MODULE 1 — SYSTEM ARCHITECTURE & NAVIGATION
 // ═══════════════════════════════════════════════════════════════════════════
 
 function renderModule1() {
@@ -507,9 +580,6 @@ function renderModule1() {
   addBullet("4. Admin Operations Console (/admin)", "The operational engine used by Raudah staff across Front-Desk, Visa, Accounting, Logistics, and Management.");
 
   addSectionHeader("1.2 Staff Role Hierarchy & Access Matrix");
-  addParagraph(
-    "Every staff account is created by Super Admin and assigned strict page-level permissions to safeguard financial and pilgrim data:"
-  );
 
   autoTable(doc, {
     startY: currentY,
@@ -521,12 +591,12 @@ function renderModule1() {
       ["Agent", "Agent Portal Only", "Registers pilgrim clients, pays via agent wallet, tracks client visa status", "Isolated strictly to their own registered clients"],
     ],
     theme: "grid",
-    headStyles: { fillColor: COLOR_ROYAL, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
-    bodyStyles: { fontSize: 7.5, textColor: COLOR_TEXT_MAIN },
+    headStyles: { fillColor: COLOR_ROYAL, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7.5, cellPadding: 2.2 },
+    bodyStyles: { fontSize: 7.2, textColor: COLOR_TEXT_MAIN, cellPadding: 2 },
     margin: { left: MARGIN_L, right: MARGIN_R },
   });
 
-  currentY = doc.lastAutoTable.finalY + 7;
+  currentY = doc.lastAutoTable.finalY + 5;
 
   addSectionHeader("1.3 Navigating the Admin Console");
   addParagraph(
@@ -542,7 +612,7 @@ function renderModule1() {
   addCalloutBox(
     "info",
     "Screen Space Tip: Sidebar Collapse Mode",
-    "Staff working on laptops can collapse the sidebar using the toggle at the bottom-left to maximize screen width when inspecting wide pilgrim manifests. On mobile devices, tap the top menu icon to open the full navigation drawer."
+    "Staff working on laptops can collapse the sidebar using the bottom-left toggle to maximize screen width when inspecting wide manifests. On mobile devices, tap the top menu icon to open the full navigation drawer."
   );
 
   doc.addPage();
@@ -550,7 +620,7 @@ function renderModule1() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MODULE 2: REGISTRATION & FRONT-DESK DEPARTMENT
+// PAGE 4: MODULE 2 — REGISTRATION & FRONT-DESK DEPARTMENT
 // ═══════════════════════════════════════════════════════════════════════════
 
 function renderModule2() {
@@ -561,14 +631,11 @@ function renderModule2() {
   );
 
   addSectionHeader("2.1 The 5-Step Pilgrim Registration Wizard (/admin/book-pilgrim)");
-  addParagraph(
-    "When a walk-in or telephone pilgrim registers, follow this exact 5-step wizard to ensure complete compliance:"
-  );
 
   addStepCard(
     1,
     "Package Selection & Departure Route",
-    "Select the active Hajj or Umrah package. Choose the departure flight date, departure city (e.g. Kano, Abuja, Lagos), and room occupancy preference (Single, Double, Triple, Quad). If booking through an agent, select the agent name."
+    "Select the active Hajj or Umrah package. Choose departure date, departure city (e.g. Kano, Abuja, Lagos), and room occupancy preference (Single, Double, Triple, Quad). If booking through an agent, select the agent name."
   );
 
   addStepCard(
@@ -595,35 +662,22 @@ function renderModule2() {
     "Choose payment method: Cash, Bank Transfer (with receipt upload), or Paystack online. Enter initial deposit amount. Click 'Confirm Booking' to generate the official reference (e.g. RD-2026-UMR-0042) and print registration confirmation vouchers."
   );
 
+  addSectionHeader("2.2 Batch Group Uploads & AI WhatsApp Queue");
+  addBullet("Batch Passport Upload", "In /admin/book-pilgrim, click 'Batch Passport Upload' to select up to 20 passport photos at once. The AI parses all files concurrently into an editable table for single-click group registration.");
+  addBullet("AI WhatsApp / Telegram Queue", "Pilgrim registrations submitted via Raudah's AI Chatbot appear at /admin/ai-registrations. Staff review duplicate checks and passport photos before clicking 'Approve' to issue active bookings.");
+
   addCalloutBox(
     "warning",
     "Saudi Mahram Regulations for Female Pilgrims",
-    "Saudi consular policy requires that female pilgrims below age 45 traveling without special ministerial group waivers must be linked to a recognized Mahram traveling on the same package. The system alerts staff if this field is missing."
+    "Saudi consular policy requires that female pilgrims below age 45 traveling without ministerial group waivers must be linked to a recognized Mahram traveling on the same package. The system alerts staff if this field is missing."
   );
-
-  addSectionHeader("2.2 Batch Passport Registration for Groups & Families");
-  addParagraph(
-    "For tour groups, corporate delegations, or families, do not register pilgrims one by one. In /admin/book-pilgrim, click 'Batch Passport Upload':"
-  );
-  addBullet("Step 1", "Select multiple passport images from your computer (up to 20 files at once).");
-  addBullet("Step 2", "The AI parses all passports concurrently and displays an editable summary table.");
-  addBullet("Step 3", "Review all pilgrims in the grid, make any quick corrections, and select a shared package & departure date.");
-  addBullet("Step 4", "Click 'Register All Pilgrims' to create linked booking records with individual reference numbers.");
-
-  addSectionHeader("2.3 Reviewing AI WhatsApp / Telegram Submissions (/admin/ai-registrations)");
-  addParagraph(
-    "Pilgrims and agents can initiate registrations via Raudah's AI Chatbot on WhatsApp or Telegram. These arrive in the AI Registrations queue:"
-  );
-  addBullet("1. Duplicate Alert", "The system flags duplicate passport numbers or names before approval (possible_duplicate / duplicate_confirmed).");
-  addBullet("2. Document Inspection", "Inspect the raw passport photo sent by the user alongside the extracted fields.");
-  addBullet("3. Approval", "Click 'Approve' to promote the submission into an active booking. The pilgrim receives an automatic WhatsApp confirmation.");
 
   doc.addPage();
   currentY = TOP_MARGIN;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MODULE 3: PASSPORT & DOCUMENT VERIFICATION
+// PAGE 5: MODULE 3 — PASSPORT & DOCUMENT VERIFICATION
 // ═══════════════════════════════════════════════════════════════════════════
 
 function renderModule3() {
@@ -648,12 +702,12 @@ function renderModule3() {
       ["Missing Doc", "Grey (File)", "Pilgrim booked but passport image not yet uploaded", "Follow up with pilgrim or agent via phone/WhatsApp"],
     ],
     theme: "grid",
-    headStyles: { fillColor: COLOR_ROYAL, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
-    bodyStyles: { fontSize: 7.5, textColor: COLOR_TEXT_MAIN },
+    headStyles: { fillColor: COLOR_ROYAL, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7.5, cellPadding: 2.2 },
+    bodyStyles: { fontSize: 7.2, textColor: COLOR_TEXT_MAIN, cellPadding: 2 },
     margin: { left: MARGIN_L, right: MARGIN_R },
   });
 
-  currentY = doc.lastAutoTable.finalY + 7;
+  currentY = doc.lastAutoTable.finalY + 5;
 
   addSectionHeader("3.2 Consular Image Quality Standards");
   addParagraph("Inspect every uploaded passport against these five mandatory consular standards:");
@@ -663,9 +717,15 @@ function renderModule3() {
   addBullet("Physical Document", "Must be a direct photo of the physical passport, not a screenshot of a photocopy.");
   addBullet("Clear Portrait Crop", "The pilgrim's face crop must be clear, forward-facing, with no sunglasses or tinted lenses.");
 
-  addSectionHeader("3.3 Batch Exporting Documents for Consular Submissions");
+  addSectionHeader("3.3 Batch Document Export for Consular Submissions");
   addParagraph(
     "When preparing group submissions for NAHCON or external visa partners: Filter by package -> Select all pilgrims -> Click 'Download Selected Passports' to download a clean ZIP archive of high-resolution passport scans organized by pilgrim name and reference."
+  );
+
+  addCalloutBox(
+    "info",
+    "Staff Action: Pre-Submission Sign-Off",
+    "Never mark a passport as 'Verified' if the expiry date falls within 6 months of the return flight date. Saudi border control will reject the pilgrim at immigration and issue severe financial penalties against the agency."
   );
 
   doc.addPage();
@@ -673,7 +733,7 @@ function renderModule3() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MODULE 4: VISA OPERATIONS DEPARTMENT
+// PAGE 6: MODULE 4 — VISA OPERATIONS DEPARTMENT
 // ═══════════════════════════════════════════════════════════════════════════
 
 function renderModule4() {
@@ -684,9 +744,6 @@ function renderModule4() {
   );
 
   addSectionHeader("4.1 The Five-Stage Visa Pipeline (/admin/visa-management)");
-  addParagraph(
-    "The Visa Management console tracks every pilgrim from initial registration through final visa issuance:"
-  );
 
   autoTable(doc, {
     startY: currentY,
@@ -699,34 +756,37 @@ function renderModule4() {
       ["Rejected", "Red Badge", "Application rejected by consular portal (e.g. overstay, blacklisted, data mismatch)", "Record detailed rejection reason and inform pilgrim/agent"],
     ],
     theme: "grid",
-    headStyles: { fillColor: COLOR_NAVY, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
-    bodyStyles: { fontSize: 7.5, textColor: COLOR_TEXT_MAIN },
+    headStyles: { fillColor: COLOR_NAVY, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7.5, cellPadding: 2.2 },
+    bodyStyles: { fontSize: 7.2, textColor: COLOR_TEXT_MAIN, cellPadding: 2 },
     margin: { left: MARGIN_L, right: MARGIN_R },
   });
 
-  currentY = doc.lastAutoTable.finalY + 7;
+  currentY = doc.lastAutoTable.finalY + 5;
 
   addSectionHeader("4.2 Managing External Visa Providers");
   addParagraph(
-    "Raudah works with specialized visa processing partners. In the 'Visa Providers' tab, staff can register providers, contact persons, phone numbers, and specializations (e.g., Umrah B2B, Hajj Nuwabs, Tourist e-Visas). When assigning pilgrims, track which provider holds the physical passport."
+    "In the 'Visa Providers' tab, staff register service partners, contact persons, phone numbers, and specializations (e.g., Umrah B2B, Hajj Nuwabs, Tourist e-Visas). When assigning pilgrims, track which provider holds the physical passport and record the provider dispatch date."
   );
 
   addSectionHeader("4.3 Approving Visas & Uploading Travel Documents (Closing Workflow)");
-  addParagraph(
-    "When issued e-visas and tickets are received from the consular portal:"
-  );
-  addStepCard(1, "Locate Pilgrim Record", "Search by Passport Number, Booking Reference, or filter by Package.");
+  addStepCard(1, "Locate Pilgrim Record", "Search by Passport Number, Booking Reference, or filter by active Package.");
   addStepCard(2, "Open Visa Editor", "Click 'Update Visa' on the target row to open the details modal.");
   addStepCard(3, "Enter Official Numbers", "Input the official Visa Number and Visa Expiry Date issued by the Saudi portal.");
-  addStepCard(4, "Attach Official Files", "Upload the Visa Document (PDF) and Flight Ticket (PDF). These are stored securely in cloud storage.");
+  addStepCard(4, "Attach Official Files", "Upload the Visa Document (PDF) and Flight Ticket (PDF) to the secure storage vault.");
   addStepCard(5, "Set Approved & Save", "Change status to 'Approved' and click 'Save'. The pilgrim's dashboard and agent portal immediately update with a green 'Visa Issued' badge and instant PDF download access!");
+
+  addCalloutBox(
+    "success",
+    "Staff Operational Standard: Mandatory PDF Attachment",
+    "Never mark a visa status as 'Approved' without uploading both the issued e-Visa PDF and Flight Ticket PDF. The pilgrim portal relies on these files to display the download button."
+  );
 
   doc.addPage();
   currentY = TOP_MARGIN;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MODULE 5: ACCOUNTING & FINANCE DEPARTMENT
+// PAGE 7: MODULE 5 — ACCOUNTING & FINANCE DEPARTMENT
 // ═══════════════════════════════════════════════════════════════════════════
 
 function renderModule5() {
@@ -741,7 +801,7 @@ function renderModule5() {
     "When a pilgrim or agent pays via direct bank transfer, the payment sits in 'Pending Verification' until verified by finance staff:"
   );
   addStepCard(1, "Inspect Payment Proof", "Click the payment row to view the uploaded bank receipt, teller, or mobile app screenshot.");
-  addStepCard(2, "Bank Statement Reconciliation", "Log in to Raudah's corporate bank portal (e.g., Jaiz Bank, Stanbic IBTC, Zenith) to confirm funds have cleared.");
+  addStepCard(2, "Bank Statement Reconciliation", "Log in to Raudah's corporate bank portal (Jaiz Bank, Stanbic IBTC, Zenith) to confirm funds have cleared.");
   addStepCard(3, "Approve or Reject", "If cleared, click 'Verify Payment'. If fraudulent or incorrect amount, click 'Reject' with clear notes.");
 
   addSectionHeader("5.2 Outstanding Balances & Installment Management");
@@ -753,25 +813,22 @@ function renderModule5() {
   addBullet("Recording Installments", "Click 'Record Payment' on any pilgrim row. Enter amount paid, payment method (Cash, Bank Transfer, POS), transaction reference, and optional notes.");
   addBullet("Official Receipt Generation", "Click 'Print Receipt' to instantly generate a branded thermal receipt or full A4 payment voucher complete with booking reference, pilgrim name, amount paid, and remaining balance.");
 
-  addSectionHeader("5.3 Managing Company Bank Accounts (/admin/bank-accounts)");
-  addParagraph(
-    "Ensure bank details shown to pilgrims on invoices and the public portal remain up to date. Only Accounting and Super Admin staff have access to add, edit, or archive bank accounts (Account Name, Bank Name, Account Number, Currency)."
-  );
+  addSectionHeader("5.3 Company Bank Accounts & Agent Prepaid Wallets");
+  addBullet("Bank Accounts Setup (/admin/bank-accounts)", "Ensure company bank details shown on pilgrim invoices remain up to date. Only Accounting and Super Admin staff have access to add, edit, or archive accounts.");
+  addBullet("Agent Wallet Top-Ups (/admin/agents)", "When an accredited agency transfers funds to top up their booking balance, verify the bank credit, open /admin/agents -> Select Agent -> Click 'Top-Up Wallet' -> Enter amount and transaction reference.");
 
-  addSectionHeader("5.4 Travel Agent Wallet Management & Commissions (/admin/agents)");
-  addParagraph(
-    "Accredited agents maintain a prepaid wallet to pay for client bookings seamlessly:"
+  addCalloutBox(
+    "warning",
+    "Audit Rule: Immutable Transaction Logs",
+    "Every payment approval, rejection, and manual balance adjustment is permanently recorded in the system audit log with the operating staff member's timestamp and user ID. Cash collections must be receipted immediately."
   );
-  addBullet("Wallet Top-Ups", "When an agent transfers funds to Raudah's account for their wallet: go to /admin/agents -> Select Agent -> Click 'Top-Up Wallet' -> Enter amount and reference.");
-  addBullet("Double-Entry Audit Ledger", "Every debit and credit transaction is permanently recorded with timestamps and operator IDs.");
-  addBullet("Commission Payouts", "Track commissions earned per package and mark payouts when settled.");
 
   doc.addPage();
   currentY = TOP_MARGIN;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MODULE 6: OPERATIONS, FLIGHTS & LOGISTICS
+// PAGE 8: MODULE 6 — OPERATIONS, FLIGHTS & LOGISTICS
 // ═══════════════════════════════════════════════════════════════════════════
 
 function renderModule6() {
@@ -787,7 +844,7 @@ function renderModule6() {
   );
   addBullet("Package Types", "Hajj, Umrah, Visa Only, Ticket Only, Accommodation Only, or custom combined bundles.");
   addBullet("Departure Dates & Flight Routes", "Set multi-date options with airline partner, outbound route (e.g. KAN -> JED), return route (MED -> KAN), and corresponding Islamic Hijri date.");
-  addBullet("Pricing Overrides", "Configure room occupancy surcharges (Single room +₦800,000, Double room +₦350,000) and child/infant discounts.");
+  addBullet("Pricing Overrides", "Configure room occupancy surcharges (Single room +NGN 800,000, Double room +NGN 350,000) and child or infant discounts.");
   addBullet("Live Countdown Timer", "Enable countdown timers with automatic registration closure when capacity or deadline is reached.");
 
   addSectionHeader("6.2 Pilgrim ID Badge & Tag Generator (/admin/id-tags)");
@@ -810,7 +867,7 @@ function renderModule6() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MODULE 7: CUSTOMER SUPPORT & TEAM COLLABORATION
+// PAGE 9: MODULE 7 — CUSTOMER SUPPORT & TEAM COLLABORATION
 // ═══════════════════════════════════════════════════════════════════════════
 
 function renderModule7() {
@@ -836,12 +893,12 @@ function renderModule7() {
       ["General Inquiry", "Customer Care", "Package inclusions, packing tips, vaccination rules", "Under 6 Hours"],
     ],
     theme: "grid",
-    headStyles: { fillColor: COLOR_ROYAL, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
-    bodyStyles: { fontSize: 7.5, textColor: COLOR_TEXT_MAIN },
+    headStyles: { fillColor: COLOR_ROYAL, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7.5, cellPadding: 2.2 },
+    bodyStyles: { fontSize: 7.2, textColor: COLOR_TEXT_MAIN, cellPadding: 2 },
     margin: { left: MARGIN_L, right: MARGIN_R },
   });
 
-  currentY = doc.lastAutoTable.finalY + 7;
+  currentY = doc.lastAutoTable.finalY + 5;
 
   addSectionHeader("7.2 Internal Team Chat (/admin/chat)");
   addParagraph(
@@ -852,31 +909,33 @@ function renderModule7() {
   addBullet("#finance-billing", "High-value transfer alerts, refund authorizations, and agent credit limits.");
   addBullet("#accommodation", "Room assignments, hotel check-in lists in Makkah & Madinah.");
   addBullet("#emergency", "Urgent on-ground issues in Saudi Arabia or pre-departure medical alerts.");
-  addBullet("Direct Messaging (DMs)", "Private, encrypted 1-on-1 staff conversations.");
+  addBullet("Direct Messaging (DMs)", "Private, encrypted 1-on-1 staff conversations for operational coordination.");
+
+  addCalloutBox(
+    "info",
+    "Pilgrim Service Excellence Standard",
+    "Always update ticket statuses promptly to 'In Progress' or 'Resolved'. When answering pilgrims, use warm, respectful tone and sign off with 'Raudah Travels Support Team'."
+  );
 
   doc.addPage();
   currentY = TOP_MARGIN;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MODULE 8 & 9: SUPER ADMIN, TROUBLESHOOTING & EMERGENCY
+// PAGE 10: MODULE 8 & 9 — SUPER ADMIN, TROUBLESHOOTING & EMERGENCY
 // ═══════════════════════════════════════════════════════════════════════════
 
 function renderModule8And9() {
   addChapterTitle(
-    "08",
-    "Super Admin, Security & Troubleshooting",
+    "08 & 09",
+    "Super Admin, Troubleshooting & Escalations",
     "Staff account provisioning, permissions matrix, AI Business Assistant, audit logs, and troubleshooting."
   );
 
-  addSectionHeader("8.1 Creating Staff & Assigning Permissions (/admin/staff)");
+  addSectionHeader("8.1 Staff Provisioning & Permission Matrix (/admin/staff)");
   addParagraph(
-    "Super Admins create staff accounts and assign strict page-level permissions:"
+    "Super Admins create staff accounts and assign strict page-level permissions: Click 'Invite Staff' -> Enter full name, corporate email, and initial password -> Select role ('Admin' or 'Staff') -> Check only required modules -> Check support categories for automated ticket routing."
   );
-  addStepCard(1, "Click 'Invite Staff'", "Enter full name, corporate email address, and initial temporary password.");
-  addStepCard(2, "Select Role", "Choose 'Admin' or 'Staff'.");
-  addStepCard(3, "Assign Page Permissions", "Check only the modules required for their daily duties (e.g. Visa staff receive: pilgrims, passports, visa_management).");
-  addStepCard(4, "Assign Support Specialties", "Check support categories so pilgrim tickets route directly to them.");
 
   addSectionHeader("8.2 Security Audit Logs (/admin/activity)");
   addParagraph(
@@ -896,17 +955,17 @@ function renderModule8And9() {
       ["Session expired error", "Inactivity timeout on Clerk auth", "Refresh browser and sign in again with work email"],
     ],
     theme: "striped",
-    headStyles: { fillColor: COLOR_NAVY, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
-    bodyStyles: { fontSize: 7.5, textColor: COLOR_TEXT_MAIN },
+    headStyles: { fillColor: COLOR_NAVY, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7.5, cellPadding: 2.2 },
+    bodyStyles: { fontSize: 7.2, textColor: COLOR_TEXT_MAIN, cellPadding: 2 },
     margin: { left: MARGIN_L, right: MARGIN_R },
   });
 
-  currentY = doc.lastAutoTable.finalY + 8;
+  currentY = doc.lastAutoTable.finalY + 5;
 
   addCalloutBox(
     "warning",
     "Emergency Operational Contacts & Escalations",
-    "For critical system issues, payment gateway discrepancies, or consular emergencies: Contact IT Systems Administration via #emergency chat or call 08036264607 / 08034803504."
+    "For critical system issues, payment gateway discrepancies, or consular emergencies: Contact IT Systems Administration via #emergency chat or call direct lines: 08036264607 / 08034803504. Head Office: City Scape/Shariff Plaza, Wuse 2, Abuja."
   );
 }
 
@@ -925,35 +984,44 @@ function addHeadersAndFooters() {
 
     // Running Header
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(7);
+    doc.setFontSize(7.5);
+    doc.setCharSpace(0.1);
     doc.setTextColor(...COLOR_ROYAL);
-    doc.text("RAUDAH TRAVELS & TOURS", MARGIN_L, 13);
+    doc.text("RAUDAH TRAVELS & TOURS", MARGIN_L, 12);
+    doc.setCharSpace(0);
 
     doc.setFont("helvetica", "normal");
     doc.setTextColor(...COLOR_TEXT_MUTED);
-    doc.text(" •  STAFF OPERATIONAL TRAINING MANUAL", MARGIN_L + doc.getTextWidth("RAUDAH TRAVELS & TOURS"), 13);
+    const brandW = doc.getTextWidth("RAUDAH TRAVELS & TOURS");
+    doc.text("   |   STAFF OPERATIONAL TRAINING MANUAL", MARGIN_L + brandW, 12);
 
     // Header Right
-    doc.text("VERSION 1.0", PAGE_W - MARGIN_R, 13, { align: "right" });
+    doc.setFont("helvetica", "bold");
+    doc.setCharSpace(0.15);
+    doc.text("VERSION 1.0 (OFFICIAL)", PAGE_W - MARGIN_R, 12, { align: "right" });
+    doc.setCharSpace(0);
 
-    // Header Divider Rule (fine 0.3mm hairline)
+    // Header Divider Rule (fine hairline 0.3mm)
     doc.setDrawColor(...COLOR_BORDER);
     doc.setLineWidth(0.3);
-    doc.line(MARGIN_L, 15, PAGE_W - MARGIN_R, 15);
+    doc.line(MARGIN_L, 14.5, PAGE_W - MARGIN_R, 14.5);
 
     // Running Footer
-    doc.line(MARGIN_L, PAGE_H - 14, PAGE_W - MARGIN_R, PAGE_H - 14);
+    doc.line(MARGIN_L, PAGE_H - 13, PAGE_W - MARGIN_R, PAGE_H - 13);
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
+    doc.setFontSize(6.8);
+    doc.setCharSpace(0.1);
     doc.setTextColor(...COLOR_TEXT_MUTED);
 
     // Footer Left
-    doc.text("CONFIDENTIAL  •  STRICTLY FOR INTERNAL STAFF TRAINING & COMPLIANCE", MARGIN_L, PAGE_H - 9);
+    doc.text("CONFIDENTIAL   —   STRICTLY FOR INTERNAL STAFF TRAINING & OPERATIONAL COMPLIANCE", MARGIN_L, PAGE_H - 8.5);
+    doc.setCharSpace(0);
 
     // Footer Right
     doc.setFont("helvetica", "bold");
-    doc.text(`Page ${i} of ${totalPages}`, PAGE_W - MARGIN_R, PAGE_H - 9, { align: "right" });
+    doc.setTextColor(...COLOR_NAVY);
+    doc.text(`Page ${i} of ${totalPages}`, PAGE_W - MARGIN_R, PAGE_H - 8.5, { align: "right" });
   }
 }
 
@@ -961,7 +1029,7 @@ function addHeadersAndFooters() {
 // COMPILE & WRITE PDF
 // ═══════════════════════════════════════════════════════════════════════════
 
-console.log("Generating redesigned Version 1.0 PDF manual...");
+console.log("Generating redesigned Version 1.0 PDF manual with relaxed line-height and high-contrast badges...");
 
 renderExecutiveCover();
 renderTableOfContents();
