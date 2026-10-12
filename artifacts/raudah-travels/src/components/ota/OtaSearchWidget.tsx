@@ -322,7 +322,12 @@ export default function OtaSearchWidget() {
             }`}
           >
             <Package className={`w-6 h-6 transition-colors ${activeTab === "packages" ? "text-[#2563EB]" : "text-gray-500 group-hover:text-gray-700"}`} />
-            <span className="text-xs sm:text-sm font-bold tracking-tight">Hajj & Umrah</span>
+            <span className="text-xs sm:text-sm font-bold tracking-tight flex items-center gap-1">
+              Packages
+              <span className="px-1.5 py-0.2 bg-[#FF3B00] text-white text-[9px] font-black rounded-full uppercase tracking-wider">
+                Hajj &amp; Umrah
+              </span>
+            </span>
             {activeTab === "packages" && (
               <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-10 sm:w-12 h-0.5 bg-[#2563EB] rounded-full" />
             )}
@@ -496,7 +501,7 @@ export default function OtaSearchWidget() {
                 <span>Multi-city</span>
               </label>
 
-              <label className="flex items-center gap-1.5 cursor-pointer ml-auto text-gray-500">
+              <label className="flex items-center gap-1.5 cursor-pointer text-gray-500">
                 <input
                   type="checkbox"
                   checked={isNonstopOnly}
@@ -505,6 +510,16 @@ export default function OtaSearchWidget() {
                 />
                 <span>Direct flights only</span>
               </label>
+
+              {/* Direct Packages Feature on Flight Card */}
+              <button
+                type="button"
+                onClick={() => setActiveTab("packages")}
+                className="ml-auto inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-bold transition-all shadow-2xs"
+              >
+                <Package className="w-3.5 h-3.5 text-[#FF3B00]" />
+                <span>Our Packages (Flights Included)</span>
+              </button>
             </div>
 
             {/* Unified Segmented Input Bar */}
@@ -617,9 +632,9 @@ export default function OtaSearchWidget() {
               </div>
             </div>
 
-            {/* Bottom auxiliary row: Explore Route on Map + Sign in prompt */}
+            {/* Bottom auxiliary row: Explore Route on Map + Packages + Sign in prompt */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 text-xs">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   type="button"
                   variant="outline"
@@ -630,7 +645,17 @@ export default function OtaSearchWidget() {
                   <span>Explore Route on Map</span>
                 </Button>
 
-                <div className="hidden md:flex items-center gap-1.5 text-gray-500 text-xs">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setActiveTab("packages")}
+                  className="border-amber-200 bg-amber-50/70 hover:bg-amber-100 text-amber-900 font-bold rounded-xl px-3.5 py-2 text-xs flex items-center gap-1.5 shadow-xs"
+                >
+                  <Package className="w-3.5 h-3.5 text-[#FF3B00]" />
+                  <span>Explore Pilgrimage Packages</span>
+                </Button>
+
+                <div className="hidden lg:flex items-center gap-1.5 text-gray-500 text-xs">
                   <span>Popular:</span>
                   <button
                     type="button"
@@ -729,6 +754,93 @@ export default function OtaSearchWidget() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── Trustpilot Review Rating Strip (Trip.com Image 1) ── */}
+      <div className="flex flex-wrap items-center justify-center gap-2 pt-3 pb-1 text-xs text-white/90">
+        <span className="text-white/70 font-medium">Our pilgrims say</span>
+        <span className="font-extrabold text-white">Excellent</span>
+        <div className="flex gap-0.5">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <span
+              key={i}
+              className="w-4 h-4 bg-[#00B67A] text-white flex items-center justify-center text-[10px] font-black rounded-xs shadow-xs"
+            >
+              ★
+            </span>
+          ))}
+        </div>
+        <span className="font-semibold text-white/90">4.9 out of 5 based on 25,000+ reviews</span>
+        <span className="text-[#34D399] font-bold flex items-center gap-1">★ Verified Pilgrims</span>
+      </div>
+
+      {/* ── Featured Packages Feature Cards (Trip.com style) ── */}
+      <div className="pt-2 text-left">
+        <div className="flex items-center justify-between mb-2.5 px-1">
+          <h3 className="text-white font-black text-sm uppercase tracking-wider flex items-center gap-2">
+            <Package className="w-4 h-4 text-[#FF4E00]" />
+            Featured Packages
+          </h3>
+          <button
+            type="button"
+            onClick={() => setLocation("/packages")}
+            className="text-xs font-bold text-white/80 hover:text-white hover:underline"
+          >
+            View all packages →
+          </button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {/* Card 1: Ramadan Umrah 2027 */}
+          <div
+            onClick={() => setLocation("/packages")}
+            className="group cursor-pointer bg-white/95 hover:bg-white rounded-2xl p-3.5 border border-white/20 shadow-md transition-all duration-200 hover:-translate-y-0.5 flex items-center gap-3.5"
+          >
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#1C1F66] to-[#2D3199] flex items-center justify-center shrink-0 shadow-inner text-2xl">
+              🕋
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-[#0F172A] text-sm group-hover:text-[#2563EB] transition-colors truncate">
+                Ramadan Umrah 2027
+              </p>
+              <p className="text-xs text-gray-500 truncate mt-0.5">14 nights • Makkah and Madinah</p>
+              <p className="text-xs font-black text-[#FF4E00] mt-1">From ₦4.25M</p>
+            </div>
+          </div>
+
+          {/* Card 2: Hajj 2027 Premium */}
+          <div
+            onClick={() => setLocation("/packages")}
+            className="group cursor-pointer bg-white/95 hover:bg-white rounded-2xl p-3.5 border border-white/20 shadow-md transition-all duration-200 hover:-translate-y-0.5 flex items-center gap-3.5"
+          >
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] flex items-center justify-center shrink-0 shadow-inner text-2xl">
+              🕌
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-[#0F172A] text-sm group-hover:text-[#2563EB] transition-colors truncate">
+                Hajj 2027 Premium
+              </p>
+              <p className="text-xs text-gray-500 truncate mt-0.5">21 nights • group departure</p>
+              <p className="text-xs font-black text-[#FF4E00] mt-1">From ₦12.9M</p>
+            </div>
+          </div>
+
+          {/* Card 3: Dubai family break */}
+          <div
+            onClick={() => setLocation("/packages")}
+            className="group cursor-pointer bg-white/95 hover:bg-white rounded-2xl p-3.5 border border-white/20 shadow-md transition-all duration-200 hover:-translate-y-0.5 flex items-center gap-3.5"
+          >
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#FF4E00] to-[#E04500] flex items-center justify-center shrink-0 shadow-inner text-2xl">
+              🌴
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-bold text-[#0F172A] text-sm group-hover:text-[#2563EB] transition-colors truncate">
+                Dubai Family Break
+              </p>
+              <p className="text-xs text-gray-500 truncate mt-0.5">5 nights • flight and hotel</p>
+              <p className="text-xs font-black text-[#FF4E00] mt-1">From ₦1.65M</p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

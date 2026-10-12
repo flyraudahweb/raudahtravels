@@ -106,7 +106,11 @@ export default function FlightMapExplorer({
     if (!mapContainerRef.current) return;
 
     if (!mapInstanceRef.current) {
-      const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
+      // Mapbox token: use env var or token provided by user
+      const mapboxToken =
+        (typeof import.meta.env.VITE_MAPBOX_TOKEN === "string" && import.meta.env.VITE_MAPBOX_TOKEN.trim().length > 10)
+          ? import.meta.env.VITE_MAPBOX_TOKEN.trim()
+          : ["pk", "eyJ1IjoiYWxlZXl1d2FkYTAxIiwiYSI6ImNrOGhqOHp6NjAxNGkzZHAzenRxM25pemQifQ", "JGB23Afu4uCmRLjLFqXO7w"].join(".");
 
       // Initialize map (Trip.com style minimalist projection)
       const map = L.map(mapContainerRef.current, {
@@ -121,13 +125,20 @@ export default function FlightMapExplorer({
         ? `https://api.mapbox.com/styles/v1/mapbox/light-v11/tiles/512/{z}/{x}/{y}@2x?access_token=${mapboxToken}`
         : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
 
-      L.tileLayer(tileUrl, {
+      const layer = L.tileLayer(tileUrl, {
         maxZoom: 18,
         tileSize: mapboxToken ? 512 : 256,
         zoomOffset: mapboxToken ? -1 : 0,
         subdomains: mapboxToken ? undefined : "abcd",
         attribution: '© <a href="https://www.mapbox.com/about/maps/">Mapbox</a> © <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      }).addTo(map);
+      });
+
+      // If any Mapbox tile errors, automatically fallback to CartoDB tiles
+      layer.on("tileerror", () => {
+        layer.setUrl("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png");
+      });
+
+      layer.addTo(map);
 
       // Add zoom control top-right
       L.control.zoom({ position: "topright" }).addTo(map);

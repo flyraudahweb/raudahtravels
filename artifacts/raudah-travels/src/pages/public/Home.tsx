@@ -4,10 +4,12 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
+import { useListPackages, getListPackagesQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { MapPin, CalendarDays, Star, CheckCircle2, Phone, MessageCircle, Users, Search, ArrowRight, ChevronRight, Check, Globe, ChevronDown, Minus, Plus, Plane } from "lucide-react";
+import { MapPin, CalendarDays, Star, CheckCircle2, Phone, MessageCircle, Users, Search, ArrowRight, ChevronRight, Check, Globe, ChevronDown, Minus, Plus, Plane, Package } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import consultancyImg from "@/assets/images/consultancy.png";
+import { PackageAvailability } from "@/components/PackageAvailability";
 import OtaSearchWidget from "@/components/ota/OtaSearchWidget";
 import FlightMapExplorer from "@/components/flights/FlightMapExplorer";
 /* ── Custom branded dropdown ────────────────────────────────────────────── */
@@ -177,12 +179,17 @@ export default function Home() {
 
 
 
+  const { data: packagesData, isLoading } = useListPackages(
+    { limit: 3, available: true },
+    { query: { queryKey: getListPackagesQueryKey({ limit: 3, available: true }) } }
+  );
+
   return (
     <div className="min-h-[100dvh] flex flex-col bg-white">
       <main className="flex-1">
 
         {/* ── HERO — Deep Royal Indigo with image slideshow ── */}
-        <section className="relative min-h-screen flex flex-col overflow-hidden bg-[#1C1F66]">
+        <section className="relative flex flex-col bg-[#1C1F66] pb-12 md:pb-16">
           {/* Slideshow images */}
           {HERO_IMAGES.map((src, i) => (
             <img
@@ -196,9 +203,9 @@ export default function Home() {
           ))}
           {/* Dark gradient overlay — keeps text readable */}
           <div className="absolute inset-0 pointer-events-none"
-            style={{ background: "linear-gradient(135deg, rgba(13,15,78,0.72) 0%, rgba(28,31,102,0.58) 50%, rgba(45,49,153,0.42) 100%)" }} />
+            style={{ background: "linear-gradient(135deg, rgba(13,15,78,0.78) 0%, rgba(28,31,102,0.65) 50%, rgba(45,49,153,0.50) 100%)" }} />
           {/* Slide dots */}
-          <div className="absolute bottom-28 md:bottom-32 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2">
+          <div className="absolute top-20 right-6 z-20 flex items-center gap-2">
             {HERO_IMAGES.map((_, i) => (
               <button key={i} onClick={() => setSlideIndex(i)} aria-label={`Slide ${i + 1}`}
                 className={`rounded-full transition-all duration-300 ${i === slideIndex ? "w-6 h-2 bg-[#FF3B00]" : "w-2 h-2 bg-white/40 hover:bg-white/60"}`} />
@@ -209,40 +216,154 @@ export default function Home() {
           <Navbar transparent />
 
           {/* Hero content — Centered Trip.com layout */}
-          <div className="relative z-10 flex-1 flex flex-col justify-center items-center text-center px-4 pt-28 md:pt-36 pb-20 md:pb-24 max-w-4xl mx-auto">
-            <span className="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-white/10 backdrop-blur border border-white/20 text-white/90 text-xs font-semibold mb-4">
+          <div className="relative z-10 flex flex-col justify-center items-center text-center px-4 pt-24 sm:pt-28 pb-4 sm:pb-5 max-w-4xl mx-auto">
+            <span className="inline-flex items-center gap-2 py-1 px-3.5 rounded-full bg-white/10 backdrop-blur border border-white/20 text-white/90 text-xs font-semibold mb-2.5">
               <span className="w-2 h-2 rounded-full bg-[#FF3B00] inline-block" />
               Nigeria's Most Trusted Hajj &amp; Umrah Partner
             </span>
 
-            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-[3.25rem] font-black text-white leading-[1.2] tracking-tight">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-[2.85rem] font-black text-white leading-tight tracking-tight">
               Every check-in is a new beginning
             </h1>
 
-            {/* Trip.com Guarantee Trust Pills */}
-            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 text-white/90 text-xs sm:text-sm font-semibold mt-4">
+            {/* Trip.com Guarantee Trust Pills — Now including Packages */}
+            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-5 text-white/90 text-xs sm:text-sm font-semibold mt-3">
               <span className="flex items-center gap-1.5">
                 <Check className="w-4 h-4 text-emerald-400 stroke-[3]" /> We price match
               </span>
               <span className="text-white/30 hidden sm:inline">|</span>
               <span className="flex items-center gap-1.5">
-                <CalendarDays className="w-4 h-4 text-amber-300" /> Hotel booking guarantee
+                <Package className="w-4 h-4 text-amber-300" /> Package booking guarantee
               </span>
               <span className="text-white/30 hidden sm:inline">|</span>
               <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-sky-300" /> Hotel stay guarantee
+                <CalendarDays className="w-4 h-4 text-sky-300" /> Hotel booking guarantee
+              </span>
+              <span className="text-white/30 hidden sm:inline">|</span>
+              <span className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-purple-300" /> Hotel stay guarantee
               </span>
             </div>
           </div>
 
-          {/* Search Widget clipping cleanly to the bottom edge of the hero (Trip.com style) */}
-          <div className="relative z-20 px-4 md:px-8 max-w-5xl mx-auto w-full translate-y-14 sm:translate-y-20 -mb-14 sm:-mb-20">
+          {/* Search Widget completely visible without overflow clipping */}
+          <div className="relative z-20 px-4 md:px-8 max-w-5xl mx-auto w-full pt-1 pb-4">
             <OtaSearchWidget />
           </div>
         </section>
 
+        {/* ── FEATURED PACKAGES (Restored) ── */}
+        <section id="featured-packages" className="py-12 md:py-16 bg-white border-b border-gray-100">
+          <div className="container mx-auto px-4 md:px-6">
+            <div className="text-center mb-12 max-w-3xl mx-auto">
+              <p className="text-[#2D3199] text-xs font-black uppercase tracking-widest mb-2">Our Packages</p>
+              <h2 className="text-3xl md:text-4xl font-black text-[#0F172A] mb-3">Featured Pilgrimages</h2>
+              <div className="flex items-center justify-center gap-3 mb-4">
+                <div className="h-px w-16 bg-gradient-to-r from-transparent to-[#2D3199]" />
+                <div className="w-2 h-2 rotate-45 bg-[#2D3199]" />
+                <div className="h-px w-16 bg-gradient-to-l from-transparent to-[#2D3199]" />
+              </div>
+              <p className="text-[#64748B] text-base leading-relaxed">
+                Thoughtfully designed packages ensuring comfort, proximity to the Haramain, and deeply guided spiritual experiences.
+              </p>
+            </div>
+
+            {isLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {[1, 2, 3].map((i) => <div key={i} className="h-[420px] rounded-3xl animate-pulse bg-[#F1F5F9]" />)}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {(packagesData?.packages || []).map((pkg) => {
+                  const spacesLeft = pkg.maxCapacity - pkg.currentBookings;
+                  const isLowAvail = spacesLeft > 0 && spacesLeft <= 10;
+                  const imgSrc = getPackageImage(pkg.id, pkg.imageUrl);
+                  return (
+                    <Link key={pkg.id} href={`/packages/${pkg.id}`}
+                      className="group block bg-white rounded-3xl border border-[#DCE3F0] overflow-hidden shadow-[0_2px_16px_rgba(45,49,153,0.06)] hover:shadow-[0_8px_40px_rgba(45,49,153,0.14)] hover:-translate-y-1 transition-all duration-300">
+                      {/* Image */}
+                      <div className="relative h-52 overflow-hidden bg-[#1C1F66]">
+                        <img src={imgSrc} alt={pkg.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        <div className="absolute inset-0"
+                          style={{ background: "linear-gradient(to top, rgba(28,31,102,0.80) 0%, transparent 60%)" }} />
+                        <span className="absolute top-4 left-4 px-3 py-1 bg-[#FF3B00] text-white text-xs font-black uppercase tracking-wider rounded-full">
+                          {pkg.type}
+                        </span>
+                        <span className="absolute top-4 right-4 flex items-center gap-1 px-3 py-1 bg-white/15 backdrop-blur border border-white/20 text-white text-xs font-bold rounded-full">
+                          <Star className="w-3 h-3 fill-white" /> {pkg.starRating} Star
+                        </span>
+                        {isLowAvail && (
+                          <span className="absolute bottom-4 left-4 px-3 py-1 bg-amber-500 text-white text-xs font-bold rounded-full">
+                            Only {spacesLeft} left!
+                          </span>
+                        )}
+                        <div className="absolute bottom-4 right-4 text-right">
+                          <p className="text-white text-xl font-black leading-none">₦{pkg.price.toLocaleString()}</p>
+                          <p className="text-white/60 text-[10px] font-medium">per person</p>
+                        </div>
+                      </div>
+
+                      {/* Body */}
+                      <div className="p-5">
+                        <h3 className="text-lg font-black text-[#0F172A] leading-snug mb-3 group-hover:text-[#2D3199] transition-colors line-clamp-1">
+                          {pkg.name}
+                        </h3>
+                        <div className="flex items-center gap-4 text-sm text-[#64748B] mb-4">
+                          <span className="flex items-center gap-1.5">
+                            <CalendarDays className="w-4 h-4 text-[#2D3199]" /> {pkg.durationDays} Days
+                          </span>
+                          <span className="w-1 h-1 rounded-full bg-[#DCE3F0]" />
+                          <span className="flex items-center gap-1.5">
+                            <MapPin className="w-4 h-4 text-[#2D3199]" /> Makkah
+                          </span>
+                        </div>
+                        <div className="space-y-1.5 mb-5">
+                          {pkg.inclusions.slice(0, 3).map((inc, idx) => (
+                            <div key={idx} className="flex items-center gap-2 text-sm text-[#475569]">
+                              <span className="w-4 h-4 rounded-full bg-[#EEF0FF] flex items-center justify-center shrink-0">
+                                <Check className="w-2.5 h-2.5 text-[#2D3199]" />
+                              </span>
+                              <span className="truncate">{inc}</span>
+                            </div>
+                          ))}
+                          {pkg.inclusions.length > 3 && (
+                            <p className="text-xs text-[#94A3B8] pl-6">+{pkg.inclusions.length - 3} more inclusions</p>
+                          )}
+                        </div>
+                        <PackageAvailability
+                          maxCapacity={pkg.maxCapacity}
+                          currentBookings={pkg.currentBookings}
+                          className="mb-5"
+                        />
+                        <div className="flex items-center justify-between pt-4 border-t border-[#F1F5F9]">
+                          <div>
+                            <p className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest">Departure</p>
+                            <p className="text-sm font-bold text-[#334155]">
+                              {new Date(pkg.departureDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                            </p>
+                          </div>
+                          <span className="flex items-center gap-1 px-4 py-2 bg-[#2D3199] group-hover:bg-[#FF3B00] text-white text-sm font-bold rounded-full transition-colors duration-300">
+                            View Details <ChevronRight className="w-3.5 h-3.5" />
+                          </span>
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="text-center mt-10">
+              <Button asChild className="bg-[#2D3199] hover:bg-[#25297F] text-white rounded-full px-8 py-5 font-bold shadow-brand">
+                <Link href="/packages" className="flex items-center gap-2">View All Packages <ArrowRight className="w-4 h-4" /></Link>
+              </Button>
+            </div>
+          </div>
+        </section>
+
         {/* ── INTERACTIVE ROUTE & FLIGHT EXPLORER (Trip.com style) ── */}
-        <section id="flight-routes" className="pt-24 sm:pt-36 pb-20 md:pb-24 bg-gradient-to-b from-white via-slate-50 to-white border-y border-slate-200/80">
+        <section id="flight-routes" className="py-12 md:py-16 bg-[#F8FAFC] border-b border-slate-200/80">
           <div className="container mx-auto px-4 md:px-6">
             <div className="text-center mb-10 md:mb-12 max-w-3xl mx-auto">
               <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1C1F66]/10 text-[#1C1F66] text-xs font-bold uppercase tracking-wider mb-3">
