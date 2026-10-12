@@ -189,7 +189,7 @@ export default function Home() {
       <main className="flex-1">
 
         {/* ── HERO — Deep Royal Indigo with image slideshow ── */}
-        <section className="relative flex flex-col bg-[#1C1F66] pb-12 md:pb-16">
+        <section className="relative flex flex-col bg-[#1C1F66] pb-32 sm:pb-36 md:pb-40">
           {/* Slideshow images */}
           {HERO_IMAGES.map((src, i) => (
             <img
@@ -223,7 +223,9 @@ export default function Home() {
             </span>
 
             <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-[2.85rem] font-black text-white leading-tight tracking-tight">
-              <span className="text-amber-300">Raudah Travels &amp; Tours</span> — Every check-in is a new beginning
+              Every check-in is a new beginning
+              <br />
+              <span className="text-[#FF4E00]">Raudah Travels &amp; Tours</span>
             </h1>
 
             {/* Trip.com Guarantee Trust Pills — Now including Packages */}
@@ -245,12 +247,12 @@ export default function Home() {
               </span>
             </div>
           </div>
-
-          {/* Search Widget completely visible without overflow clipping */}
-          <div className="relative z-20 px-4 md:px-8 max-w-5xl mx-auto w-full pt-1 pb-4">
-            <OtaSearchWidget />
-          </div>
         </section>
+
+        {/* Search Widget — Overlaps bottom edge of hero like Trip.com */}
+        <div className="relative z-20 -mt-24 sm:-mt-28 md:-mt-32 px-4 md:px-8 max-w-5xl mx-auto w-full mb-0">
+          <OtaSearchWidget />
+        </div>
 
         {/* ── FEATURED PACKAGES (Restored) ── */}
         <section id="featured-packages" className="py-12 md:py-16 bg-white border-b border-gray-100">
