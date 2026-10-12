@@ -52,6 +52,26 @@ export default function FlightMapExplorer({
   const [originCode, setOriginCode] = useState(initialOrigin);
   const [destCode, setDestCode] = useState(initialDestination);
 
+  // Sync state if props change
+  useEffect(() => {
+    if (initialOrigin) setOriginCode(initialOrigin);
+  }, [initialOrigin]);
+
+  useEffect(() => {
+    if (initialDestination) setDestCode(initialDestination);
+  }, [initialDestination]);
+
+  // Listen to flight-route-selected events from search widget
+  useEffect(() => {
+    function handleRouteEvent(e: Event) {
+      const customEvent = e as CustomEvent<{ origin?: string; destination?: string }>;
+      if (customEvent.detail?.origin) setOriginCode(customEvent.detail.origin);
+      if (customEvent.detail?.destination) setDestCode(customEvent.detail.destination);
+    }
+    window.addEventListener("flight-route-selected", handleRouteEvent);
+    return () => window.removeEventListener("flight-route-selected", handleRouteEvent);
+  }, []);
+
   const originPlace = useMemo(() => findPlaceByCode(originCode) || POPULAR_ORIGINS[0], [originCode]);
   const destPlace = useMemo(() => findPlaceByCode(destCode) || POPULAR_DESTINATIONS[0], [destCode]);
 
