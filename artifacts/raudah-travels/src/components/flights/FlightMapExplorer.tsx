@@ -106,7 +106,9 @@ export default function FlightMapExplorer({
     if (!mapContainerRef.current) return;
 
     if (!mapInstanceRef.current) {
-      // CartoDB Positron / OSM light tiles matching Trip.com
+      const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
+
+      // Initialize map (Trip.com style minimalist projection)
       const map = L.map(mapContainerRef.current, {
         center: [16.0, 24.0],
         zoom: 4,
@@ -114,9 +116,17 @@ export default function FlightMapExplorer({
         attributionControl: false,
       });
 
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+      // Mapbox Light v11 with @2x retina crisp tiles, or CartoDB Voyager fallback
+      const tileUrl = mapboxToken
+        ? `https://api.mapbox.com/styles/v1/mapbox/light-v11/tiles/512/{z}/{x}/{y}@2x?access_token=${mapboxToken}`
+        : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+
+      L.tileLayer(tileUrl, {
         maxZoom: 18,
-        subdomains: "abcd",
+        tileSize: mapboxToken ? 512 : 256,
+        zoomOffset: mapboxToken ? -1 : 0,
+        subdomains: mapboxToken ? undefined : "abcd",
+        attribution: '© <a href="https://www.mapbox.com/about/maps/">Mapbox</a> © <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       }).addTo(map);
 
       // Add zoom control top-right
