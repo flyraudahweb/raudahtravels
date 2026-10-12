@@ -61,6 +61,30 @@ export const HOTEL_DESTINATIONS = [
     image: "https://images.pexels.com/photos/29676866/pexels-photo-29676866.jpeg",
     description: "5-star towers and central accommodations in the vibrant capital.",
   },
+  {
+    id: "dubai",
+    name: "Dubai",
+    subtitle: "Downtown & Marina Luxury",
+    icon: "🏖️",
+    image: "https://images.pexels.com/photos/1470405/pexels-photo-1470405.jpeg",
+    description: "World-class resorts, Burj Khalifa views, and iconic hospitality.",
+  },
+  {
+    id: "cairo",
+    name: "Cairo",
+    subtitle: "Historic Nile & Pyramids",
+    icon: "🏛️",
+    image: "https://images.pexels.com/photos/3290075/pexels-photo-3290075.jpeg",
+    description: "Centuries of heritage, luxury Nile views, and historic proximity.",
+  },
+  {
+    id: "istanbul",
+    name: "Istanbul",
+    subtitle: "Bosphorus & Sultanahmet",
+    icon: "🕌",
+    image: "https://images.pexels.com/photos/1549326/pexels-photo-1549326.jpeg",
+    description: "Where East meets West with historic boutique and 5-star lodging.",
+  },
 ];
 
 // Helper: calculate distance in kilometers between two lat/lng coordinates (Haversine formula)

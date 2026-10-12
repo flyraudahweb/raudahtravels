@@ -189,7 +189,7 @@ export default function Home() {
       <main className="flex-1">
 
         {/* ── HERO — Deep Royal Indigo with image slideshow ── */}
-        <section className="relative flex flex-col bg-[#1C1F66] pb-32 sm:pb-36 md:pb-40">
+        <section className="relative flex flex-col bg-[#1C1F66] pb-36 sm:pb-44 md:pb-48">
           {/* Slideshow images */}
           {HERO_IMAGES.map((src, i) => (
             <img
@@ -215,9 +215,9 @@ export default function Home() {
           {/* Navbar — transparent, becomes solid on scroll */}
           <Navbar transparent />
 
-          {/* Hero content — Centered Trip.com layout */}
-          <div className="relative z-10 flex flex-col justify-center items-center text-center px-4 pt-24 sm:pt-28 pb-4 sm:pb-5 max-w-4xl mx-auto">
-            <span className="inline-flex items-center gap-2 py-1 px-3.5 rounded-full bg-white/10 backdrop-blur border border-white/20 text-white/90 text-xs font-semibold mb-2.5">
+          {/* Hero content — Centered Trip.com layout shifted comfortably below top nav */}
+          <div className="relative z-10 flex flex-col justify-center items-center text-center px-4 pt-32 sm:pt-36 md:pt-40 lg:pt-44 pb-6 sm:pb-8 max-w-4xl mx-auto">
+            <span className="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-white/10 backdrop-blur border border-white/20 text-white/90 text-xs font-semibold mb-3">
               <span className="w-2 h-2 rounded-full bg-[#FF3B00] inline-block" />
               Online Travel Agency • Nigeria's Most Trusted Partner
             </span>
@@ -229,7 +229,7 @@ export default function Home() {
             </h1>
 
             {/* Trip.com Guarantee Trust Pills — Now including Packages */}
-            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-5 text-white/90 text-xs sm:text-sm font-semibold mt-3">
+            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-5 text-white/90 text-xs sm:text-sm font-semibold mt-4">
               <span className="flex items-center gap-1.5">
                 <Check className="w-4 h-4 text-emerald-400 stroke-[3]" /> We price match
               </span>

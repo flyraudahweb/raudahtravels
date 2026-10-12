@@ -4,7 +4,6 @@ import {
   bookingsTable, paymentsTable, notificationsTable,
   packagesTable, profilesTable, agentsTable, commissionsTable,
   supportTicketsTable, visaApplicationsTable, bookingAmendmentRequestsTable,
-  supportTicketsTable, visaApplicationsTable, bookingAmendmentRequestsTable,
   agentWalletsTable, flightBookingsTable, hotelBookingsTable,
 } from "@workspace/db";
 import { randomUUID } from "crypto";
