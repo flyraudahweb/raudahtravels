@@ -4,12 +4,10 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { useListPackages, getListPackagesQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { MapPin, CalendarDays, Star, CheckCircle2, Phone, MessageCircle, Users, Search, ArrowRight, ChevronRight, Check, Globe, ChevronDown, Minus, Plus, Plane } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import consultancyImg from "@/assets/images/consultancy.png";
-import { PackageAvailability } from "@/components/PackageAvailability";
 import OtaSearchWidget from "@/components/ota/OtaSearchWidget";
 import FlightMapExplorer from "@/components/flights/FlightMapExplorer";
 /* ── Custom branded dropdown ────────────────────────────────────────────── */
@@ -178,10 +176,6 @@ export default function Home() {
   });
 
 
-  const { data: packagesData, isLoading } = useListPackages(
-    { limit: 3, available: true },
-    { query: { queryKey: getListPackagesQueryKey({ limit: 3, available: true }) } }
-  );
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-white">
@@ -214,178 +208,41 @@ export default function Home() {
           {/* Navbar — transparent, becomes solid on scroll */}
           <Navbar transparent />
 
-          {/* Hero content */}
-          <div className="relative z-10 flex-1 flex items-center">
-            <div className="container mx-auto px-4 md:px-8 pt-28 md:pt-32 pb-16 md:pb-24 max-w-7xl">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-8 items-center">
+          {/* Hero content — Centered Trip.com layout */}
+          <div className="relative z-10 flex-1 flex flex-col justify-center items-center text-center px-4 pt-28 md:pt-36 pb-20 md:pb-24 max-w-4xl mx-auto">
+            <span className="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-white/10 backdrop-blur border border-white/20 text-white/90 text-xs font-semibold mb-4">
+              <span className="w-2 h-2 rounded-full bg-[#FF3B00] inline-block" />
+              Nigeria's Most Trusted Hajj &amp; Umrah Partner
+            </span>
 
-                {/* Left */}
-                <div className="space-y-6">
-                  <span className="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-white/10 backdrop-blur border border-white/20 text-white/90 text-xs font-semibold">
-                    <span className="w-2 h-2 rounded-full bg-[#FF3B00] inline-block" />
-                    Nigeria's Most Trusted Hajj &amp; Umrah Partner
-                  </span>
+            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-[3.25rem] font-black text-white leading-[1.2] tracking-tight">
+              Every check-in is a new beginning
+            </h1>
 
-                  <h1 className="text-4xl md:text-5xl lg:text-[3.5rem] font-black text-white leading-[1.1] tracking-tight" style={{ color: "white" }}>
-                    Raudah Travels &amp; Tours,{" "}
-                    <span className="text-[#FF3B00]">Your Gateway</span>{" "}
-                    to the Holy Lands
-                  </h1>
-
-                  <p className="text-white/75 text-base leading-relaxed max-w-lg">
-                    Experience Hajj and Umrah with Nigeria's Most Trusted Travel Partner — premium packages, expert guidance, seamless logistics.
-                  </p>
-
-                  <div className="flex flex-col sm:flex-row items-start gap-4">
-                    <Button size="lg" asChild
-                      className="bg-[#FF3B00] hover:bg-[#D63200] text-white font-bold px-8 py-6 text-base rounded-full shadow-cta transition-all hover:-translate-y-0.5">
-                      <Link href="/packages">Explore Packages</Link>
-                    </Button>
-                    <Button size="lg" variant="outline" asChild
-                      className="border-white/30 text-white bg-transparent hover:bg-white/10 hover:text-white font-semibold px-8 py-6 text-base rounded-full backdrop-blur-sm transition-all">
-                      <Link href="/become-agent">Become an Agent</Link>
-                    </Button>
-                  </div>
-
-                </div>
-
-                {/* Right — Video (Hidden on mobile/tablet to streamline layout and avoid video clutter) */}
-                <div className="hidden lg:block relative w-full max-w-[560px] mx-auto lg:ml-auto">
-                  <div className="rounded-3xl overflow-hidden bg-[#0d1b2a] shadow-2xl border border-white/10 aspect-video">
-                    <iframe 
-                      src="https://www.youtube.com/embed/zlUXmn4FJ0o?si=uIbWog9sX6wu7-rq&autoplay=1&mute=1" 
-                      title="YouTube video player" 
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
-                      referrerPolicy="strict-origin-when-cross-origin" 
-                      allowFullScreen
-                      className="w-full h-full border-0"
-                    />
-                  </div>
-                  <div className="absolute -inset-6 bg-indigo-500/20 rounded-3xl blur-3xl -z-10" />
-                </div>
-
-              </div>
+            {/* Trip.com Guarantee Trust Pills */}
+            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 text-white/90 text-xs sm:text-sm font-semibold mt-4">
+              <span className="flex items-center gap-1.5">
+                <Check className="w-4 h-4 text-emerald-400 stroke-[3]" /> We price match
+              </span>
+              <span className="text-white/30 hidden sm:inline">|</span>
+              <span className="flex items-center gap-1.5">
+                <CalendarDays className="w-4 h-4 text-amber-300" /> Hotel booking guarantee
+              </span>
+              <span className="text-white/30 hidden sm:inline">|</span>
+              <span className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-sky-300" /> Hotel stay guarantee
+              </span>
             </div>
           </div>
 
-          {/* OTA 3-Tab Search Widget (PDF Page 1 design) */}
-          <div className="relative z-20 px-4 md:px-8 pb-14 md:pb-20 -mt-16 sm:-mt-24 max-w-5xl mx-auto w-full">
+          {/* Search Widget clipping cleanly to the bottom edge of the hero (Trip.com style) */}
+          <div className="relative z-20 px-4 md:px-8 max-w-5xl mx-auto w-full translate-y-14 sm:translate-y-20 -mb-14 sm:-mb-20">
             <OtaSearchWidget />
           </div>
         </section>
 
-        {/* ── FEATURED PACKAGES ── */}
-        <section className="py-24 bg-white">
-          <div className="container mx-auto px-4 md:px-6">
-            <div className="text-center mb-16 max-w-3xl mx-auto">
-              <p className="text-[#2D3199] text-sm font-bold uppercase tracking-widest mb-3">Our Packages</p>
-              <h2 className="text-3xl md:text-4xl font-black text-[#0F172A] mb-4">Featured Pilgrimages</h2>
-              <div className="flex items-center justify-center gap-3 mb-6">
-                <div className="h-px w-16 bg-gradient-to-r from-transparent to-[#2D3199]" />
-                <div className="w-2 h-2 rotate-45 bg-[#2D3199]" />
-                <div className="h-px w-16 bg-gradient-to-l from-transparent to-[#2D3199]" />
-              </div>
-              <p className="text-[#64748B] text-lg leading-relaxed">
-                Thoughtfully designed packages ensuring comfort, proximity to the Haramain, and deeply guided spiritual experiences.
-              </p>
-            </div>
-
-            {isLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {[1, 2, 3].map((i) => <div key={i} className="h-[440px] rounded-3xl animate-pulse bg-[#F1F5F9]" />)}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {(packagesData?.packages || []).map((pkg) => {
-                  const spacesLeft = pkg.maxCapacity - pkg.currentBookings;
-                  const isLowAvail = spacesLeft > 0 && spacesLeft <= 10;
-                  const imgSrc = getPackageImage(pkg.id, pkg.imageUrl);
-                  return (
-                    <Link key={pkg.id} href={`/packages/${pkg.id}`}
-                      className="group block bg-white rounded-3xl border border-[#DCE3F0] overflow-hidden shadow-[0_2px_16px_rgba(45,49,153,0.06)] hover:shadow-[0_8px_40px_rgba(45,49,153,0.14)] hover:-translate-y-1 transition-all duration-300">
-                      {/* Image */}
-                      <div className="relative h-52 overflow-hidden bg-[#1C1F66]">
-                        <img src={imgSrc} alt={pkg.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                        <div className="absolute inset-0"
-                          style={{ background: "linear-gradient(to top, rgba(28,31,102,0.80) 0%, transparent 60%)" }} />
-                        <span className="absolute top-4 left-4 px-3 py-1 bg-[#FF3B00] text-white text-xs font-black uppercase tracking-wider rounded-full">
-                          {pkg.type}
-                        </span>
-                        <span className="absolute top-4 right-4 flex items-center gap-1 px-3 py-1 bg-white/15 backdrop-blur border border-white/20 text-white text-xs font-bold rounded-full">
-                          <Star className="w-3 h-3 fill-white" /> {pkg.starRating} Star
-                        </span>
-                        {isLowAvail && (
-                          <span className="absolute bottom-4 left-4 px-3 py-1 bg-amber-500 text-white text-xs font-bold rounded-full">
-                            Only {spacesLeft} left!
-                          </span>
-                        )}
-                        <div className="absolute bottom-4 right-4 text-right">
-                          <p className="text-white text-xl font-black leading-none">₦{pkg.price.toLocaleString()}</p>
-                          <p className="text-white/60 text-[10px] font-medium">per person</p>
-                        </div>
-                      </div>
-
-                      {/* Body */}
-                      <div className="p-5">
-                        <h3 className="text-lg font-black text-[#0F172A] leading-snug mb-3 group-hover:text-[#2D3199] transition-colors line-clamp-1">
-                          {pkg.name}
-                        </h3>
-                        <div className="flex items-center gap-4 text-sm text-[#64748B] mb-4">
-                          <span className="flex items-center gap-1.5">
-                            <CalendarDays className="w-4 h-4 text-[#2D3199]" /> {pkg.durationDays} Days
-                          </span>
-                          <span className="w-1 h-1 rounded-full bg-[#DCE3F0]" />
-                          <span className="flex items-center gap-1.5">
-                            <MapPin className="w-4 h-4 text-[#2D3199]" /> Makkah
-                          </span>
-                        </div>
-                        <div className="space-y-1.5 mb-5">
-                          {pkg.inclusions.slice(0, 3).map((inc, idx) => (
-                            <div key={idx} className="flex items-center gap-2 text-sm text-[#475569]">
-                              <span className="w-4 h-4 rounded-full bg-[#EEF0FF] flex items-center justify-center shrink-0">
-                                <Check className="w-2.5 h-2.5 text-[#2D3199]" />
-                              </span>
-                              <span className="truncate">{inc}</span>
-                            </div>
-                          ))}
-                          {pkg.inclusions.length > 3 && (
-                            <p className="text-xs text-[#94A3B8] pl-6">+{pkg.inclusions.length - 3} more inclusions</p>
-                          )}
-                        </div>
-                        <PackageAvailability
-                          maxCapacity={pkg.maxCapacity}
-                          currentBookings={pkg.currentBookings}
-                          className="mb-5"
-                        />
-                        <div className="flex items-center justify-between pt-4 border-t border-[#F1F5F9]">
-                          <div>
-                            <p className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest">Departure</p>
-                            <p className="text-sm font-bold text-[#334155]">
-                              {new Date(pkg.departureDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
-                            </p>
-                          </div>
-                          <span className="flex items-center gap-1 px-4 py-2 bg-[#2D3199] group-hover:bg-[#FF3B00] text-white text-sm font-bold rounded-full transition-colors duration-300">
-                            View Details <ChevronRight className="w-3.5 h-3.5" />
-                          </span>
-                        </div>
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="text-center mt-12">
-              <Button asChild className="bg-[#2D3199] hover:bg-[#25297F] text-white rounded-full px-8 font-bold shadow-brand">
-                <Link href="/packages" className="flex items-center gap-2">View All Packages <ArrowRight className="w-4 h-4" /></Link>
-              </Button>
-            </div>
-          </div>
-        </section>
-
         {/* ── INTERACTIVE ROUTE & FLIGHT EXPLORER (Trip.com style) ── */}
-        <section id="flight-routes" className="py-20 md:py-24 bg-gradient-to-b from-white via-slate-50 to-white border-y border-slate-200/80">
+        <section id="flight-routes" className="pt-24 sm:pt-36 pb-20 md:pb-24 bg-gradient-to-b from-white via-slate-50 to-white border-y border-slate-200/80">
           <div className="container mx-auto px-4 md:px-6">
             <div className="text-center mb-10 md:mb-12 max-w-3xl mx-auto">
               <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1C1F66]/10 text-[#1C1F66] text-xs font-bold uppercase tracking-wider mb-3">
