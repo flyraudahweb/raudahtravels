@@ -106,62 +106,75 @@ export default function FlightMapExplorer({
     if (!mapContainerRef.current) return;
 
     if (!mapInstanceRef.current) {
-      // Mapbox token: use env var or token provided by user
-      const mapboxToken =
-        (typeof import.meta.env.VITE_MAPBOX_TOKEN === "string" && import.meta.env.VITE_MAPBOX_TOKEN.trim().length > 10)
-          ? import.meta.env.VITE_MAPBOX_TOKEN.trim()
-          : ["pk", "eyJ1IjoiYWxlZXl1d2FkYTAxIiwiYSI6ImNrOGhqOHp6NjAxNGkzZHAzenRxM25pemQifQ", "JGB23Afu4uCmRLjLFqXO7w"].join(".");
+      try {
+        // Mapbox token: use env var or token provided by user
+        const mapboxToken =
+          (typeof import.meta.env.VITE_MAPBOX_TOKEN === "string" && import.meta.env.VITE_MAPBOX_TOKEN.trim().length > 10)
+            ? import.meta.env.VITE_MAPBOX_TOKEN.trim()
+            : ["pk", "eyJ1IjoiYWxlZXl1d2FkYTAxIiwiYSI6ImNrOGhqOHp6NjAxNGkzZHAzenRxM25pemQifQ", "JGB23Afu4uCmRLjLFqXO7w"].join(".");
 
-      // Initialize map (Trip.com style minimalist projection)
-      const map = L.map(mapContainerRef.current, {
-        center: [16.0, 24.0],
-        zoom: 4,
-        zoomControl: false,
-        attributionControl: false,
-      });
+        // Initialize map (Trip.com style minimalist projection)
+        const map = L.map(mapContainerRef.current, {
+          center: [16.0, 24.0],
+          zoom: 4,
+          zoomControl: false,
+          attributionControl: false,
+        });
 
-      // Mapbox Light v11 with @2x retina crisp tiles, or CartoDB Voyager fallback
-      const tileUrl = mapboxToken
-        ? `https://api.mapbox.com/styles/v1/mapbox/light-v11/tiles/512/{z}/{x}/{y}@2x?access_token=${mapboxToken}`
-        : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+        // Mapbox Light v11 with @2x retina crisp tiles, or CartoDB Voyager fallback
+        const tileUrl = mapboxToken
+          ? `https://api.mapbox.com/styles/v1/mapbox/light-v11/tiles/512/{z}/{x}/{y}@2x?access_token=${mapboxToken}`
+          : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
 
-      const layer = L.tileLayer(tileUrl, {
-        maxZoom: 18,
-        tileSize: mapboxToken ? 512 : 256,
-        zoomOffset: mapboxToken ? -1 : 0,
-        subdomains: mapboxToken ? undefined : "abcd",
-        attribution: '© <a href="https://www.mapbox.com/about/maps/">Mapbox</a> © <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      });
+        const layer = L.tileLayer(tileUrl, {
+          maxZoom: 18,
+          tileSize: mapboxToken ? 512 : 256,
+          zoomOffset: mapboxToken ? -1 : 0,
+          subdomains: "abc",
+          attribution: '© <a href="https://www.mapbox.com/about/maps/">Mapbox</a> © <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        });
 
-      // If any Mapbox tile errors, automatically fallback to CartoDB tiles
-      layer.on("tileerror", () => {
-        layer.setUrl("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png");
-      });
+        // If any Mapbox tile errors, automatically fallback to CartoDB tiles
+        layer.on("tileerror", () => {
+          try {
+            layer.setUrl("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png");
+          } catch {
+            // ignore fallback error
+          }
+        });
 
-      layer.addTo(map);
+        layer.addTo(map);
 
-      // Add zoom control top-right
-      L.control.zoom({ position: "topright" }).addTo(map);
+        // Add zoom control top-right
+        L.control.zoom({ position: "topright" }).addTo(map);
 
-      routeLayerRef.current = L.layerGroup().addTo(map);
-      mapInstanceRef.current = map;
+        routeLayerRef.current = L.layerGroup().addTo(map);
+        mapInstanceRef.current = map;
+      } catch (err) {
+        console.error("Map initialization failed:", err);
+      }
     }
 
     return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
+      try {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.remove();
+          mapInstanceRef.current = null;
+        }
+      } catch (err) {
+        console.error("Map cleanup error:", err);
       }
     };
   }, []);
 
   // Draw Route and Markers
   useEffect(() => {
-    const map = mapInstanceRef.current;
-    const layer = routeLayerRef.current;
-    if (!map || !layer) return;
+    try {
+      const map = mapInstanceRef.current;
+      const layer = routeLayerRef.current;
+      if (!map || !layer) return;
 
-    layer.clearLayers();
+      layer.clearLayers();
 
     // 1. Origin marker ("From Abuja")
     const originIcon = L.divIcon({
@@ -255,10 +268,17 @@ export default function FlightMapExplorer({
 
     // Invalidate size in case parent container resized, then fit bounds smoothly
     setTimeout(() => {
-      map.invalidateSize();
-      const bounds = L.latLngBounds([[lat1, lng1], [lat2, lng2], [midLat, midLng]]);
-      map.fitBounds(bounds, { padding: [80, 80], maxZoom: 6 });
+      try {
+        map.invalidateSize();
+        const bounds = L.latLngBounds([[lat1, lng1], [lat2, lng2], [midLat, midLng]]);
+        map.fitBounds(bounds, { padding: [80, 80], maxZoom: 6 });
+      } catch {
+        // ignore layout race
+      }
     }, 50);
+    } catch (err) {
+      console.error("Error drawing flight route on map:", err);
+    }
   }, [originPlace, destPlace]);
 
   function handleProceedToSearch() {
