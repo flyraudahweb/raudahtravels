@@ -74,80 +74,86 @@ export default function FlightCard({ offer, onSelect, index }: FlightCardProps) 
   const stopCode = segments.length > 1 ? segments[0]?.destination?.iata_code || "CAI" : null;
   const stopsText = stopsCount === 0 ? "Non-stop" : `${stopsCount} stop${stopCode ? ` - ${stopCode}` : ""}`;
 
-  const hasBaggage = offer.baggage_allowance || true;
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05, duration: 0.3 }}
-      className="bg-white rounded-2xl border border-[#E2E8F0] p-5 shadow-sm hover:shadow-md transition-shadow"
+      className="bg-white rounded-2xl border border-[#E2E8F0] p-4 sm:p-5 shadow-sm hover:shadow-md transition-shadow"
     >
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        {/* Left: Airline Icon & Name */}
-        <div className="flex items-center gap-3 md:w-40 shrink-0">
-          <div className={`w-12 h-12 rounded-full ${airlineInfo.bg} ${airlineInfo.text} flex items-center justify-center font-black text-sm shrink-0 shadow-sm`}>
-            {airlineInfo.initials}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-6">
+        {/* Top / Left: Airline info & Baggage */}
+        <div className="flex items-center justify-between md:justify-start gap-3 md:w-44 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full ${airlineInfo.bg} ${airlineInfo.text} flex items-center justify-center font-black text-xs sm:text-sm shrink-0 shadow-sm`}>
+              {airlineInfo.initials}
+            </div>
+            <div>
+              <p className="font-bold text-xs sm:text-sm text-[#0F172A] leading-tight">
+                {airlineInfo.name}
+              </p>
+              {airlineCode && (
+                <p className="text-[10px] sm:text-[11px] text-gray-400 font-medium">{airlineCode}</p>
+              )}
+            </div>
           </div>
-          <div>
-            <p className="font-bold text-sm text-[#0F172A] leading-tight">
-              {airlineInfo.name}
-            </p>
-            {airlineCode && (
-              <p className="text-[11px] text-gray-400 font-medium">{airlineCode}</p>
-            )}
+
+          {/* Baggage Tag visible at top on mobile */}
+          <div className="md:hidden flex items-center text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+            <Luggage className="w-3 h-3 mr-1" />
+            23 kg bag
           </div>
         </div>
 
-        {/* Middle: Departure ➔ Route ➔ Arrival */}
-        <div className="flex-1 flex items-center justify-between sm:justify-around gap-4">
+        {/* Middle: Departure ➔ Route Timeline ➔ Arrival */}
+        <div className="flex-1 flex items-center justify-between gap-2 sm:gap-4 py-2 sm:py-0">
           {/* Departure */}
-          <div className="text-left">
-            <p className="text-xl font-black text-[#0F172A]">{depTime}</p>
-            <p className="text-xs font-bold text-gray-500 mt-0.5">{originCode}</p>
+          <div className="text-left shrink-0">
+            <p className="text-lg sm:text-xl font-black text-[#0F172A]">{depTime}</p>
+            <p className="text-[11px] sm:text-xs font-bold text-gray-500 mt-0.5">{originCode}</p>
           </div>
 
-          {/* Timeline Bar (Page 2 mockup style) */}
-          <div className="flex-1 max-w-[200px] flex flex-col items-center px-2">
-            <span className="text-[11px] font-medium text-gray-500 mb-1">
+          {/* Timeline Bar */}
+          <div className="flex-1 max-w-[180px] sm:max-w-[210px] flex flex-col items-center px-1 sm:px-2">
+            <span className="text-[10px] sm:text-[11px] font-semibold text-gray-500 mb-1">
               {duration}
             </span>
             <div className="relative w-full flex items-center">
-              <div className="w-full h-[2px] bg-gray-300 rounded-full" />
+              <div className="w-full h-[2px] bg-gray-200 rounded-full" />
               {stopsCount > 0 && (
                 <div className="absolute left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-[#FF4E00] ring-4 ring-white" />
               )}
             </div>
-            <span className={`text-[11px] font-semibold mt-1 ${stopsCount > 0 ? "text-[#FF4E00]" : "text-emerald-600"}`}>
+            <span className={`text-[10px] sm:text-[11px] font-bold mt-1 ${stopsCount > 0 ? "text-[#FF4E00]" : "text-emerald-600"}`}>
               {stopsText}
             </span>
           </div>
 
           {/* Arrival */}
-          <div className="text-right">
-            <p className="text-xl font-black text-[#0F172A]">{arrTime}</p>
-            <p className="text-xs font-bold text-gray-500 mt-0.5">{destCode}</p>
+          <div className="text-right shrink-0">
+            <p className="text-lg sm:text-xl font-black text-[#0F172A]">{arrTime}</p>
+            <p className="text-[11px] sm:text-xs font-bold text-gray-500 mt-0.5">{destCode}</p>
           </div>
         </div>
 
-        {/* Baggage info tag */}
-        <div className="shrink-0 flex items-center justify-center text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200">
+        {/* Desktop Baggage Tag */}
+        <div className="hidden md:flex shrink-0 items-center text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200">
           <Luggage className="w-3.5 h-3.5 mr-1" />
           23 kg bag
         </div>
 
         {/* Right: Price & Select button */}
-        <div className="flex md:flex-col items-center md:items-end justify-between md:justify-center gap-3 shrink-0 pt-3 md:pt-0 border-t md:border-t-0 border-gray-100">
+        <div className="flex items-center md:flex-col md:items-end justify-between md:justify-center gap-3 shrink-0 pt-3 md:pt-0 border-t md:border-t-0 border-gray-100">
           <div className="text-left md:text-right">
             <p className="text-xl sm:text-2xl font-black text-[#0F172A]">
               ₦{Math.round(priceNGN).toLocaleString()}
             </p>
-            <p className="text-[11px] text-gray-400 font-medium">per adult</p>
+            <p className="text-[10px] sm:text-[11px] text-gray-400 font-medium">per adult</p>
           </div>
 
           <Button
             onClick={() => onSelect(offer.id)}
-            className="bg-[#FF4E00] hover:bg-[#E04500] text-white font-black rounded-xl px-7 py-2.5 shadow-sm transition-all hover:scale-[1.02]"
+            className="bg-[#FF4E00] hover:bg-[#E04500] text-white font-black rounded-xl px-6 sm:px-7 py-2 sm:py-2.5 text-xs sm:text-sm shadow-sm transition-all hover:scale-[1.02]"
           >
             Select
           </Button>
