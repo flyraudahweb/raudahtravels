@@ -32,6 +32,7 @@ interface FlightMapExplorerProps {
   returnDate?: string;
   adults?: number;
   onSelectFlight?: (origin: string, destination: string) => void;
+  className?: string;
 }
 
 export default function FlightMapExplorer({
@@ -41,6 +42,7 @@ export default function FlightMapExplorer({
   returnDate = "2027-01-26",
   adults = 2,
   onSelectFlight,
+  className,
 }: FlightMapExplorerProps) {
   const [, setLocation] = useLocation();
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -230,9 +232,12 @@ export default function FlightMapExplorer({
 
     L.marker(planePos, { icon: planeIcon }).addTo(layer);
 
-    // Fit bounds smoothly with margin
-    const bounds = L.latLngBounds([[lat1, lng1], [lat2, lng2], [midLat, midLng]]);
-    map.fitBounds(bounds, { padding: [80, 80], maxZoom: 6 });
+    // Invalidate size in case parent container resized, then fit bounds smoothly
+    setTimeout(() => {
+      map.invalidateSize();
+      const bounds = L.latLngBounds([[lat1, lng1], [lat2, lng2], [midLat, midLng]]);
+      map.fitBounds(bounds, { padding: [80, 80], maxZoom: 6 });
+    }, 50);
   }, [originPlace, destPlace]);
 
   function handleProceedToSearch() {
@@ -252,7 +257,7 @@ export default function FlightMapExplorer({
   }
 
   return (
-    <div className="relative w-full h-[600px] sm:h-[680px] rounded-3xl overflow-hidden border border-[#E2E8F0] shadow-xl bg-[#F8FAFC]">
+    <div className={`relative w-full h-[560px] sm:h-[640px] rounded-3xl overflow-hidden border border-[#E2E8F0] shadow-xl bg-[#F8FAFC] ${className || ""}`}>
       {/* ── Leaflet World Map Container ── */}
       <div ref={mapContainerRef} className="w-full h-full z-0" />
 

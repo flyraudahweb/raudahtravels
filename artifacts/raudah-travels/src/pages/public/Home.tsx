@@ -6,11 +6,12 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useListPackages, getListPackagesQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { MapPin, CalendarDays, Star, CheckCircle2, Phone, MessageCircle, Users, Search, ArrowRight, ChevronRight, Check, Globe, ChevronDown, Minus, Plus } from "lucide-react";
+import { MapPin, CalendarDays, Star, CheckCircle2, Phone, MessageCircle, Users, Search, ArrowRight, ChevronRight, Check, Globe, ChevronDown, Minus, Plus, Plane } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import consultancyImg from "@/assets/images/consultancy.png";
 import { PackageAvailability } from "@/components/PackageAvailability";
 import OtaSearchWidget from "@/components/ota/OtaSearchWidget";
+import FlightMapExplorer from "@/components/flights/FlightMapExplorer";
 /* ── Custom branded dropdown ────────────────────────────────────────────── */
 interface DropdownOption { value: string; label: string; }
 
@@ -248,8 +249,8 @@ export default function Home() {
 
                 </div>
 
-                {/* Right — Video */}
-                <div className="relative w-full max-w-[560px] mx-auto lg:ml-auto">
+                {/* Right — Video (Hidden on mobile/tablet to streamline layout and avoid video clutter) */}
+                <div className="hidden lg:block relative w-full max-w-[560px] mx-auto lg:ml-auto">
                   <div className="rounded-3xl overflow-hidden bg-[#0d1b2a] shadow-2xl border border-white/10 aspect-video">
                     <iframe 
                       src="https://www.youtube.com/embed/zlUXmn4FJ0o?si=uIbWog9sX6wu7-rq&autoplay=1&mute=1" 
@@ -379,6 +380,36 @@ export default function Home() {
               <Button asChild className="bg-[#2D3199] hover:bg-[#25297F] text-white rounded-full px-8 font-bold shadow-brand">
                 <Link href="/packages" className="flex items-center gap-2">View All Packages <ArrowRight className="w-4 h-4" /></Link>
               </Button>
+            </div>
+          </div>
+        </section>
+
+        {/* ── INTERACTIVE ROUTE & FLIGHT EXPLORER (Trip.com style) ── */}
+        <section id="flight-routes" className="py-20 md:py-24 bg-gradient-to-b from-white via-slate-50 to-white border-y border-slate-200/80">
+          <div className="container mx-auto px-4 md:px-6">
+            <div className="text-center mb-10 md:mb-12 max-w-3xl mx-auto">
+              <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1C1F66]/10 text-[#1C1F66] text-xs font-bold uppercase tracking-wider mb-3">
+                <Plane className="w-3.5 h-3.5 text-[#FF4E00]" /> Interactive Flight Explorer
+              </span>
+              <h2 className="text-3xl md:text-4xl lg:text-5xl font-black text-[#0F172A] tracking-tight">
+                Live Flight Routes &amp; Travel Hours
+              </h2>
+              <div className="flex items-center justify-center gap-3 my-4">
+                <div className="h-px w-16 bg-gradient-to-r from-transparent to-[#2D3199]" />
+                <div className="w-2 h-2 rotate-45 bg-[#2D3199]" />
+                <div className="h-px w-16 bg-gradient-to-l from-transparent to-[#2D3199]" />
+              </div>
+              <p className="text-[#64748B] text-base md:text-lg leading-relaxed">
+                Explore real-time geodesic flight paths, estimated flight durations, distances, and sample fares from Nigerian departure hubs to the Holy Lands and global destinations.
+              </p>
+            </div>
+
+            <div className="max-w-5xl mx-auto">
+              <FlightMapExplorer 
+                initialOrigin="LOS" 
+                initialDestination="JED"
+                className="shadow-2xl"
+              />
             </div>
           </div>
         </section>

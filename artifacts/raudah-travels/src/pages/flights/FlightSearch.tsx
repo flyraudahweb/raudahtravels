@@ -141,9 +141,14 @@ export default function FlightSearch() {
   const adults = queryParams.get("adults") || "2";
 
   // View Mode: "list" | "map"
-  const [viewMode, setViewMode] = useState<"list" | "map">(
-    queryParams.get("map") === "true" ? "map" : "list"
-  );
+  const isMapInUrl = queryParams.get("map") === "true" || queryParams.get("view") === "map";
+  const [viewMode, setViewMode] = useState<"list" | "map">(isMapInUrl ? "map" : "list");
+
+  useEffect(() => {
+    if (isMapInUrl) {
+      setViewMode("map");
+    }
+  }, [isMapInUrl]);
 
   // Filter States
   const [selectedStops, setSelectedStops] = useState<string[]>(["1 stop"]);
