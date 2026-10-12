@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { User, Mail, Phone, Calendar, Loader2 } from "lucide-react";
+import { User, Mail, Phone, Calendar, Plus, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,7 +17,10 @@ export type PassengerData = {
   given_name: string;
   family_name: string;
   born_on: string;
+  nationality: string;
   gender: string;
+  passport_number: string;
+  passport_expiry: string;
   email: string;
   phone_number: string;
 };
@@ -28,14 +31,18 @@ interface PassengerFormProps {
 }
 
 export default function PassengerForm({ onSubmit, isLoading }: PassengerFormProps) {
+  const [travellersCount, setTravellersCount] = useState(1);
   const [form, setForm] = useState<PassengerData>({
-    title: "",
-    given_name: "",
-    family_name: "",
-    born_on: "",
-    gender: "",
-    email: "",
-    phone_number: "",
+    title: "Mrs",
+    given_name: "Aisha",
+    family_name: "Bello",
+    born_on: "1985-03-14",
+    nationality: "Nigeria",
+    gender: "female",
+    passport_number: "A01234542",
+    passport_expiry: "2031-09-02",
+    email: "aisha.bello@email.com",
+    phone_number: "+234 803 000 0000",
   });
 
   const [errors, setErrors] = useState<Partial<Record<keyof PassengerData, string>>>({});
@@ -54,7 +61,7 @@ export default function PassengerForm({ onSubmit, isLoading }: PassengerFormProp
     if (!form.gender) newErrors.gender = "Required";
     if (!form.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
       newErrors.email = "Valid email required";
-    if (!form.phone_number.trim() || form.phone_number.replace(/\D/g, "").length < 7)
+    if (!form.phone_number.trim())
       newErrors.phone_number = "Valid phone required";
 
     setErrors(newErrors);
@@ -66,154 +73,217 @@ export default function PassengerForm({ onSubmit, isLoading }: PassengerFormProp
     if (validate()) onSubmit(form);
   }
 
-  const inputClasses = (field: keyof PassengerData) =>
-    `h-11 bg-white/60 border-border/50 rounded-xl font-medium focus:border-primary focus:ring-primary/20 ${
-      errors[field] ? "border-destructive focus:border-destructive focus:ring-destructive/20" : ""
-    }`;
-
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-6"
     >
-      <form onSubmit={handleSubmit} className="glass-card rounded-2xl p-6 sm:p-8">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-            <User className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <h3 className="text-lg font-black tracking-tight">Passenger Details</h3>
-            <p className="text-sm text-muted-foreground">Enter traveller information exactly as on passport</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Title */}
-          <div className="space-y-1.5">
-            <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Title</Label>
-            <Select value={form.title} onValueChange={(v) => update("title", v)}>
-              <SelectTrigger className={inputClasses("title")}>
-                <SelectValue placeholder="Select title" />
-              </SelectTrigger>
-              <SelectContent>
-                {["Mr", "Mrs", "Ms", "Dr"].map((t) => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.title && <p className="text-xs text-destructive font-medium">{errors.title}</p>}
+      <form id="passenger-checkout-form" onSubmit={handleSubmit} className="space-y-6">
+        {/* ── Traveller 1 Card (PDF Page 3 Mockup) ── */}
+        <div className="bg-white rounded-2xl border border-[#E2E8F0] p-6 shadow-sm space-y-5">
+          <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+            <h3 className="text-base font-black text-[#0F172A]">
+              Traveller 1 · Adult
+            </h3>
+            <span className="text-xs text-gray-500 font-medium">
+              Names must match the passport
+            </span>
           </div>
 
-          {/* Gender */}
-          <div className="space-y-1.5">
-            <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Gender</Label>
-            <Select value={form.gender} onValueChange={(v) => update("gender", v)}>
-              <SelectTrigger className={inputClasses("gender")}>
-                <SelectValue placeholder="Select gender" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="m">Male</SelectItem>
-                <SelectItem value="f">Female</SelectItem>
-              </SelectContent>
-            </Select>
-            {errors.gender && <p className="text-xs text-destructive font-medium">{errors.gender}</p>}
-          </div>
+          {/* Row 1: Title, First Name, Last Name */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">
+                TITLE
+              </label>
+              <Select value={form.title} onValueChange={(v) => update("title", v)}>
+                <SelectTrigger className="h-11 rounded-xl border-gray-200 bg-[#F8FAFC] font-semibold text-sm">
+                  <SelectValue placeholder="Title" />
+                </SelectTrigger>
+                <SelectContent>
+                  {["Mr", "Mrs", "Ms", "Dr", "Alhaji", "Hajiya"].map((t) => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          {/* First Name */}
-          <div className="space-y-1.5">
-            <Label htmlFor="given_name" className="text-xs font-bold text-muted-foreground uppercase tracking-wider">First Name</Label>
-            <Input
-              id="given_name"
-              value={form.given_name}
-              onChange={(e) => update("given_name", e.target.value)}
-              placeholder="John"
-              className={inputClasses("given_name")}
-            />
-            {errors.given_name && <p className="text-xs text-destructive font-medium">{errors.given_name}</p>}
-          </div>
-
-          {/* Last Name */}
-          <div className="space-y-1.5">
-            <Label htmlFor="family_name" className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Last Name</Label>
-            <Input
-              id="family_name"
-              value={form.family_name}
-              onChange={(e) => update("family_name", e.target.value)}
-              placeholder="Doe"
-              className={inputClasses("family_name")}
-            />
-            {errors.family_name && <p className="text-xs text-destructive font-medium">{errors.family_name}</p>}
-          </div>
-
-          {/* Date of Birth */}
-          <div className="space-y-1.5">
-            <Label htmlFor="born_on" className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Date of Birth</Label>
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary/60" />
+            <div>
+              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">
+                FIRST NAME
+              </label>
               <Input
-                id="born_on"
+                value={form.given_name}
+                onChange={(e) => update("given_name", e.target.value)}
+                placeholder="Aisha"
+                className="h-11 rounded-xl border-gray-200 bg-[#F8FAFC] font-semibold text-sm"
+              />
+              {errors.given_name && <p className="text-[10px] text-red-500 mt-1">{errors.given_name}</p>}
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">
+                LAST NAME
+              </label>
+              <Input
+                value={form.family_name}
+                onChange={(e) => update("family_name", e.target.value)}
+                placeholder="Bello"
+                className="h-11 rounded-xl border-gray-200 bg-[#F8FAFC] font-semibold text-sm"
+              />
+              {errors.family_name && <p className="text-[10px] text-red-500 mt-1">{errors.family_name}</p>}
+            </div>
+          </div>
+
+          {/* Row 2: Date of Birth, Nationality, Gender */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">
+                DATE OF BIRTH
+              </label>
+              <Input
                 type="date"
                 value={form.born_on}
                 onChange={(e) => update("born_on", e.target.value)}
-                max={new Date().toISOString().split("T")[0]}
-                className={`pl-10 ${inputClasses("born_on")}`}
+                className="h-11 rounded-xl border-gray-200 bg-[#F8FAFC] font-semibold text-sm"
+              />
+              {errors.born_on && <p className="text-[10px] text-red-500 mt-1">{errors.born_on}</p>}
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">
+                NATIONALITY
+              </label>
+              <Input
+                value={form.nationality}
+                onChange={(e) => update("nationality", e.target.value)}
+                placeholder="Nigeria"
+                className="h-11 rounded-xl border-gray-200 bg-[#F8FAFC] font-semibold text-sm"
               />
             </div>
-            {errors.born_on && <p className="text-xs text-destructive font-medium">{errors.born_on}</p>}
+
+            <div>
+              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">
+                GENDER
+              </label>
+              <Select value={form.gender} onValueChange={(v) => update("gender", v)}>
+                <SelectTrigger className="h-11 rounded-xl border-gray-200 bg-[#F8FAFC] font-semibold text-sm">
+                  <SelectValue placeholder="Gender" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="female">Female</SelectItem>
+                  <SelectItem value="male">Male</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          {/* Email */}
-          <div className="space-y-1.5">
-            <Label htmlFor="email" className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Email</Label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary/60" />
+          {/* Row 3: Passport Number, Passport Expiry */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">
+                PASSPORT NUMBER
+              </label>
               <Input
-                id="email"
-                type="email"
-                value={form.email}
-                onChange={(e) => update("email", e.target.value)}
-                placeholder="john@example.com"
-                className={`pl-10 ${inputClasses("email")}`}
+                value={form.passport_number}
+                onChange={(e) => update("passport_number", e.target.value)}
+                placeholder="A01234542"
+                className="h-11 rounded-xl border-gray-200 bg-[#F8FAFC] font-semibold text-sm"
               />
             </div>
-            {errors.email && <p className="text-xs text-destructive font-medium">{errors.email}</p>}
+
+            <div>
+              <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">
+                PASSPORT EXPIRY
+              </label>
+              <Input
+                type="date"
+                value={form.passport_expiry}
+                onChange={(e) => update("passport_expiry", e.target.value)}
+                className="h-11 rounded-xl border-gray-200 bg-[#F8FAFC] font-semibold text-sm"
+              />
+            </div>
           </div>
 
-          {/* Phone */}
-          <div className="sm:col-span-2 space-y-1.5">
-            <Label htmlFor="phone" className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Phone Number</Label>
-            <div className="relative">
-              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-primary/60" />
-              <Input
-                id="phone"
-                type="tel"
-                value={form.phone_number}
-                onChange={(e) => update("phone_number", e.target.value)}
-                placeholder="+234 800 000 0000"
-                className={`pl-10 ${inputClasses("phone_number")}`}
-              />
+          {/* Contact Details Section */}
+          <div className="pt-4 border-t border-gray-100 space-y-3">
+            <h4 className="text-xs font-black text-gray-700 uppercase tracking-wider">
+              Contact details
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">
+                  EMAIL
+                </label>
+                <Input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => update("email", e.target.value)}
+                  placeholder="aisha.bello@email.com"
+                  className="h-11 rounded-xl border-gray-200 bg-[#F8FAFC] font-semibold text-sm"
+                />
+                {errors.email && <p className="text-[10px] text-red-500 mt-1">{errors.email}</p>}
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">
+                  PHONE (WHATSAPP)
+                </label>
+                <Input
+                  type="tel"
+                  value={form.phone_number}
+                  onChange={(e) => update("phone_number", e.target.value)}
+                  placeholder="+234 803 000 0000"
+                  className="h-11 rounded-xl border-gray-200 bg-[#F8FAFC] font-semibold text-sm"
+                />
+                {errors.phone_number && <p className="text-[10px] text-red-500 mt-1">{errors.phone_number}</p>}
+              </div>
             </div>
-            {errors.phone_number && <p className="text-xs text-destructive font-medium">{errors.phone_number}</p>}
           </div>
         </div>
 
-        <div className="mt-6 pt-4 border-t border-border/30">
-          <Button
-            type="submit"
-            disabled={isLoading}
-            className="w-full h-12 bg-primary hover:bg-primary/90 text-white font-bold text-base rounded-xl shadow-brand hover:shadow-brand-lg transition-all duration-300 border-0"
+        {/* Add Traveller 2 action */}
+        {travellersCount < 2 ? (
+          <button
+            type="button"
+            onClick={() => setTravellersCount(2)}
+            className="flex items-center gap-1.5 text-sm font-bold text-[#FF4E00] hover:underline px-1"
           >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                Processing...
-              </>
-            ) : (
-              "Continue to Payment"
-            )}
-          </Button>
-        </div>
+            <Plus className="w-4 h-4" />
+            + Add Traveller 2 · Adult
+          </button>
+        ) : (
+          <div className="bg-white rounded-2xl border border-[#E2E8F0] p-6 shadow-sm space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <h3 className="text-base font-black text-[#0F172A]">
+                Traveller 2 · Adult
+              </h3>
+              <button
+                type="button"
+                onClick={() => setTravellersCount(1)}
+                className="text-xs text-red-500 font-bold hover:underline"
+              >
+                Remove
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">
+                  FULL NAME
+                </label>
+                <Input defaultValue="Ibrahim Bello" className="h-11 rounded-xl border-gray-200 bg-[#F8FAFC] font-semibold text-sm" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">
+                  PASSPORT NUMBER
+                </label>
+                <Input defaultValue="A09876543" className="h-11 rounded-xl border-gray-200 bg-[#F8FAFC] font-semibold text-sm" />
+              </div>
+            </div>
+          </div>
+        )}
       </form>
     </motion.div>
   );

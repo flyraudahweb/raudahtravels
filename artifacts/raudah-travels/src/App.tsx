@@ -26,6 +26,7 @@ import UserDashboard from "@/pages/dashboard/UserDashboard";
 import AgentPortal from "@/pages/agent/AgentPortal";
 import AdminConsole from "@/pages/admin/AdminConsole";
 import FlightsModule from "@/pages/flights";
+import HotelsModule from "@/pages/hotels";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -118,6 +119,7 @@ function AppRoutes() {
       <Route path="/agent/*?" component={AgentPortal} />
       <Route path="/admin/*?" component={AdminConsole} />
       <Route path="/flights/*?" component={FlightsModule} />
+      <Route path="/hotels/*?" component={HotelsModule} />
 
       <Route component={NotFound} />
     </Switch>

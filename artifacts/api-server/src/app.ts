@@ -7,6 +7,7 @@ import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
 import router from "./routes";
 import flightsRouter from "./routes/flights.js";
+import hotelsRouter from "./routes/hotels.js";
 import { logger } from "./lib/logger";
 import {
   CLERK_PROXY_PATH,
@@ -84,9 +85,6 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Public flight routes — mounted BEFORE Clerk so they work without login
-app.use("/api", flightsRouter);
-
 app.use(
   clerkMiddleware((req) => ({
     publishableKey: publishableKeyFromHost(
@@ -97,6 +95,8 @@ app.use(
 );
 
 app.use("/api/uploads", express.static(path.resolve("uploads")));
+app.use("/api", flightsRouter);
+app.use("/api", hotelsRouter);
 app.use("/api", router);
 
 // --- Production: Serve frontend static files (Option B — single service) ---

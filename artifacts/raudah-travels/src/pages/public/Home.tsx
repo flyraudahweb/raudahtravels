@@ -10,6 +10,7 @@ import { MapPin, CalendarDays, Star, CheckCircle2, Phone, MessageCircle, Users, 
 import { useQuery } from "@tanstack/react-query";
 import consultancyImg from "@/assets/images/consultancy.png";
 import { PackageAvailability } from "@/components/PackageAvailability";
+import OtaSearchWidget from "@/components/ota/OtaSearchWidget";
 /* ── Custom branded dropdown ────────────────────────────────────────────── */
 interface DropdownOption { value: string; label: string; }
 
@@ -214,7 +215,7 @@ export default function Home() {
 
           {/* Hero content */}
           <div className="relative z-10 flex-1 flex items-center">
-            <div className="container mx-auto px-4 md:px-8 pt-28 md:pt-32 pb-[340px] md:pb-52 max-w-7xl">
+            <div className="container mx-auto px-4 md:px-8 pt-28 md:pt-32 pb-16 md:pb-24 max-w-7xl">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-8 items-center">
 
                 {/* Left */}
@@ -266,96 +267,9 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Search bar — overlapping hero bottom */}
-          <div className="absolute bottom-0 left-0 right-0 z-20 px-4 md:px-8 pb-14 md:pb-18">
-            <div className="max-w-4xl mx-auto">
-              {/* Label strip */}
-              <div className="hidden md:flex items-center gap-1 mb-2 px-1">
-                <span className="text-white/60 text-[11px] font-bold uppercase tracking-widest">Quick Search</span>
-                <div className="flex-1 h-px bg-white/15 ml-2" />
-              </div>
-
-              <div className="bg-white rounded-2xl shadow-[0_8px_48px_rgba(13,15,78,0.35)] border border-white/80">
-                <div className="flex flex-col md:flex-row items-stretch divide-y md:divide-y-0 md:divide-x divide-[#E8ECFA]">
-
-                  {/* Country */}
-                  <SearchDropdown
-                    placeholder="Country"
-                    icon={<Globe className="w-4 h-4 text-[#2D3199]" />}
-                    value={searchForm.country}
-                    onChange={(v) => setSearchForm(f => ({ ...f, country: v }))}
-                    options={[
-                      { value: "Nigeria", label: "🇳🇬  Nigeria" },
-                      { value: "Niger",   label: "🇳🇪  Niger" },
-                    ]}
-                  />
-
-                  {/* Package Type */}
-                  <SearchDropdown
-                    placeholder="Package Type"
-                    icon={<MapPin className="w-4 h-4 text-[#2D3199]" />}
-                    value={searchForm.packageType}
-                    onChange={(v) => setSearchForm(f => ({ ...f, packageType: v }))}
-                    options={[
-                      { value: "hajj",   label: "✦  Hajj" },
-                      { value: "umrah",  label: "✦  Umrah" },
-                    ]}
-                  />
-
-                  {/* Month */}
-                  <SearchDropdown
-                    placeholder="Month"
-                    icon={<CalendarDays className="w-4 h-4 text-[#2D3199]" />}
-                    value={searchForm.month}
-                    onChange={(v) => setSearchForm(f => ({ ...f, month: v }))}
-                    options={[
-                      "January","February","March","April","May","June",
-                      "July","August","September","October","November","December",
-                    ].map(m => ({ value: m, label: m }))}
-                  />
-
-                  {/* Persons — stepper */}
-                  <div className="flex-1 group relative flex items-center gap-3 px-5 py-5 hover:bg-[#F5F7FF] rounded-xl transition-colors">
-                    <div className="w-9 h-9 rounded-xl bg-[#EEF0FF] flex items-center justify-center shrink-0">
-                      <Users className="w-4.5 h-4.5 text-[#2D3199]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[9px] font-black text-[#2D3199] uppercase tracking-[0.16em] mb-0.5">Persons</p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setSearchForm(f => ({ ...f, persons: String(Math.max(1, (parseInt(f.persons) || 1) - 1)) }))}
-                          className="w-5 h-5 rounded-full border border-[#DCE3F0] flex items-center justify-center text-[#2D3199] hover:bg-[#EEF0FF] transition-colors shrink-0"
-                        >
-                          <Minus className="w-2.5 h-2.5" />
-                        </button>
-                        <span className="text-sm font-bold text-[#0F172A] min-w-[1.5rem] text-center">
-                          {searchForm.persons || "1"}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setSearchForm(f => ({ ...f, persons: String((parseInt(f.persons) || 1) + 1) }))}
-                          className="w-5 h-5 rounded-full border border-[#DCE3F0] flex items-center justify-center text-[#2D3199] hover:bg-[#EEF0FF] transition-colors shrink-0"
-                        >
-                          <Plus className="w-2.5 h-2.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Search CTA */}
-                  <div className="w-full md:w-auto flex items-center px-4 pb-5 md:p-3">
-                    <Link
-                      href={`/packages${searchForm.packageType ? `?type=${searchForm.packageType}` : ""}`}
-                      className="w-full flex items-center justify-center gap-2 px-6 py-3.5 bg-[#FF3B00] hover:bg-[#D63200] text-white text-sm font-black rounded-xl transition-all hover:-translate-y-0.5 shadow-[0_4px_20px_rgba(255,59,0,0.40)] whitespace-nowrap"
-                    >
-                      <Search className="w-4 h-4" />
-                      <span>Search</span>
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            </div>
+          {/* OTA 3-Tab Search Widget (PDF Page 1 design) */}
+          <div className="relative z-20 px-4 md:px-8 pb-14 md:pb-20 -mt-16 sm:-mt-24 max-w-5xl mx-auto w-full">
+            <OtaSearchWidget />
           </div>
         </section>
 

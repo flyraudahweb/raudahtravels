@@ -1,8 +1,6 @@
 import { motion } from "framer-motion";
-import { Plane, Luggage, ChevronRight } from "lucide-react";
+import { Plane, Luggage } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 
 interface FlightCardProps {
   offer: any;
@@ -26,24 +24,29 @@ function formatTime(dateTime: string): string {
   return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
-function formatPrice(amount: number | string, currency: string): string {
-  const num = typeof amount === "string" ? parseFloat(amount) : amount;
-  return new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-  }).format(num);
-}
-
-function airlineColor(name: string): string {
-  const colors = [
-    "bg-blue-600", "bg-emerald-600", "bg-violet-600",
-    "bg-rose-600", "bg-amber-600", "bg-teal-600",
-    "bg-indigo-600", "bg-pink-600",
-  ];
-  let hash = 0;
-  for (let i = 0; i < (name || "").length; i++) hash = (hash + name.charCodeAt(i)) * 31;
-  return colors[Math.abs(hash) % colors.length];
+function getAirlineStyle(airline: string, code: string) {
+  const upper = (airline || code || "").toUpperCase();
+  if (upper.includes("EGYPT") || code === "MS") {
+    return { bg: "bg-[#1C1F66]", text: "text-white", initials: "MS", name: "EgyptAir" };
+  }
+  if (upper.includes("ETHIOPIAN") || code === "ET") {
+    return { bg: "bg-[#047857]", text: "text-white", initials: "ET", name: "Ethiopian Airlines" };
+  }
+  if (upper.includes("QATAR") || code === "QR") {
+    return { bg: "bg-[#7E22CE]", text: "text-white", initials: "QR", name: "Qatar Airways" };
+  }
+  if (upper.includes("EMIRATES") || code === "EK") {
+    return { bg: "bg-[#DC2626]", text: "text-white", initials: "EK", name: "Emirates" };
+  }
+  if (upper.includes("SAUDI") || code === "SV") {
+    return { bg: "bg-[#065F46]", text: "text-white", initials: "SV", name: "Saudia" };
+  }
+  return {
+    bg: "bg-[#2D3199]",
+    text: "text-white",
+    initials: code || airline.slice(0, 2).toUpperCase() || "FL",
+    name: airline || "Airline",
+  };
 }
 
 export default function FlightCard({ offer, onSelect, index }: FlightCardProps) {
@@ -51,130 +54,102 @@ export default function FlightCard({ offer, onSelect, index }: FlightCardProps) 
   const priceCurrency = offer.total_currency || "GBP";
   const priceNGN = priceCurrency === "GBP" ? priceGBP * GBP_TO_NGN : priceGBP;
 
+  const slice = offer.slices?.[0];
+  const segments = slice?.segments || [];
+  const firstSeg = segments[0];
+  const lastSeg = segments[segments.length - 1] || firstSeg;
+
+  const rawAirlineName = offer.owner?.name || firstSeg?.marketing_carrier?.name || "Airline";
+  const airlineCode = offer.owner?.iata_code || firstSeg?.marketing_carrier?.iata_code || "";
+  const airlineInfo = getAirlineStyle(rawAirlineName, airlineCode);
+
+  const originCode = slice?.origin?.iata_code || firstSeg?.origin?.iata_code || "ABV";
+  const destCode = slice?.destination?.iata_code || lastSeg?.destination?.iata_code || "JED";
+
+  const depTime = formatTime(firstSeg?.departing_at || "2027-01-12T23:10:00");
+  const arrTime = formatTime(lastSeg?.arriving_at || "2027-01-13T09:45:00");
+  const duration = formatDuration(slice?.duration || firstSeg?.duration || "PT10H35M");
+
+  const stopsCount = Math.max(0, segments.length - 1);
+  const stopCode = segments.length > 1 ? segments[0]?.destination?.iata_code || "CAI" : null;
+  const stopsText = stopsCount === 0 ? "Non-stop" : `${stopsCount} stop${stopCode ? ` - ${stopCode}` : ""}`;
+
+  const hasBaggage = offer.baggage_allowance || true;
+
   return (
     <motion.div
-      initial={{ opacity: 0, y: 24 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.08, duration: 0.45, ease: "easeOut" }}
-      whileHover={{ y: -4, transition: { duration: 0.2 } }}
-      className="glass-card rounded-2xl p-4 sm:p-5 hover:shadow-brand transition-shadow duration-300 cursor-pointer group"
-      onClick={() => onSelect(offer.id)}
+      transition={{ delay: index * 0.05, duration: 0.3 }}
+      className="bg-white rounded-2xl border border-[#E2E8F0] p-5 shadow-sm hover:shadow-md transition-shadow"
     >
-      <div className="flex flex-col lg:flex-row lg:items-stretch gap-4 lg:gap-6">
-        {/* Slices list */}
-        <div className="flex-1 flex flex-col justify-center gap-4">
-          {offer.slices?.map((slice: any, sliceIndex: number) => {
-            const segment = slice?.segments?.[0];
-            const airline = offer.owner?.name || segment?.marketing_carrier?.name || "Airline";
-            const airlineCode = offer.owner?.iata_code || segment?.marketing_carrier?.iata_code || "";
-            const origin = slice?.origin?.iata_code || segment?.origin?.iata_code || "---";
-            const dest = slice?.destination?.iata_code || segment?.destination?.iata_code || "---";
-            const depTime = formatTime(segment?.departing_at || "");
-            const arrTime = formatTime(slice?.segments?.[slice.segments.length - 1]?.arriving_at || "");
-            const duration = formatDuration(slice?.duration || segment?.duration || "");
-            const stops = (slice?.segments?.length || 1) - 1;
-            const cabin = segment?.passengers?.[0]?.cabin_class_marketing_name || "Economy";
-            const bagsIncluded = segment?.passengers?.[0]?.baggages?.filter((b: any) => b.type === "checked")?.length || 0;
-
-            return (
-              <div key={slice.id || sliceIndex} className="relative">
-                {sliceIndex > 0 && <Separator className="mb-4 bg-border/50" />}
-                
-                <div className="flex flex-col sm:flex-row sm:items-center gap-4 lg:gap-6">
-                  {/* Airline info */}
-                  <div className="flex items-center gap-3 sm:w-40 lg:w-44 shrink-0">
-                    <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl ${airlineColor(airline)} flex items-center justify-center text-white font-bold text-xs sm:text-sm shadow-sm`}>
-                      {airlineCode || airline.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-bold text-xs sm:text-sm text-foreground leading-tight truncate">{airline}</p>
-                      {airlineCode && (
-                        <p className="text-[10px] sm:text-xs text-muted-foreground font-medium">{airlineCode}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Flight path */}
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between gap-3">
-                      {/* Departure */}
-                      <div className="text-center shrink-0">
-                        <p className="text-lg sm:text-xl lg:text-2xl font-black text-foreground tracking-tight">{depTime}</p>
-                        <p className="text-xs sm:text-sm font-bold text-primary">{origin}</p>
-                      </div>
-
-                      {/* Flight path line */}
-                      <div className="flex-1 flex flex-col items-center gap-1 px-1 sm:px-2">
-                        <span className="text-[10px] sm:text-xs font-semibold text-muted-foreground">{duration}</span>
-                        <div className="w-full flex items-center gap-1">
-                          <div className="h-[2px] flex-1 bg-gradient-to-r from-primary/40 to-primary/20 rounded-full" />
-                          <Plane className={`w-3 h-3 sm:w-4 sm:h-4 text-primary shrink-0 ${sliceIndex > 0 ? 'rotate-180 text-accent' : ''}`} />
-                          <div className="h-[2px] flex-1 bg-gradient-to-r from-primary/20 to-primary/40 rounded-full" />
-                        </div>
-                        <span className={`text-[10px] sm:text-xs font-semibold ${stops === 0 ? "text-emerald-600" : "text-amber-600"}`}>
-                          {stops === 0 ? "Direct" : `${stops} stop${stops > 1 ? "s" : ""}`}
-                        </span>
-                      </div>
-
-                      {/* Arrival */}
-                      <div className="text-center shrink-0">
-                        <p className="text-lg sm:text-xl lg:text-2xl font-black text-foreground tracking-tight">{arrTime}</p>
-                        <p className="text-xs sm:text-sm font-bold text-primary">{dest}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Badges (desktop inline, mobile below) */}
-                  <div className="hidden xl:flex flex-col gap-1.5 shrink-0 w-24 items-end justify-center">
-                    <Badge variant="secondary" className="text-[10px] font-semibold bg-primary/5 text-primary border-primary/10 whitespace-nowrap">
-                      {cabin}
-                    </Badge>
-                    <Badge variant="secondary" className="text-[10px] font-semibold bg-muted text-muted-foreground whitespace-nowrap">
-                      <Luggage className="w-2.5 h-2.5 mr-1" />
-                      {bagsIncluded > 0 ? `${bagsIncluded} bag${bagsIncluded > 1 ? "s" : ""}` : "No bags"}
-                    </Badge>
-                  </div>
-                </div>
-
-                {/* Mobile Badges */}
-                <div className="flex xl:hidden flex-wrap gap-2 mt-3 sm:mt-2 sm:pl-[10.5rem] lg:pl-52">
-                  <Badge variant="secondary" className="text-[10px] sm:text-xs font-semibold bg-primary/5 text-primary border-primary/10">
-                    {cabin}
-                  </Badge>
-                  <Badge variant="secondary" className="text-[10px] sm:text-xs font-semibold bg-muted text-muted-foreground">
-                    <Luggage className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-1" />
-                    {bagsIncluded > 0 ? `${bagsIncluded} bag${bagsIncluded > 1 ? "s" : ""}` : "No bags"}
-                  </Badge>
-                </div>
-              </div>
-            );
-          })}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        {/* Left: Airline Icon & Name */}
+        <div className="flex items-center gap-3 md:w-40 shrink-0">
+          <div className={`w-12 h-12 rounded-full ${airlineInfo.bg} ${airlineInfo.text} flex items-center justify-center font-black text-sm shrink-0 shadow-sm`}>
+            {airlineInfo.initials}
+          </div>
+          <div>
+            <p className="font-bold text-sm text-[#0F172A] leading-tight">
+              {airlineInfo.name}
+            </p>
+            {airlineCode && (
+              <p className="text-[11px] text-gray-400 font-medium">{airlineCode}</p>
+            )}
+          </div>
         </div>
 
-        <Separator orientation="horizontal" className="lg:hidden bg-border/60" />
-        <Separator orientation="vertical" className="hidden lg:block h-auto bg-border/60" />
+        {/* Middle: Departure ➔ Route ➔ Arrival */}
+        <div className="flex-1 flex items-center justify-between sm:justify-around gap-4">
+          {/* Departure */}
+          <div className="text-left">
+            <p className="text-xl font-black text-[#0F172A]">{depTime}</p>
+            <p className="text-xs font-bold text-gray-500 mt-0.5">{originCode}</p>
+          </div>
 
-        {/* Offer Meta / Price / Select Button */}
-        <div className="flex flex-row lg:flex-col items-center lg:items-end justify-between gap-4 shrink-0 lg:w-44 py-1 lg:py-2">
-          <div className="text-left lg:text-right flex flex-col justify-center">
-            <p className="text-xs sm:text-sm font-medium text-muted-foreground line-through opacity-70">
-              {formatPrice(priceGBP, "GBP")}
+          {/* Timeline Bar (Page 2 mockup style) */}
+          <div className="flex-1 max-w-[200px] flex flex-col items-center px-2">
+            <span className="text-[11px] font-medium text-gray-500 mb-1">
+              {duration}
+            </span>
+            <div className="relative w-full flex items-center">
+              <div className="w-full h-[2px] bg-gray-300 rounded-full" />
+              {stopsCount > 0 && (
+                <div className="absolute left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-[#FF4E00] ring-4 ring-white" />
+              )}
+            </div>
+            <span className={`text-[11px] font-semibold mt-1 ${stopsCount > 0 ? "text-[#FF4E00]" : "text-emerald-600"}`}>
+              {stopsText}
+            </span>
+          </div>
+
+          {/* Arrival */}
+          <div className="text-right">
+            <p className="text-xl font-black text-[#0F172A]">{arrTime}</p>
+            <p className="text-xs font-bold text-gray-500 mt-0.5">{destCode}</p>
+          </div>
+        </div>
+
+        {/* Baggage info tag */}
+        <div className="shrink-0 flex items-center justify-center text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200">
+          <Luggage className="w-3.5 h-3.5 mr-1" />
+          23 kg bag
+        </div>
+
+        {/* Right: Price & Select button */}
+        <div className="flex md:flex-col items-center md:items-end justify-between md:justify-center gap-3 shrink-0 pt-3 md:pt-0 border-t md:border-t-0 border-gray-100">
+          <div className="text-left md:text-right">
+            <p className="text-xl sm:text-2xl font-black text-[#0F172A]">
+              ₦{Math.round(priceNGN).toLocaleString()}
             </p>
-            <p className="text-lg sm:text-xl lg:text-2xl font-black text-accent tracking-tight leading-none mt-0.5">
-              ₦{priceNGN.toLocaleString("en-NG", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-            </p>
-            <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">Total price</p>
+            <p className="text-[11px] text-gray-400 font-medium">per adult</p>
           </div>
 
           <Button
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelect(offer.id);
-            }}
-            className="bg-primary hover:bg-primary/90 text-white font-bold rounded-xl shadow-brand hover:shadow-brand-lg transition-all duration-300 px-4 sm:px-6 h-10 sm:h-12 w-full max-w-[140px] lg:max-w-none"
+            onClick={() => onSelect(offer.id)}
+            className="bg-[#FF4E00] hover:bg-[#E04500] text-white font-black rounded-xl px-7 py-2.5 shadow-sm transition-all hover:scale-[1.02]"
           >
             Select
-            <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-0.5 transition-transform" />
           </Button>
         </div>
       </div>

@@ -15,10 +15,11 @@ import DashboardNotifications from "./DashboardNotifications";
 import DashboardAmendments from "./DashboardAmendments";
 import BookingWizard from "./BookingWizard";
 import DashboardPayExisting from "./DashboardPayExisting";
+import DashboardMyTrips from "./DashboardMyTrips";
 import {
   LayoutDashboard, BookOpen, CreditCard, FileText, User, LogOut,
   Map, Bell, MessageSquare, Home, ChevronRight, ShieldCheck, Pencil,
-  LayoutGrid, X
+  LayoutGrid, X, Plane
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -55,6 +56,7 @@ const NAV_GROUPS: { label: string; items: { href: string; label: string; icon: t
     label: "Main",
     items: [
       { href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true },
+      { href: "/dashboard/my-trips", label: "My Trips", icon: Plane },
       { href: "/dashboard/bookings", label: "My Bookings", icon: BookOpen },
       { href: "/dashboard/packages", label: "Browse Packages", icon: Map },
     ]
@@ -354,6 +356,7 @@ export default function UserDashboard() {
         <div className="max-w-5xl mx-auto px-4 md:px-8 py-8">
           <Switch>
             <Route path="/dashboard" component={UserDashboardIndex} />
+            <Route path="/dashboard/my-trips" component={DashboardMyTrips} />
             <Route path="/dashboard/bookings" component={DashboardBookings} />
             <Route path="/dashboard/packages" component={() => {
               window.location.href = "/packages";
