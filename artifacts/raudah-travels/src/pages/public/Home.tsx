@@ -219,11 +219,11 @@ export default function Home() {
           <div className="relative z-10 flex flex-col justify-center items-center text-center px-4 pt-24 sm:pt-28 pb-4 sm:pb-5 max-w-4xl mx-auto">
             <span className="inline-flex items-center gap-2 py-1 px-3.5 rounded-full bg-white/10 backdrop-blur border border-white/20 text-white/90 text-xs font-semibold mb-2.5">
               <span className="w-2 h-2 rounded-full bg-[#FF3B00] inline-block" />
-              Nigeria's Most Trusted Hajj &amp; Umrah Partner
+              Online Travel Agency • Nigeria's Most Trusted Partner
             </span>
 
             <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-[2.85rem] font-black text-white leading-tight tracking-tight">
-              Every check-in is a new beginning
+              <span className="text-amber-300">Raudah Travels &amp; Tours</span> — Every check-in is a new beginning
             </h1>
 
             {/* Trip.com Guarantee Trust Pills — Now including Packages */}
