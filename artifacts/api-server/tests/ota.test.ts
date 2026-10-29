@@ -993,6 +993,79 @@ describe("OTA authorization and payments", () => {
     ).getOtaConfig();
     expect(config.rates.GBP).toBe(1000);
   });
+  it("starts fresh sandbox installations with flight search and editable currency defaults", async () => {
+    const keys = [
+      "OTA_MODE",
+      "OTA_FLIGHTS_ENABLED",
+      "OTA_DEFAULT_RATES",
+    ] as const;
+    const previous = Object.fromEntries(
+      keys.map((key) => [key, process.env[key]]),
+    );
+    try {
+      keys.forEach((key) => delete process.env[key]);
+      await module.db
+        .delete(module.siteSettingsTable)
+        .where(eq(module.siteSettingsTable.key, "ota_config"));
+      const { getOtaConfig, DEFAULT_OTA_RATES } =
+        await import("../src/services/ota/config");
+      const config = await getOtaConfig();
+      expect(config.mode).toBe("test");
+      expect(config.flightsEnabled).toBe(true);
+      expect(config.salesEnabled).toBe(false);
+      expect(config.hotelsEnabled).toBe(false);
+      expect(config.rates).toEqual(DEFAULT_OTA_RATES);
+      expect(config.rates.USD).toBe(1344.79);
+      process.env.OTA_FLIGHTS_ENABLED = "false";
+      expect((await getOtaConfig()).flightsEnabled).toBe(false);
+      delete process.env.OTA_FLIGHTS_ENABLED;
+      process.env.OTA_MODE = "live";
+      expect((await getOtaConfig()).flightsEnabled).toBe(false);
+    } finally {
+      for (const key of keys) {
+        if (previous[key] === undefined) delete process.env[key];
+        else process.env[key] = previous[key];
+      }
+    }
+  });
+  it("retains a saved admin disable switch and approved rates over enabled environment defaults", async () => {
+    const previous = process.env.OTA_FLIGHTS_ENABLED;
+    try {
+      process.env.OTA_FLIGHTS_ENABLED = "true";
+      const { saveOtaConfig, getOtaConfig } =
+        await import("../src/services/ota/config");
+      await saveOtaConfig({ flightsEnabled: false }, "super");
+      const config = await getOtaConfig();
+      expect(config.flightsEnabled).toBe(false);
+      expect(config.rates).toEqual({ NGN: 1, GBP: 1000 });
+    } finally {
+      if (previous === undefined) delete process.env.OTA_FLIGHTS_ENABLED;
+      else process.env.OTA_FLIGHTS_ENABLED = previous;
+    }
+  });
+  it("can disable environment-configured flights without copying host credentials into settings", async () => {
+    const previous = process.env.SETTINGS_ENCRYPTION_KEY;
+    try {
+      delete process.env.SETTINGS_ENCRYPTION_KEY;
+      const { saveOtaConfig, getOtaConfig } =
+        await import("../src/services/ota/config");
+      await saveOtaConfig({ flightsEnabled: false }, "super");
+      const saved = await module.db.query.siteSettingsTable.findFirst({
+        where: eq(module.siteSettingsTable.key, "ota_config"),
+      });
+      expect((saved?.value as any).duffelTestToken).toBe("");
+      expect((saved?.value as any).duffelToken).toBe("");
+      const config = await getOtaConfig();
+      expect(config.flightsEnabled).toBe(false);
+      expect(config.duffelToken).toBe("duffel_test_fake");
+      await expect(
+        saveOtaConfig({ duffelTestToken: "duffel_test_changed" }, "super"),
+      ).rejects.toThrow("SETTINGS_ENCRYPTION_KEY");
+    } finally {
+      if (previous === undefined) delete process.env.SETTINGS_ENCRYPTION_KEY;
+      else process.env.SETTINGS_ENCRYPTION_KEY = previous;
+    }
+  });
   it("uses environment rate defaults only when the admin has not saved rates", async () => {
     const original = process.env.OTA_DEFAULT_RATES;
     try {

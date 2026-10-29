@@ -53,7 +53,7 @@ async function main() {
     throw new Error("Select --mode=test or --mode=live");
   set("OTA_MODE", mode);
   if (!Object.hasOwn(entries, "OTA_FLIGHTS_ENABLED"))
-    set("OTA_FLIGHTS_ENABLED", "false");
+    set("OTA_FLIGHTS_ENABLED", mode === "test" ? "true" : "false");
   if (process.argv.includes("--enable-flight-search"))
     set("OTA_FLIGHTS_ENABLED", "true");
   if (!Object.hasOwn(entries, "OTA_HOTELS_ENABLED"))

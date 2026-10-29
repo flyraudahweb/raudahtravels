@@ -4,6 +4,8 @@ Implemented 2026-10-29. This guide covers the new OTA purchase flow. Existing Ha
 
 Latest migration status: the user reports 0009, 0010 and 0011 have all been applied in Neon. Only 0009 was independently checked by the agent; use deployed readiness checks to confirm the remaining schema. Do not rerun completed migrations unnecessarily. Code push does not confirm successful deployment, webhook activation or staging acceptance.
 
+Latest sandbox configuration: flight search is now enabled and the five requested selling rates are saved in admin settings. Live API checks returned airport suggestions and 17 Lagos–London sandbox offers priced in NGN. The deployed test credential already works and was not replaced. New test installations default to flight search enabled; saved admin settings and explicit environment switches override that default. Disable flight search in `/admin/ota` when needed. Hotels and payment processing retain their separate prerequisites and switches.
+
 Verification results are recorded in `.ai/ota-progress.md`. Provider/payment requests are mocked in tests. The configured database migration 0009 tables/required column types were checked read-only. Public desktop browser rendering was checked during the OTA build; authenticated/live provider acceptance and mobile verification remain deployment gates.
 
 ## Payment security follow-up
@@ -19,7 +21,7 @@ These controls and mocked-provider regression tests do not establish zero vulner
 - Public flight search with Duffel airport suggestions, one-way/return itineraries, cabin selection and adult/child passengers.
 - Hotel search through Duffel Stays, complete room rates, cancellation terms, final quotes and prepaid balance-funded reservations. The selector includes 16 destinations; the API accepts arbitrary valid coordinates.
 - Landing-page search, flight/hotel review, authenticated traveller entry and durable checkout before payment.
-- Server-priced NGN totals with configured supplier-currency conversion, markup and service fee. No hardcoded exchange rate or fallback token.
+- Server-priced NGN totals with operator-configurable supplier-currency conversion, markup and service fee. Initial editable rate defaults are provided; credentials have no embedded fallback token.
 - Paystack redirects and authenticated callback recovery; verified amount, currency, reference, metadata and test/live mode; signed webhook handling at the existing application webhook URL.
 - Saved checkouts and supplier-confirmed reservations in My Trips. Printable itinerary/hotel voucher and airline document identifiers when returned by Duffel. Supplier references and e-ticket numbers remain distinct.
 - Super-admin OTA settings, booking operations, audit history, supplier reconciliation and completed full-refund verification.

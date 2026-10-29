@@ -11,6 +11,16 @@ import { OtaError } from "./provider";
 import { DUFFEL_EVENTS } from "./duffelWebhookProtocol";
 
 export const OTA_CONFIG_KEY = "ota_config";
+// Initial operator-editable selling rates approved on 2026-10-29.
+// Market references never overwrite these or an existing admin rate map.
+export const DEFAULT_OTA_RATES = {
+  NGN: 1,
+  USD: 1344.79,
+  GBP: 1791.6,
+  EUR: 1500.71,
+  SAR: 358.62,
+  AED: 366.18,
+};
 export const OTA_SECRET_FIELDS = [
   "duffelToken",
   "duffelTestToken",
@@ -20,7 +30,7 @@ export const OTA_SECRET_FIELDS = [
 ] as const;
 export const configSchema = z
   .object({
-    flightsEnabled: z.boolean().default(false),
+    flightsEnabled: z.boolean().default(true),
     hotelsEnabled: z.boolean().default(false),
     salesEnabled: z.boolean().default(false),
     mode: z.enum(["test", "live"]).default("test"),
@@ -44,7 +54,7 @@ export const configSchema = z
       .default([...DUFFEL_EVENTS]),
     rates: z
       .record(z.string().regex(/^[A-Z]{3}$/), z.number().positive().max(1e7))
-      .default({ NGN: 1 }),
+      .default(() => ({ ...DEFAULT_OTA_RATES })),
     flightMarkupPercent: z.number().min(0).max(50).default(0),
     hotelMarkupPercent: z.number().min(0).max(50).default(0),
     serviceFeeNgn: z.number().min(0).max(1000000).default(0),
@@ -94,7 +104,9 @@ export async function getOtaConfig(): Promise<OtaConfig> {
   const stored = { ...((row?.value as Record<string, unknown>) || {}) };
   for (const field of OTA_SECRET_FIELDS)
     if (stored[field]) stored[field] = crypt(String(stored[field]), true);
+    else delete stored[field]; // Blank stored fields retain hosting credentials.
   const active = process.env.DUFFEL_API_TOKEN || "";
+  const mode = stored.mode ?? process.env.OTA_MODE ?? "test";
   const config = configSchema.parse({
     duffelToken: process.env.DUFFEL_API_TOKEN || "",
     duffelTestToken:
@@ -107,15 +119,18 @@ export async function getOtaConfig(): Promise<OtaConfig> {
     webhookLiveSecret: process.env.DUFFEL_WEBHOOK_SECRET_LIVE || "",
     webhookTestId: process.env.DUFFEL_WEBHOOK_ID_TEST || "",
     webhookLiveId: process.env.DUFFEL_WEBHOOK_ID_LIVE || "",
-    mode: process.env.OTA_MODE || "test",
-    flightsEnabled: process.env.OTA_FLIGHTS_ENABLED === "true",
+    mode,
+    flightsEnabled:
+      process.env.OTA_FLIGHTS_ENABLED === undefined
+        ? mode === "test"
+        : process.env.OTA_FLIGHTS_ENABLED === "true",
     hotelsEnabled: process.env.OTA_HOTELS_ENABLED === "true",
     salesEnabled: process.env.OTA_SALES_ENABLED === "true",
     rates:
       stored.rates ??
       (process.env.OTA_DEFAULT_RATES
         ? JSON.parse(process.env.OTA_DEFAULT_RATES)
-        : { NGN: 1 }),
+        : { ...DEFAULT_OTA_RATES }),
     supportEmail: process.env.OTA_SUPPORT_EMAIL || "",
     supportPhone: process.env.OTA_SUPPORT_PHONE || "",
     ...stored,
@@ -178,8 +193,16 @@ export async function saveOtaConfig(patch: unknown, actor: string) {
       );
   }
   const stored = { ...next };
+  const previous = await db.query.siteSettingsTable.findFirst({
+    where: eq(siteSettingsTable.key, OTA_CONFIG_KEY),
+  });
+  const previousValues = (previous?.value as Record<string, unknown>) || {};
+  // Saving switches/rates must not copy hosting secrets into the database or
+  // require an encryption key when credentials are managed by the host.
   for (const field of OTA_SECRET_FIELDS)
-    stored[field] = next[field] ? crypt(next[field]) : "";
+    stored[field] = parsed[field]
+      ? crypt(next[field])
+      : String(previousValues[field] || "");
   await db
     .insert(siteSettingsTable)
     .values({
