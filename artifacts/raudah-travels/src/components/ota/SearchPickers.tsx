@@ -12,11 +12,8 @@ import {
   X,
   Building2,
 } from "lucide-react";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverTrigger } from "@/components/ui/popover";
+import SearchPopoverContent from "./SearchPopoverContent";
 const Calendar = lazy(() =>
   import("@/components/ui/calendar").then((module) => ({
     default: module.Calendar,
@@ -178,7 +175,7 @@ export function AirportPicker({
           </span>
         </button>
       </PopoverTrigger>
-      <PopoverContent
+      <SearchPopoverContent
         align="start"
         sideOffset={8}
         collisionPadding={12}
@@ -333,7 +330,7 @@ export function AirportPicker({
         <div className="rounded-b-2xl border-t bg-slate-50 px-4 py-3 text-[11px] text-slate-500">
           Choose a popular destination or search worldwide.
         </div>
-      </PopoverContent>
+      </SearchPopoverContent>
     </Popover>
   );
 }
@@ -366,7 +363,7 @@ export function StayDestinationPicker({
           <ChevronDown size={15} />
         </button>
       </PopoverTrigger>
-      <PopoverContent
+      <SearchPopoverContent
         align="start"
         collisionPadding={12}
         className={`${panel} w-[min(440px,calc(100vw-24px))]`}
@@ -406,7 +403,7 @@ export function StayDestinationPicker({
               </button>
             ))}
         </div>
-      </PopoverContent>
+      </SearchPopoverContent>
     </Popover>
   );
 }
@@ -427,7 +424,6 @@ export function DatePicker({
   const [open, setOpen] = useState(false),
     [selecting, setSelecting] = useState<"departure" | "return">("departure"),
     [wide, setWide] = useState(false);
-  const trigger = useRef<HTMLButtonElement>(null);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   useEffect(() => {
@@ -437,18 +433,6 @@ export function DatePicker({
     media.addEventListener("change", sync);
     return () => media.removeEventListener("change", sync);
   }, []);
-  useEffect(() => {
-    if (!open || window.innerWidth >= 768) return;
-    const frame = requestAnimationFrame(() =>
-      trigger.current?.scrollIntoView({
-        block: "start",
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-          ? "auto"
-          : "smooth",
-      }),
-    );
-    return () => cancelAnimationFrame(frame);
-  }, [open]);
   const format = (value: string) =>
     readDate(value)?.toLocaleDateString("en-GB", {
       weekday: "short",
@@ -494,7 +478,6 @@ export function DatePicker({
           type="button"
           className={`${searchField} scroll-mt-24`}
           aria-label={`${rangeLabels[0]}${range ? ` and ${rangeLabels[1]}` : ""} dates`}
-          ref={trigger}
         >
           <CalendarDays size={20} className="shrink-0 text-[#2D3199]" />
           <span className="min-w-0 flex-1">
@@ -519,7 +502,7 @@ export function DatePicker({
           <ChevronDown size={14} className="shrink-0 text-slate-400" />
         </button>
       </PopoverTrigger>
-      <PopoverContent
+      <SearchPopoverContent
         align="center"
         sideOffset={8}
         collisionPadding={12}
@@ -606,7 +589,7 @@ export function DatePicker({
             Done
           </button>
         </div>
-      </PopoverContent>
+      </SearchPopoverContent>
     </Popover>
   );
 }
@@ -716,7 +699,7 @@ export function TravellerPicker({
           <ChevronDown size={14} className="text-slate-400" />
         </button>
       </PopoverTrigger>
-      <PopoverContent
+      <SearchPopoverContent
         align="end"
         sideOffset={8}
         collisionPadding={12}
@@ -822,7 +805,7 @@ export function TravellerPicker({
             Done
           </button>
         </div>
-      </PopoverContent>
+      </SearchPopoverContent>
     </Popover>
   );
 }
