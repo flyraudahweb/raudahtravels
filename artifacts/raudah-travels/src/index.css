@@ -250,3 +250,7 @@
 .admin-sidebar-nav::-webkit-scrollbar-corner {
   background: transparent;
 }
+@keyframes travel-search-progress {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(410%); }
+}

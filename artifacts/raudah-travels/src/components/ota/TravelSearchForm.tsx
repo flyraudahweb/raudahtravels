@@ -1,137 +1,32 @@
-import { useEffect, useId, useState } from "react";
+import { useState } from "react";
 import { useLocation } from "wouter";
-import { Plane, Building2, Search, ArrowRightLeft } from "lucide-react";
-import { destinations, ota, travelInput, travelButton } from "@/lib/ota";
+import {
+  Plane,
+  Building2,
+  Search,
+  ArrowRightLeft,
+  ShieldCheck,
+  ChevronRight,
+} from "lucide-react";
+import { travelButton } from "@/lib/ota";
+import { dateKey, readDate } from "@/lib/travelSearch";
+import {
+  AirportPicker,
+  DatePicker,
+  StayDestinationPicker,
+  TravellerPicker,
+} from "./SearchPickers";
 
-function Airport({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (s: string) => void;
-}) {
-  const [query, setQuery] = useState(value),
-    [places, setPlaces] = useState<any[]>([]),
-    [error, setError] = useState("");
-  const listId = useId();
-  const [active, setActive] = useState(0);
-  const choose = (place: any) => {
-    onChange(place.iata_code);
-    setQuery(place.iata_code);
-    setPlaces([]);
-  };
-  useEffect(() => {
-    if (value) setQuery(value);
-  }, [value]);
-  useEffect(() => {
-    if (query.length < 2 || query === value) {
-      setPlaces([]);
-      return;
-    }
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      ota(
-        `/places?q=${encodeURIComponent(query)}`,
-        undefined,
-        undefined,
-        controller.signal,
-      )
-        .then((data) => {
-          setPlaces(data.places || []);
-          setActive(0);
-          setError("");
-        })
-        .catch((e) => {
-          if (e.name !== "AbortError") setError(e.message);
-        });
-    }, 350);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [query, value]);
-  return (
-    <label className="relative block text-xs font-bold text-slate-600">
-      {label}
-      <input
-        className={`${travelInput} mt-1.5`}
-        value={query}
-        autoComplete="off"
-        placeholder="City, airport or IATA code"
-        aria-controls={listId}
-        role="combobox"
-        aria-autocomplete="list"
-        aria-activedescendant={
-          places.length ? `${listId}-${active}` : undefined
-        }
-        aria-expanded={!!places.length}
-        onBlur={() => setPlaces([])}
-        onKeyDown={(e) => {
-          if (!places.length) return;
-          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-            e.preventDefault();
-            setActive(
-              (i) =>
-                (i + (e.key === "ArrowDown" ? 1 : -1) + places.length) %
-                places.length,
-            );
-          } else if (e.key === "Enter") {
-            e.preventDefault();
-            choose(places[active]);
-          } else if (e.key === "Escape") {
-            e.preventDefault();
-            setPlaces([]);
-          }
-        }}
-        onChange={(e) => {
-          const v = e.target.value;
-          setQuery(v);
-          onChange(/^[a-z]{3}$/i.test(v) ? v.toUpperCase() : "");
-        }}
-        required
-      />
-      {places.length > 0 && (
-        <div
-          id={listId}
-          role="listbox"
-          aria-label={`${label} suggestions`}
-          className="absolute z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border bg-white shadow-xl"
-        >
-          {places.map((p, index) => (
-            <button
-              type="button"
-              key={p.id}
-              id={`${listId}-${index}`}
-              role="option"
-              aria-selected={active === index}
-              tabIndex={-1}
-              onMouseDown={(e) => e.preventDefault()}
-              className={`block w-full px-4 py-3 text-left text-sm hover:bg-indigo-50 ${active === index ? "bg-indigo-50" : ""}`}
-              onClick={() => choose(p)}
-            >
-              {p.name} <span className="text-indigo-600">{p.iata_code}</span>
-            </button>
-          ))}
-        </div>
-      )}
-      {error && (
-        <span className="mt-1 block text-xs font-normal text-red-600">
-          {error}
-        </span>
-      )}
-    </label>
-  );
-}
 export default function TravelSearchForm({
   initialKind = "flight",
   initial,
   compact = false,
+  onSearchAgain,
 }: {
   initialKind?: "flight" | "hotel";
   initial?: URLSearchParams;
   compact?: boolean;
+  onSearchAgain?: () => void;
 }) {
   const [, navigate] = useLocation(),
     [kind, setKind] = useState(initialKind);
@@ -141,6 +36,12 @@ export default function TravelSearchForm({
     );
   const [city, setCity] = useState(initial?.get("city") || "0"),
     [roundTrip, setRoundTrip] = useState(!!initial?.get("returnDate"));
+  const [originLabel, setOriginLabel] = useState(
+      (initial?.get("originLabel") || "").slice(0, 80),
+    ),
+    [destinationLabel, setDestinationLabel] = useState(
+      (initial?.get("destinationLabel") || "").slice(0, 80),
+    );
   const [departure, setDeparture] = useState(
       initial?.get("departureDate") || initial?.get("checkIn") || "",
     ),
@@ -150,14 +51,18 @@ export default function TravelSearchForm({
   const [adults, setAdults] = useState(Number(initial?.get("adults") || 1)),
     [rooms, setRooms] = useState(Number(initial?.get("rooms") || 1));
   const [cabin, setCabin] = useState(initial?.get("cabinClass") || "economy"),
-    [childAges, setChildAges] = useState(initial?.get("childAges") || "");
+    [ages, setAges] = useState<number[]>(
+      (initial?.get("childAges") || "").split(",").filter(Boolean).map(Number),
+    );
   const [error, setError] = useState("");
-  const today = new Date().toISOString().slice(0, 10);
+  const hotel = kind === "hotel";
   return (
     <div
-      className={`rounded-3xl border border-slate-200 bg-white text-slate-900 ${compact ? "p-5" : "p-5 shadow-[0_20px_70px_-25px_rgba(25,30,100,0.35)] md:p-7"}`}
+      className={`relative rounded-[22px] border border-slate-200 bg-white text-slate-900 ${compact ? "p-4 shadow-sm md:p-5" : "p-4 shadow-[0_20px_70px_-25px_rgba(25,30,100,0.35)] md:p-6"}`}
     >
-      <div className="mb-5 flex flex-wrap gap-2 border-b border-slate-100 pb-4">
+      <div
+        className={`flex items-center gap-2 ${compact ? "mb-3" : "mb-4 border-b border-slate-100 pb-4"}`}
+      >
         {(
           [
             ["flight", "Flights", Plane],
@@ -171,61 +76,75 @@ export default function TravelSearchForm({
             onClick={() => {
               setKind(key);
               setError("");
+              if (key === "flight")
+                setAges((current) =>
+                  current
+                    .slice(0, 9 - adults)
+                    .map((age) => Math.min(11, Math.max(2, age))),
+                );
             }}
-            className={`flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold ${kind === key ? "bg-[#2D3199] text-white" : "bg-slate-50 text-slate-600 hover:bg-indigo-50"}`}
+            className={`flex items-center gap-2 rounded-xl font-bold transition-colors ${compact ? "px-3 py-1.5 text-xs" : "px-5 py-2.5 text-sm"} ${kind === key ? "bg-[#2D3199] text-white shadow-sm" : "text-slate-500 hover:bg-indigo-50 hover:text-[#2D3199]"}`}
           >
-            <Icon size={17} />
+            <Icon size={19} />
             {label}
           </button>
         ))}
         <a
           href="/packages"
-          className="self-center px-4 text-sm font-semibold text-slate-500 hover:text-indigo-700"
+          className="ml-auto hidden items-center gap-1 text-xs font-semibold text-slate-500 hover:text-[#2D3199] sm:flex"
         >
-          Hajj & Umrah packages →
+          Hajj & Umrah packages
+          <ChevronRight size={14} />
         </a>
       </div>
       <form
-        onSubmit={(e) => {
-          e.preventDefault();
+        onSubmit={(event) => {
+          event.preventDefault();
           setError("");
-          const ages = childAges.trim()
-            ? childAges.split(",").map((v) => Number(v.trim()))
-            : [];
-          if (
-            ages.some(
-              (v) =>
-                !Number.isInteger(v) ||
-                v < (kind === "flight" ? 2 : 0) ||
-                v > (kind === "flight" ? 11 : 17),
-            )
-          )
+          if (!readDate(departure) || departure < dateKey(new Date()))
             return setError(
-              kind === "flight"
-                ? "Enter child ages from 2–11, separated by commas. Contact support for infants."
-                : "Enter child ages from 0–17, separated by commas.",
+              "Select a departure or check-in date from the calendar.",
             );
           if (
-            kind === "flight" &&
+            (hotel || roundTrip) &&
+            (!readDate(returnDate) ||
+              (hotel ? returnDate <= departure : returnDate < departure))
+          )
+            return setError(
+              hotel
+                ? "Select a check-out date after check-in."
+                : "Select a return date on or after departure.",
+            );
+          if (
+            !hotel &&
             (!/^[A-Z]{3}$/.test(origin) ||
               !/^[A-Z]{3}$/.test(destination) ||
               origin === destination)
           )
             return setError("Choose different departure and arrival airports.");
           if (
-            (kind === "hotel" && returnDate <= departure) ||
-            (kind === "flight" && roundTrip && returnDate < departure)
+            !Number.isInteger(adults) ||
+            adults < 1 ||
+            adults > 9 ||
+            ages.some(
+              (age) =>
+                !Number.isInteger(age) ||
+                age < (hotel ? 0 : 2) ||
+                age > (hotel ? 17 : 11),
+            ) ||
+            (!hotel && adults + ages.length > 9)
           )
-            return setError(
-              "The return or check-out date must follow departure or check-in.",
-            );
+            return setError("Check your traveller numbers and child ages.");
           const query = new URLSearchParams({
             adults: String(adults),
             childAges: ages.join(","),
           });
-          if (kind === "flight") {
+          if (!hotel) {
             query.set("origin", origin);
             query.set("destination", destination);
+            if (originLabel) query.set("originLabel", originLabel);
+            if (destinationLabel)
+              query.set("destinationLabel", destinationLabel);
             query.set("departureDate", departure);
             query.set("cabinClass", cabin);
             if (roundTrip) query.set("returnDate", returnDate);
@@ -235,185 +154,130 @@ export default function TravelSearchForm({
             query.set("checkOut", returnDate);
             query.set("rooms", String(rooms));
           }
-          navigate(
-            `/${kind === "flight" ? "flights" : "hotels"}/search?${query}`,
-          );
+          const path = `/${hotel ? "hotels" : "flights"}/search?${query}`;
+          if (
+            path === window.location.pathname + window.location.search &&
+            onSearchAgain
+          )
+            onSearchAgain();
+          else navigate(path);
         }}
-        className="space-y-4"
       >
-        {kind === "flight" && (
-          <div className="flex gap-5 text-sm">
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="journey"
-                checked={!roundTrip}
-                onChange={() => setRoundTrip(false)}
-              />
-              One way
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="radio"
-                name="journey"
-                checked={roundTrip}
-                onChange={() => setRoundTrip(true)}
-              />
-              Return
-            </label>
-          </div>
+        {!hotel && (
+          <fieldset className="mb-4 flex items-center gap-5 text-xs font-medium sm:text-sm">
+            <legend className="sr-only">Journey type</legend>
+            {(
+              [
+                [false, "One way"],
+                [true, "Round trip"],
+              ] as const
+            ).map(([value, label]) => (
+              <label
+                key={label}
+                className="flex cursor-pointer items-center gap-2"
+              >
+                <input
+                  type="radio"
+                  name="journey"
+                  className="h-3.5 w-3.5 accent-[#2D3199]"
+                  checked={roundTrip === value}
+                  onChange={() => setRoundTrip(value)}
+                />
+                {label}
+              </label>
+            ))}
+          </fieldset>
         )}
         <div
-          className={`grid gap-3 sm:grid-cols-2 ${kind === "flight" && !roundTrip ? "lg:grid-cols-3" : "lg:grid-cols-4"}`}
+          className={`grid gap-3 ${compact ? "xl:grid-cols-[2fr_1.35fr_1fr_auto]" : "lg:grid-cols-[1.8fr_1.35fr_1fr_auto]"}`}
         >
-          {kind === "flight" ? (
-            <>
-              <Airport
+          {hotel ? (
+            <StayDestinationPicker value={city} onChange={setCity} />
+          ) : (
+            <div className="relative grid grid-cols-2 gap-2">
+              <AirportPicker
                 label="Flying from"
                 value={origin}
-                onChange={setOrigin}
+                selectedLabel={originLabel}
+                onChange={(code, name) => {
+                  setOrigin(code);
+                  setOriginLabel(name);
+                }}
               />
-              <div className="relative">
-                <Airport
-                  label="Flying to"
-                  value={destination}
-                  onChange={setDestination}
-                />
-                <button
-                  type="button"
-                  aria-label="Swap departure and destination"
-                  className="absolute right-2 top-0 text-indigo-600"
-                  onClick={() => {
-                    setOrigin(destination);
-                    setDestination(origin);
-                  }}
-                >
-                  <ArrowRightLeft size={14} />
-                </button>
-              </div>
-            </>
-          ) : (
-            <label className="text-xs font-bold text-slate-600 sm:col-span-2">
-              Destination
-              <select
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                className={`${travelInput} mt-1.5`}
+              <button
+                type="button"
+                aria-label="Swap departure and destination"
+                onClick={() => {
+                  setOrigin(destination);
+                  setDestination(origin);
+                  setOriginLabel(destinationLabel);
+                  setDestinationLabel(originLabel);
+                }}
+                className="absolute left-1/2 top-1/2 z-10 flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-indigo-100 bg-white text-[#2D3199] shadow-sm transition hover:rotate-180 hover:bg-indigo-50"
               >
-                {destinations.map((c, i) => (
-                  <option key={c.name} value={i}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <label className="text-xs font-bold text-slate-600">
-            {kind === "flight" ? "Departure" : "Check-in"}
-            <input
-              type="date"
-              min={today}
-              required
-              value={departure}
-              onChange={(e) => setDeparture(e.target.value)}
-              className={`${travelInput} mt-1.5`}
-            />
-          </label>
-          {(kind === "hotel" || roundTrip) && (
-            <label className="text-xs font-bold text-slate-600">
-              {kind === "hotel" ? "Check-out" : "Return"}
-              <input
-                type="date"
-                min={departure || today}
-                required
-                value={returnDate}
-                onChange={(e) => setReturnDate(e.target.value)}
-                className={`${travelInput} mt-1.5`}
+                <ArrowRightLeft size={15} />
+              </button>
+              <AirportPicker
+                label="Flying to"
+                value={destination}
+                selectedLabel={destinationLabel}
+                onChange={(code, name) => {
+                  setDestination(code);
+                  setDestinationLabel(name);
+                }}
               />
-            </label>
+            </div>
           )}
-        </div>
-        <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <label className="text-xs font-bold text-slate-600">
-            Adults
-            <select
-              className={`${travelInput} mt-1.5`}
-              value={adults}
-              onChange={(e) => {
-                const count = Number(e.target.value);
-                setAdults(count);
-                setRooms(Math.min(rooms, count));
-              }}
-            >
-              {Array.from({ length: 9 }, (_, i) => (
-                <option key={i} value={i + 1}>
-                  {i + 1} adult{i ? "s" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-xs font-bold text-slate-600">
-            Child ages, separated by commas
-            <input
-              value={childAges}
-              onChange={(e) => setChildAges(e.target.value)}
-              placeholder={
-                kind === "flight"
-                  ? "e.g. 5, 10 · ages 2–11"
-                  : "e.g. 5, 10 · ages 0–17"
-              }
-              className={`${travelInput} mt-1.5`}
-            />
-          </label>
-          {kind === "flight" ? (
-            <label className="text-xs font-bold text-slate-600">
-              Cabin
-              <select
-                value={cabin}
-                onChange={(e) => setCabin(e.target.value)}
-                className={`${travelInput} mt-1.5`}
-              >
-                {["economy", "premium_economy", "business", "first"].map(
-                  (c) => (
-                    <option key={c} value={c}>
-                      {c.replace("_", " ")}
-                    </option>
-                  ),
-                )}
-              </select>
-            </label>
-          ) : (
-            <label className="text-xs font-bold text-slate-600">
-              Rooms
-              <select
-                value={rooms}
-                onChange={(e) => setRooms(Number(e.target.value))}
-                className={`${travelInput} mt-1.5`}
-              >
-                {Array.from({ length: Math.min(8, adults) }, (_, i) => (
-                  <option key={i} value={i + 1}>
-                    {i + 1}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+          <DatePicker
+            departure={departure}
+            returnDate={returnDate}
+            range={hotel || roundTrip}
+            hotel={hotel}
+            onChange={(first, last) => {
+              setDeparture(first);
+              setReturnDate(last);
+            }}
+          />
+          <TravellerPicker
+            kind={kind}
+            adults={adults}
+            ages={ages}
+            rooms={rooms}
+            cabin={cabin}
+            onChange={(value) => {
+              setAdults(value.adults);
+              setAges(value.ages);
+              setRooms(value.rooms);
+              setCabin(value.cabin);
+            }}
+          />
           <button
-            className={`${travelButton} min-h-12 bg-[#FF3B00] hover:bg-[#dc3300]`}
+            type="submit"
+            className={`${travelButton} min-h-[62px] bg-[#FF3B00] text-[15px] shadow-[0_6px_18px_-8px_rgba(255,59,0,0.5)] hover:bg-[#dc3300] ${compact ? "xl:min-h-[76px]" : ""}`}
           >
-            <Search size={18} />
-            Search {kind === "flight" ? "flights" : "hotels"}
+            <Search size={21} />
+            <span>Search {hotel ? "hotels" : "flights"}</span>
           </button>
         </div>
         {error && (
-          <p role="alert" className="text-sm text-red-600">
+          <p
+            role="alert"
+            className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700"
+          >
             {error}
           </p>
         )}
-        <p className="text-xs font-normal text-slate-500">
-          Compare available options. Review the final price and booking
-          conditions before payment.
-        </p>
+        {!compact && (
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-4 text-[11px] text-slate-500">
+            <p className="flex items-center gap-1.5">
+              <ShieldCheck size={14} className="text-[#2D3199]" />
+              Compare available options. Review the final price before payment.
+            </p>
+            <span className="font-medium text-[#2D3199]">
+              Your journey, thoughtfully arranged.
+            </span>
+          </div>
+        )}
       </form>
     </div>
   );

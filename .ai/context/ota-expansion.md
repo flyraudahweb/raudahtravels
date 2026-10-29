@@ -21,6 +21,10 @@ Started 2026-10-29 at the user's request. Expand Duffel across public flight/hot
 
 ## Progress
 
+Latest UI work: the user's supplied Trip.com screenshots guided interaction/layout only. Shared `SearchPickers.tsx` provides popular destinations plus worldwide Duffel suggestions, responsive calendar dates, traveller steppers, child age selectors and hotel room/destination selection. `TravelSearchForm.tsx` is used on the landing, flight/hotel entry and results pages. Raudah indigo/orange, package links, market references, booking conditions, checkout routes and supported passenger categories are retained.
+
+`FlightResults.tsx` renders comparison rows, actual airline/stops/budget/departure filters, shortest/lowest sorting, nearby-date search shortcuts, and a route-specific loading dialog over skeleton results. Nearby-date prices are not fabricated; unqueried dates explicitly say Check fares. Search cancellation aborts the client request, repeated identical searches work, and stale aborted results/errors cannot replace the active search. Selected airport names survive navigation via display-only URL labels; supplier requests still use IATA codes. Calendar code is lazy-loaded, and the existing calendar primitive's CSS variable sizes were corrected for Tailwind 4. Read the progress log for verified browser scope.
+
 The implementation lives in `artifacts/api-server/src/services/ota/`, `artifacts/api-server/src/routes/ota.ts`, the frontend `components/ota/` directory and `pages/admin/AdminOta.tsx`. The additive migration is `lib/db/drizzle/0009_ota.sql`. Public routes use the `/api/ota` contract; unsafe legacy travel API routes return 410. Fulfillment uses a PostgreSQL webhook inbox with database-clock leases and conditional booking claims. All new timestamps are timezone-aware.
 
 See [OTA progress memory](../ota-progress.md). Initial project navigation is in `docs/PROJECT_INDEX.md`.

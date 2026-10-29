@@ -15,16 +15,22 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import TravelSearchForm from "./TravelSearchForm";
 import ExchangeRates from "./ExchangeRates";
+import FlightResults, { SearchLoading } from "./FlightResults";
+import { moveDate } from "@/lib/travelSearch";
 import { destinations, money, ota, travelButton, travelInput } from "@/lib/ota";
 
 export function TravelShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#eef0ff_0%,_#f8fafc_50%)]">
-      <div className="print:hidden"><Navbar /></div>
+      <div className="print:hidden">
+        <Navbar />
+      </div>
       <main className="mx-auto max-w-7xl px-4 pb-16 pt-28 md:px-8 print:m-0 print:max-w-none print:p-0">
         {children}
       </main>
-      <div className="print:hidden"><Footer /></div>
+      <div className="print:hidden">
+        <Footer />
+      </div>
     </div>
   );
 }
@@ -248,15 +254,20 @@ export default function TravelSearchPage({
     [, navigate] = useLocation(),
     { isSignedIn } = useUser();
   const [data, setData] = useState<any[]>([]),
-    [loading, setLoading] = useState(false),
+    [loading, setLoading] = useState(() =>
+      new URLSearchParams(search).has(
+        kind === "flight" ? "departureDate" : "checkIn",
+      ),
+    ),
     [error, setError] = useState("");
   const [config, setConfig] = useState<any>(null),
-    [sort, setSort] = useState("price"),
-    [nonstop, setNonstop] = useState(false);
+    [sort, setSort] = useState("price");
   const [rates, setRates] = useState<any>(null),
     [busy, setBusy] = useState("");
   const ratesSection = useRef<HTMLElement>(null);
   const roomRequest = useRef<AbortController | null>(null);
+  const searchRequest = useRef<AbortController | null>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => () => roomRequest.current?.abort(), []);
   useEffect(() => {
     if (rates)
@@ -282,6 +293,7 @@ export default function TravelSearchPage({
       return;
     }
     const abort = new AbortController();
+    searchRequest.current = abort;
     setLoading(true);
     setError("");
     setData([]);
@@ -317,15 +329,18 @@ export default function TravelSearchPage({
       undefined,
       abort.signal,
     )
-      .then((result) => setData(result.offers || result.results || []))
+      .then((result) => {
+        if (!abort.signal.aborted)
+          setData(result.offers || result.results || []);
+      })
       .catch((e) => {
-        if (e.name !== "AbortError") setError(e.message);
+        if (!abort.signal.aborted) setError(e.message);
       })
       .finally(() => {
         if (!abort.signal.aborted) setLoading(false);
       });
     return () => abort.abort();
-  }, [search, kind, hasSearch]);
+  }, [search, kind, hasSearch, attempt]);
   async function viewRates(resultId: string) {
     roomRequest.current?.abort();
     const controller = new AbortController();
@@ -366,35 +381,38 @@ export default function TravelSearchPage({
       if (!controller.signal.aborted) setBusy("");
     }
   }
-  const results = data
-    .filter(
-      (o) =>
-        kind !== "flight" ||
-        !nonstop ||
-        o.slices.every((s: any) => s.segments.length === 1),
-    )
-    .sort((a, b) =>
-      sort === "price"
-        ? a.pricing.totalKobo - b.pricing.totalKobo
-        : (b.accommodation?.rating || 0) - (a.accommodation?.rating || 0),
-    );
+  const results = [...data].sort((a, b) =>
+    sort === "price"
+      ? a.pricing.totalKobo - b.pricing.totalKobo
+      : (b.accommodation?.rating || 0) - (a.accommodation?.rating || 0),
+  );
   return (
     <TravelShell>
-      <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
+      <div
+        className={`${hasSearch ? "mb-4" : "mb-7"} flex flex-wrap items-end justify-between gap-4`}
+      >
         <div>
           <p className="mb-2 text-xs font-bold uppercase tracking-[.2em] text-indigo-600">
             Raudah / Explore
           </p>
-          <h1 className="text-3xl font-black tracking-tight text-slate-900 md:text-4xl">
-            {kind === "flight"
-              ? "Your next journey starts here."
-              : "Find your place to unwind."}
+          <h1
+            className={`${hasSearch ? "text-xl md:text-2xl" : "text-3xl md:text-4xl"} font-black tracking-tight text-slate-900`}
+          >
+            {hasSearch
+              ? kind === "flight"
+                ? "Compare your flight options"
+                : "Choose your stay"
+              : kind === "flight"
+                ? "Your next journey starts here."
+                : "Find your place to unwind."}
           </h1>
-          <p className="mt-3 text-slate-500">
-            {kind === "flight"
-              ? "Compare available flights and travel with confidence."
-              : "Explore available stays, room options and booking conditions."}
-          </p>
+          {!hasSearch && (
+            <p className="mt-3 text-slate-500">
+              {kind === "flight"
+                ? "Compare available flights and travel with confidence."
+                : "Explore available stays, room options and booking conditions."}
+            </p>
+          )}
         </div>
         <Link
           href="/dashboard/my-trips"
@@ -404,7 +422,9 @@ export default function TravelSearchPage({
         </Link>
       </div>
       {config?.mode === "test" && (
-        <p className="mb-4 rounded-xl bg-amber-100 p-3 text-sm text-amber-900">
+        <p
+          className={`mb-4 rounded-xl bg-amber-100 text-amber-900 ${hasSearch ? "px-4 py-2 text-xs" : "p-3 text-sm"}`}
+        >
           Sandbox travel booking — these are test reservations.
         </p>
       )}
@@ -413,6 +433,7 @@ export default function TravelSearchPage({
         initialKind={kind}
         initial={query}
         compact
+        onSearchAgain={() => setAttempt((value) => value + 1)}
       />
       <details className="mt-4 rounded-xl border bg-white px-4 py-3">
         <summary className="cursor-pointer text-xs font-semibold text-slate-600">
@@ -424,141 +445,127 @@ export default function TravelSearchPage({
       </details>
       {error && <ErrorMessage message={error} />}
       {loading ? (
-        <Loading label="Searching current availability…" />
+        <SearchLoading
+          query={query}
+          kind={kind}
+          onCancel={() => {
+            searchRequest.current?.abort();
+            setLoading(false);
+            setError(
+              "Search cancelled. You can search again whenever you’re ready.",
+            );
+          }}
+        />
       ) : (
         hasSearch &&
-        !error && (
+        !error &&
+        (kind === "flight" ? (
+          <FlightResults
+            key={search + attempt}
+            offers={data}
+            query={query}
+            details={(offer) => <FlightItinerary offer={offer} />}
+            onDate={(offset) => {
+              const next = new URLSearchParams(search);
+              next.set(
+                "departureDate",
+                moveDate(query.get("departureDate") || "", offset),
+              );
+              if (query.get("returnDate"))
+                next.set(
+                  "returnDate",
+                  moveDate(query.get("returnDate")!, offset),
+                );
+              navigate(`/flights/search?${next}`);
+            }}
+          />
+        ) : (
           <>
             <div className="my-6 flex flex-wrap items-center justify-between gap-3">
               <h2 className="font-bold text-slate-800">
-                {results.length}{" "}
-                {kind === "flight" ? "flight options" : "available stays"}
+                {results.length} available stays
               </h2>
-              <div className="flex items-center gap-3 text-sm">
+              <label className="flex items-center gap-3 text-sm">
                 <SlidersHorizontal size={17} />
-                {kind === "flight" ? (
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={nonstop}
-                      onChange={(e) => setNonstop(e.target.checked)}
-                    />
-                    Non-stop only
-                  </label>
-                ) : (
-                  <select
-                    aria-label="Sort hotels"
-                    className={travelInput}
-                    value={sort}
-                    onChange={(e) => setSort(e.target.value)}
-                  >
-                    <option value="price">Lowest price</option>
-                    <option value="rating">Highest star rating</option>
-                  </select>
-                )}
-              </div>
+                <span className="sr-only">Sort hotels</span>
+                <select
+                  aria-label="Sort hotels"
+                  className={travelInput}
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value)}
+                >
+                  <option value="price">Lowest price</option>
+                  <option value="rating">Highest star rating</option>
+                </select>
+              </label>
             </div>
             {!results.length && (
               <div className="rounded-2xl border bg-white p-12 text-center text-slate-500">
-                No available options for this search. Try different dates or a
+                No available stays for this search. Try different dates or a
                 nearby destination.
               </div>
             )}
-            <div
-              className={
-                kind === "hotel"
-                  ? "grid gap-5 md:grid-cols-2 xl:grid-cols-3"
-                  : "space-y-4"
-              }
-            >
-              {results.map((result) =>
-                kind === "flight" ? (
-                  <article
-                    key={result.id}
-                    className="flex flex-col gap-5 rounded-3xl border border-slate-200/80 bg-white p-5 shadow-[0_4px_24px_-16px_rgba(15,23,42,0.22)] transition-shadow hover:shadow-[0_12px_32px_-20px_rgba(45,49,153,0.35)] md:flex-row md:items-center md:justify-between md:p-6"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <h3 className="mb-4 font-black text-slate-900">
-                        {result.owner?.name}
-                      </h3>
-                      <FlightItinerary offer={result} compact />
+            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+              {results.map((result) => (
+                <article
+                  key={result.id}
+                  className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md"
+                >
+                  {result.accommodation?.photos?.[0]?.url ? (
+                    <img
+                      src={result.accommodation.photos[0].url}
+                      alt={result.accommodation.name}
+                      className="h-48 w-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="flex h-48 items-center justify-center bg-indigo-50">
+                      <Building2 size={48} className="text-indigo-300" />
                     </div>
-                    <div className="shrink-0 border-t border-slate-100 pt-4 md:w-52 md:border-l md:border-t-0 md:pl-6 md:pt-0">
-                      <p className="text-xs text-slate-500">
-                        Total for all travellers
-                      </p>
-                      <p className="mb-4 text-2xl font-black text-indigo-950">
-                        {money(result.pricing.totalKobo)}
-                      </p>
-                      <Link
-                        href={`/flights/checkout/${result.id}`}
+                  )}
+                  <div className="space-y-3 p-5">
+                    <p className="text-sm text-amber-600">
+                      {"★".repeat(
+                        Math.min(
+                          5,
+                          Math.floor(result.accommodation?.rating || 0),
+                        ),
+                      )}
+                    </p>
+                    <h3 className="text-lg font-black text-slate-900">
+                      {result.accommodation?.name}
+                    </h3>
+                    <p className="text-sm text-slate-500">
+                      {result.accommodation?.location?.address?.line_one} ·{" "}
+                      {result.accommodation?.location?.address?.city_name}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {result.check_in_date} → {result.check_out_date} ·{" "}
+                      {result.rooms} room(s)
+                    </p>
+                    <div className="flex items-center justify-between gap-2 border-t pt-4">
+                      <div>
+                        <p className="text-xs text-slate-500">
+                          Stay total from
+                        </p>
+                        <p className="text-xl font-black text-indigo-950">
+                          {money(result.pricing.totalKobo)}
+                        </p>
+                      </div>
+                      <button
+                        disabled={!!busy}
+                        onClick={() => viewRates(result.id)}
                         className={travelButton}
                       >
-                        Review flight <ArrowRight size={16} />
-                      </Link>
+                        {busy === result.id ? "Loading…" : "View rooms"}
+                      </button>
                     </div>
-                  </article>
-                ) : (
-                  <article
-                    key={result.id}
-                    className="overflow-hidden rounded-2xl border border-slate-200 bg-white"
-                  >
-                    {result.accommodation?.photos?.[0]?.url ? (
-                      <img
-                        src={result.accommodation.photos[0].url}
-                        alt={result.accommodation.name}
-                        className="h-48 w-full object-cover"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="flex h-48 items-center justify-center bg-indigo-50">
-                        <Building2 size={48} className="text-indigo-300" />
-                      </div>
-                    )}
-                    <div className="space-y-3 p-5">
-                      <p className="text-sm text-amber-600">
-                        {"★".repeat(
-                          Math.min(
-                            5,
-                            Math.floor(result.accommodation?.rating || 0),
-                          ),
-                        )}
-                      </p>
-                      <h3 className="text-lg font-black text-slate-900">
-                        {result.accommodation?.name}
-                      </h3>
-                      <p className="text-sm text-slate-500">
-                        {result.accommodation?.location?.address?.line_one} ·{" "}
-                        {result.accommodation?.location?.address?.city_name}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {result.check_in_date} → {result.check_out_date} ·{" "}
-                        {result.rooms} room(s)
-                      </p>
-                      <div className="flex items-center justify-between gap-2 border-t pt-4">
-                        <div>
-                          <p className="text-xs text-slate-500">
-                            Stay total from
-                          </p>
-                          <p className="text-xl font-black text-indigo-950">
-                            {money(result.pricing.totalKobo)}
-                          </p>
-                        </div>
-                        <button
-                          disabled={!!busy}
-                          onClick={() => viewRates(result.id)}
-                          className={travelButton}
-                        >
-                          {busy === result.id ? "Loading…" : "View rooms"}
-                        </button>
-                      </div>
-                    </div>
-                  </article>
-                ),
-              )}
+                  </div>
+                </article>
+              ))}
             </div>
           </>
-        )
+        ))
       )}
       {rates && (
         <section
