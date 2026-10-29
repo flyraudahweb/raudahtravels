@@ -1,20 +1,20 @@
 import { Switch, Route } from "wouter";
-import FlightsLayout from "@/components/flights/FlightsLayout";
-import FlightSearch from "./FlightSearch";
-import FlightCheckout from "./FlightCheckout";
-import FlightConfirmation from "./FlightConfirmation";
-import FlightAdmin from "./FlightAdmin";
+import TravelSearchPage from "@/components/ota/TravelSearchPage";
+import TravelCheckout from "@/components/ota/TravelCheckout";
+import TravelBooking from "@/components/ota/TravelBooking";
 
 export default function FlightsModule() {
   return (
-    <FlightsLayout>
-      <Switch>
-        <Route path="/flights" component={FlightSearch} />
-        <Route path="/flights/search" component={FlightSearch} />
-        <Route path="/flights/checkout/:offerId" component={FlightCheckout} />
-        <Route path="/flights/confirmation/:bookingId" component={FlightConfirmation} />
-        <Route path="/flights/admin" component={FlightAdmin} />
-      </Switch>
-    </FlightsLayout>
+    <Switch>
+      <Route path="/flights/checkout/:offerId">
+        {(params) => <TravelCheckout kind="flight" offerId={params.offerId} />}
+      </Route>
+      <Route path="/flights/confirmation/:id">
+        {(params) => <TravelBooking bookingId={params.id} />}
+      </Route>
+      <Route>
+        <TravelSearchPage kind="flight" />
+      </Route>
+    </Switch>
   );
 }

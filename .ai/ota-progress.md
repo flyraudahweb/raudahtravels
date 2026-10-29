@@ -1,0 +1,96 @@
+# OTA progress memory
+
+Updated 2026-10-29. Duffel OTA code implementation is complete; staging configuration, provider acceptance testing and live activation remain outstanding.
+
+## Completed investigation
+
+- Indexed existing application, integrations, routes, schemas and CI.
+- Verified Duffel Stays support and account-access requirement against official documentation.
+- Found demo fallbacks and frontend/backend checkout contract mismatches, missing flight ownership/authorization and hotel payment verification gaps.
+
+## Implemented
+
+- Durable checkout schema/migration, encrypted super-admin settings and provider client.
+- Server-priced flight/Stays checkout, payment verification, fulfillment and reconciliation.
+- Public search/checkout, dashboard trips and super-admin OTA console.
+- Landing page integration and removal of fake inventory/confirmation paths.
+- Owner-protected My Trips, printable itinerary/vouchers, supplier document identifiers and explicit cancellation/refund conditions.
+- Durable signed Paystack webhook inbox and worker, atomic fulfillment claims, interrupted-booking review and operator payment verification.
+- Supplier refresh, support requests with audited resolutions, full-refund verification and retrying confirmation/review emails.
+- Lazy loading of portals so the public landing page does not eagerly download the admin console.
+- SQL migration `0009_ota.sql` creates `ota_bookings`, `ota_events`, `ota_payment_jobs`, constraints and index. The Drizzle schema and journal include it.
+
+## Verification and operational notes
+
+- Latest regression suite after deep OTA review: **8 files, 101 tests passed**, including 43 OTA integration tests, three booking-snapshot tests, one worker-isolation test, three signature tests and six FX tests. Databases are disposable and provider/payment calls are mocked. Windows teardown uses bounded file-lock retries.
+- Final workspace typechecking passes for libraries, API, frontend, sandbox and scripts. `git diff --check` passes.
+- API and frontend production builds pass. Existing UI sourcemap warnings and large admin bundle warnings remain.
+- Public landing and flight/hotel form rendering were checked in Chrome at `127.0.0.1:5173`. API/provider traffic was unavailable in that preview because the live API was intentionally not started. Authenticated purchase and mobile browser acceptance remain staging checks; the mobile viewport tool timed out and its override was reset.
+- Database integration tests require unsandboxed execution on this Windows host because the sandbox prevents PostgreSQL WAL initialization. These tests create disposable databases and mock external calls.
+- OTA timestamps use `timestamptz`. Queue eligibility/leases use PostgreSQL `now()`, avoiding timezone and host/database clock skew. Preserve this when extending workers.
+- Supplier ambiguity is never automatically retried. Customer payments and supplier confirmations are separate states. Operations use `/admin/ota`; ordinary admins/staff are denied at both UI and API levels.
+- Cancellation/exchanges are support-managed through Duffel; completed full refunds can be verified from Paystack. Infants, multi-city, ancillaries, deposits and pay-at-property bookings are not exposed.
+- See `docs/OTA_DEPLOYMENT.md` for acceptance checks, support operations and configuration. No live migration, charge, booking or deployment was executed.
+
+## Deployment gates
+
+- Verified the configured database read-only after the user's migration: `ota_bookings`, `ota_events` and `ota_payment_jobs` exist; required expiry/notification columns are `timestamptz` and `refund` is JSONB. Next: apply the prepared production OTA overlay to hosting and deploy/restart the updated app.
+- Configure persistent encryption key, Duffel token and mode, currency rates, Paystack keys and HTTPS APP_URL.
+- Obtain Duffel Stays access and fund the correct Duffel balance.
+- Configure payment webhook routing, then exercise sandbox success/failure/duplicate/return flows before enabling live sales.
+- Live credentials, provider access, real payment/ticket issuance and deployed browser behavior cannot be established from source checks alone.
+
+## Environment and FX follow-up — 2026-10-29
+
+- Updated private local `.env` without printing secrets or replacing its valid encryption key. Seeded NGN-per-unit defaults for USD, GBP, EUR, SAR and AED from dated current Frankfurter observations. Existing saved admin rates take priority over environment defaults.
+- Added `scripts/configure-ota-env.cjs` for repeatable/idempotent local setup and an OTA-only `.env.production` overlay. User confirmed `https://flyraudah.com.ng`; production origin/CORS and runtime mode are set in that ignored file. Hosting itself has not been changed; preserve existing hosting database/Clerk/encryption/Paystack secrets.
+- Read-only settings inspection confirmed Paystack is already saved in live mode; it was not changed or copied into environment files.
+- User supplied a Duffel test key, saved privately. Read-only Flights access check returned 200; Stays check returned 403. OTA mode is test, flight search enabled, hotels and sales disabled. Sales validation rejects test/live mismatches. The later webhook task adds signed supplier events alongside polling.
+- Added separate automatically refreshed reference display on public landing/search pages and the super-admin pricing screen. UI checks every minute; backend caches/coalesces fetches. Frankfurter is the active no-key daily source, with dates and outage/stale labels. Faster ExchangeRate-API support is ready but requires a separate server-only key and suitable provider plan; none was supplied.
+- References never overwrite selling rates or saved checkout totals. Admin may copy references into a draft, edit rates and explicitly Save settings to publish. No new database migration is needed for FX/environment features.
+- Final FX/environment verification: 66 tests pass, workspace typechecking passes, API/frontend builds pass. The supplied test key was used only for read-only access checks. No live purchase, payment or database/settings write was performed.
+
+## Duffel settings and webhook follow-up — 2026-10-29
+
+- Added separate encrypted test/live API tokens, webhook signing secrets and IDs, selected event controls, create/reuse, ping, activate/deactivate, provider status and received-event inbox to super-admin OTA settings. General Admin Settings now links here only for super admins. Server infrastructure secrets remain hosting configuration.
+- Selected eight implemented flight/hotel lifecycle events. Added raw-body HMAC/timestamp/mode verification, durable deduplication, leased read-only supplier reconciliation, retry controls and customer supplier notices. Excluded unrelated car/credit/assistant/Duffel-payment events. Existing Paystack routing remains unchanged.
+- Added migration `0010_duffel_webhooks.sql`; NOT applied to the configured database. Adds `provider_notice` and `ota_duffel_events` with pending index and mode constraint. Disposable tests apply both 0009 and 0010.
+- Created the authorized **test** webhook `end_0000BBuI8vsP5N3Th5YT7w` for `https://flyraudah.com.ng/api/ota/duffel/webhook/test`, verified **inactive**. One-time secret and ID saved privately in ignored `.env` and `.env.production`; never print them. No live webhook or purchase was created.
+- Public app currently does not serve the new receiver. Required next steps: apply 0010, deploy API/frontend and import private webhook variables, send signed Ping from super-admin settings and Activate. Activation requires receiver/schema readiness and a verified ping from the current key within 30 minutes.
+- Fixed late fulfillment/failure writes so a webhook-confirmed or otherwise transitioned reservation cannot be downgraded by the original request. Tests cover signatures, duplicate/mode checks, flight/Stays recovery, out-of-order cancellation/refund events, signed-ping activation and the fulfillment race.
+- Verification: 75 tests pass across six files; workspace typechecking and API/frontend production builds pass. Existing UI sourcemap/large-bundle warnings and Vite's NODE_ENV overlay warning remain nonfatal. Remote registration was checked read-only after creation and remains inactive. See `docs/OTA_DEPLOYMENT.md` for the full deployment procedure.
+
+## Dashboard lifecycle updates and simpler UI — 2026-10-29
+
+- User requested important webhook outcomes in dashboards and a simpler travel experience using established OTA patterns. Added durable customer notifications, customer-safe booking activity and next steps, visible customer support responses and urgent super-admin alerts. Lifecycle messages distinguish payment, confirmation, ticket documents, schedule changes, cancellation, review and verified refunds.
+- Existing audit events are the notification outbox; maintenance publishes missing recipient messages with deterministic IDs in batches of 200. Repeated/concurrent publication is idempotent. Active owners see their bookings; active super admins receive operational exceptions. Ordinary admins/staff receive no OTA-wide booking access. Agents now have own flights/hotels and notifications routes in their portal.
+- Added global OTA operations totals, supplier event issues, exhausted payment jobs, last supplier delivery and links opening specific reservations outside the current page. A successfully retried supplier event clears its previous transient issue.
+- Added My Trips search/status filters, dates, status badges and next actions; shared four-step checkout progress; booking payment summary, activity and support shortcuts. Public landing adds Manage My Trips and hides FX references behind an expandable section. Airport suggestions support keyboard arrows, selection, Escape and blur.
+- Notification inbox now links to bookings and polls for updates. Total unread count is independent of the returned page; limits are bounded. Updated OpenAPI Notification.link and regenerated its React/Zod types.
+- Tests cover owner isolation, super-admin-only operations summary, concurrent notification deduplication, customer-safe timeline projection, support response visibility and unread totals/mark-read ownership. **78 tests pass**, workspace typechecking passes, API/frontend production builds pass and diff whitespace checks pass. Existing build warnings remain nonfatal.
+- Desktop public landing DOM/rendering verified in Chrome with the local Vite preview. API was not started against the configured database; authenticated dashboard/purchase acceptance is still a staging gate. Mobile viewport tooling timed out; a reset was requested, and mobile acceptance remains unverified. No live purchase, charge, production migration, deployment or additional supplier configuration was performed.
+- Migration 0010 and receiver deployment/import/ping/activation remain pending. This follow-up needs no new migration beyond 0010. The existing test webhook remains inactive. Keep the minute worker running; dashboard updates poll every 30 seconds and processing bookings every five seconds.
+
+## Deep OTA bug review and professional design — 2026-10-29
+
+- The user requested a full OTA bug review and fixes before deployment. Reviewed search/quotes, travellers, pricing, payment claims, supplier fulfilment, reconciliation/refunds, webhook queues, notifications, ownership/admin roles, history, browser state and readiness. Used official Duffel offer/response-handling references. No subagent/Bugbot review was run; this was a source review plus regression tests.
+- Fixed exact monetary rounding: binary floating point could turn NGN 0.07 into 8 kobo. Conversion/markup use decimal fractions with integer kobo; service fees round exactly. Equivalent supplier decimal strings compare equally without accepting changed/invalid amounts.
+- Fixed admin reconciliation/refund races with conditional writes and atomic audit events. Refund verification now validates the original successful transaction and refund ID. Supplier confirmation validates identifier, metadata, currency/amount and supplied mode. Confirmation plus outbox/audit commit atomically; a valid returned supplier reference is retained for review if that transaction fails, with no repeat purchase.
+- Added **migration 0011_ota_revision.sql**, adding material booking revision and supplier-refresh attempt timestamp. NOT applied to the configured database. Apply after 0009/0010 before deploying. Supplier/admin writes and browser snapshots reject stale revisions; webhook conflicts retry read-only. A different supplier reservation cannot silently replace an existing link. Readiness/activation/admin checks require all new fields.
+- Fixed maintenance stopping when new channels were disabled, refresh starvation on repeated provider failures, mode dependence on new sales settings and a late email acknowledgment swallowing a newer alert. Independent minute workers isolate slow/failed payment, supplier and maintenance stages; overlap prevention and batch budgets limit outage backlog runs. Old bookings use their original configured Duffel mode/token. Paystack verification still needs matching original payment credentials.
+- Fixed repeated cancellation alerts and misleading schedule-change messages for cancelled bookings, false payment-review alerts after a concurrent successful payment, stale hotel-room/quote responses, stale checkout content/navigation and stale booking snapshots. Optional passport collection now follows the fare; entered passports must cover the itinerary. Additional destination/entry requirements remain an acceptance concern.
+- Added owner history pagination (50 per page), stable ordering and all-owner summary counts; loaded-trip filtering is explicitly labelled. Verified owner isolation. Authenticated throttles use verified account IDs, anonymous throttles remain IP-based, bucket storage is bounded and 429 includes Retry-After. Integration cases reset only in-memory limiter state; no test reset HTTP route exists.
+- Admin drafts now survive refetches, show unsaved state and warn on browser unload. Added server-calculated draft price preview, settings section shortcuts and sticky save controls. Polished itinerary cards, times, duration/stops, carrier/terminal/baggage detail disclosure, booking header, print layout, focus states and one-way search grid. Package-only dashboard metrics are labelled accordingly.
+- Final verification: **101 tests passed across eight files**, workspace typechecking passed, API/frontend production builds passed. Existing UI sourcemap, large-bundle and NODE_ENV overlay warnings remain nonfatal. One earlier full run and one isolated retry hit intermittent Windows PostgreSQL setup timeouts; setup tracing and subsequent complete runs passed. Regression failures discovered while developing were fixed before the final pass.
+- Browser preview could not complete: Chrome automation and in-app localhost navigation timed out. Temporary sample-only UI QA files were removed and the owned Vite preview stopped. Do not claim this review verified authenticated/mobile visual acceptance. Earlier public desktop rendering from the prior task remains historical evidence only.
+- No live charge, booking, refund, production database write/migration, deployment or additional Duffel configuration was performed. Existing test webhook remains inactive. Pending launch gates: apply 0010 and 0011, deploy code/private webhook settings, verify Ping then Activate, obtain Stays access, align live provider/payment modes/funds and complete staging purchases plus browser/email acceptance.
+
+## Payment leakage and race-condition review — 2026-10-29
+
+- Reviewed OTA fulfillment/refunds plus the shared legacy Paystack entry points. Found and fixed a cross-flow replay gap: the older verifier could credit a client-created package payment using an unrelated successful reference. Canonical proof now binds reference, amount, currency, domain, booking, payer and purpose; unknown/duplicate online references fail closed. Offline submissions cannot mint Paystack/wallet credits, and manual approval cannot substitute for gateway verification or an actual wallet debit. Admin Paystack review calls the canonical verification endpoint.
+- Legacy webhooks now reject missing/empty keys and forged signatures, fetch the canonical transaction, settle a single locked payment row and acknowledge only after commit. They no longer use nondurable setImmediate processing for financial changes or allow charge.failed to downgrade successful credit. Replays do not repeat credit, receipts or payment-success activity.
+- Booking-row locks occur before the balance SUM statement so competing transactions use a fresh read-committed snapshot; concurrent partial credits are retained. Wallet top-ups lock/recheck the booking and wallet, and losing debits/ledger/payment writes roll back together. Visa writes during online settlement use the current transaction, avoiding global-pool deadlocks.
+- OTA payment initialization saves redirects only if the original payment_pending status/revision still match. Completed refunds accept canonical reversed status; purchases still require success. Provider IDs compare as decimal strings and unsafe numeric IDs fail closed. Supplier purchase timeout is 135 seconds; ambiguous supplier creation is still never automatically retried. Payment responses are no-store and browser mutation Origin headers must match configured origins.
+- Added payment-purpose/metadata, currency/domain/owner/amount tampering, duplicate-reference, signature/empty-key, cross-origin, concurrent callback/webhook, partial-credit, competing-wallet-debit, refunded-payment, large-ID and redirect-race regressions. **90 tests pass across eight suites with exit code 0**, excluding the older registration suite. A complete run executed **120 passing assertions** but exited nonzero because registration afterAll timed out; a preceding attempt timed out in its PostgreSQL setup. Do not report the complete nine-suite command as green.
+- Final workspace typechecking passes. API and frontend production builds pass; existing frontend sourcemap/large-chunk/NODE_ENV warnings remain nonfatal. Updated the OpenAPI payment contract and regenerated clients: response methods include existing wallet records; customer-created payment bodies expose offline methods only. Diff whitespace checks pass. Authenticated admin browser acceptance was not performed in this follow-up.
+- No production credentials were printed or changed, no real charge/ticket/hotel/refund was made, and no deployment or production migration was performed. No new migration in this follow-up; existing 0010/0011 and staging gates remain. These source/tests are evidence for covered paths, not a guarantee of zero vulnerabilities or independent penetration-test certification.

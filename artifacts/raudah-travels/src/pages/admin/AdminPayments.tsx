@@ -655,7 +655,9 @@ export default function AdminPayments() {
 
   const { data, isLoading } = useListPayments(params, { query: { queryKey: getListPaymentsQueryKey(params) } });
   const verifyPayment = useVerifyPayment();
+  const [isGatewayVerifying, setIsGatewayVerifying] = useState(false);
   const allPayments = data?.payments || [];
+  const reviewingPayment = allPayments.find(payment => payment.id === verifyingId);
 
   const payments = search.trim()
     ? allPayments.filter(p => {
@@ -673,8 +675,27 @@ export default function AdminPayments() {
   const totalPages = Math.max(1, Math.ceil(payments.length / PAGE_SIZE));
   const paginatedPayments = payments.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const handleVerify = (action: "verified" | "rejected") => {
-    if (!verifyingId) return;
+  const handleVerify = async (action: "verified" | "rejected") => {
+    if (!verifyingId || isGatewayVerifying || verifyPayment.isPending) return;
+    if (action === "verified" && reviewingPayment?.method === "wallet") return;
+    if (action === "verified" && reviewingPayment?.method === "paystack") {
+      setIsGatewayVerifying(true);
+      try {
+        const response = await fetch("/api/payments/paystack/verify", {
+          method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reference: reviewingPayment.reference }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.verified) throw new Error(result.error || "Gateway verification failed");
+        toast({ title: "Payment verified with Paystack" });
+        await qc.invalidateQueries({ queryKey: getListPaymentsQueryKey() });
+        await qc.invalidateQueries({ queryKey: ["payments", "stats"] });
+        setVerifyingId(null); setNotes("");
+      } catch (error) {
+        toast({ title: "Payment remains unverified", description: error instanceof Error ? error.message : "Try again later", variant: "destructive" });
+      } finally { setIsGatewayVerifying(false); }
+      return;
+    }
     verifyPayment.mutate({ id: verifyingId, data: { status: action, notes } }, {
       onSuccess: () => {
         toast({ title: action === "verified" ? "Payment verified ✓" : "Payment rejected" });
@@ -1010,7 +1031,7 @@ export default function AdminPayments() {
         <DialogContent className="sm:max-w-md rounded-3xl p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-4 border-b border-[#F1F5F9]">
             <DialogTitle className="font-black text-[#0F172A]">Review Payment</DialogTitle>
-            <p className="text-[#94A3B8] text-sm mt-0.5">Verify or reject this payment submission</p>
+            <p className="text-[#94A3B8] text-sm mt-0.5">{reviewingPayment?.method === "paystack" ? "Verify this transaction directly with Paystack." : reviewingPayment?.method === "wallet" ? "Wallet credits require a completed wallet debit. Manual approval is unavailable." : "Verify or reject this payment submission"}</p>
           </DialogHeader>
           <div className="px-6 py-5 space-y-4">
             <div>
@@ -1022,12 +1043,12 @@ export default function AdminPayments() {
                 data-testid="input-verify-notes" />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <button onClick={() => handleVerify("verified")} disabled={verifyPayment.isPending}
+              <button onClick={() => handleVerify("verified")} disabled={verifyPayment.isPending || isGatewayVerifying || reviewingPayment?.method === "wallet"}
                 className="flex items-center justify-center gap-2 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-colors disabled:opacity-50"
                 data-testid="button-confirm-verify">
-                <CheckCircle2 className="w-4 h-4" /> Verify
+                <CheckCircle2 className="w-4 h-4" /> {isGatewayVerifying ? "Checking…" : reviewingPayment?.method === "paystack" ? "Check Paystack" : "Verify"}
               </button>
-              <button onClick={() => handleVerify("rejected")} disabled={verifyPayment.isPending}
+              <button onClick={() => handleVerify("rejected")} disabled={verifyPayment.isPending || isGatewayVerifying}
                 className="flex items-center justify-center gap-2 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl transition-colors disabled:opacity-50"
                 data-testid="button-confirm-reject">
                 <XCircle className="w-4 h-4" /> Reject

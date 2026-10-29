@@ -37,6 +37,7 @@ Promise.all([
     // Background: expire stale AI registration sessions every 30 minutes.
     // Import lazily so this never blocks startup on import-time failures.
     startChannelWorker();
+    void import("./services/ota/maintenance").then(({ startOtaMaintenance }) => startOtaMaintenance());
     let maintenanceRunning = false;
     const EXPIRE_MS = 30 * 60 * 1000;
     setInterval(async () => {

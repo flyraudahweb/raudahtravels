@@ -29,6 +29,7 @@ import AdminBookPilgrim from "./AdminBookPilgrim";
 import AdminPassports from "./AdminPassports";
 import AdminBackup from "./AdminBackup";
 import AdminUsers from "./AdminUsers";
+import AdminOta from "./AdminOta";
 import {
   LayoutDashboard, Package, CreditCard, Users, BookOpen, UserCheck,
   TrendingUp, MessageSquare, UserCog, LogOut, Home, ChevronRight,
@@ -286,6 +287,7 @@ export default function AdminConsole() {
   });
 
   const NAV_GROUPS: NavGroupDef[] = useMemo(() => {
+    if (profile?.role === "super_admin") return [...ALL_NAV_GROUPS, { label: "Travel Distribution", items: [{ href: "/admin/ota", label: "Online Travel Agency", icon: Building2 }] }];
     if (!isStaffOnly) return ALL_NAV_GROUPS;
     const allowed = new Set(myPerms?.permissions || []);
     // If the staff member has any support specialties, they must be able to see the Support page
@@ -296,7 +298,7 @@ export default function AdminConsole() {
         items: (group.items as any[]).filter((item: any) => !item.permKey || allowed.has(item.permKey)),
       }))
       .filter(group => group.items.length > 0);
-  }, [isStaffOnly, myPerms?.permissions, myPerms?.specialties]);
+  }, [isStaffOnly, profile?.role, myPerms?.permissions, myPerms?.specialties]);
 
   const [collapsed, setCollapsed] = useState(getInitialCollapsed);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -470,6 +472,7 @@ export default function AdminConsole() {
         <main className={`flex-1 overflow-auto pb-24 md:pb-0 pt-14 md:pt-0 min-h-screen transition-[margin] duration-300 ease-in-out ${mainMl}`}>
           <div className="max-w-6xl mx-auto px-4 md:px-8 py-8">
             <Switch>
+              <Route path="/admin/ota" component={AdminOta} />
               <Route path="/admin"              component={AdminOverview} />
               <Route path="/admin/packages"     component={AdminPackages} />
               <Route path="/admin/bookings"     component={AdminBookings} />

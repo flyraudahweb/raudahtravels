@@ -54,6 +54,8 @@ const STATUS_PILL: Record<string, string> = {
   completed: "bg-blue-100 text-blue-700 border border-blue-200",
 };
 
+import TravelUpdates from "@/components/ota/TravelUpdates";
+
 export default function AgentOverview() {
   const { user } = useUser();
   const { data: overview, isLoading } = useGetAgentOverview({ query: { queryKey: getGetAgentOverviewQueryKey() } });
@@ -139,6 +141,7 @@ export default function AgentOverview() {
       </div>
 
       {/* Stats */}
+      <TravelUpdates />
       {isLoading ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[1,2,3,4].map(i => <Skeleton key={i} className="h-32 rounded-2xl" />)}

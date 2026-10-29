@@ -46,6 +46,9 @@ const statusStyle: Record<string, string> = {
   completed: "bg-blue-100 text-blue-800 border-blue-200",
 };
 
+import TravelUpdates from "@/components/ota/TravelUpdates";
+import OtaOperationsSummary from "@/components/ota/OtaOperationsSummary";
+
 export default function AdminOverview() {
   const { data: overview, isLoading } = useGetAdminOverview({ query: { queryKey: getGetAdminOverviewQueryKey(), staleTime: 0, refetchOnMount: true } });
   const { data: bookingsData } = useListBookings({ limit: 5 } as Record<string, unknown>, { query: { queryKey: getListBookingsQueryKey({ limit: 5 } as Record<string, unknown>), staleTime: 0 } });
@@ -114,6 +117,8 @@ export default function AdminOverview() {
       </div>
 
       {/* Stat cards */}
+      <OtaOperationsSummary />
+      <TravelUpdates operations />
       {isLoading ? (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-28 rounded-2xl" />)}

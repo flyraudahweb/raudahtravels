@@ -2,12 +2,14 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { notificationsTable, profilesTable } from "@workspace/db";
 import { getAuth } from "@clerk/express";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, count } from "drizzle-orm";
 
 const router = Router();
 
 async function getProfileByClerkId(clerkUserId: string) {
-  return db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, clerkUserId) });
+  return db.query.profilesTable.findFirst({
+    where: eq(profilesTable.clerkUserId, clerkUserId),
+  });
 }
 
 router.get("/notifications", async (req, res) => {
@@ -18,17 +20,30 @@ router.get("/notifications", async (req, res) => {
   if (!profile) return res.status(404).json({ error: "Profile not found" });
 
   const { unreadOnly, limit = "50" } = req.query as Record<string, string>;
+  const requestedLimit = Number(limit);
+  const pageSize = Number.isFinite(requestedLimit)
+    ? Math.min(100, Math.max(1, Math.trunc(requestedLimit)))
+    : 50;
   const conditions = [eq(notificationsTable.userId, profile.id)];
-  if (unreadOnly === "true") conditions.push(eq(notificationsTable.isRead, false));
+  if (unreadOnly === "true")
+    conditions.push(eq(notificationsTable.isRead, false));
 
   const notifications = await db.query.notificationsTable.findMany({
     where: and(...conditions),
-    limit: parseInt(limit),
+    limit: pageSize,
     orderBy: desc(notificationsTable.createdAt),
   });
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
-  return res.json({ notifications, unreadCount });
+  const [unread] = await db
+    .select({ total: count() })
+    .from(notificationsTable)
+    .where(
+      and(
+        eq(notificationsTable.userId, profile.id),
+        eq(notificationsTable.isRead, false),
+      ),
+    );
+  return res.json({ notifications, unreadCount: unread.total });
 });
 
 // SECURITY FIX #1: Removed unauthenticated POST /notifications endpoint.
@@ -40,9 +55,15 @@ router.put("/notifications/read-all", async (req, res) => {
   const profile = await getProfileByClerkId(clerkUserId);
   if (!profile) return res.status(404).json({ error: "Profile not found" });
 
-  const updated = await db.update(notificationsTable)
+  const updated = await db
+    .update(notificationsTable)
     .set({ isRead: true })
-    .where(and(eq(notificationsTable.userId, profile.id), eq(notificationsTable.isRead, false)))
+    .where(
+      and(
+        eq(notificationsTable.userId, profile.id),
+        eq(notificationsTable.isRead, false),
+      ),
+    )
     .returning();
 
   return res.json({ updated: updated.length });
@@ -55,9 +76,15 @@ router.put("/notifications/:id/read", async (req, res) => {
   const profile = await getProfileByClerkId(clerkUserId);
   if (!profile) return res.status(404).json({ error: "Profile not found" });
 
-  const [notification] = await db.update(notificationsTable)
+  const [notification] = await db
+    .update(notificationsTable)
     .set({ isRead: true })
-    .where(and(eq(notificationsTable.id, req.params.id), eq(notificationsTable.userId, profile.id)))
+    .where(
+      and(
+        eq(notificationsTable.id, req.params.id),
+        eq(notificationsTable.userId, profile.id),
+      ),
+    )
     .returning();
   if (!notification) return res.status(404).json({ error: "Not found" });
   return res.json(notification);

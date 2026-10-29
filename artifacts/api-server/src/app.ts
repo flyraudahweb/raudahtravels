@@ -6,8 +6,7 @@ import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
 import router from "./routes";
-import flightsRouter from "./routes/flights.js";
-import hotelsRouter from "./routes/hotels.js";
+import otaRouter from "./routes/ota.js";
 import { logger } from "./lib/logger";
 import {
   CLERK_PROXY_PATH,
@@ -95,8 +94,11 @@ app.use(
 );
 
 app.use("/api/uploads", express.static(path.resolve("uploads")));
-app.use("/api", flightsRouter);
-app.use("/api", hotelsRouter);
+app.use("/api", otaRouter);
+// Retired demo/unsafe contracts fail closed instead of reaching the SPA fallback.
+app.use(["/api/flights", "/api/hotels"], (_req, res) => {
+  res.status(410).json({ error: "This travel endpoint has been replaced. Refresh the application to continue." });
+});
 app.use("/api", router);
 
 // --- Production: Serve frontend static files (Option B — single service) ---

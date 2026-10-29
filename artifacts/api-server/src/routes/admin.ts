@@ -1685,7 +1685,7 @@ router.post("/admin/registration-settings/test-connections", requireAccountAdmin
 router.get("/admin/settings", async (_req, res) => {
   const settings = await db.query.siteSettingsTable.findMany();
   const map: Record<string, any> = {};
-  settings.forEach(s => { map[s.key] = s.value; });
+  settings.forEach(s => { if (s.key !== "ota_config") map[s.key] = s.value; });
   delete map[CONFIG_KEY];
   for (const key of ["whatsapp_verify_token", "telegram_webhook_secret"]) {
     if (map[key]) { map[`${key}_set`] = true; delete map[key]; }
@@ -1811,6 +1811,7 @@ router.get("/admin/email/debug", async (req, res) => {
 
 router.put("/admin/settings/:key", requireAccountAdmin, async (req, res) => {
   const key = String(req.params.key);
+  if (key === "ota_config") return res.status(403).json({ error: "Use the super-admin OTA console to manage travel settings" });
   if (key === CONFIG_KEY || /^(whatsapp_|telegram_)/.test(key)) return res.status(400).json({ error: "Use Registration Agent settings to manage channel credentials securely" });
   const { value } = req.body;
   const existing = await db.query.siteSettingsTable.findFirst({

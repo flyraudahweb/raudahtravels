@@ -13,6 +13,8 @@ import AgentVisas from "./AgentVisas";
 import AgentClients from "./AgentClients";
 import AgentWallet from "./AgentWallet";
 import DashboardSupport from "@/pages/dashboard/DashboardSupport";
+import MyTravelTrips from "@/components/ota/MyTravelTrips";
+import DashboardNotifications from "@/pages/dashboard/DashboardNotifications";
 import {
   LayoutDashboard, BookOpen, TrendingUp, User, Map, MessageSquare,
   LogOut, Home, ShieldCheck, Users, Wallet, LayoutGrid, X, ChevronRight,
@@ -131,6 +133,8 @@ export default function AgentPortal() {
     { href: "/agent/clients", label: "My Clients", icon: Users },
     { href: "/agent/packages", label: "Packages", icon: Map },
     { href: "/agent/bookings", label: "Bookings", icon: BookOpen },
+    { href: "/agent/my-trips", label: "My flights & hotels", icon: Map },
+    { href: "/agent/notifications", label: "Notifications", icon: MessageSquare },
     { href: "/agent/visas", label: "Client Visas", icon: ShieldCheck },
     { href: "/agent/wallet", label: "Wallet", icon: Wallet },
     { href: "/agent/commissions", label: "Commissions", icon: TrendingUp },
@@ -287,6 +291,8 @@ export default function AgentPortal() {
             <Route path="/agent/clients" component={AgentClients} />
             <Route path="/agent/packages" component={AgentPackages} />
             <Route path="/agent/bookings" component={AgentBookings} />
+            <Route path="/agent/my-trips" component={MyTravelTrips} />
+            <Route path="/agent/notifications" component={DashboardNotifications} />
             <Route path="/agent/visas" component={AgentVisas} />
             <Route path="/agent/wallet" component={AgentWallet} />
             <Route path="/agent/commissions" component={AgentCommissions} />

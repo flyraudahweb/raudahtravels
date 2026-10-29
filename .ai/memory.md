@@ -20,6 +20,10 @@
 - **Solution**: Always execute raw SQL from `lib/db/drizzle/` directly in the Neon Dashboard SQL Editor.
 
 ## 🚀 Active Development
+- **Current requested work (2026-10-29): Duffel OTA expansion**. Read [OTA context](context/ota-expansion.md) and [progress memory](ota-progress.md) before continuing this work.
+- **Duffel webhook status**: Authorized test webhook created inactive; private signing configuration saved in ignored environment files. User now reports migrations 0009, 0010 and 0011 applied; the agent has not independently rechecked 0010/0011. Receiver deployment and signed-ping activation remain. Never expose stored secrets.
+- **Travel dashboard updates/deep review**: Durable lifecycle notifications, owner-only timelines and urgent super-admin alerts are implemented. Deep review fixed financial/state races, rounding, stale browser/provider updates, worker recovery, pagination and admin drafts; added price preview and design polish. Latest checks: 101 tests, typecheck and both builds pass. Browser automation timed out; staging/mobile acceptance and launch gates remain. Read the latest progress section before continuing.
+- **Payment security follow-up**: Shared Paystack verification now prevents OTA/package replay, rejects minted online/wallet credits and empty-key signatures, durably commits webhook credit, and serializes booking balances/wallet debits. Refund and redirect races were tightened. Latest targeted run: 90 tests across eight suites pass cleanly; full run had 120 passing assertions but registration cleanup timed out. Do not claim zero leakage or a fully green nine-suite run. Migrations are now user-reported complete; deployment and staging gates remain.
 - See [current_sprint.md](file:///c:/Users/DEEPMIND/Downloads/Travel-Master-Guide-main/Travel-Master-Guide-main/.ai/epic/current_sprint.md) for the active focus.
 
 ## 📜 Session History

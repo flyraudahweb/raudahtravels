@@ -57,6 +57,8 @@ const NAV_GROUPS: { label: string; items: { href: string; label: string; icon: t
     items: [
       { href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true },
       { href: "/dashboard/my-trips", label: "My Trips", icon: Plane },
+      { href: "/flights", label: "Book Flights", icon: Plane },
+      { href: "/hotels", label: "Book Hotels", icon: Map },
       { href: "/dashboard/bookings", label: "My Bookings", icon: BookOpen },
       { href: "/dashboard/packages", label: "Browse Packages", icon: Map },
     ]
@@ -174,7 +176,7 @@ export default function UserDashboard() {
     query: { queryKey: getGetProfileQueryKey(), enabled: !!isSignedIn },
   });
   const { data: notifData } = useListNotifications({}, {
-    query: { queryKey: getListNotificationsQueryKey({}), enabled: !!isSignedIn },
+    query: { queryKey: getListNotificationsQueryKey({}), enabled: !!isSignedIn, refetchInterval: 30000 },
   });
 
   // ── Auth gate: redirect to sign-in if not authenticated ──────────────────

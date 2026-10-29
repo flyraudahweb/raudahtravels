@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Settings, Phone, Mail, MapPin, MessageCircle, Globe, CreditCard, Save, CheckCircle2, Copy, Check, Eye, EyeOff, ExternalLink, Video, Layout, Plus, Trash2, Users, BarChart2, Image, Sparkles, Send, Loader2, Coins } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import RegistrationAgentSettings from "@/components/admin/RegistrationAgentSettings";
+import { useGetProfile } from "@workspace/api-client-react";
+import { Link } from "wouter";
 
 async function fetchSettings(): Promise<{ settings: Record<string, any> }> {
   const r = await fetch("/api/admin/settings", { credentials: "include" });
@@ -64,6 +66,7 @@ function CopyButton({ value }: { value: string }) {
 }
 
 export default function AdminSettings() {
+  const { data: actorProfile } = useGetProfile();
   const { toast } = useToast();
   const qc = useQueryClient();
   const [saved, setSaved] = useState<string | null>(null);
@@ -227,6 +230,7 @@ export default function AdminSettings() {
       <Section title="AI Registration Agent" icon={MessageCircle}>
         <RegistrationAgentSettings />
       </Section>
+      {actorProfile?.role === "super_admin" && <Section title="Duffel flights, hotels and webhooks" icon={Globe}><p className="mb-4 text-sm text-slate-500">Manage test/live API tokens, signing secrets, webhook events, search switches and OTA pricing in the protected travel console.</p><Link href="/admin/ota" className="inline-flex rounded-xl bg-[#2D3199] px-5 py-3 text-sm font-bold text-white">Open Duffel & OTA settings →</Link></Section>}
 
       <Section title="Contact Information" icon={Phone}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

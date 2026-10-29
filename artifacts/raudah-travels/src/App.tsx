@@ -1,11 +1,18 @@
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
-import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ClerkProvider, Show, useClerk, useUser } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
-import { useEffect, useRef } from "react";
-import { useSyncProfile, getGetProfileQueryKey } from "@workspace/api-client-react";
+import { useEffect, useRef, lazy, Suspense } from "react";
+import {
+  useSyncProfile,
+  getGetProfileQueryKey,
+} from "@workspace/api-client-react";
 
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/public/Home";
@@ -21,12 +28,13 @@ import SignInPage from "@/pages/auth/SignInPage";
 import SignUpPage from "@/pages/auth/SignUpPage";
 import ForgotPasswordPage from "@/pages/auth/ForgotPasswordPage";
 import AuthRedirectPage from "@/pages/auth/AuthRedirectPage";
+import TravelBooking from "@/components/ota/TravelBooking";
 
-import UserDashboard from "@/pages/dashboard/UserDashboard";
-import AgentPortal from "@/pages/agent/AgentPortal";
-import AdminConsole from "@/pages/admin/AdminConsole";
-import FlightsModule from "@/pages/flights";
-import HotelsModule from "@/pages/hotels";
+const UserDashboard = lazy(() => import("@/pages/dashboard/UserDashboard"));
+const AgentPortal = lazy(() => import("@/pages/agent/AgentPortal"));
+const AdminConsole = lazy(() => import("@/pages/admin/AdminConsole"));
+const FlightsModule = lazy(() => import("@/pages/flights"));
+const HotelsModule = lazy(() => import("@/pages/hotels"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -68,7 +76,7 @@ function ProfileSyncer() {
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: getGetProfileQueryKey() });
         },
-      }
+      },
     );
   }, [isLoaded, user]);
 
@@ -99,30 +107,44 @@ function ClerkQueryClientCacheInvalidator() {
 
 function AppRoutes() {
   return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/packages" component={Packages} />
-      <Route path="/packages/:id" component={PackageDetail} />
-      <Route path="/become-agent" component={BecomeAgent} />
-      <Route path="/about" component={About} />
-      <Route path="/contact" component={Contact} />
-      <Route path="/privacy" component={Privacy} />
-      <Route path="/terms" component={Terms} />
-      <Route path="/faq" component={FAQ} />
+    <Suspense
+      fallback={
+        <div
+          role="status"
+          className="flex min-h-screen items-center justify-center bg-[#F8FAFF] text-[#2D3199]"
+        >
+          Loading your travel experience…
+        </div>
+      }
+    >
+      <Switch>
+        <Route path="/" component={Home} />
+        <Route path="/packages" component={Packages} />
+        <Route path="/packages/:id" component={PackageDetail} />
+        <Route path="/become-agent" component={BecomeAgent} />
+        <Route path="/about" component={About} />
+        <Route path="/contact" component={Contact} />
+        <Route path="/privacy" component={Privacy} />
+        <Route path="/terms" component={Terms} />
+        <Route path="/faq" component={FAQ} />
 
-      <Route path="/sign-in/*?" component={SignInPage} />
-      <Route path="/sign-up/*?" component={SignUpPage} />
-      <Route path="/forgot-password/*?" component={ForgotPasswordPage} />
-      <Route path="/auth/redirect" component={AuthRedirectPage} />
+        <Route path="/sign-in/*?" component={SignInPage} />
+        <Route path="/sign-up/*?" component={SignUpPage} />
+        <Route path="/forgot-password/*?" component={ForgotPasswordPage} />
+        <Route path="/auth/redirect" component={AuthRedirectPage} />
 
-      <Route path="/dashboard/*?" component={UserDashboard} />
-      <Route path="/agent/*?" component={AgentPortal} />
-      <Route path="/admin/*?" component={AdminConsole} />
-      <Route path="/flights/*?" component={FlightsModule} />
-      <Route path="/hotels/*?" component={HotelsModule} />
+        <Route path="/dashboard/*?" component={UserDashboard} />
+        <Route path="/agent/*?" component={AgentPortal} />
+        <Route path="/admin/*?" component={AdminConsole} />
+        <Route path="/flights/*?" component={FlightsModule} />
+        <Route path="/hotels/*?" component={HotelsModule} />
+        <Route path="/travel/bookings/:id">
+          {(params) => <TravelBooking bookingId={params.id} />}
+        </Route>
 
-      <Route component={NotFound} />
-    </Switch>
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 
@@ -151,19 +173,22 @@ function ClerkProviderWithRoutes() {
           fontFamily: "Lato, sans-serif",
         },
         elements: {
-          formButtonPrimary: "bg-[#2D3199] hover:bg-[#25297F] text-white font-bold shadow-none",
+          formButtonPrimary:
+            "bg-[#2D3199] hover:bg-[#25297F] text-white font-bold shadow-none",
           card: "shadow-none border-0",
           headerTitle: "text-[#0F172A] font-black",
           headerSubtitle: "text-[#64748B]",
-          socialButtonsBlockButton: "border border-[#DCE3F0] text-[#334155] hover:bg-[#F1F5F9] font-semibold",
+          socialButtonsBlockButton:
+            "border border-[#DCE3F0] text-[#334155] hover:bg-[#F1F5F9] font-semibold",
           dividerLine: "bg-[#DCE3F0]",
           dividerText: "text-[#94A3B8] text-xs",
-          formFieldInput: "border-[#DCE3F0] focus:border-[#2D3199] focus:ring-[#2D3199]/20 rounded-xl",
+          formFieldInput:
+            "border-[#DCE3F0] focus:border-[#2D3199] focus:ring-[#2D3199]/20 rounded-xl",
           formFieldLabel: "text-[#334155] font-semibold text-sm",
           footerActionLink: "text-[#2D3199] hover:text-[#25297F] font-semibold",
           identityPreviewEditButton: "text-[#2D3199]",
           formResendCodeLink: "text-[#2D3199]",
-        }
+        },
       }}
     >
       <QueryClientProvider client={queryClient}>

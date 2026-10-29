@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Bell, BellOff, CheckCheck, BookOpen, CreditCard, FileText, MessageSquare, Settings, CheckCircle2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { Link } from "wouter";
 
 const TYPE_CONFIG: Record<string, { icon: typeof Bell; gradient: string; bg: string }> = {
   booking: { icon: BookOpen,     gradient: "from-[#2D3199] to-[#4C56B8]", bg: "bg-[#EEF0FF]" },
@@ -28,7 +29,7 @@ function timeAgo(date: string | Date): string {
 export default function DashboardNotifications() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const { data, isLoading } = useListNotifications({}, { query: { queryKey: getListNotificationsQueryKey({}) } });
+  const { data, isLoading, error, refetch } = useListNotifications({}, { query: { queryKey: getListNotificationsQueryKey({}), refetchInterval: 30000 } });
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
 
@@ -79,7 +80,7 @@ export default function DashboardNotifications() {
         )}
       </div>
 
-      {isLoading ? (
+      {error ? <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">Notifications could not be loaded. <button onClick={() => refetch()} className="font-bold underline">Try again</button></div> : isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-20 w-full rounded-2xl" />)}
         </div>
@@ -120,6 +121,7 @@ export default function DashboardNotifications() {
                     <span className="text-[10px] text-[#94A3B8] whitespace-nowrap shrink-0">{timeAgo(notif.createdAt)}</span>
                   </div>
                   <p className="text-sm text-[#64748B] mt-0.5 leading-relaxed">{notif.message}</p>
+                  {notif.link?.startsWith("/") && !notif.link.startsWith("//") && <Link href={notif.link} onClick={() => { if (!notif.isRead) handleMarkOne(notif.id); }} className="mt-2 inline-flex text-sm font-semibold text-indigo-700">View details →</Link>}
                 </div>
 
                 {/* Unread dot + mark read */}

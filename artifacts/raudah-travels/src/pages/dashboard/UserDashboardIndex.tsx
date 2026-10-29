@@ -24,7 +24,7 @@ function fmtMoneyFull(n: number): string {
 const STAT_CARDS = [
   {
     key: "totalBookings",
-    label: "Total Bookings",
+    label: "Package Bookings",
     sub: (s: Record<string,number>) => `${s.confirmedBookings ?? 0} confirmed`,
     icon: BookOpen,
     gradient: "from-[#2D3199] to-[#4C56B8]",
@@ -32,7 +32,7 @@ const STAT_CARDS = [
   },
   {
     key: "totalAmountPaid",
-    label: "Amount Paid",
+    label: "Package Payments",
     format: true,
     sub: (s: Record<string,number>) => `${fmtMoney(s.totalAmountDue ?? 0)} remaining`,
     icon: CreditCard,
@@ -41,7 +41,7 @@ const STAT_CARDS = [
   },
   {
     key: "upcomingCount",
-    label: "Upcoming Trips",
+    label: "Package Departures",
     sub: () => "Departures scheduled",
     icon: Plane,
     gradient: "from-[#0EA5E9] to-[#38BDF8]",
@@ -56,6 +56,8 @@ const STAT_CARDS = [
     glow: "rgba(139,92,246,0.20)",
   },
 ];
+
+import TravelUpdates from "@/components/ota/TravelUpdates";
 
 export default function UserDashboardIndex() {
   const { user } = useUser();
@@ -127,6 +129,7 @@ export default function UserDashboardIndex() {
       </div>
 
       {/* Stat cards */}
+      <TravelUpdates />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {STAT_CARDS.map(card => {
           const Icon = card.icon;

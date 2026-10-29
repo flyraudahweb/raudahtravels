@@ -295,6 +295,7 @@ export const PaymentMethod = {
   cash: "cash",
   paystack: "paystack",
   ussd: "ussd",
+  wallet: "wallet",
 } as const;
 
 export type PaymentStatus = (typeof PaymentStatus)[keyof typeof PaymentStatus];
@@ -325,7 +326,6 @@ export type CreatePaymentBodyMethod =
 export const CreatePaymentBodyMethod = {
   bank_transfer: "bank_transfer",
   cash: "cash",
-  paystack: "paystack",
   ussd: "ussd",
 } as const;
 
@@ -423,6 +423,7 @@ export interface Notification {
   userId: string;
   title: string;
   message: string;
+  link?: string | null;
   isRead: boolean;
   type: NotificationType;
   createdAt: string;

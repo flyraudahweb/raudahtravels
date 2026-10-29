@@ -2144,7 +2144,7 @@ components:
           type: number
         method:
           type: string
-          enum: [bank_transfer, cash, paystack, ussd]
+          enum: [bank_transfer, cash, paystack, ussd, wallet]
         status:
           type: string
           enum: [pending, verified, rejected]
@@ -2173,7 +2173,7 @@ components:
           type: number
         method:
           type: string
-          enum: [bank_transfer, cash, paystack, ussd]
+          enum: [bank_transfer, cash, ussd]
         reference:
           type: string
         proofUrl:
@@ -2264,6 +2264,9 @@ components:
           type: string
         message:
           type: string
+        link:
+          type: string
+          nullable: true
         isRead:
           type: boolean
         type:

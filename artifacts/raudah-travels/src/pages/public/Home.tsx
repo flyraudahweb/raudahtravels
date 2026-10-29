@@ -11,7 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import consultancyImg from "@/assets/images/consultancy.png";
 import { PackageAvailability } from "@/components/PackageAvailability";
 import OtaSearchWidget from "@/components/ota/OtaSearchWidget";
-import FlightMapExplorer from "@/components/flights/FlightMapExplorer";
+import ExchangeRates from "@/components/ota/ExchangeRates";
 /* ── Custom branded dropdown ────────────────────────────────────────────── */
 interface DropdownOption { value: string; label: string; }
 
@@ -231,19 +231,19 @@ export default function Home() {
             {/* Trip.com Guarantee Trust Pills — Now including Packages */}
             <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-5 text-white/90 text-xs sm:text-sm font-semibold mt-4">
               <span className="flex items-center gap-1.5">
-                <Check className="w-4 h-4 text-emerald-400 stroke-[3]" /> We price match
+                <Check className="w-4 h-4 text-emerald-400 stroke-[3]" /> Compare flight options
               </span>
               <span className="text-white/30 hidden sm:inline">|</span>
               <span className="flex items-center gap-1.5">
-                <Package className="w-4 h-4 text-amber-300" /> Package booking guarantee
+                <Package className="w-4 h-4 text-amber-300" /> Hajj & Umrah specialists
               </span>
               <span className="text-white/30 hidden sm:inline">|</span>
               <span className="flex items-center gap-1.5">
-                <CalendarDays className="w-4 h-4 text-sky-300" /> Hotel booking guarantee
+                <CalendarDays className="w-4 h-4 text-sky-300" /> Find your next stay
               </span>
               <span className="text-white/30 hidden sm:inline">|</span>
               <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-purple-300" /> Hotel stay guarantee
+                <CheckCircle2 className="w-4 h-4 text-purple-300" /> Personal travel support
               </span>
             </div>
           </div>
@@ -252,6 +252,8 @@ export default function Home() {
         {/* Search Widget — Overlaps bottom edge of hero like Trip.com */}
         <div className="relative z-20 -mt-24 sm:-mt-28 md:-mt-32 px-4 md:px-8 max-w-5xl mx-auto w-full mb-0">
           <OtaSearchWidget />
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm"><div><p className="font-bold text-slate-900">Already have a booking?</p><p className="mt-1 text-xs text-slate-500">Track confirmation, view travel documents or request help.</p></div><Link href="/dashboard/my-trips" className="inline-flex items-center gap-2 font-bold text-indigo-700">Manage my trips <ArrowRight size={16} /></Link></div>
+          <details className="mt-3 rounded-2xl border border-slate-200 bg-white px-5 py-3"><summary className="cursor-pointer text-xs font-semibold text-slate-600">Currency reference rates</summary><div className="mt-3"><ExchangeRates /></div></details>
         </div>
 
         {/* ── FEATURED PACKAGES (Restored) ── */}
@@ -369,10 +371,10 @@ export default function Home() {
           <div className="container mx-auto px-4 md:px-6">
             <div className="text-center mb-10 md:mb-12 max-w-3xl mx-auto">
               <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1C1F66]/10 text-[#1C1F66] text-xs font-bold uppercase tracking-wider mb-3">
-                <Plane className="w-3.5 h-3.5 text-[#FF4E00]" /> Interactive Flight Explorer
+                <Plane className="w-3.5 h-3.5 text-[#FF4E00]" /> A world of possibilities
               </span>
               <h2 className="text-3xl md:text-4xl lg:text-5xl font-black text-[#0F172A] tracking-tight">
-                Live Flight Routes &amp; Travel Hours
+                From your home city to your next chapter.
               </h2>
               <div className="flex items-center justify-center gap-3 my-4">
                 <div className="h-px w-16 bg-gradient-to-r from-transparent to-[#2D3199]" />
@@ -380,16 +382,14 @@ export default function Home() {
                 <div className="h-px w-16 bg-gradient-to-l from-transparent to-[#2D3199]" />
               </div>
               <p className="text-[#64748B] text-base md:text-lg leading-relaxed">
-                Explore real-time geodesic flight paths, estimated flight durations, distances, and sample fares from Nigerian departure hubs to the Holy Lands and global destinations.
+                Search flights from Nigeria and beyond, explore available hotels, and keep your travel plans together in your Raudah account.
               </p>
             </div>
 
             <div className="max-w-5xl mx-auto">
-              <FlightMapExplorer 
-                initialOrigin="LOS" 
-                initialDestination="JED"
-                className="shadow-2xl"
-              />
+              <div className="grid gap-4 sm:grid-cols-3">
+                {[{ title: "Fly your way", text: "Compare itineraries, baggage and fare conditions before you book.", href: "/flights", cta: "Explore flights", icon: Plane }, { title: "Stay somewhere special", text: "Choose available rooms with clear pricing and cancellation policies.", href: "/hotels", cta: "Discover hotels", icon: CalendarDays }, { title: "Every journey, together", text: "Return to saved checkouts, view supplier confirmations and request support.", href: "/dashboard/my-trips", cta: "Open my trips", icon: CheckCircle2 }].map(card => <Link key={card.href} href={card.href} className="group rounded-3xl border border-indigo-100 bg-white p-7 shadow-sm transition hover:-translate-y-1 hover:shadow-lg"><card.icon className="mb-6 h-9 w-9 text-[#2D3199]" /><h3 className="text-xl font-black text-slate-900">{card.title}</h3><p className="mt-3 text-sm leading-relaxed text-slate-500">{card.text}</p><p className="mt-6 text-sm font-bold text-[#2D3199]">{card.cta} →</p></Link>)}
+              </div>
             </div>
           </div>
         </section>

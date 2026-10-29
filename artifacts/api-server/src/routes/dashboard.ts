@@ -308,136 +308,19 @@ router.post("/dashboard/amendments", async (req, res) => {
 });
 
 router.get("/dashboard/my-trips", async (req, res) => {
-  const { userId: clerkUserId } = getAuth(req);
-  if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
-
-  const profile = await getProfileByClerkId(clerkUserId);
-  const profileId = profile?.id;
-
-  // 1. Fetch flight bookings
-  const flightBookings = await db.query.flightBookingsTable.findMany({
-    where: eq(flightBookingsTable.clerkUserId, clerkUserId),
-    orderBy: [desc(flightBookingsTable.createdAt)],
-  });
-
-  // 2. Fetch hotel bookings
-  const hotelBookings = await db.query.hotelBookingsTable.findMany({
-    where: eq(hotelBookingsTable.clerkUserId, clerkUserId),
-    orderBy: [desc(hotelBookingsTable.createdAt)],
-  });
-
-  // 3. Fetch package bookings
-  const packageBookings = profileId
-    ? await db.query.bookingsTable.findMany({
-        where: and(eq(bookingsTable.userId, profileId), eq(bookingsTable.isArchived, false)),
-        with: { package: true },
-        orderBy: [desc(bookingsTable.createdAt)],
-      })
-    : [];
-
-  // 4. Wallet balance
-  let walletBalance = 85000; // Demo fallback matching PDF Page 6 mockup
-  if (profileId) {
-    const agent = await db.query.agentsTable.findFirst({ where: eq(agentsTable.userId, profileId) });
-    if (agent) {
-      const wallet = await db.query.agentWalletsTable.findFirst({ where: eq(agentWalletsTable.agentId, agent.id) });
-      if (wallet && wallet.balance) walletBalance = Number(wallet.balance);
-    }
-  }
-
-  // Construct trips array
-  const trips: any[] = [];
-
-  // Map real flight bookings
-  flightBookings.forEach((f) => {
-    trips.push({
-      id: f.id,
-      type: "flight",
-      title: `Flight · ${f.origin} ⇄ ${f.destination}`,
-      subtitle: `${f.airline || "EgyptAir"} · ${f.departureAt ? new Date(f.departureAt).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }) : "Upcoming"} · Booking ref ${f.pnr || f.id.slice(0, 8).toUpperCase()}`,
-      badge: f.bookingStatus === "confirmed" ? "Ticketed" : f.bookingStatus,
-      badgeColor: "green",
-      origin: f.origin,
-      destination: f.destination,
-      departureAt: f.departureAt,
-      arrivalAt: f.arrivalAt,
-      airline: f.airline,
-      pnr: f.pnr || `RDH-${f.id.slice(0, 5).toUpperCase()}`,
-      createdAt: f.createdAt,
-    });
-  });
-
-  // Map real package bookings
-  packageBookings.forEach((b: any) => {
-    const total = Number(b.totalPrice) || 8500000;
-    const paid = Number(b.amountPaid) || 5100000;
-    const percent = Math.min(100, Math.round((paid / (total || 1)) * 100));
-    const nextDue = Math.max(0, total - paid);
-
-    trips.push({
-      id: b.id,
-      type: "package",
-      title: `Package · ${b.package?.name || "Ramadan Umrah Premium"}`,
-      subtitle: `Departs ${b.package?.departureDate || "18 Feb 2027"} from Abuja · ${b.package?.durationDays || 14} nights · ${b.numberOfPilgrims || 2} pilgrims`,
-      badge: "Installments",
-      badgeColor: "orange",
-      totalPrice: total,
-      amountPaid: paid,
-      percentPaid: percent,
-      nextPaymentAmount: nextDue > 0 ? (nextDue > 1700000 ? 1700000 : nextDue) : 0,
-      nextPaymentDueDate: "15 Nov 2026",
-      createdAt: b.createdAt,
-    });
-  });
-
-  // Map real hotel bookings
-  hotelBookings.forEach((h) => {
-    trips.push({
-      id: h.id,
-      type: "hotel",
-      title: `Hotel · ${h.hotelName}`,
-      subtitle: `${h.hotelDestination === "makkah" ? "Makkah" : "Madinah"} · ${h.checkIn} – ${h.checkOut} · ${h.nights} nights · ${h.rooms} room, ${h.guests} guests`,
-      badge: "Confirmed",
-      badgeColor: "green",
-      createdAt: h.createdAt,
-    });
-  });
-
-  // If user has zero trips, provide the demo trips matching PDF Page 6 mockup
-  if (trips.length === 0) {
-    trips.push(
-      {
-        id: "demo-flight-1",
-        type: "flight",
-        title: "Flight · ABV ⇄ JED",
-        airline: "EgyptAir",
-        subtitle: "EgyptAir · 12 Jan – 26 Jan 2027 · 2 adults · Booking ref RDH-48213",
-        badge: "Ticketed",
-        badgeColor: "green",
-        pnr: "RDH-48213",
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: "demo-package-1",
-        type: "package",
-        title: "Package · Ramadan Umrah Premium",
-        subtitle: "Departs 18 Feb 2027 from Abuja · 14 nights · 2 pilgrims",
-        badge: "Installments",
-        badgeColor: "orange",
-        totalPrice: 8500000,
-        amountPaid: 5100000,
-        percentPaid: 60,
-        nextPaymentAmount: 1700000,
-        nextPaymentDueDate: "15 Nov 2026",
-        createdAt: new Date().toISOString(),
-      }
-    );
-  }
-
-  return res.json({
-    trips,
-    walletBalance,
-  });
+  const { userId } = getAuth(req);
+  if (!userId) return res.status(401).json({ error: "Unauthorized" });
+  const profile = await getProfileByClerkId(userId);
+  if (!profile || profile.accountStatus !== "active") return res.status(403).json({ error: "Access denied" });
+  const [flights, hotels, packages] = await Promise.all([
+    db.query.flightBookingsTable.findMany({ where: eq(flightBookingsTable.clerkUserId, userId), orderBy: desc(flightBookingsTable.createdAt), limit: 100 }),
+    db.query.hotelBookingsTable.findMany({ where: eq(hotelBookingsTable.clerkUserId, userId), orderBy: desc(hotelBookingsTable.createdAt), limit: 100 }),
+    db.query.bookingsTable.findMany({ where: and(eq(bookingsTable.userId, profile.id), eq(bookingsTable.isArchived, false)), with: { package: true }, orderBy: desc(bookingsTable.createdAt), limit: 100 }),
+  ]);
+  return res.json({ trips: [
+    ...flights.map(f => ({ id: f.id, type: "flight", title: `${f.origin} → ${f.destination}`, status: f.bookingStatus, reference: f.pnr, legacy: true })),
+    ...hotels.map(h => ({ id: h.id, type: "hotel", title: h.hotelName, status: h.bookingStatus, subtitle: `${h.checkIn} → ${h.checkOut}`, legacy: true })),
+    ...packages.map((b: any) => ({ id: b.id, type: "package", title: b.package?.name || "Travel package", status: b.status, reference: b.reference, amountPaid: Number(b.amountPaid || 0), totalPrice: Number(b.totalPrice || 0) })),
+  ] });
 });
-
 export default router;

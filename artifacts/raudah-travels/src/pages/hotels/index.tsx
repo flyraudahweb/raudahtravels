@@ -1,17 +1,20 @@
 import { Switch, Route } from "wouter";
-import HotelSearch from "./HotelSearch";
-import HotelDetail from "./HotelDetail";
-import HotelCheckout from "./HotelCheckout";
-import HotelConfirmation from "./HotelConfirmation";
+import TravelSearchPage from "@/components/ota/TravelSearchPage";
+import TravelCheckout from "@/components/ota/TravelCheckout";
+import TravelBooking from "@/components/ota/TravelBooking";
 
 export default function HotelsModule() {
   return (
     <Switch>
-      <Route path="/hotels" component={HotelSearch} />
-      <Route path="/hotels/search" component={HotelSearch} />
-      <Route path="/hotels/confirmation/:id" component={HotelConfirmation} />
-      <Route path="/hotels/checkout/:hotelId" component={HotelCheckout} />
-      <Route path="/hotels/:id" component={HotelDetail} />
+      <Route path="/hotels/checkout/:quoteId">
+        {(params) => <TravelCheckout kind="hotel" offerId={params.quoteId} />}
+      </Route>
+      <Route path="/hotels/confirmation/:id">
+        {(params) => <TravelBooking bookingId={params.id} />}
+      </Route>
+      <Route>
+        <TravelSearchPage kind="hotel" />
+      </Route>
     </Switch>
   );
 }

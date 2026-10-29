@@ -7,15 +7,38 @@ import { isTelegramConfigured } from "../services/channels/TelegramAdapter";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { isR2Configured } from "../lib/r2";
+import { getOtaConfig } from "../services/ota/config";
 
 const router: IRouter = Router();
 
 router.get("/readyz", async (_req, res) => {
   try {
     await db.execute(sql`SELECT 1`);
-    if ((await getRegistrationConfig()).enabled) await db.execute(sql`SELECT sequence FROM ai_registration_jobs LIMIT 0`);
+    const ota = await getOtaConfig();
+    const stored = await db.execute(
+      sql`SELECT to_regclass('public.ota_bookings') AS bookings`,
+    );
+    if (
+      stored.rows[0]?.bookings ||
+      ota.flightsEnabled ||
+      ota.hotelsEnabled ||
+      ota.salesEnabled ||
+      ota.duffelToken ||
+      ota.webhookTestSecret ||
+      ota.webhookLiveSecret
+    ) {
+      await db.execute(
+        sql`SELECT notification_sent_at, refund, provider_notice, revision, sync_attempt_at FROM ota_bookings LIMIT 0`,
+      );
+      await db.execute(sql`SELECT reference FROM ota_payment_jobs LIMIT 0`);
+      await db.execute(sql`SELECT dedupe_key FROM ota_duffel_events LIMIT 0`);
+    }
+    if ((await getRegistrationConfig()).enabled)
+      await db.execute(sql`SELECT sequence FROM ai_registration_jobs LIMIT 0`);
     return res.json({ status: "ready" });
-  } catch { return res.status(503).json({ status: "unavailable" }); }
+  } catch {
+    return res.status(503).json({ status: "unavailable" });
+  }
 });
 
 router.get("/healthz", (_req, res) => {

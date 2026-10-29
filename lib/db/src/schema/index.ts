@@ -19,3 +19,4 @@ export * from "./login-sessions";
 export * from "./flight-bookings";
 export * from "./ai-registration";
 export * from "./hotel-bookings";
+export * from "./ota";
