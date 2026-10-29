@@ -9,6 +9,7 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { MapPin, CalendarDays, Star, CheckCircle2, Phone, MessageCircle, Users, Search, ArrowRight, ChevronRight, Check, Globe, ChevronDown, Minus, Plus, Plane, Package } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import consultancyImg from "@/assets/images/consultancy.png";
+import heroAircraftImg from "@/assets/images/hero-aircraft.jpg";
 import { PackageAvailability } from "@/components/PackageAvailability";
 import OtaSearchWidget from "@/components/ota/OtaSearchWidget";
 import ExchangeRates from "@/components/ota/ExchangeRates";
@@ -145,27 +146,14 @@ const TESTIMONIALS = [
 ];
 
 
-const HERO_IMAGES = [
-  "https://images.pexels.com/photos/28209449/pexels-photo-28209449.jpeg",
-  "https://images.pexels.com/photos/26436662/pexels-photo-26436662.jpeg",
-  "https://images.pexels.com/photos/34246939/pexels-photo-34246939.jpeg",
-  "https://images.pexels.com/photos/29676866/pexels-photo-29676866.jpeg",
-];
-
 export default function Home() {
   const [searchForm, setSearchForm] = useState({ country: "Nigeria", packageType: "", month: "", persons: "" });
   const [showWhatsApp, setShowWhatsApp] = useState(false);
-  const [slideIndex, setSlideIndex] = useState(0);
 
   useEffect(() => {
     const onScroll = () => setShowWhatsApp(window.scrollY > window.innerHeight * 0.8);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  useEffect(() => {
-    const timer = setInterval(() => setSlideIndex(i => (i + 1) % HERO_IMAGES.length), 5000);
-    return () => clearInterval(timer);
   }, []);
 
   const { data: pubSettings } = useQuery<Record<string, any>>({
@@ -188,30 +176,19 @@ export default function Home() {
     <div className="min-h-[100dvh] flex flex-col bg-white">
       <main className="flex-1">
 
-        {/* ── HERO — Deep Royal Indigo with image slideshow ── */}
+        {/* ── HERO — Deep Royal Indigo with the supplied aircraft image ── */}
         <section className="relative flex flex-col bg-[#1C1F66] pb-36 sm:pb-44 md:pb-48">
-          {/* Slideshow images */}
-          {HERO_IMAGES.map((src, i) => (
-            <img
-              key={src}
-              src={src}
-              alt=""
-              aria-hidden
-              className="absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 pointer-events-none"
-              style={{ opacity: i === slideIndex ? 0.58 : 0 }}
-            />
-          ))}
+          <img
+            src={heroAircraftImg}
+            alt=""
+            aria-hidden
+            className="absolute inset-0 w-full h-full object-cover opacity-80 pointer-events-none"
+            fetchPriority="high"
+            decoding="async"
+          />
           {/* Dark gradient overlay — keeps text readable */}
           <div className="absolute inset-0 pointer-events-none"
             style={{ background: "linear-gradient(135deg, rgba(13,15,78,0.78) 0%, rgba(28,31,102,0.65) 50%, rgba(45,49,153,0.50) 100%)" }} />
-          {/* Slide dots */}
-          <div className="absolute top-20 right-6 z-20 flex items-center gap-2">
-            {HERO_IMAGES.map((_, i) => (
-              <button key={i} onClick={() => setSlideIndex(i)} aria-label={`Slide ${i + 1}`}
-                className={`rounded-full transition-all duration-300 ${i === slideIndex ? "w-6 h-2 bg-[#FF3B00]" : "w-2 h-2 bg-white/40 hover:bg-white/60"}`} />
-            ))}
-          </div>
-
           {/* Navbar — transparent, becomes solid on scroll */}
           <Navbar transparent />
 
