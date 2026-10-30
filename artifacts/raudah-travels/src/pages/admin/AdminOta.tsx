@@ -16,7 +16,7 @@ import PricingPreview from "@/components/ota/PricingPreview";
 import TravelUpdates from "@/components/ota/TravelUpdates";
 import OtaOperationsSummary from "@/components/ota/OtaOperationsSummary";
 import { BookingStatus, tripTitle } from "@/components/ota/BookingPresentation";
-import { useSearch } from "wouter";
+import { Link, useSearch } from "wouter";
 
 export default function AdminOta() {
   const { data: profile } = useGetProfile(),
@@ -179,6 +179,7 @@ export default function AdminOta() {
             {t}
           </button>
         ))}
+        <Link href="/admin/ota-api" className="ml-auto self-center px-3 text-xs font-bold text-[#2D3199]">API & Mobile →</Link>
       </div>
       {(error || config.error || records.error || linked.error) && (
         <ErrorMessage

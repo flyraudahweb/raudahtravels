@@ -25,6 +25,21 @@ import {
 
 vi.mock("@clerk/express", () => ({
   getAuth: (req: any) => ({ userId: req.headers["x-test-user"] }),
+  clerkClient: {
+    users: {
+      getUser: vi.fn(async (id: string) => ({
+        id,
+        firstName: "Native",
+        lastName: "Traveller",
+        primaryEmailAddress: {
+          emailAddress: "native@example.test",
+          verification: {
+            status: id === "unverified" ? "unverified" : "verified",
+          },
+        },
+      })),
+    },
+  },
 }));
 vi.mock("../src/utils/email", () => ({
   sendEmail: vi.fn().mockResolvedValue(true),
@@ -135,6 +150,13 @@ beforeAll(async () => {
     },
   );
   await module.pool.query(schema);
+  await module.pool.query("DROP TABLE ota_api_keys");
+  await module.pool.query(
+    await readFile(
+      path.join(root, "lib/db/drizzle/0012_ota_api_keys.sql"),
+      "utf8",
+    ),
+  );
   await module.pool.query(
     "CREATE SEQUENCE IF NOT EXISTS bookings_id_number_seq",
   );
@@ -197,7 +219,14 @@ beforeAll(async () => {
       },
     }),
   );
-  app.use("/api", (await import("../src/routes/ota")).default);
+  const otaRouter = (await import("../src/routes/ota")).default;
+  app.use(
+    "/api/ota/v1",
+    (await import("../src/services/ota/mobileRoutes")).mobileOtaRouter(
+      otaRouter,
+    ),
+  );
+  app.use("/api", otaRouter);
   app.use("/api", (await import("../src/routes/notifications")).default);
   app.use("/api", (await import("../src/routes/payments")).default);
   server = app.listen(0, "127.0.0.1");
@@ -221,9 +250,13 @@ beforeEach(async () => {
   (await import("../src/routes/ota")).resetOtaBurstState();
   testClientId++;
   await module.db.delete(module.notificationsTable);
+  await module.db.delete(module.otaApiKeysTable);
   await module.pool.query(
     "TRUNCATE payments, visa_applications, user_activity, bookings, packages, agents CASCADE",
   );
+  await module.db
+    .delete(module.profilesTable)
+    .where(eq(module.profilesTable.clerkUserId, "native"));
   supplierCalls = 0;
   amount = 10000000;
   failSupplier = false;
@@ -508,6 +541,354 @@ async function create() {
   booking = (await response.json()).booking;
   return booking;
 }
+async function nativeRequest(
+  path: string,
+  user?: string,
+  body?: unknown,
+  key?: string,
+) {
+  return httpFetch(`${baseUrl}/v1${path}`, {
+    method: body === undefined ? "GET" : "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(user ? { "x-test-user": user } : {}),
+      ...(key ? { "X-OTA-API-Key": key } : {}),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+}
+describe("OTA native contract and integration keys", () => {
+  it("serves a protected OTA-only contract and customer-only v1 alias", async () => {
+    expect((await request("/admin/developer/openapi")).status).toBe(401);
+    expect((await request("/admin/developer/openapi", "admin")).status).toBe(
+      403,
+    );
+    const response = await request("/admin/developer/openapi", "super");
+    expect(response.status).toBe(200);
+    const spec = await response.json();
+    expect(spec.openapi).toBe("3.0.3");
+    expect(spec.paths["/bookings"].post.security).toEqual([
+      { CustomerSession: [] },
+    ]);
+    expect(
+      Object.keys(spec.paths).some(
+        (path) => path.includes("admin") || path.includes("webhook"),
+      ),
+    ).toBe(false);
+    expect(
+      (await request("/admin/developer/guide", "super")).headers.get(
+        "content-type",
+      ),
+    ).toContain("text/markdown");
+    expect((await nativeRequest("/capabilities")).status).toBe(200);
+    expect((await nativeRequest("/admin/settings", "super")).status).toBe(404);
+    expect(
+      (await nativeRequest("/payments/webhook", undefined, {})).status,
+    ).toBe(404);
+    expect(
+      (await nativeRequest("/unknown")).headers.get("content-type"),
+    ).toContain("application/json");
+  });
+  it("bootstraps only the verified session identity and cannot set privileged roles", async () => {
+    expect(
+      (
+        await nativeRequest("/me/bootstrap", undefined, {
+          clerkUserId: "super",
+        })
+      ).status,
+    ).toBe(401);
+    const response = await nativeRequest("/me/bootstrap", "native", {
+      clerkUserId: "super",
+      role: "super_admin",
+      email: "attacker@example.test",
+    });
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(result.profile.role).toBe("user");
+    expect(result.profile.email).toBe("native@example.test");
+    expect((await nativeRequest("/me", "native")).status).toBe(200);
+    await nativeRequest("/me/bootstrap", "native", {});
+    expect(
+      (
+        await module.db.query.profilesTable.findMany({
+          where: eq(module.profilesTable.clerkUserId, "native"),
+        })
+      ).length,
+    ).toBe(1);
+    expect(
+      (await nativeRequest("/me/bootstrap", "unverified", {})).status,
+    ).toBe(400);
+    expect(
+      (
+        await module.db.query.profilesTable.findFirst({
+          where: eq(module.profilesTable.clerkUserId, "super"),
+        })
+      )?.role,
+    ).toBe("super_admin");
+  });
+  it("never reactivates a blocked account through native bootstrap", async () => {
+    await module.db
+      .update(module.profilesTable)
+      .set({ accountStatus: "blocked" })
+      .where(eq(module.profilesTable.clerkUserId, "other"));
+    try {
+      expect((await nativeRequest("/me/bootstrap", "other", {})).status).toBe(
+        403,
+      );
+      expect((await nativeRequest("/me", "other")).status).toBe(403);
+    } finally {
+      await module.db
+        .update(module.profilesTable)
+        .set({ accountStatus: "active" })
+        .where(eq(module.profilesTable.clerkUserId, "other"));
+    }
+  });
+  it("keeps native booking access owner-only", async () => {
+    await create();
+    expect((await nativeRequest(`/bookings/${booking.id}`)).status).toBe(401);
+    expect(
+      (await nativeRequest(`/bookings/${booking.id}`, "other")).status,
+    ).toBe(404);
+    expect(
+      (await nativeRequest(`/bookings/${booking.id}`, "user")).status,
+    ).toBe(200);
+    expect(supplierCalls).toBe(0);
+  });
+  it("creates hashed, scoped keys only for super admins and never lists secrets", async () => {
+    const body = {
+      name: "Mobile BFF search",
+      mode: "test",
+      scopes: ["config:read", "flights:read"],
+      expiresInDays: 30,
+      requestsPerMinute: 30,
+    };
+    expect((await request("/admin/developer/keys", "admin", body)).status).toBe(
+      403,
+    );
+    const response = await request("/admin/developer/keys", "super", body);
+    expect(response.status).toBe(201);
+    const created = await response.json();
+    expect(created.secret).toMatch(/^otak_test_/);
+    const stored = await module.db.query.otaApiKeysTable.findFirst();
+    expect(stored?.tokenHash).not.toBe(created.secret);
+    expect(stored?.tokenHash).toMatch(/^[0-9a-f]{64}$/);
+    const listed = await (
+      await request("/admin/developer/keys", "super")
+    ).json();
+    expect(listed.storageReady).toBe(true);
+    expect(listed.keys).toHaveLength(1);
+    expect(JSON.stringify(listed)).not.toContain(created.secret);
+    expect(JSON.stringify(listed)).not.toContain("tokenHash");
+    expect(
+      (await nativeRequest("/config", undefined, undefined, created.secret))
+        .status,
+    ).toBe(200);
+    expect(
+      (await nativeRequest("/hotels/search", undefined, {}, created.secret))
+        .status,
+    ).toBe(403);
+    expect(
+      (await nativeRequest("/bookings", "user", undefined, created.secret))
+        .status,
+    ).toBe(403);
+    expect(
+      (
+        await request("/admin/developer/keys", "super", {
+          ...body,
+          scopes: ["bookings:write"],
+        })
+      ).status,
+    ).toBe(400);
+  });
+  it("enforces expiry, revocation, mode and invalid-key rejection", async () => {
+    const createKey = async (mode = "test") =>
+      await (
+        await request("/admin/developer/keys", "super", {
+          name: "Scoped server",
+          mode,
+          scopes: ["config:read"],
+        })
+      ).json();
+    const first = await createKey(),
+      second = await createKey(),
+      live = await createKey("live");
+    expect(
+      (await nativeRequest("/config", undefined, undefined, "not-a-real-key"))
+        .status,
+    ).toBe(401);
+    expect(
+      (await nativeRequest("/config", undefined, undefined, live.secret))
+        .status,
+    ).toBe(403);
+    expect(
+      (
+        await request(
+          `/admin/developer/keys/${first.key.id}/revoke`,
+          "admin",
+          {},
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(
+          `/admin/developer/keys/${first.key.id}/revoke`,
+          "super",
+          {},
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (await nativeRequest("/config", undefined, undefined, first.secret))
+        .status,
+    ).toBe(401);
+    expect(
+      (await nativeRequest("/config", undefined, undefined, second.secret))
+        .status,
+    ).toBe(200);
+    await module.db
+      .update(module.otaApiKeysTable)
+      .set({ expiresAt: new Date(Date.now() - 1000) })
+      .where(eq(module.otaApiKeysTable.id, second.key.id));
+    expect(
+      (await nativeRequest("/config", undefined, undefined, second.secret))
+        .status,
+    ).toBe(401);
+  });
+  it("uses an atomic database counter for concurrent key requests", async () => {
+    const created = await (
+      await request("/admin/developer/keys", "super", {
+        name: "Rate limited server",
+        mode: "test",
+        scopes: ["config:read"],
+        requestsPerMinute: 10,
+      })
+    ).json();
+    const responses = await Promise.all(
+      Array.from({ length: 15 }, () =>
+        nativeRequest("/config", undefined, undefined, created.secret),
+      ),
+    );
+    expect(responses.filter((r) => r.status === 200)).toHaveLength(10);
+    expect(responses.filter((r) => r.status === 429)).toHaveLength(5);
+    expect(
+      responses.find((r) => r.status === 429)?.headers.get("retry-after"),
+    ).toBe("60");
+    expect(
+      (await module.db.query.otaApiKeysTable.findFirst())?.requestCount,
+    ).toBe(10);
+  });
+  it("keeps docs/customer APIs available before optional key migration", async () => {
+    await module.pool.query(
+      "ALTER TABLE ota_api_keys RENAME TO ota_api_keys_temporarily_absent",
+    );
+    try {
+      expect((await request("/admin/developer/openapi", "super")).status).toBe(
+        200,
+      );
+      const response = await (
+        await request("/admin/developer/keys", "super")
+      ).json();
+      expect(response.storageReady).toBe(false);
+      expect((await nativeRequest("/config")).status).toBe(200);
+      expect(
+        (
+          await request("/admin/developer/keys", "super", {
+            name: "Unavailable storage",
+            mode: "test",
+            scopes: ["config:read"],
+          })
+        ).status,
+      ).toBe(503);
+    } finally {
+      await module.pool.query(
+        "ALTER TABLE ota_api_keys_temporarily_absent RENAME TO ota_api_keys",
+      );
+    }
+  });
+  it("paginates OTA updates and read actions cannot affect other users or non-OTA records", async () => {
+    await module.db
+      .insert(module.notificationsTable)
+      .values(
+        Array.from({ length: 23 }, (_, index) => ({
+          id: `ota:mobile-${String(index).padStart(2, "0")}`,
+          userId: "user",
+          title: "Trip update",
+          message: "Example message",
+          type: "booking",
+        })),
+      );
+    await module.db.insert(module.notificationsTable).values([
+      {
+        id: "ota:other-mobile",
+        userId: "other",
+        title: "Other",
+        message: "Private",
+        type: "booking",
+      },
+      {
+        id: "not-ota-mobile",
+        userId: "user",
+        title: "Other product",
+        message: "Not OTA",
+        type: "booking",
+      },
+    ]);
+    const page = await (await nativeRequest("/updates", "user")).json();
+    expect(page.updates).toHaveLength(20);
+    expect(page.nextOffset).toBe(20);
+    expect(page.unreadCount).toBe(23);
+    const next = await (
+      await nativeRequest("/updates?offset=20", "user")
+    ).json();
+    expect(next.updates).toHaveLength(3);
+    expect(
+      (
+        await nativeRequest(
+          `/updates/${encodeURIComponent("ota:other-mobile")}/read`,
+          "user",
+          {},
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await nativeRequest(
+          `/updates/${encodeURIComponent("not-ota-mobile")}/read`,
+          "user",
+          {},
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await nativeRequest(
+          `/updates/${encodeURIComponent("ota:mobile-00")}/read`,
+          "user",
+          {},
+        )
+      ).status,
+    ).toBe(200);
+    await nativeRequest("/updates/read-all", "user", {});
+    expect(
+      (await (await nativeRequest("/updates", "user")).json()).unreadCount,
+    ).toBe(0);
+    expect(
+      (
+        await module.db.query.notificationsTable.findFirst({
+          where: eq(module.notificationsTable.id, "ota:other-mobile"),
+        })
+      )?.isRead,
+    ).toBe(false);
+    expect(
+      (
+        await module.db.query.notificationsTable.findFirst({
+          where: eq(module.notificationsTable.id, "not-ota-mobile"),
+        })
+      )?.isRead,
+    ).toBe(false);
+  });
+});
 async function legacyRequest(
   path: string,
   user?: string,

@@ -7,6 +7,7 @@ import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
 import router from "./routes";
 import otaRouter from "./routes/ota.js";
+import { mobileOtaRouter } from "./services/ota/mobileRoutes";
 import { logger } from "./lib/logger";
 import {
   CLERK_PROXY_PATH,
@@ -94,6 +95,7 @@ app.use(
 );
 
 app.use("/api/uploads", express.static(path.resolve("uploads")));
+app.use("/api/ota/v1", mobileOtaRouter(otaRouter));
 app.use("/api", otaRouter);
 // Retired demo/unsafe contracts fail closed instead of reaching the SPA fallback.
 app.use(["/api/flights", "/api/hotels"], (_req, res) => {

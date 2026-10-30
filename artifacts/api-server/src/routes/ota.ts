@@ -4,7 +4,7 @@ import {
   type Response,
   type NextFunction,
 } from "express";
-import { getAuth } from "@clerk/express";
+import { getAuth, clerkClient } from "@clerk/express";
 import { randomUUID, createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import {
@@ -56,6 +56,16 @@ import {
 } from "../services/ota/duffelWebhooks";
 import { DUFFEL_EVENTS } from "../services/ota/duffelWebhookProtocol";
 import { providerTransactionId } from "../services/payments/paystackProof";
+import {
+  optionalSearchApiKey,
+  listApiKeys,
+  createApiKey,
+  revokeApiKey,
+} from "../services/ota/apiKeys";
+import {
+  otaOpenApi,
+  mobileIntegrationGuide,
+} from "../services/ota/apiDocumentation";
 
 const router = Router();
 const endpoint =
@@ -181,6 +191,99 @@ router.use("/ota", (req, res, next) => {
   next();
 });
 // Public data only. Supplier credentials, markups and payment settings stay private.
+router.use("/ota", optionalSearchApiKey);
+router.get(
+  "/ota/capabilities",
+  endpoint(async (_req, res) => {
+    const c = await getOtaConfig();
+    res.json({
+      apiVersion: "1",
+      mode: c.mode,
+      currency: "NGN",
+      features: {
+        flightSearch: c.flightsEnabled,
+        hotelSearch: c.hotelsEnabled,
+        onlineCheckout: c.salesEnabled,
+        bookingHistory: true,
+        bookingUpdates: true,
+        supportRequests: true,
+        selfServiceCancellation: false,
+        selfServiceExchange: false,
+        multiCity: false,
+        infants: false,
+        ancillaries: false,
+      },
+      limits: {
+        flightPassengers: 9,
+        flightChildAgeMin: 2,
+        flightChildAgeMax: 11,
+        hotelAdults: 16,
+        hotelChildren: 8,
+        hotelRooms: 8,
+        hotelNights: 99,
+      },
+      polling: { processingSeconds: 5, settledSeconds: 30 },
+      support: { email: c.supportEmail, phone: c.supportPhone },
+    });
+  }),
+);
+router.get(
+  "/ota/me",
+  endpoint(async (req, res) => {
+    const { profile } = await identity(req);
+    res.json({
+      profile: {
+        id: profile.id,
+        email: profile.email,
+        fullName: profile.fullName,
+        phone: profile.phone,
+        role: profile.role,
+      },
+    });
+  }),
+);
+router.post(
+  "/ota/me/bootstrap",
+  endpoint(async (req, res) => {
+    const userId = getAuth(req).userId;
+    if (!userId) throw new OtaError("Sign in to continue", 401);
+    const existing = await db.query.profilesTable.findFirst({
+      where: eq(profilesTable.clerkUserId, userId),
+    });
+    if (!existing) {
+      const user = await clerkClient.users.getUser(userId);
+      const email = user.primaryEmailAddress;
+      if (!email || email.verification?.status !== "verified")
+        throw new OtaError(
+          "Add and verify an email address in your account before creating a travel profile",
+          400,
+        );
+      await db
+        .insert(profilesTable)
+        .values({
+          id: randomUUID(),
+          clerkUserId: userId,
+          email: email.emailAddress,
+          fullName:
+            [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+            user.username ||
+            "Traveller",
+          role: "user",
+        })
+        .onConflictDoNothing({ target: profilesTable.clerkUserId });
+    }
+    const { profile } = await identity(req);
+    res.json({
+      profile: {
+        id: profile.id,
+        email: profile.email,
+        fullName: profile.fullName,
+        phone: profile.phone,
+        role: profile.role,
+      },
+    });
+  }),
+);
 router.get(
   "/ota/exchange-rates",
   endpoint(async (_req, res) => {
@@ -722,15 +825,77 @@ router.get(
   "/ota/updates",
   endpoint(async (req, res) => {
     const { profile } = await identity(req);
+    const offset = z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(100000)
+      .default(0)
+      .parse(req.query.offset);
     const updates = await db.query.notificationsTable.findMany({
       where: and(
         eq(notificationsTable.userId, profile.id),
         like(notificationsTable.id, "ota:%"),
       ),
-      orderBy: desc(notificationsTable.createdAt),
-      limit: 20,
+      orderBy: [desc(notificationsTable.createdAt),desc(notificationsTable.id)],
+      limit: 21,
+      offset,
     });
-    res.json({ updates });
+    const [count] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(notificationsTable)
+      .where(
+        and(
+          eq(notificationsTable.userId, profile.id),
+          like(notificationsTable.id, "ota:%"),
+          eq(notificationsTable.isRead, false),
+        ),
+      );
+    res.json({
+      updates: updates.slice(0, 20),
+      nextOffset: updates.length > 20 ? offset + 20 : null,
+      unreadCount: count.count,
+    });
+  }),
+);
+router.post(
+  "/ota/updates/read-all",
+  endpoint(async (req, res) => {
+    const { profile } = await identity(req);
+    await db
+      .update(notificationsTable)
+      .set({ isRead: true })
+      .where(
+        and(
+          eq(notificationsTable.userId, profile.id),
+          like(notificationsTable.id, "ota:%"),
+          eq(notificationsTable.isRead, false),
+        ),
+      );
+    res.json({ success: true });
+  }),
+);
+router.post(
+  "/ota/updates/:id/read",
+  endpoint(async (req, res) => {
+    const { profile } = await identity(req);
+    const updateId = z
+      .string()
+      .startsWith("ota:")
+      .max(250)
+      .parse(req.params.id);
+    const [updated] = await db
+      .update(notificationsTable)
+      .set({ isRead: true })
+      .where(
+        and(
+          eq(notificationsTable.id, updateId),
+          eq(notificationsTable.userId, profile.id),
+        ),
+      )
+      .returning({ id: notificationsTable.id });
+    if (!updated) throw new OtaError("Travel update not found", 404);
+    res.json({ success: true });
   }),
 );
 router.get(
@@ -811,6 +976,41 @@ export async function otaPaymentWebhook(req: Request, res: Response) {
 }
 router.post("/ota/payments/webhook", otaPaymentWebhook);
 
+router.get(
+  "/ota/admin/developer/openapi",
+  endpoint(async (req, res) => {
+    await identity(req, true);
+    res.json(otaOpenApi());
+  }),
+);
+router.get(
+  "/ota/admin/developer/guide",
+  endpoint(async (req, res) => {
+    await identity(req, true);
+    res.type("text/markdown").send(mobileIntegrationGuide());
+  }),
+);
+router.get(
+  "/ota/admin/developer/keys",
+  endpoint(async (req, res) => {
+    await identity(req, true);
+    res.json(await listApiKeys());
+  }),
+);
+router.post(
+  "/ota/admin/developer/keys",
+  endpoint(async (req, res) => {
+    const { profile } = await identity(req, true);
+    res.status(201).json(await createApiKey(req.body, profile.id));
+  }),
+);
+router.post(
+  "/ota/admin/developer/keys/:id/revoke",
+  endpoint(async (req, res) => {
+    const { profile } = await identity(req, true);
+    res.json(await revokeApiKey(String(req.params.id), profile.id));
+  }),
+);
 router.get(
   "/ota/admin/overview",
   endpoint(async (req, res) => {

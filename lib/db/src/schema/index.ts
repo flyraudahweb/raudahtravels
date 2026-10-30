@@ -20,3 +20,4 @@ export * from "./flight-bookings";
 export * from "./ai-registration";
 export * from "./hotel-bookings";
 export * from "./ota";
+export * from "./ota-api-keys";

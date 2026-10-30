@@ -162,3 +162,15 @@ Reference display is on the landing page, travel search pages and OTA pricing se
 Super admin workflow: open `/admin/ota` → Settings → Pricing. Compare reference and Raudah rates, optionally click **Copy references into rate draft**, edit the selling rates/markups/service fee and click **Save settings**. Copying into the draft does not publish a change. Existing saved checkouts retain their agreed price snapshots.
 
 Reference documentation: [Frankfurter](https://frankfurter.dev/) and [ExchangeRate-API standard requests](https://www.exchangerate-api.com/docs/standard-requests).
+
+## OTA mobile API and Developer Centre (2026-10-30)
+
+The super-admin-only Developer Centre is at `/admin/ota-api`, linked from Travel Distribution and OTA operations. It includes a searchable endpoint reference, request/response schemas, cURL/JavaScript/Dart examples, eleven integration guides and OpenAPI/Markdown downloads. The customer contract has 23 operations under `https://flyraudah.com.ng/api/ota/v1`. The existing `/api/ota` web contract continues to use the same booking/payment implementation.
+
+Before enabling integration key creation, apply `lib/db/drizzle/0012_ota_api_keys.sql` to the intended database using your normal SQL migration workflow. This additive migration has **not** been applied to production by this change. The console detects missing key storage; documentation and customer-session endpoints remain available. Never run the test database setup against production.
+
+Mobile customers authenticate with their Clerk session JWT, then call `POST /me/bootstrap` to create/reuse an active travel profile from verified Clerk identity. Do not send a user ID or role, embed Duffel/Paystack credentials, or embed server search keys in a mobile binary. Booking, payment, hotel quotes and trip updates always require the signed-in customer's ownership.
+
+Optional trusted-backend search keys are created/revoked in the Developer Centre. Select test/live mode, expiry (1–365 days), scopes (`config:read`, `flights:read`, `hotels:read`) and a 10–60 request/minute limit. Copy the secret once into the trusted backend's secret store; only its hash is stored by Raudah. Keys cannot create purchases, access customer bookings or administer the service. Their mode must match active OTA settings. Shared database counters enforce each key's limit across instances; existing user/IP limits and an edge limit still apply.
+
+Regenerate checked-in documentation with `pnpm run docs:ota`. The source is `artifacts/api-server/src/services/ota/apiDocumentation.ts`; generated deliverables are `docs/ota-openapi.json` and `docs/OTA_MOBILE_API.md`. See the guide for secure token storage, hosted payment/app resume, timeout recovery, price/revision rules, updates, polling and launch acceptance. Native push, self-service exchanges/cancellations, infants and multi-city are explicitly outside the current API scope. Hotel access and matching payment/provider modes remain deployment requirements.

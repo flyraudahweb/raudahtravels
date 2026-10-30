@@ -6,7 +6,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useListPackages, getListPackagesQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { MapPin, CalendarDays, Star, CheckCircle2, Phone, MessageCircle, Users, Search, ArrowRight, ChevronRight, Check, Globe, ChevronDown, Minus, Plus, Plane, Package } from "lucide-react";
+import { MapPin, CalendarDays, Star, CheckCircle2, Phone, MessageCircle, Users, Search, ArrowRight, ChevronRight, Check, Globe, ChevronDown, Minus, Plus, Plane, Package, Pause, Play } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import consultancyImg from "@/assets/images/consultancy.png";
 import heroAircraftImg from "@/assets/images/hero-aircraft.jpg";
@@ -146,9 +146,23 @@ const TESTIMONIALS = [
 ];
 
 
+const HERO_IMAGES = [
+  "https://images.pexels.com/photos/28209449/pexels-photo-28209449.jpeg",
+  "https://images.pexels.com/photos/26436662/pexels-photo-26436662.jpeg",
+  "https://images.pexels.com/photos/34246939/pexels-photo-34246939.jpeg",
+  "https://images.pexels.com/photos/29676866/pexels-photo-29676866.jpeg",
+];
 export default function Home() {
   const [searchForm, setSearchForm] = useState({ country: "Nigeria", packageType: "", month: "", persons: "" });
   const [showWhatsApp, setShowWhatsApp] = useState(false);
+  const [slideIndex,setSlideIndex] = useState(0),[slidesPaused,setSlidesPaused] = useState(false);
+  useEffect(()=>{
+    const media=window.matchMedia("(prefers-reduced-motion: reduce)");
+    let timer:ReturnType<typeof setInterval> | undefined;
+    const update=()=>{clearInterval(timer);if(!slidesPaused&&!media.matches)timer=setInterval(()=>setSlideIndex(index=>(index+1)%HERO_IMAGES.length),5000);};
+    update();media.addEventListener("change",update);
+    return()=>{clearInterval(timer);media.removeEventListener("change",update);};
+  },[slidesPaused]);
 
   useEffect(() => {
     const onScroll = () => setShowWhatsApp(window.scrollY > window.innerHeight * 0.8);
@@ -176,19 +190,25 @@ export default function Home() {
     <div className="min-h-[100dvh] flex flex-col bg-white">
       <main className="flex-1">
 
-        {/* ── HERO — Deep Royal Indigo with the supplied aircraft image ── */}
+        {/* Rotating pilgrimage photos with a separate, always-visible aircraft layer. */}
         <section className="relative flex flex-col bg-[#1C1F66] pb-36 sm:pb-44 md:pb-48">
+          {HERO_IMAGES.map((src,index)=><img key={src} src={src} alt="" aria-hidden className="absolute inset-0 h-full w-full object-cover pointer-events-none motion-safe:transition-opacity motion-safe:duration-1000" style={{opacity:index===slideIndex?0.7:0}} decoding="async" />)}
           <img
             src={heroAircraftImg}
             alt=""
             aria-hidden
-            className="absolute inset-0 w-full h-full object-cover opacity-80 pointer-events-none"
+            className="absolute inset-y-0 right-0 w-full md:w-[72%] h-full object-cover opacity-65 pointer-events-none"
+            style={{maskImage:"linear-gradient(to right, transparent, black 38%)",WebkitMaskImage:"linear-gradient(to right, transparent, black 38%)"}}
             fetchPriority="high"
             decoding="async"
           />
           {/* Dark gradient overlay — keeps text readable */}
           <div className="absolute inset-0 pointer-events-none"
             style={{ background: "linear-gradient(135deg, rgba(13,15,78,0.78) 0%, rgba(28,31,102,0.65) 50%, rgba(45,49,153,0.50) 100%)" }} />
+          <div className="absolute right-5 top-24 z-20 flex items-center gap-2 rounded-full bg-black/15 px-3 py-2 backdrop-blur-sm" aria-label="Header slideshow controls">
+            {HERO_IMAGES.map((_,index)=><button type="button" key={index} onClick={()=>setSlideIndex(index)} aria-label={`Show header photo ${index+1}`} aria-pressed={index===slideIndex} className={`rounded-full ${index===slideIndex?"h-2 w-6 bg-[#FF3B00]":"h-2 w-2 bg-white/50"}`}/>)}
+            <button type="button" onClick={()=>setSlidesPaused(value=>!value)} aria-label={slidesPaused?"Play header slideshow":"Pause header slideshow"} className="ml-1 text-white">{slidesPaused?<Play size={13}/>:<Pause size={13}/>}</button>
+          </div>
           {/* Navbar — transparent, becomes solid on scroll */}
           <Navbar transparent />
 

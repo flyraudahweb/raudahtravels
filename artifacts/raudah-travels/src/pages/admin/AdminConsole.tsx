@@ -30,13 +30,14 @@ import AdminPassports from "./AdminPassports";
 import AdminBackup from "./AdminBackup";
 import AdminUsers from "./AdminUsers";
 import AdminOta from "./AdminOta";
+import AdminOtaApi from "./AdminOtaApi";
 import {
   LayoutDashboard, Package, CreditCard, Users, BookOpen, UserCheck,
   TrendingUp, MessageSquare, UserCog, LogOut, Home, ChevronRight,
   Building2, History, Pencil, ShieldCheck, Barcode, MessageCircle,
   FormInput, Settings, Bot, UserPlus, ChevronDown, ChevronUp,
   PanelLeftClose, PanelLeftOpen, LayoutGrid, X, FileImage, Inbox,
-  HardDrive, UsersRound,
+  HardDrive, UsersRound, Code2,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -287,7 +288,7 @@ export default function AdminConsole() {
   });
 
   const NAV_GROUPS: NavGroupDef[] = useMemo(() => {
-    if (profile?.role === "super_admin") return [...ALL_NAV_GROUPS, { label: "Travel Distribution", items: [{ href: "/admin/ota", label: "Online Travel Agency", icon: Building2 }] }];
+    if (profile?.role === "super_admin") return [...ALL_NAV_GROUPS, { label: "Travel Distribution", items: [{ href: "/admin/ota", label: "Online Travel Agency", icon: Building2 }, {href:"/admin/ota-api",label:"OTA API & Mobile",icon:Code2}] }];
     if (!isStaffOnly) return ALL_NAV_GROUPS;
     const allowed = new Set(myPerms?.permissions || []);
     // If the staff member has any support specialties, they must be able to see the Support page
@@ -473,6 +474,7 @@ export default function AdminConsole() {
           <div className="max-w-6xl mx-auto px-4 md:px-8 py-8">
             <Switch>
               <Route path="/admin/ota" component={AdminOta} />
+              <Route path="/admin/ota-api" component={AdminOtaApi} />
               <Route path="/admin"              component={AdminOverview} />
               <Route path="/admin/packages"     component={AdminPackages} />
               <Route path="/admin/bookings"     component={AdminBookings} />

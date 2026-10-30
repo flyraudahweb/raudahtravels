@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
+    "docs:ota": "node scripts/export-ota-api-docs.mjs",
     "dev:api": "pnpm --filter @workspace/api-server run dev",
     "dev:frontend": "pnpm --filter @workspace/raudah-travels run dev",
     "dev": "npx concurrently \"pnpm run dev:api\" \"pnpm run dev:frontend\"",

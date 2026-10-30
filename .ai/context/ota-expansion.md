@@ -80,3 +80,15 @@ Legacy webhooks reject missing keys/forged signatures, verify the canonical prov
 Completed refund reconciliation accepts canonical success/reversed states, but ticket/hotel fulfillment accepts success only. Decimal-string provider IDs compare losslessly, and unsafe numeric IDs fail closed. Supplier money POSTs use a 135-second timeout and retain the existing no-automatic-repurchase rule for ambiguous outcomes. Browser payment mutations require a configured origin when an Origin header is present; sensitive payment responses are not cached.
 
 No additional schema migration was added in this follow-up. Existing pending 0010/0011 migrations, receiver deployment/activation, matching provider modes/access/funds and staging acceptance remain required. See the latest progress section for exact test results and the Windows registration-suite teardown limitation.
+
+## 2026-10-30 — Header layers and mobile OTA API
+
+Restored the original four-photo header slideshow, retaining the supplied aircraft as a separate static overlay above the rotating photographs. Added pause/play, photo selection and reduced-motion support. Raudah branding, copy and search remain intact.
+
+Added `/api/ota/v1` as a customer-only allowlisted alias to the existing OTA engine; operator/provider routes are excluded and unknown paths return JSON 404. Added capabilities, verified-Clerk profile bootstrap/read and owner-scoped paginated travel updates/read actions. Mobile booking/payment ownership and fulfillment share existing web logic.
+
+Added super-admin Developer Centre `/admin/ota-api`: 23 documented customer operations, eleven guides, searchable schema/reference explorer, cURL/JavaScript/Dart samples, OpenAPI/Markdown downloads and trusted-backend key lifecycle controls. Mobile customers use session JWTs; search-only keys are optional backend credentials and must never be bundled in mobile apps. Keys are shown once, SHA-256 hashed, scoped, expiring, revocable, mode-bound and limited atomically in PostgreSQL. Migration `0012_ota_api_keys.sql` is additive and still requires production application. Missing storage degrades only key management, with an explicit console notice.
+
+Generated contracts: `docs/ota-openapi.json`, `docs/OTA_MOBILE_API.md`; reproducible export: `pnpm run docs:ota`. Source: `services/ota/apiDocumentation.ts`. Preserve explicit limitations (no native push, infants, multi-city or self-service exchange/cancellation), fixed web payment callback and non-idempotent checkout retry guidance. Do not claim complete Trip.com parity or a finished native app.
+
+Validation: 109 tests passed across ten suites excluding the previously documented Windows registration test setup/cleanup limitation. API and frontend builds passed; final workspace typechecking passed. Browser QA used isolated read-only local fixtures for the admin page, checked desktop/mobile layouts, reference filtering and disabled key creation when migration is absent; no live identity, generated key, payment or purchase was submitted. Header photo selection/static aircraft verified visually. Existing nonfatal frontend sourcemap/chunk-size/NODE_ENV warnings remain.
