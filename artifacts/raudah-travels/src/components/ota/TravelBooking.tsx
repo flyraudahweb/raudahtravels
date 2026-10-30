@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useLayoutEffect, useState, useRef } from "react";
 import { newestBooking } from "@/lib/bookingSnapshot";
 import {
   useGetProfile,
@@ -24,12 +24,14 @@ import { FlightConditions } from "./TravelCheckout";
 import { money, ota, travelButton, travelInput } from "@/lib/ota";
 
 export default function TravelBooking({ bookingId }: { bookingId: string }) {
-  const { isLoaded, isSignedIn } = useUser(),
+  const { isLoaded, isSignedIn, user } = useUser(),
     search = useSearch();
   const { data: profile } = useGetProfile({
     query: { queryKey: getGetProfileQueryKey(), enabled: !!isSignedIn },
   });
   const activeBookingId = useRef<string | null>(bookingId);
+  const requestEpoch = useRef(0),
+    actionInFlight = useRef(false);
   const [booking, setBooking] = useState<any>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -49,13 +51,31 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
     queryKey: ["ota", "public-config"],
     queryFn: () => ota("/config"),
   });
-  async function load() {
-    const data = await ota(`/bookings/${bookingId}`);
-    acceptBooking(data.booking);
-    return data.booking;
+  async function runAction(
+    request: () => Promise<any>,
+    apply: (data: any) => void,
+  ) {
+    if (actionInFlight.current) return;
+    const epoch = requestEpoch.current;
+    actionInFlight.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const data = await request();
+      if (requestEpoch.current === epoch) apply(data);
+    } catch (e: any) {
+      if (requestEpoch.current === epoch) setError(e.message);
+    } finally {
+      if (requestEpoch.current === epoch) {
+        actionInFlight.current = false;
+        setBusy(false);
+      }
+    }
   }
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const epoch = ++requestEpoch.current;
     activeBookingId.current = bookingId;
+    actionInFlight.current = false;
     setBooking(null);
     setError("");
     setBusy(false);
@@ -64,36 +84,38 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
     if (!isSignedIn) return;
     const controller = new AbortController();
     ota(`/bookings/${bookingId}`, undefined, undefined, controller.signal)
-      .then((d) => acceptBooking(d.booking))
+      .then((d) => {
+        if (!controller.signal.aborted && requestEpoch.current === epoch)
+          acceptBooking(d.booking);
+      })
       .catch((e) => {
-        if (e.name !== "AbortError") setError(e.message);
+        if (!controller.signal.aborted && requestEpoch.current === epoch)
+          setError(e.message);
       });
     return () => {
       activeBookingId.current = null;
+      requestEpoch.current++;
       controller.abort();
     };
-  }, [bookingId, isSignedIn]);
+  }, [bookingId, isSignedIn, user?.id]);
   useEffect(() => {
     if (!isSignedIn || !new URLSearchParams(search).has("reference")) return;
-    setBusy(true);
-    ota(`/bookings/${bookingId}/complete`, {})
-      .then((d) => acceptBooking(d.booking))
-      .catch((e) => {
-        if (activeBookingId.current === bookingId) setError(e.message);
-      })
-      .finally(() => {
-        if (activeBookingId.current === bookingId) setBusy(false);
-      });
-  }, [bookingId, search, isSignedIn]);
+    void runAction(
+      () => ota(`/bookings/${bookingId}/complete`, {}),
+      (data) => acceptBooking(data.booking),
+    );
+  }, [bookingId, search, isSignedIn, user?.id]);
   useEffect(() => {
     if (!isSignedIn || !booking) return;
+    const epoch = requestEpoch.current;
     let stopped = false;
     const timer = setInterval(
       () => {
         if (document.hidden) return;
         ota(`/bookings/${bookingId}`)
           .then((d) => {
-            if (!stopped) acceptBooking(d.booking);
+            if (!stopped && requestEpoch.current === epoch)
+              acceptBooking(d.booking);
           })
           .catch(() => {});
       },
@@ -103,30 +125,18 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
       stopped = true;
       clearInterval(timer);
     };
-  }, [booking?.status, bookingId, isSignedIn]);
+  }, [booking?.status, bookingId, isSignedIn, user?.id]);
   async function pay() {
-    setBusy(true);
-    setError("");
-    try {
-      const data = await ota(`/bookings/${bookingId}/pay`, {});
-      if (activeBookingId.current === bookingId)
-        window.location.assign(data.authorizationUrl);
-    } catch (e: any) {
-      setError(e.message);
-      setBusy(false);
-    }
+    await runAction(
+      () => ota(`/bookings/${bookingId}/pay`, {}),
+      (data) => window.location.assign(data.authorizationUrl),
+    );
   }
   async function check() {
-    setBusy(true);
-    setError("");
-    try {
-      const data = await ota(`/bookings/${bookingId}/complete`, {});
-      acceptBooking(data.booking);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setBusy(false);
-    }
+    await runAction(
+      () => ota(`/bookings/${bookingId}/complete`, {}),
+      (data) => acceptBooking(data.booking),
+    );
   }
   if (!isLoaded)
     return (
@@ -308,19 +318,12 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
             {booking.providerBookingId && (
               <button
                 disabled={busy}
-                onClick={async () => {
-                  setBusy(true);
-                  setError("");
-                  try {
-                    acceptBooking(
-                      (await ota(`/bookings/${bookingId}/refresh`, {})).booking,
-                    );
-                  } catch (e: any) {
-                    setError(e.message);
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
+                onClick={() =>
+                  runAction(
+                    () => ota(`/bookings/${bookingId}/refresh`, {}),
+                    (data) => acceptBooking(data.booking),
+                  )
+                }
                 className="mb-5 flex items-center gap-2 text-sm font-bold text-indigo-700 print:hidden"
               >
                 <RefreshCw size={15} />
@@ -510,23 +513,22 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
                 className="space-y-3"
                 onSubmit={async (e) => {
                   e.preventDefault();
-                  setBusy(true);
-                  setError("");
-                  try {
-                    await ota(`/bookings/${bookingId}/service-request`, {
-                      message,
-                    });
-                    setNotice(
-                      "Your request has been saved for the travel team.",
-                    );
-                    setMessage("");
-                    await load();
-                    await timeline.refetch();
-                  } catch (e: any) {
-                    setError(e.message);
-                  } finally {
-                    setBusy(false);
-                  }
+                  await runAction(
+                    async () => {
+                      await ota(`/bookings/${bookingId}/service-request`, {
+                        message,
+                      });
+                      return ota(`/bookings/${bookingId}`);
+                    },
+                    (data) => {
+                      acceptBooking(data.booking);
+                      setNotice(
+                        "Your request has been saved for the travel team.",
+                      );
+                      setMessage("");
+                      void timeline.refetch();
+                    },
+                  );
                 }}
               >
                 <textarea

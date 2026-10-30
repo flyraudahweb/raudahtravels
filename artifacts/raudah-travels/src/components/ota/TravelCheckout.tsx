@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, type FormEvent } from "react";
+import { useLayoutEffect, useState, useRef, type FormEvent } from "react";
 import { useLocation } from "wouter";
 import { SignInButton, useUser } from "@clerk/react";
 import { LockKeyhole, ArrowRight } from "lucide-react";
@@ -51,8 +51,13 @@ export default function TravelCheckout({
   >({});
   const checkoutKey = `${kind}:${offerId}`,
     activeCheckout = useRef<string | null>(checkoutKey);
-  useEffect(() => {
+  const requestEpoch = useRef(0),
+    submitting = useRef(false);
+  useLayoutEffect(() => {
+    const epoch = ++requestEpoch.current;
     activeCheckout.current = checkoutKey;
+    submitting.current = false;
+    setBusy(false);
     setData(null);
     setError("");
     setPassportNumbers({});
@@ -65,19 +70,32 @@ export default function TravelCheckout({
       abort.signal,
     )
       .then((result) => {
-        if (!abort.signal.aborted) setData({ ...result, checkoutKey });
+        if (!abort.signal.aborted && requestEpoch.current === epoch) {
+          const travellers =
+            kind === "flight" ? result.offer?.passengers : result.quote?.guests;
+          if (!Array.isArray(travellers) || !travellers.length)
+            throw new Error(
+              "Traveller information is unavailable for this offer. Please choose another option.",
+            );
+          setData({ ...result, checkoutKey });
+        }
       })
       .catch((e) => {
-        if (e.name !== "AbortError") setError(e.message);
+        if (!abort.signal.aborted && requestEpoch.current === epoch)
+          setError(e.message);
       });
-    ota("/config")
-      .then(setConfig)
+    ota("/config", undefined, undefined, abort.signal)
+      .then((result) => {
+        if (!abort.signal.aborted && requestEpoch.current === epoch)
+          setConfig(result);
+      })
       .catch(() => {});
     return () => {
       activeCheckout.current = null;
+      requestEpoch.current++;
       abort.abort();
     };
-  }, [offerId, kind, isLoaded, isSignedIn]);
+  }, [offerId, kind, isLoaded, isSignedIn, user?.id]);
   const offer =
     data?.checkoutKey === checkoutKey ? data?.offer || data?.quote : null;
   const lastTravelDate = (offer?.slices || [])
@@ -90,7 +108,9 @@ export default function TravelCheckout({
     .at(-1);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!offer) return;
+    if (!offer || submitting.current) return;
+    const epoch = requestEpoch.current;
+    submitting.current = true;
     setError("");
     setBusy(true);
     const form = new FormData(event.currentTarget);
@@ -139,12 +159,18 @@ export default function TravelCheckout({
         acceptedTerms: form.get("terms") === "on",
       });
       // Persist first and navigate to the durable checkout before initiating a redirect.
-      if (activeCheckout.current === checkoutKey)
+      if (
+        activeCheckout.current === checkoutKey &&
+        requestEpoch.current === epoch
+      )
         navigate(`/travel/bookings/${booking.id}`);
     } catch (e: any) {
-      setError(e.message);
+      if (requestEpoch.current === epoch) setError(e.message);
     } finally {
-      setBusy(false);
+      if (requestEpoch.current === epoch) {
+        submitting.current = false;
+        setBusy(false);
+      }
     }
   }
   if (!isLoaded)

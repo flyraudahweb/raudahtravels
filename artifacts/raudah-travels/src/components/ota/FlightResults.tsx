@@ -53,10 +53,12 @@ export function SearchLoading({
   query,
   kind,
   onCancel,
+  returnFocusRef,
 }: {
   query: URLSearchParams;
   kind: "flight" | "hotel";
   onCancel: () => void;
+  returnFocusRef?: { current: HTMLElement | null };
 }) {
   const [phase, setPhase] = useState(0);
   const travellerCount =
@@ -126,6 +128,12 @@ export function SearchLoading({
           overlayClassName="bg-slate-950/45 backdrop-blur-[1px]"
           className="max-w-[calc(100vw-32px)] rounded-3xl border-0 p-7 text-center sm:max-w-[470px] sm:p-9 [&>button:last-child]:hidden"
           onInteractOutside={(e) => e.preventDefault()}
+          onCloseAutoFocus={(event) => {
+            // The form that opened this dialog may be gone after navigation.
+            // Never let focus restoration pull a checkout back down the page.
+            event.preventDefault();
+            returnFocusRef?.current?.focus({ preventScroll: true });
+          }}
         >
           <DialogTitle className="flex items-center justify-center gap-3 text-xl font-bold text-[#1C1F66]">
             {kind === "flight" ? (

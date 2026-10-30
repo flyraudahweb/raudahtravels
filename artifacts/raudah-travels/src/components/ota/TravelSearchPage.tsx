@@ -1,4 +1,10 @@
-import { useEffect, useState, useRef, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useRef,
+  type ReactNode,
+} from "react";
 import { Link, useSearch, useLocation } from "wouter";
 import { SignInButton, useUser } from "@clerk/react";
 import {
@@ -20,6 +26,12 @@ import { moveDate } from "@/lib/travelSearch";
 import { destinations, money, ota, travelButton, travelInput } from "@/lib/ota";
 
 export function TravelShell({ children }: { children: ReactNode }) {
+  const [location] = useLocation();
+  useLayoutEffect(() => {
+    // Wouter preserves document scroll between pages. A long results list must
+    // not leave the next checkout at its footer (or a payment page halfway down).
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [location]);
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#eef0ff_0%,_#f8fafc_50%)]">
       <div className="print:hidden">
@@ -265,9 +277,23 @@ export default function TravelSearchPage({
   const [rates, setRates] = useState<any>(null),
     [busy, setBusy] = useState("");
   const ratesSection = useRef<HTMLElement>(null);
+  const resultsSection = useRef<HTMLElement>(null);
+  const revealResults = useRef(false);
   const roomRequest = useRef<AbortController | null>(null);
   const searchRequest = useRef<AbortController | null>(null);
   const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (loading || !revealResults.current) return;
+    revealResults.current = false;
+    const frame = requestAnimationFrame(() => {
+      resultsSection.current?.focus({ preventScroll: true });
+      resultsSection.current?.scrollIntoView({
+        block: "start",
+        behavior: "instant",
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [loading]);
   useEffect(() => () => roomRequest.current?.abort(), []);
   useEffect(() => {
     if (rates)
@@ -288,6 +314,7 @@ export default function TravelSearchPage({
     setRates(null);
     setBusy("");
     setLoading(false);
+    revealResults.current = false;
     if (!hasSearch) {
       setData([]);
       return;
@@ -330,11 +357,16 @@ export default function TravelSearchPage({
       abort.signal,
     )
       .then((result) => {
-        if (!abort.signal.aborted)
+        if (!abort.signal.aborted) {
+          revealResults.current = true;
           setData(result.offers || result.results || []);
+        }
       })
       .catch((e) => {
-        if (!abort.signal.aborted) setError(e.message);
+        if (!abort.signal.aborted) {
+          revealResults.current = true;
+          setError(e.message);
+        }
       })
       .finally(() => {
         if (!abort.signal.aborted) setLoading(false);
@@ -443,130 +475,141 @@ export default function TravelSearchPage({
           <ExchangeRates />
         </div>
       </details>
-      {error && <ErrorMessage message={error} />}
-      {loading ? (
-        <SearchLoading
-          query={query}
-          kind={kind}
-          onCancel={() => {
-            searchRequest.current?.abort();
-            setLoading(false);
-            setError(
-              "Search cancelled. You can search again whenever you’re ready.",
-            );
-          }}
-        />
-      ) : (
-        hasSearch &&
-        !error &&
-        (kind === "flight" ? (
-          <FlightResults
-            key={search + attempt}
-            offers={data}
+      <section
+        ref={resultsSection}
+        tabIndex={-1}
+        aria-label={
+          kind === "flight" ? "Flight search results" : "Hotel search results"
+        }
+        className="scroll-mt-28 outline-none"
+      >
+        {error && <ErrorMessage message={error} />}
+        {loading ? (
+          <SearchLoading
             query={query}
-            details={(offer) => <FlightItinerary offer={offer} />}
-            onDate={(offset) => {
-              const next = new URLSearchParams(search);
-              next.set(
-                "departureDate",
-                moveDate(query.get("departureDate") || "", offset),
+            kind={kind}
+            returnFocusRef={resultsSection}
+            onCancel={() => {
+              searchRequest.current?.abort();
+              revealResults.current = true;
+              setLoading(false);
+              setError(
+                "Search cancelled. You can search again whenever you’re ready.",
               );
-              if (query.get("returnDate"))
-                next.set(
-                  "returnDate",
-                  moveDate(query.get("returnDate")!, offset),
-                );
-              navigate(`/flights/search?${next}`);
             }}
           />
         ) : (
-          <>
-            <div className="my-6 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="font-bold text-slate-800">
-                {results.length} available stays
-              </h2>
-              <label className="flex items-center gap-3 text-sm">
-                <SlidersHorizontal size={17} />
-                <span className="sr-only">Sort hotels</span>
-                <select
-                  aria-label="Sort hotels"
-                  className={travelInput}
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value)}
-                >
-                  <option value="price">Lowest price</option>
-                  <option value="rating">Highest star rating</option>
-                </select>
-              </label>
-            </div>
-            {!results.length && (
-              <div className="rounded-2xl border bg-white p-12 text-center text-slate-500">
-                No available stays for this search. Try different dates or a
-                nearby destination.
+          hasSearch &&
+          !error &&
+          (kind === "flight" ? (
+            <FlightResults
+              key={search + attempt}
+              offers={data}
+              query={query}
+              details={(offer) => <FlightItinerary offer={offer} />}
+              onDate={(offset) => {
+                const next = new URLSearchParams(search);
+                next.set(
+                  "departureDate",
+                  moveDate(query.get("departureDate") || "", offset),
+                );
+                if (query.get("returnDate"))
+                  next.set(
+                    "returnDate",
+                    moveDate(query.get("returnDate")!, offset),
+                  );
+                navigate(`/flights/search?${next}`);
+              }}
+            />
+          ) : (
+            <>
+              <div className="my-6 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="font-bold text-slate-800">
+                  {results.length} available stays
+                </h2>
+                <label className="flex items-center gap-3 text-sm">
+                  <SlidersHorizontal size={17} />
+                  <span className="sr-only">Sort hotels</span>
+                  <select
+                    aria-label="Sort hotels"
+                    className={travelInput}
+                    value={sort}
+                    onChange={(e) => setSort(e.target.value)}
+                  >
+                    <option value="price">Lowest price</option>
+                    <option value="rating">Highest star rating</option>
+                  </select>
+                </label>
               </div>
-            )}
-            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {results.map((result) => (
-                <article
-                  key={result.id}
-                  className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md"
-                >
-                  {result.accommodation?.photos?.[0]?.url ? (
-                    <img
-                      src={result.accommodation.photos[0].url}
-                      alt={result.accommodation.name}
-                      className="h-48 w-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="flex h-48 items-center justify-center bg-indigo-50">
-                      <Building2 size={48} className="text-indigo-300" />
-                    </div>
-                  )}
-                  <div className="space-y-3 p-5">
-                    <p className="text-sm text-amber-600">
-                      {"★".repeat(
-                        Math.min(
-                          5,
-                          Math.floor(result.accommodation?.rating || 0),
-                        ),
-                      )}
-                    </p>
-                    <h3 className="text-lg font-black text-slate-900">
-                      {result.accommodation?.name}
-                    </h3>
-                    <p className="text-sm text-slate-500">
-                      {result.accommodation?.location?.address?.line_one} ·{" "}
-                      {result.accommodation?.location?.address?.city_name}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {result.check_in_date} → {result.check_out_date} ·{" "}
-                      {result.rooms} room(s)
-                    </p>
-                    <div className="flex items-center justify-between gap-2 border-t pt-4">
-                      <div>
-                        <p className="text-xs text-slate-500">
-                          Stay total from
-                        </p>
-                        <p className="text-xl font-black text-indigo-950">
-                          {money(result.pricing.totalKobo)}
-                        </p>
+              {!results.length && (
+                <div className="rounded-2xl border bg-white p-12 text-center text-slate-500">
+                  No available stays for this search. Try different dates or a
+                  nearby destination.
+                </div>
+              )}
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                {results.map((result) => (
+                  <article
+                    key={result.id}
+                    className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md"
+                  >
+                    {result.accommodation?.photos?.[0]?.url ? (
+                      <img
+                        src={result.accommodation.photos[0].url}
+                        alt={result.accommodation.name}
+                        className="h-48 w-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex h-48 items-center justify-center bg-indigo-50">
+                        <Building2 size={48} className="text-indigo-300" />
                       </div>
-                      <button
-                        disabled={!!busy}
-                        onClick={() => viewRates(result.id)}
-                        className={travelButton}
-                      >
-                        {busy === result.id ? "Loading…" : "View rooms"}
-                      </button>
+                    )}
+                    <div className="space-y-3 p-5">
+                      <p className="text-sm text-amber-600">
+                        {"★".repeat(
+                          Math.min(
+                            5,
+                            Math.floor(result.accommodation?.rating || 0),
+                          ),
+                        )}
+                      </p>
+                      <h3 className="text-lg font-black text-slate-900">
+                        {result.accommodation?.name}
+                      </h3>
+                      <p className="text-sm text-slate-500">
+                        {result.accommodation?.location?.address?.line_one} ·{" "}
+                        {result.accommodation?.location?.address?.city_name}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {result.check_in_date} → {result.check_out_date} ·{" "}
+                        {result.rooms} room(s)
+                      </p>
+                      <div className="flex items-center justify-between gap-2 border-t pt-4">
+                        <div>
+                          <p className="text-xs text-slate-500">
+                            Stay total from
+                          </p>
+                          <p className="text-xl font-black text-indigo-950">
+                            {money(result.pricing.totalKobo)}
+                          </p>
+                        </div>
+                        <button
+                          disabled={!!busy}
+                          onClick={() => viewRates(result.id)}
+                          className={travelButton}
+                        >
+                          {busy === result.id ? "Loading…" : "View rooms"}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </>
-        ))
-      )}
+                  </article>
+                ))}
+              </div>
+            </>
+          ))
+        )}
+      </section>
       {rates && (
         <section
           ref={ratesSection}
