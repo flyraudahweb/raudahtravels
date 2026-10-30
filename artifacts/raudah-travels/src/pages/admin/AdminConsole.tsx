@@ -261,7 +261,7 @@ function AdminMoreSheet({ open, onClose, navGroups, signOut }: { open: boolean; 
 export default function AdminConsole() {
   const { user, isLoaded: isClerkLoaded, isSignedIn } = useUser();
   const { signOut } = useClerk();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { data: profile, isLoading: isProfileLoading } = useGetProfile({
     query: {
       queryKey: getGetProfileQueryKey(),
@@ -470,7 +470,7 @@ export default function AdminConsole() {
         </aside>
 
         {/* ── Content ── */}
-        <main className={`flex-1 overflow-auto pb-24 md:pb-0 pt-14 md:pt-0 min-h-screen transition-[margin] duration-300 ease-in-out ${mainMl}`}>
+        <main className={`flex-1 ${location.replace(/\/+$/, "") === "/admin/ota-api" ? "overflow-visible min-w-0" : "overflow-auto"} pb-24 md:pb-0 pt-14 md:pt-0 min-h-screen transition-[margin] duration-300 ease-in-out ${mainMl}`}>
           <div className="max-w-6xl mx-auto px-4 md:px-8 py-8">
             <Switch>
               <Route path="/admin/ota" component={AdminOta} />

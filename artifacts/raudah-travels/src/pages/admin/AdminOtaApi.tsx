@@ -725,8 +725,8 @@ export default function AdminOtaApi() {
       )}
       {spec && tab === "reference" && (
         <div className="grid items-start gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
-          <aside className="overflow-hidden rounded-2xl border bg-white">
-            <div className="flex items-center gap-2 border-b p-3">
+          <aside className="flex flex-col overflow-hidden rounded-2xl border bg-white lg:sticky lg:top-6 lg:max-h-[calc(100dvh-3rem)]">
+            <div className="flex shrink-0 items-center gap-2 border-b p-3">
               <Search size={15} className="text-slate-400" />
               <input
                 value={search}
@@ -736,7 +736,7 @@ export default function AdminOtaApi() {
                 className="min-w-0 w-full py-1 text-xs outline-none"
               />
             </div>
-            <div className="max-h-[75dvh] overflow-y-auto p-2">
+            <div className="min-h-0 max-h-[75dvh] overflow-y-auto overscroll-contain p-2 lg:max-h-none">
               {spec.tags.map((tag: any) => {
                 const items = filtered.filter((item) =>
                   item.tags.includes(tag.name),
