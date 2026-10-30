@@ -272,8 +272,7 @@ export default function TravelSearchPage({
       ),
     ),
     [error, setError] = useState("");
-  const [config, setConfig] = useState<any>(null),
-    [sort, setSort] = useState("price");
+  const [sort, setSort] = useState("price");
   const [rates, setRates] = useState<any>(null),
     [busy, setBusy] = useState("");
   const ratesSection = useRef<HTMLElement>(null);
@@ -304,11 +303,6 @@ export default function TravelSearchPage({
   }, [rates]);
   const query = new URLSearchParams(search),
     hasSearch = query.has(kind === "flight" ? "departureDate" : "checkIn");
-  useEffect(() => {
-    ota("/config")
-      .then(setConfig)
-      .catch((e) => setError(e.message));
-  }, []);
   useEffect(() => {
     roomRequest.current?.abort();
     setRates(null);
@@ -453,13 +447,6 @@ export default function TravelSearchPage({
           Manage my trips →
         </Link>
       </div>
-      {config?.mode === "test" && (
-        <p
-          className={`mb-4 rounded-xl bg-amber-100 text-amber-900 ${hasSearch ? "px-4 py-2 text-xs" : "p-3 text-sm"}`}
-        >
-          Sandbox travel booking — these are test reservations.
-        </p>
-      )}
       <TravelSearchForm
         key={`${kind}:${search}`}
         initialKind={kind}

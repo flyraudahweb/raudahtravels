@@ -249,13 +249,13 @@ export default function Home() {
 
         {/* Search Widget — Overlaps bottom edge of hero like Trip.com */}
           <div className="relative z-20 -mt-24 sm:-mt-28 md:-mt-32 px-4 md:px-8 max-w-7xl mx-auto w-full mb-0">
-          <OtaSearchWidget />
+          <OtaSearchWidget packagesSectionId="featured-packages" />
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm"><div><p className="font-bold text-slate-900">Already have a booking?</p><p className="mt-1 text-xs text-slate-500">Track confirmation, view travel documents or request help.</p></div><Link href="/dashboard/my-trips" className="inline-flex items-center gap-2 font-bold text-indigo-700">Manage my trips <ArrowRight size={16} /></Link></div>
           <details className="mt-3 rounded-2xl border border-slate-200 bg-white px-5 py-3"><summary className="cursor-pointer text-xs font-semibold text-slate-600">Currency reference rates</summary><div className="mt-3"><ExchangeRates /></div></details>
         </div>
 
         {/* ── FEATURED PACKAGES (Restored) ── */}
-        <section id="featured-packages" className="py-12 md:py-16 bg-white border-b border-gray-100">
+        <section id="featured-packages" tabIndex={-1} aria-label="Featured Hajj and Umrah packages" className="scroll-mt-24 outline-none py-12 md:py-16 bg-white border-b border-gray-100">
           <div className="container mx-auto px-4 md:px-6">
             <div className="text-center mb-12 max-w-3xl mx-auto">
               <p className="text-[#2D3199] text-xs font-black uppercase tracking-widest mb-2">Our Packages</p>

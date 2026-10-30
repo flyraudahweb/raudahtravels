@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   Plane,
   Building2,
   Search,
   ArrowRightLeft,
   ShieldCheck,
-  ChevronRight,
+  Package,
 } from "lucide-react";
 import { travelButton } from "@/lib/ota";
 import { dateKey, readDate } from "@/lib/travelSearch";
@@ -22,11 +22,13 @@ export default function TravelSearchForm({
   initial,
   compact = false,
   onSearchAgain,
+  packagesSectionId,
 }: {
   initialKind?: "flight" | "hotel";
   initial?: URLSearchParams;
   compact?: boolean;
   onSearchAgain?: () => void;
+  packagesSectionId?: string;
 }) {
   const [, navigate] = useLocation(),
     [kind, setKind] = useState(initialKind);
@@ -61,7 +63,7 @@ export default function TravelSearchForm({
       className={`relative rounded-[22px] border border-slate-200 bg-white text-slate-900 ${compact ? "p-4 shadow-sm md:p-5" : "p-4 shadow-[0_20px_70px_-25px_rgba(25,30,100,0.35)] md:p-6"}`}
     >
       <div
-        className={`flex items-center gap-2 ${compact ? "mb-3" : "mb-4 border-b border-slate-100 pb-4"}`}
+        className={`flex flex-wrap items-center gap-2 ${compact ? "mb-3" : "mb-4 border-b border-slate-100 pb-4"}`}
       >
         {(
           [
@@ -83,19 +85,42 @@ export default function TravelSearchForm({
                     .map((age) => Math.min(11, Math.max(2, age))),
                 );
             }}
-            className={`flex items-center gap-2 rounded-xl font-bold transition-colors ${compact ? "px-3 py-1.5 text-xs" : "px-5 py-2.5 text-sm"} ${kind === key ? "bg-[#2D3199] text-white shadow-sm" : "text-slate-500 hover:bg-indigo-50 hover:text-[#2D3199]"}`}
+            className={`flex items-center gap-2 rounded-xl font-bold transition-colors ${compact ? "px-3 py-1.5 text-xs" : "px-3 py-2.5 text-sm sm:px-5"} ${kind === key ? "bg-[#2D3199] text-white shadow-sm" : "text-slate-500 hover:bg-indigo-50 hover:text-[#2D3199]"}`}
           >
             <Icon size={19} />
             {label}
           </button>
         ))}
-        <a
+        <Link
           href="/packages"
-          className="ml-auto hidden items-center gap-1 text-xs font-semibold text-slate-500 hover:text-[#2D3199] sm:flex"
+          title="Browse Hajj & Umrah packages"
+          onClick={(event) => {
+            if (
+              !packagesSectionId ||
+              event.button !== 0 ||
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey
+            )
+              return;
+            const section = document.getElementById(packagesSectionId);
+            if (!section) return;
+            event.preventDefault();
+            section.focus({ preventScroll: true });
+            section.scrollIntoView({
+              block: "start",
+              behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
+                .matches
+                ? "instant"
+                : "smooth",
+            });
+          }}
+          className={`flex items-center gap-2 rounded-xl font-bold text-slate-500 transition-colors hover:bg-indigo-50 hover:text-[#2D3199] ${compact ? "px-3 py-1.5 text-xs" : "px-3 py-2.5 text-sm sm:px-5"}`}
         >
-          Hajj & Umrah packages
-          <ChevronRight size={14} />
-        </a>
+          <Package size={19} aria-hidden="true" />
+          Packages
+        </Link>
       </div>
       <form
         onSubmit={(event) => {

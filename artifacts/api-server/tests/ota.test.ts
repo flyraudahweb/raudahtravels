@@ -1486,6 +1486,36 @@ async function deliverDuffel(type: string, object: Record<string, unknown>) {
   await service.processDuffelEvents();
 }
 describe("OTA authorization and payments", () => {
+  it("restricts launch diagnostics to super admins and reports optional key storage", async () => {
+    expect((await request("/admin/check", "admin", {})).status).toBe(403);
+    const response = await request("/admin/check", "super", {});
+    expect(response.status).toBe(200);
+    const { results } = await response.json();
+    expect(results.database).toBe("passed");
+    expect(results.apiKeys).toBe("passed");
+    expect(results.stays).toContain("not verified");
+    expect(JSON.stringify(results)).not.toMatch(
+      /duffel_test_fake|sk_test_fake/,
+    );
+    expect(supplierCalls).toBe(0);
+  });
+  it("rejects malformed callback origins before creating or initializing checkout", async () => {
+    await create();
+    const previous = process.env.APP_URL;
+    try {
+      process.env.APP_URL = "https://example.test?next=elsewhere";
+      const response = await request(`/bookings/${booking.id}/pay`, "user", {});
+      expect(response.status).toBe(503);
+      expect((await response.json()).error).toContain("callback");
+      expect(supplierCalls).toBe(0);
+      const { saveOtaConfig } = await import("../src/services/ota/config");
+      await expect(
+        saveOtaConfig({ salesEnabled: true }, "super"),
+      ).rejects.toThrow("HTTPS APP_URL");
+    } finally {
+      process.env.APP_URL = previous;
+    }
+  });
   it("refreshes airline changes and keeps cancellations/refunds intact when older events arrive", async () => {
     await create();
     await request(`/bookings/${booking.id}/complete`, "user", {});

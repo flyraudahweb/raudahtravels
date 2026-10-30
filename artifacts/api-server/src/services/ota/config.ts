@@ -9,6 +9,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { OtaError } from "./provider";
 import { DUFFEL_EVENTS } from "./duffelWebhookProtocol";
+import { otaAppOrigin } from "./appOrigin";
 
 export const OTA_CONFIG_KEY = "ota_config";
 // Initial operator-editable selling rates approved on 2026-10-29.
@@ -174,10 +175,7 @@ export async function saveOtaConfig(patch: unknown, actor: string) {
   )
     throw new OtaError("Duffel token must match the selected mode", 400);
   if (next.rates.NGN !== 1) throw new OtaError("NGN rate must equal 1", 400);
-  if (
-    next.salesEnabled &&
-    (!next.supportEmail || !/^https:\/\//.test(process.env.APP_URL || ""))
-  )
+  if (next.salesEnabled && (!next.supportEmail || !otaAppOrigin()))
     throw new OtaError("Sales require a support email and HTTPS APP_URL", 400);
   if (next.salesEnabled) {
     const paymentSetting = await db.query.siteSettingsTable.findFirst({

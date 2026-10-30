@@ -71,6 +71,8 @@ import {
   otaPostmanEnvironment,
 } from "../services/ota/apiDeveloperTools";
 import { MOBILE_CLIENT_FILES } from "../services/ota/mobileClientAssets";
+import { checkOtaReadiness } from "../services/ota/readiness";
+import { otaAppOrigin } from "../services/ota/appOrigin";
 
 const router = Router();
 const endpoint =
@@ -617,8 +619,7 @@ router.post(
         503,
       );
     await paystackKey(c.mode);
-    const appUrl = process.env.APP_URL || "";
-    if (!/^https:\/\//.test(appUrl))
+    if (!otaAppOrigin())
       throw new OtaError("Secure payment callback URL is not configured", 503);
     const offerId = id(input.offerId, input.kind === "flight" ? "off" : "quo");
     const offer = await duffelRequest(
@@ -743,6 +744,9 @@ router.post(
       );
     if (!(row.kind === "flight" ? c.flightsEnabled : c.hotelsEnabled))
       throw new OtaError("This booking channel is currently unavailable", 503);
+    const appOrigin = otaAppOrigin();
+    if (!appOrigin)
+      throw new OtaError("Secure payment callback URL is not configured", 503);
     const fresh = await duffelRequest(
       c,
       row.kind === "flight"
@@ -768,7 +772,7 @@ router.post(
       amount: row.amountKobo,
       currency: "NGN",
       reference: row.reference,
-      callback_url: `${process.env.APP_URL!.replace(/\/$/, "")}/travel/bookings/${row.id}`,
+      callback_url: `${appOrigin}/travel/bookings/${row.id}`,
       metadata: { otaBookingId: row.id, type: "ota_booking" },
     });
     if (
@@ -1131,33 +1135,7 @@ router.post(
   "/ota/admin/check",
   endpoint(async (req, res) => {
     await identity(req, true);
-    const c = await getOtaConfig();
-    const results: Record<string, string> = {};
-    try {
-      await db.execute(
-        sql`SELECT revision, sync_attempt_at, provider_notice FROM ota_bookings LIMIT 0`,
-      );
-      await db.execute(sql`SELECT reference FROM ota_payment_jobs LIMIT 0`);
-      await db.execute(sql`SELECT dedupe_key FROM ota_duffel_events LIMIT 0`);
-      results.database = "passed";
-    } catch {
-      results.database = "failed: apply OTA migrations 0009, 0010 and 0011";
-    }
-    try {
-      await duffelRequest(c, "/air/airlines?limit=1");
-      results.duffel = "passed";
-    } catch {
-      results.duffel = "failed";
-    }
-    try {
-      await paystackKey(c.mode);
-      results.paystack = "configured";
-    } catch {
-      results.paystack = "not configured or mode mismatch";
-    }
-    results.stays =
-      "Confirm Stays access with Duffel and exercise a sandbox search";
-    res.json({ results });
+    res.json({ results: await checkOtaReadiness() });
   }),
 );
 router.get(

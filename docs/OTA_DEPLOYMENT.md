@@ -2,7 +2,7 @@
 
 Implemented 2026-10-29. This guide covers the new OTA purchase flow. Existing Hajj/Umrah package workflows retain their own booking/payment records.
 
-Latest migration status: the user reports 0009, 0010 and 0011 have all been applied in Neon. Only 0009 was independently checked by the agent; use deployed readiness checks to confirm the remaining schema. Do not rerun completed migrations unnecessarily. Code push does not confirm successful deployment, webhook activation or staging acceptance.
+Latest verification (2026-10-30): read-only inspection found the OTA booking/event/payment/webhook tables, booking revision/sync columns and optional API-key table in the configured database. No pending OTA migration was detected for 0009–0012. The deployed `/api/readyz` and mobile capabilities endpoints return 200. Do not rerun completed migrations. See [current launch readiness](OTA_LAUNCH_READINESS.md) for remaining gates; a code push does not confirm deployment or acceptance.
 
 Latest sandbox configuration: flight search is now enabled and the five requested selling rates are saved in admin settings. Live API checks returned airport suggestions and 17 Lagos–London sandbox offers priced in NGN. The deployed test credential already works and was not replaced. New test installations default to flight search enabled; saved admin settings and explicit environment switches override that default. Disable flight search in `/admin/ota` when needed. Hotels and payment processing retain their separate prerequisites and switches.
 
@@ -30,7 +30,7 @@ These controls and mocked-provider regression tests do not establish zero vulner
 
 ## Enable in staging first
 
-1. Back up the intended PostgreSQL database and apply the pending migrations in order: `0009_ota.sql`, `0010_duffel_webhooks.sql`, then `0011_ota_revision.sql` from `lib/db/drizzle/`. The user already applied 0009; do not re-run completed migrations unnecessarily. Migration 0011 adds an integer booking revision and the supplier-refresh attempt timestamp. It prevents stale responses from overwriting newer state and supports refresh backoff. These migrations are listed in the Drizzle journal. Never point integration tests at the live database.
+1. Verify the intended database schema before applying anything. The configured database already has the required OTA structures through `0012_ota_api_keys.sql`. For a new environment, back up the database and apply only missing migrations in order: `0009_ota.sql`, `0010_duffel_webhooks.sql`, `0011_ota_revision.sql`, and `0012_ota_api_keys.sql` if trusted-backend search keys are needed. Never point integration tests at the live database.
 2. Deploy the API and frontend together. Build commands are `pnpm run build:api` and `pnpm run build:frontend`. Run the production server from the repository root.
 3. Configure the existing Clerk keys, `DATABASE_URL`, an HTTPS `APP_URL`, correct `CORS_ORIGIN` and `TRUST_PROXY_HOPS`, and a persistent 64-character hexadecimal `SETTINGS_ENCRYPTION_KEY`. Keep the encryption key with protected operational backups; losing it prevents reading saved credentials.
 4. Obtain a Duffel test token and request **Stays access** for the organisation. Confirm that the selected Stays rates support payment from the Duffel balance. The integration searches instant-payment inventory and offers only supported prepaid balance rates.
@@ -47,9 +47,9 @@ Live activation requires a live Duffel token and enabled live products, a funded
 
 ### Duffel webhook deployment
 
-The user-authorized **test** webhook was created on 2026-10-29: `end_0000BBuI8vsP5N3Th5YT7w`, URL `https://flyraudah.com.ng/api/ota/duffel/webhook/test`. It is **inactive** because the public app has not yet deployed this receiver. Its signing secret is saved privately in the ignored local `.env` and OTA `.env.production` overlay. Never paste these files into logs or commit them.
+The user-authorized **test** webhook was created on 2026-10-29: `end_0000BBuI8vsP5N3Th5YT7w`, URL `https://flyraudah.com.ng/api/ota/duffel/webhook/test`. Read-only checks on 2026-10-30 confirm that it remains **inactive**, the receiver is deployed and storage-ready, and the deployed receiver reports **no signing secret configured**. Its secret is present privately in local environment configuration; that does not install it on hosting. Never paste these files into logs or commit them.
 
-1. Apply `lib/db/drizzle/0010_duffel_webhooks.sql` after 0009, then `lib/db/drizzle/0011_ota_revision.sql`. They add the supplier inbox/notices, booking revision and refresh-attempt timestamp. Neither has been applied to the configured database by the agent.
+1. Verify the schema. Read-only checks found the supplier inbox/notices and booking revision/sync columns already present in the configured database; apply 0010/0011 only to environments where they are missing.
 2. Deploy the updated API/frontend. Import `DUFFEL_WEBHOOK_ID_TEST` and `DUFFEL_WEBHOOK_SECRET_TEST` from the private overlay into hosting, preserving its existing database, Clerk, Paystack and encryption keys. Use `APP_URL=https://flyraudah.com.ng`.
 3. Open **Admin Settings → Duffel flights, hotels and webhooks**, or `/admin/ota` → Settings. Separate test/live tokens and signing secrets are editable here and encrypted on Save; blank secret inputs retain saved values. Required server infrastructure values stay in hosting.
 4. Select test mode, save the required events, refresh provider status and click **Ping**. Wait for `ping.triggered` to appear in the received event inbox. Then click **Activate**. Activation requires the deployed receiver, migrations 0010/0011, signing configuration and a verified ping from the current signing key within 30 minutes. It does not enable customer sales.
@@ -59,7 +59,7 @@ Implemented events: `order.created`, `order.creation_failed`, `order.airline_ini
 
 The receiver verifies `X-Duffel-Signature` against the exact raw body with a five-minute replay window, persists a deduplicated inbox before acknowledgment and returns a retryable failure if storage is unavailable. The worker uses leased jobs and bounded retries, fetches fresh supplier records and validates association, mode and supplier price before updating a paid reservation. Cancellation never implies a completed customer refund. Delivery order cannot overwrite a refunded checkout. Flight schedule/cancellation notices appear in the booking and reset email notification delivery.
 
-`node --env-file=.env.production scripts/manage-duffel-webhook.cjs` checks remote registration without exposing secrets. The explicit `--create-inactive` action creates/reuses the matching webhook and preserves its one-time secret privately. Admin controls provide normal ongoing management after deployment. References: [Duffel webhooks](https://duffel.com/docs/api/webhooks), [receiving and verifying deliveries](https://duffel.com/docs/guides/receiving-webhooks).
+Use the super-admin OTA webhook controls to inspect registration, send a ping and activate after verified delivery. Do not create another webhook just because the deployed signing secret is missing; restore the matching existing secret through the host's secret settings or encrypted admin settings using the existing hosting encryption key. References: [Duffel webhooks](https://duffel.com/docs/api/webhooks), [receiving and verifying deliveries](https://duffel.com/docs/guides/receiving-webhooks).
 
 ### Purchase and access acceptance
 
@@ -165,9 +165,9 @@ Reference documentation: [Frankfurter](https://frankfurter.dev/) and [ExchangeRa
 
 ## OTA mobile API and Developer Centre (2026-10-30)
 
-The super-admin-only Developer Centre is at `/admin/ota-api`, linked from Travel Distribution and OTA operations. It includes a searchable endpoint reference, request/response schemas, cURL/JavaScript/Dart examples, eleven integration guides and OpenAPI/Markdown downloads. The customer contract has 23 operations under `https://flyraudah.com.ng/api/ota/v1`. The existing `/api/ota` web contract continues to use the same booking/payment implementation.
+The super-admin-only Developer Centre is at `/admin/ota-api`, linked from Travel Distribution and OTA operations. Contract v1.0.2 includes a searchable endpoint reference, request/response schemas, cURL/JavaScript/Dart examples, seventeen guides and downloadable OpenAPI, Markdown, Postman and typed client assets. The customer contract has 23 operations under `https://flyraudah.com.ng/api/ota/v1`. The existing `/api/ota` web contract continues to use the same booking/payment implementation.
 
-Before enabling integration key creation, apply `lib/db/drizzle/0012_ota_api_keys.sql` to the intended database using your normal SQL migration workflow. This additive migration has **not** been applied to production by this change. The console detects missing key storage; documentation and customer-session endpoints remain available. Never run the test database setup against production.
+Read-only inspection on 2026-10-30 found the API-key table already present in the configured database. Apply `lib/db/drizzle/0012_ota_api_keys.sql` only in environments where it is missing. The console detects missing key storage; documentation and customer-session endpoints remain available without server keys. Never run the test database setup against production.
 
 Mobile customers authenticate with their Clerk session JWT, then call `POST /me/bootstrap` to create/reuse an active travel profile from verified Clerk identity. Do not send a user ID or role, embed Duffel/Paystack credentials, or embed server search keys in a mobile binary. Booking, payment, hotel quotes and trip updates always require the signed-in customer's ownership.
 
