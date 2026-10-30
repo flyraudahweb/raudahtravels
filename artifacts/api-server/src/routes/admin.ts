@@ -27,6 +27,7 @@ import { randomUUID } from "crypto";
 import multer from "multer";
 import path from "path";
 import { mkdirSync } from "fs";
+import { landingHeroSchema } from "../services/landingHero";
 
 ["uploads/visa", "uploads/tickets"].forEach(d => { try { mkdirSync(d, { recursive: true }); } catch {} });
 
@@ -1813,33 +1814,20 @@ router.put("/admin/settings/:key", requireAccountAdmin, async (req, res) => {
   const key = String(req.params.key);
   if (key === "ota_config") return res.status(403).json({ error: "Use the super-admin OTA console to manage travel settings" });
   if (key === CONFIG_KEY || /^(whatsapp_|telegram_)/.test(key)) return res.status(400).json({ error: "Use Registration Agent settings to manage channel credentials securely" });
+  if (!req.body || typeof req.body !== "object" || Array.isArray(req.body) || !Object.hasOwn(req.body, "value")) return res.status(400).json({ error: "A setting value is required" });
   const { value } = req.body;
-  const existing = await db.query.siteSettingsTable.findFirst({
-    where: eq(siteSettingsTable.key, key),
-  });
-
-  let result: any;
-  let statusCode = 200;
-  if (existing) {
-    const [updated] = await db.update(siteSettingsTable)
-      .set({ value, updatedAt: new Date() })
-      .where(eq(siteSettingsTable.key, key))
-      .returning();
-    result = updated;
-  } else {
-    const [created] = await db.insert(siteSettingsTable).values({
-      id: randomUUID(),
-      key: key,
-      value,
-    }).returning();
-    result = created;
-    statusCode = 201;
+  if (key === "landing_hero" && !landingHeroSchema.safeParse(value).success) {
+    return res.status(400).json({ error: "Choose true or false for both slideshowEnabled and aircraftEnabled" });
   }
+  // Upsert atomically: two administrators saving a new setting must not race
+  // through a read-then-insert and fail with a unique-key violation.
+  const [result] = await db.insert(siteSettingsTable).values({ id: randomUUID(), key, value })
+    .onConflictDoUpdate({ target: siteSettingsTable.key, set: { value, updatedAt: new Date() } }).returning();
 
   // Activity log
   try { const { userId: _clk } = getAuth(req); if (_clk) { const _c = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, _clk) }); if (_c) await db.insert(userActivityTable).values({ id: randomUUID(), userId: _c.id, eventType: "settings_updated", metadata: { actorName: _c.fullName, actorRole: _c.role, settingKey: key } }); } } catch (_) { /* non-blocking */ }
 
-  return res.status(statusCode).json(result);
+  return res.status(200).json(result);
 });
 
 // ── Booking Form Fields ───────────────────────────────────────────────────────

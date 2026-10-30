@@ -2,6 +2,8 @@ export function searchKeyScope(
   method: string,
   path: string,
 ): string | undefined {
+  path = path.replace(/\/+$/, "") || "/";
+  if (method === "HEAD") method = "GET";
   if (
     method === "GET" &&
     ["/config", "/exchange-rates", "/capabilities"].includes(path)

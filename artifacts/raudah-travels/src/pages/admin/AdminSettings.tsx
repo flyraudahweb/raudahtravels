@@ -96,6 +96,7 @@ export default function AdminSettings() {
   const [mistralApiKey, setMistralApiKey] = useState("");
   const [showMistralKey, setShowMistralKey] = useState(false);
   const [landingVideoUrl, setLandingVideoUrl] = useState("");
+  const [landingHero, setLandingHero] = useState({ slideshowEnabled: true, aircraftEnabled: true });
   const [trustBadges, setTrustBadges] = useState<Array<{ icon: string; label: string }>>([
     { icon: "🕌", label: "NAHCON Licensed" },
     { icon: "📋", label: "RC No. 1234567" },
@@ -136,6 +137,7 @@ export default function AdminSettings() {
     if (settings.gemini_api_key_set) setGeminiApiKey(settings.gemini_api_key as string ?? "");
     if (settings.mistral_api_key_set) setMistralApiKey(settings.mistral_api_key as string ?? "");
     if (settings.landing_video_url) setLandingVideoUrl(settings.landing_video_url as string);
+    setLandingHero({ slideshowEnabled: settings.landing_hero?.slideshowEnabled !== false, aircraftEnabled: settings.landing_hero?.aircraftEnabled !== false });
     if (settings.trust_badges) setTrustBadges(settings.trust_badges as any);
     if (settings.landing_stats) setLandingStats(settings.landing_stats as any);
     if (settings.about_stats) setAboutStats(settings.about_stats as any);
@@ -158,6 +160,7 @@ export default function AdminSettings() {
     onSuccess: (_, { key }) => {
       qc.invalidateQueries({ queryKey: ["admin-settings"] });
       qc.invalidateQueries({ queryKey: ["app-config"] });
+      qc.invalidateQueries({ queryKey: ["public-settings"] });
       setSaved(key); setTimeout(() => setSaved(null), 2000);
       toast({ title: "Settings saved" });
     },
@@ -531,11 +534,18 @@ export default function AdminSettings() {
       </Section>
 
       <Section title="Landing Page Edits" icon={Layout}>
+        <div className="space-y-4 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
+          <div><p className="font-bold text-sm">Homepage header images</p><p className="mt-1 text-xs text-slate-500">Show the slideshow, the aeroplane, both together, or a plain branded background.</p></div>
+          <div className="flex items-center justify-between gap-4"><Label htmlFor="hero-slideshow">Photo slideshow</Label><Switch id="hero-slideshow" checked={landingHero.slideshowEnabled} onCheckedChange={checked => setLandingHero(value => ({ ...value, slideshowEnabled: checked }))} /></div>
+          <div className="flex items-center justify-between gap-4"><Label htmlFor="hero-aircraft">Static aeroplane</Label><Switch id="hero-aircraft" checked={landingHero.aircraftEnabled} onCheckedChange={checked => setLandingHero(value => ({ ...value, aircraftEnabled: checked }))} /></div>
+          <p className="text-xs text-slate-500">{landingHero.slideshowEnabled ? (landingHero.aircraftEnabled ? "Slideshow with a fixed aeroplane above it." : "Slideshow only.") : (landingHero.aircraftEnabled ? "Aeroplane only." : "Branded background only.")}</p>
+          <Button onClick={() => save.mutate({ key: "landing_hero", value: landingHero })} disabled={save.isPending} className="bg-[#2D3199] text-white rounded-xl gap-2"><Save className="h-4 w-4" />{saved === "landing_hero" ? "Header saved" : "Save header images"}</Button>
+        </div>
         {/* Hero Video URL */}
         <div>
-          <p className="font-bold text-[#0F172A] text-sm mb-1">Hero Section Video</p>
+          <p className="font-bold text-[#0F172A] text-sm mb-1">Saved video URL</p>
           <p className="text-xs text-[#64748B] mb-3">
-            Replaces the route map on the homepage. Paste a YouTube or Vimeo URL — it will autoplay muted on loop.
+            Retained for future use. The current homepage header uses the image controls above; this video is not displayed.
           </p>
           <div className="flex gap-2">
             <span className="flex items-center px-3 bg-[#F8FAFC] border border-[#DCE3F0] rounded-xl">
@@ -549,7 +559,7 @@ export default function AdminSettings() {
             />
           </div>
           {landingVideoUrl && (
-            <p className="text-xs text-emerald-600 mt-1.5 font-medium">✓ Video URL set — will autoplay on the homepage hero.</p>
+            <p className="text-xs text-slate-500 mt-1.5">Video URL saved; it is not used by the current homepage header.</p>
           )}
         </div>
         <div className="pt-1">

@@ -7,7 +7,7 @@ import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
 import router from "./routes";
 import otaRouter from "./routes/ota.js";
-import { mobileOtaRouter } from "./services/ota/mobileRoutes";
+import { mobileOtaRouter, mobileOtaError } from "./services/ota/mobileRoutes";
 import { logger } from "./lib/logger";
 import {
   CLERK_PROXY_PATH,
@@ -102,6 +102,7 @@ app.use(["/api/flights", "/api/hotels"], (_req, res) => {
   res.status(410).json({ error: "This travel endpoint has been replaced. Refresh the application to continue." });
 });
 app.use("/api", router);
+app.use(mobileOtaError);
 
 // --- Production: Serve frontend static files (Option B — single service) ---
 if (process.env.NODE_ENV === "production") {

@@ -156,13 +156,6 @@ export default function Home() {
   const [searchForm, setSearchForm] = useState({ country: "Nigeria", packageType: "", month: "", persons: "" });
   const [showWhatsApp, setShowWhatsApp] = useState(false);
   const [slideIndex,setSlideIndex] = useState(0),[slidesPaused,setSlidesPaused] = useState(false);
-  useEffect(()=>{
-    const media=window.matchMedia("(prefers-reduced-motion: reduce)");
-    let timer:ReturnType<typeof setInterval> | undefined;
-    const update=()=>{clearInterval(timer);if(!slidesPaused&&!media.matches)timer=setInterval(()=>setSlideIndex(index=>(index+1)%HERO_IMAGES.length),5000);};
-    update();media.addEventListener("change",update);
-    return()=>{clearInterval(timer);media.removeEventListener("change",update);};
-  },[slidesPaused]);
 
   useEffect(() => {
     const onScroll = () => setShowWhatsApp(window.scrollY > window.innerHeight * 0.8);
@@ -174,13 +167,21 @@ export default function Home() {
     queryKey: ["public-settings"],
     queryFn: async () => {
       const r = await fetch("/api/public/settings");
-      return r.ok ? r.json() as Promise<Record<string, any>> : {};
+      if (!r.ok) throw new Error("Could not refresh public settings");
+      return r.json() as Promise<Record<string, any>>;
     },
     staleTime: 60_000,
+    refetchInterval: 60_000,
   });
-
-
-
+  const slideshowEnabled = pubSettings?.landing_hero?.slideshowEnabled !== false;
+  const aircraftEnabled = pubSettings?.landing_hero?.aircraftEnabled !== false;
+  useEffect(()=>{
+    const media=window.matchMedia("(prefers-reduced-motion: reduce)");
+    let timer:ReturnType<typeof setInterval> | undefined;
+    const update=()=>{clearInterval(timer);if(slideshowEnabled&&!slidesPaused&&!media.matches)timer=setInterval(()=>setSlideIndex(index=>(index+1)%HERO_IMAGES.length),5000);};
+    update();media.addEventListener("change",update);
+    return()=>{clearInterval(timer);media.removeEventListener("change",update);};
+  },[slidesPaused,slideshowEnabled]);
   const { data: packagesData, isLoading } = useListPackages(
     { limit: 3, available: true },
     { query: { queryKey: getListPackagesQueryKey({ limit: 3, available: true }) } }
@@ -192,23 +193,23 @@ export default function Home() {
 
         {/* Rotating pilgrimage photos with a separate, always-visible aircraft layer. */}
         <section className="relative flex flex-col bg-[#1C1F66] pb-36 sm:pb-44 md:pb-48">
-          {HERO_IMAGES.map((src,index)=><img key={src} src={src} alt="" aria-hidden className="absolute inset-0 h-full w-full object-cover pointer-events-none motion-safe:transition-opacity motion-safe:duration-1000" style={{opacity:index===slideIndex?0.7:0}} decoding="async" />)}
-          <img
+          {slideshowEnabled && HERO_IMAGES.map((src,index)=><img key={src} src={src} alt="" aria-hidden className="absolute inset-0 h-full w-full object-cover pointer-events-none motion-safe:transition-opacity motion-safe:duration-1000" style={{opacity:index===slideIndex?0.7:0}} decoding="async" />)}
+          {aircraftEnabled && <img
             src={heroAircraftImg}
             alt=""
             aria-hidden
-            className="absolute inset-y-0 right-0 w-full md:w-[72%] h-full object-cover opacity-65 pointer-events-none"
-            style={{maskImage:"linear-gradient(to right, transparent, black 38%)",WebkitMaskImage:"linear-gradient(to right, transparent, black 38%)"}}
+            className={`absolute inset-y-0 right-0 w-full ${slideshowEnabled ? "md:w-[72%] opacity-65" : "opacity-80"} h-full object-cover pointer-events-none`}
+            style={slideshowEnabled ? {maskImage:"linear-gradient(to right, transparent, black 38%)",WebkitMaskImage:"linear-gradient(to right, transparent, black 38%)"} : undefined}
             fetchPriority="high"
             decoding="async"
-          />
+          />}
           {/* Dark gradient overlay — keeps text readable */}
           <div className="absolute inset-0 pointer-events-none"
             style={{ background: "linear-gradient(135deg, rgba(13,15,78,0.78) 0%, rgba(28,31,102,0.65) 50%, rgba(45,49,153,0.50) 100%)" }} />
-          <div className="absolute right-5 top-24 z-20 flex items-center gap-2 rounded-full bg-black/15 px-3 py-2 backdrop-blur-sm" aria-label="Header slideshow controls">
+          {slideshowEnabled && <div className="absolute right-5 top-24 z-20 flex items-center gap-2 rounded-full bg-black/15 px-3 py-2 backdrop-blur-sm" aria-label="Header slideshow controls">
             {HERO_IMAGES.map((_,index)=><button type="button" key={index} onClick={()=>setSlideIndex(index)} aria-label={`Show header photo ${index+1}`} aria-pressed={index===slideIndex} className={`rounded-full ${index===slideIndex?"h-2 w-6 bg-[#FF3B00]":"h-2 w-2 bg-white/50"}`}/>)}
             <button type="button" onClick={()=>setSlidesPaused(value=>!value)} aria-label={slidesPaused?"Play header slideshow":"Pause header slideshow"} className="ml-1 text-white">{slidesPaused?<Play size={13}/>:<Pause size={13}/>}</button>
-          </div>
+          </div>}
           {/* Navbar — transparent, becomes solid on scroll */}
           <Navbar transparent />
 

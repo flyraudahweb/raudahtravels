@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { siteSettingsTable, contactMessagesTable, bankAccountsTable, bookingFormFieldsTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import healthRouter from "./health";
 import authRouter from "./auth";
@@ -41,11 +41,11 @@ router.get("/config", async (_req, res) => {
 router.get("/public/settings", async (_req, res) => {
   try {
     const PUBLIC_KEYS = new Set([
-      "contact_info", "social_links", "trust_badges", "landing_video_url",
+      "contact_info", "social_links", "trust_badges", "landing_video_url", "landing_hero",
       "leadership_team", "landing_stats", "about_stats",
       "room_surcharges", "child_infant_pricing",
     ]);
-    const rows = await db.query.siteSettingsTable.findMany();
+    const rows = await db.query.siteSettingsTable.findMany({ where: inArray(siteSettingsTable.key, [...PUBLIC_KEYS]) });
     const result: Record<string, unknown> = {};
     for (const row of rows) {
       if (PUBLIC_KEYS.has(row.key)) result[row.key] = row.value;

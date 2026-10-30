@@ -555,11 +555,12 @@ router.post(
   "/ota/hotels/quotes",
   endpoint(async (req, res) => {
     await identity(req);
+    const input = z.object({ rateId: z.string() }).parse(req.body);
     const c = await getOtaConfig();
     if (!c.hotelsEnabled)
       throw new OtaError("Hotel search is not enabled", 503);
     const quote = await duffelRequest(c, "/stays/quotes", "POST", {
-      rate_id: id(req.body.rateId, "rat"),
+      rate_id: id(input.rateId, "rat"),
     });
     available(quote);
     assertHotelQuote(quote);
@@ -837,7 +838,10 @@ router.get(
         eq(notificationsTable.userId, profile.id),
         like(notificationsTable.id, "ota:%"),
       ),
-      orderBy: [desc(notificationsTable.createdAt),desc(notificationsTable.id)],
+      orderBy: [
+        desc(notificationsTable.createdAt),
+        desc(notificationsTable.id),
+      ],
       limit: 21,
       offset,
     });
@@ -934,17 +938,29 @@ router.post(
 router.post(
   "/ota/bookings/:id/service-request",
   endpoint(async (req, res) => {
-    const row = await owned(req),
-      message = z.string().trim().min(10).max(2000).parse(req.body.message);
-    await db
-      .update(bookings)
-      .set({
-        revision: sql`${bookings.revision}+1`,
-        serviceRequest: message,
-        updatedAt: new Date(),
-      })
-      .where(eq(bookings.id, row.id));
-    await audit(row.id, row.clerkUserId, "service_requested", { message });
+    const row = await owned(req);
+    const { message } = z
+      .object({ message: z.string().trim().min(10).max(2000) })
+      .parse(req.body);
+    await db.transaction(async (tx) => {
+      await tx
+        .update(bookings)
+        .set({
+          revision: sql`${bookings.revision}+1`,
+          serviceRequest: message,
+          updatedAt: new Date(),
+        })
+        .where(eq(bookings.id, row.id));
+      await tx
+        .insert(otaEventsTable)
+        .values({
+          id: randomUUID(),
+          bookingId: row.id,
+          actor: row.clerkUserId,
+          action: "service_requested",
+          details: { message },
+        });
+    });
     res.json({ success: true });
   }),
 );

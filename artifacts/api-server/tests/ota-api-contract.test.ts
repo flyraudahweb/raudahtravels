@@ -4,8 +4,58 @@ import {
   mobileIntegrationGuide,
 } from "../src/services/ota/apiDocumentation";
 import { searchKeyScope } from "../src/services/ota/apiKeyPolicy";
+import SwaggerParser from "@apidevtools/swagger-parser";
+import { validateOtaSchema } from "./helpers/ota-contract";
+import { MOBILE_OTA_OPERATIONS } from "../src/services/ota/mobileApiPaths";
 
 describe("OTA mobile contract integrity", () => {
+  it("keeps every documented operation in sync with the customer router", () => {
+    const actual = Object.entries(otaOpenApi().paths)
+      .flatMap(([path, methods]) =>
+        Object.keys(methods as any).map(
+          (method) => `${method.toUpperCase()} ${path}`,
+        ),
+      )
+      .sort();
+    expect(actual).toEqual(
+      MOBILE_OTA_OPERATIONS.map(([method, path]) => `${method} ${path}`).sort(),
+    );
+  });
+  it("passes standard OpenAPI validation without external reference resolution", async () => {
+    await SwaggerParser.validate(otaOpenApi() as any, {
+      resolve: { external: false },
+    });
+  });
+  it("validates every documented request, response and component example", () => {
+    const spec = otaOpenApi();
+    for (const schema of Object.values(spec.components.schemas) as any[])
+      if (schema.example) validateOtaSchema(schema, schema.example);
+    for (const methods of Object.values(spec.paths))
+      for (const op of Object.values(methods as any) as any[]) {
+        const request = op.requestBody?.content["application/json"];
+        if (request?.example)
+          validateOtaSchema(request.schema, request.example);
+        for (const response of Object.values(op.responses) as any[]) {
+          const json = response.content?.["application/json"];
+          if (json?.example) validateOtaSchema(json.schema, json.example);
+        }
+      }
+  });
+  it("requires complete flight travellers while accepting hotel guests", () => {
+    const schema = otaOpenApi().components.schemas.BookingCreate;
+    const valid = structuredClone(schema.example);
+    validateOtaSchema(schema, valid);
+    const incomplete = { given_name: "Native", family_name: "Traveller" };
+    expect(() =>
+      validateOtaSchema(schema, { ...valid, travellers: [incomplete] }),
+    ).toThrow();
+    validateOtaSchema(schema, {
+      ...valid,
+      kind: "hotel",
+      offerId: "quo_example",
+      travellers: [incomplete],
+    });
+  });
   it("resolves every component schema reference and required property", () => {
     const spec = otaOpenApi();
     function visit(value: any) {

@@ -51,6 +51,15 @@ const errorResponses = Object.fromEntries(
     ],
     [403, "Inactive account, incorrect role, integration scope or key mode."],
     [
+      405,
+      "Wrong HTTP method. Use the method documented for this endpoint and inspect Allow.",
+    ],
+    [413, "Request body exceeds the API size limit."],
+    [
+      415,
+      "Unsupported request encoding. Send JSON with Content-Type: application/json.",
+    ],
+    [
       404,
       "Record not found or not owned by the customer. v1 unknown endpoints also return JSON 404.",
     ],
@@ -72,15 +81,22 @@ const errorResponses = Object.fromEntries(
     {
       description,
       headers:
-        status === 429
+        status === 405
           ? {
-              "Retry-After": {
-                description:
-                  "Seconds before retry; limits also apply at the edge",
+              Allow: {
+                description: "Supported HTTP methods for this endpoint",
                 schema: { type: "string" },
               },
             }
-          : {},
+          : status === 429
+            ? {
+                "Retry-After": {
+                  description:
+                    "Seconds before retry; limits also apply at the edge",
+                  schema: { type: "string" },
+                },
+              }
+            : {},
       content: {
         "application/json": {
           schema: ref("Error"),
@@ -97,6 +113,23 @@ const errorResponses = Object.fromEntries(
 );
 
 export const mobileGuides = [
+  {
+    id: "app-blueprint",
+    title: "FlyRaudah OTA app screen blueprint",
+    body: "Build the FlyRaudah mobile app on the same customer accounts and OTA engine as the web app. Product access, prices, payments and reservation status remain authoritative on the server. This guide describes the current implemented contract; a native application itself is a separate deliverable.",
+    steps: [
+      "Home: GET /capabilities, /config and /exchange-rates. Show test/live mode and support contacts; hide disabled search/checkout products. Reference FX is informational, not the selling price.",
+      "Flights: debounce GET /places?q=, choose returned IATA codes, POST /flights/search, then GET /flights/offers/{id}. Use each slice/segment for local departure/arrival times, stops, airline and available baggage/conditions. Filtering/sorting runs on the returned offers; do not invent cheaper date prices.",
+      "Hotels: select a destination with latitude/longitude from the app's city list or a separately integrated geocoder, POST /hotels/search, POST /hotels/rates/{id} with {}, then sign in and POST /hotels/quotes with rateId. Arbitrary destination text is not accepted as coordinates. Show room conditions, cancellation deadlines and any separately payable property extras.",
+      "Account: use Clerk sign-up/sign-in/verification and secure SDK token storage, POST /me/bootstrap, then GET /me. Names/contact from the checkout do not change the account profile. Account editing and deletion use the identity provider's account flow; there is no OTA password or administrator API for mobile customers.",
+      "Traveller review: retain refreshed offer passenger IDs and ask for matching birth dates, names, E.164 contact and required passports. Hotel guest count must match the final quote. Explicitly accept terms and use the latest pricing.totalKobo.",
+      "Checkout: POST /bookings once per explicit confirmation. Save the returned booking ID before POST /bookings/{id}/pay. Disable repeated taps; do not silently retry checkout creation after a timeout because Idempotency-Key is not supported. Recover GET /bookings first.",
+      "Payment: open only the server authorizationUrl in the system authentication/browser flow. On web return, app resume or app restart, GET the retained booking and POST /complete only when appropriate. A browser success screen or mobile deep link is never payment proof.",
+      "My Trips: GET /bookings?offset=; use nextOffset, merge by ID, compare revisions and show pending/confirmed/attention summaries. Trip details use GET /bookings/{id}, GET /timeline and occasional POST /refresh with {}. Show supplied documents safely; never synthesize ticket numbers.",
+      "Inbox and help: GET /updates?offset=, POST /updates/{encodedId}/read or /updates/read-all, and POST /bookings/{id}/service-request. Poll only while active and respect Retry-After; native push, seats, infants, multi-city and instant self-service refunds/exchanges are not currently exposed.",
+      "Release acceptance: run the documented staging payment/provider tests with matching modes, migration 0012 only if backend keys are used, HTTPS, secret isolation, ownership tests, timeout recovery and operator reconciliation. Production Stays access and a funded supplier account are separate provider requirements.",
+    ],
+  },
   {
     id: "overview",
     title: "Build the Raudah mobile experience",
@@ -204,7 +237,7 @@ export const mobileGuides = [
     body: "Booking endpoints always derive ownership from the verified session. GET /bookings returns 50 rows, nextOffset and all-owner summary counts. GET /bookings/{id}/timeline returns up to 100 customer-safe lifecycle events; the raw admin audit is not available. GET /updates returns 20 OTA-only notifications, nextOffset and an all-owner unreadCount. Mark an update read through /updates/{id}/read, URL-encoding the whole notification ID; read-all affects only the signed-in customer’s OTA updates. Retrieve providerResult.documents when supplied for ticket identifiers/documents. Do not invent e-ticket numbers or promise a PDF URL when none is returned.",
     steps: [
       "Persist only the booking ID/reference needed for recovery; re-fetch sensitive details from the authenticated API.",
-      "GET /bookings/{id}/refresh performs a supplier read, not a repeat purchase. Use sparingly because it consumes provider capacity.",
+      "POST /bookings/{id}/refresh with {} performs a supplier read, not a repeat purchase. Use sparingly because it consumes provider capacity.",
       "Show providerNotice and the customer-safe issue message; booking timelines may contain customer support replies.",
       "POST /bookings/{id}/service-request saves a 10–2000 character request for support. It does not itself cancel, change or refund a reservation.",
       "My Trips on the web remains at /dashboard/my-trips and a booking web page is /travel/bookings/{id}. No dedicated native PDF-export or push-token registration endpoint is implemented.",
@@ -680,7 +713,7 @@ export function otaOpenApi() {
         ),
         contact: ref("Contact"),
         travellers: array(
-          { oneOf: [ref("FlightTraveller"), ref("Guest")] },
+          { anyOf: [ref("FlightTraveller"), ref("Guest")] },
           {
             minItems: 1,
             maxItems: 24,
@@ -698,6 +731,22 @@ export function otaOpenApi() {
         "travellers",
       ],
       {
+        oneOf: [
+          object(
+            {
+              kind: { type: "string", enum: ["flight"] },
+              travellers: array(ref("FlightTraveller")),
+            },
+            ["kind"],
+          ),
+          object(
+            {
+              kind: { type: "string", enum: ["hotel"] },
+              travellers: array(ref("Guest")),
+            },
+            ["kind"],
+          ),
+        ],
         example: {
           kind: "flight",
           offerId: "off_example123",
@@ -754,6 +803,13 @@ export function otaOpenApi() {
     } = {},
   ) {
     paths[path] ??= {};
+    // These are Raudah-owned envelopes, whose keys are always returned. Supplier
+    // objects remain explicitly optional where provider fields can vary.
+    if (options.response?.type === "object" && !options.response.required) {
+      options.response.required = Object.keys(
+        options.response.properties || {},
+      );
+    }
     const parameterIds = [...path.matchAll(/\{([^}]+)\}/g)].map((match) => ({
       name: match[1],
       in: "path",
@@ -1296,7 +1352,7 @@ export function otaOpenApi() {
     openapi: "3.0.3",
     info: {
       title: "Raudah OTA Mobile API",
-      version: "1.0.0",
+      version: "1.0.1",
       description:
         "Customer-only OTA contract shared by web and native apps. Examples are illustrative, not real inventory or payment proof. Administrative endpoints and provider webhooks are deliberately not part of this customer v1 surface.",
     },
@@ -1392,14 +1448,39 @@ export function mobileIntegrationGuide() {
       ),
     )
     .join("\n\n");
-  return `# Raudah OTA Mobile API\n\nContract version: ${spec.info.version}. Base URL: ${spec.servers[0].url}.\n\n${sections}\n\n${nativeQuickstart(spec.servers[0].url)}\n\n## Endpoint reference\n\n${operations}\n\n## Complete schemas\n\nDownload docs/ota-openapi.json or the super-admin Developer Centre export for all nested schemas, examples and responses.\n\n${Object.entries(
+  const responses = Object.entries(spec.paths)
+    .flatMap(([path, methods]) =>
+      Object.entries(methods as Schema).map(
+        ([method, operation]: [string, any]) =>
+          `### ${method.toUpperCase()} ${path}\n\n${Object.entries(
+            operation.responses,
+          )
+            .filter(([status]) => Number(status) < 300)
+            .map(
+              ([status, response]: [string, any]) =>
+                `#### HTTP ${status}\n\n${response.description}\n\n\`\`\`json\n${JSON.stringify(response.content?.["application/json"] || {}, null, 2)}\n\`\`\``,
+            )
+            .join("\n\n")}`,
+      ),
+    )
+    .join("\n\n");
+  return `# FlyRaudah OTA Mobile API\n\nContract version: ${spec.info.version}. Base URL: ${spec.servers[0].url}.\n\n${sections}\n\n${nativeQuickstart(spec.servers[0].url)}\n\n## Endpoint reference\n\n${operations}\n\n## Complete schemas\n\nDownload docs/ota-openapi.json or the super-admin Developer Centre export for all nested schemas, examples and responses.\n\n${Object.entries(
     spec.components.schemas,
   )
     .map(
       ([name, schema]) =>
         `### ${name}\n\n\`\`\`json\n${JSON.stringify(schema, null, 2)}\n\`\`\``,
     )
-    .join("\n\n")}\n`;
+    .join(
+      "\n\n",
+    )}\n\n## Response contracts\n\n${responses}\n\n## Common error responses\n\nAll errors use the Error schema and return JSON. HTTP 405 includes Allow; HTTP 429 includes Retry-After in seconds.\n\n${Object.entries(
+    errorResponses,
+  )
+    .map(
+      ([status, response]: [string, any]) =>
+        `- HTTP ${status}: ${response.description}`,
+    )
+    .join("\n")}\n`;
 }
 function nativeQuickstart(base: string) {
   return `## Native client quickstart

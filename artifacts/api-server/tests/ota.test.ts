@@ -14,6 +14,7 @@ import { execFileSync } from "node:child_process";
 import { createServer } from "node:net";
 import { randomUUID, createHmac } from "node:crypto";
 import express from "express";
+import { validateOtaResponse } from "./helpers/ota-contract";
 import EmbeddedPostgres from "embedded-postgres";
 import { eq, sql } from "drizzle-orm";
 import {
@@ -229,6 +230,8 @@ beforeAll(async () => {
   app.use("/api", otaRouter);
   app.use("/api", (await import("../src/routes/notifications")).default);
   app.use("/api", (await import("../src/routes/payments")).default);
+  app.use("/api", (await import("../src/routes/admin")).default);
+  app.use((await import("../src/services/ota/mobileRoutes")).mobileOtaError);
   server = app.listen(0, "127.0.0.1");
   await new Promise<void>((r) => server.on("listening", r));
   baseUrl = `http://127.0.0.1:${(server.address() as any).port}/api/ota`;
@@ -326,6 +329,53 @@ beforeEach(async () => {
         });
       if (url.includes("api.duffel.com/air/offers/"))
         return Response.json({ data: offer() });
+      if (url.includes("/places/suggestions"))
+        return Response.json({
+          data: [
+            {
+              id: "arp_test",
+              name: "Lagos",
+              iata_code: "LOS",
+              type: "airport",
+            },
+          ],
+        });
+      if (url.includes("/air/offer_requests?"))
+        return Response.json({ data: { offers: [offer()] } });
+      if (url.endsWith("/stays/search"))
+        return Response.json({
+          data: {
+            results: [
+              {
+                id: "srr_test",
+                cheapest_rate_total_amount: "100.00",
+                cheapest_rate_currency: "GBP",
+                accommodation: { name: "Test Hotel" },
+              },
+            ],
+          },
+        });
+      if (url.endsWith("/stays/quotes"))
+        return Response.json({
+          data: {
+            id: "quo_test",
+            total_amount: "100.00",
+            total_currency: "GBP",
+            guests: [{ type: "adult" }],
+            accommodation: {
+              rooms: [
+                {
+                  rates: [
+                    {
+                      payment_type: "pay_now",
+                      available_payment_methods: [["balance"]],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        });
       if (url.includes("api.duffel.com/air/orders/ord_test")) {
         if (newerSupplierSnapshot)
           await module.db
@@ -517,26 +567,30 @@ async function request(
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 }
-async function create() {
-  const response = await request("/bookings", "user", {
-    kind: "flight",
-    offerId: "off_test",
-    expectedTotalKobo: 10000000,
-    acceptedTerms: true,
-    contact: { email: "user@example.test", phone: "+2348012345678" },
-    travellers: [
-      {
-        id: "pas_test",
-        given_name: "Test",
-        family_name: "User",
-        born_on: "1990-01-01",
-        title: "mr",
-        gender: "m",
-        email: "user@example.test",
-        phone_number: "+2348012345678",
-      },
-    ],
-  });
+async function create(native = false) {
+  const response = await (native ? nativeRequest : request)(
+    "/bookings",
+    "user",
+    {
+      kind: "flight",
+      offerId: "off_test",
+      expectedTotalKobo: 10000000,
+      acceptedTerms: true,
+      contact: { email: "user@example.test", phone: "+2348012345678" },
+      travellers: [
+        {
+          id: "pas_test",
+          given_name: "Test",
+          family_name: "User",
+          born_on: "1990-01-01",
+          title: "mr",
+          gender: "m",
+          email: "user@example.test",
+          phone_number: "+2348012345678",
+        },
+      ],
+    },
+  );
   expect(response.status).toBe(201);
   booking = (await response.json()).booking;
   return booking;
@@ -558,6 +612,212 @@ async function nativeRequest(
   });
 }
 describe("OTA native contract and integration keys", () => {
+  it("rolls back a support message if its durable audit cannot be saved", async () => {
+    await create();
+    await module.db.execute(
+      sql`ALTER TABLE ota_events ADD CONSTRAINT ota_test_reject_service CHECK (action <> 'service_requested')`,
+    );
+    try {
+      const response = await nativeRequest(
+        `/bookings/${booking.id}/service-request`,
+        "user",
+        { message: "Please help me change my departure date." },
+      );
+      expect(response.status).toBe(503);
+      const row = await module.db.query.otaBookingsTable.findFirst({
+        where: eq(module.otaBookingsTable.id, booking.id),
+      });
+      expect(row?.serviceRequest).toBeNull();
+      expect(row?.revision).toBe(booking.revision);
+    } finally {
+      await module.db.execute(
+        sql`ALTER TABLE ota_events DROP CONSTRAINT ota_test_reject_service`,
+      );
+    }
+  });
+  it("protects and validates header settings and saves concurrent first writes", async () => {
+    const url = `${baseUrl.replace(/\/ota$/, "")}/admin/settings/landing_hero`;
+    const save = (value: unknown, user?: string) =>
+      httpFetch(url, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(user ? { "x-test-user": user } : {}),
+        },
+        body: JSON.stringify({ value }),
+      });
+    expect(
+      (await save({ slideshowEnabled: true, aircraftEnabled: false })).status,
+    ).toBe(401);
+    expect(
+      (await save({ slideshowEnabled: true, aircraftEnabled: false }, "user"))
+        .status,
+    ).toBe(403);
+    for (const value of [
+      null,
+      {},
+      { slideshowEnabled: "false", aircraftEnabled: true },
+      { slideshowEnabled: true, aircraftEnabled: false, extra: true },
+    ])
+      expect((await save(value, "super")).status).toBe(400);
+    const writes = await Promise.all([
+      save({ slideshowEnabled: false, aircraftEnabled: true }, "admin"),
+      save({ slideshowEnabled: true, aircraftEnabled: false }, "super"),
+    ]);
+    expect(writes.map((response) => response.status)).toEqual([200, 200]);
+    const rows = await module.db
+      .select()
+      .from(module.siteSettingsTable)
+      .where(eq(module.siteSettingsTable.key, "landing_hero"));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].value).toMatchObject({
+      slideshowEnabled: expect.any(Boolean),
+      aircraftEnabled: expect.any(Boolean),
+    });
+  });
+  it("rejects null quote/support input with 400 rather than reporting an outage", async () => {
+    const quote = await nativeRequest("/hotels/quotes", "user", null);
+    expect(quote.status).toBe(400);
+    await create();
+    const support = await nativeRequest(
+      `/bookings/${booking.id}/service-request`,
+      "user",
+      null,
+    );
+    expect(support.status).toBe(400);
+  });
+  it("distinguishes database outages from a missing key migration", async () => {
+    const spy = vi
+      .spyOn(module.db, "execute")
+      .mockRejectedValueOnce(new Error("database connection interrupted"));
+    try {
+      const response = await request("/admin/developer/keys", "super");
+      expect(response.status).toBe(503);
+      expect((await response.json()).error).toBe(
+        "Integration key storage is temporarily unavailable",
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
+  it("validates real v1 discovery and search responses against OpenAPI", async () => {
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    const later = new Date(Date.now() + 3 * 86400000)
+      .toISOString()
+      .slice(0, 10);
+    for (const [path, template, body, user] of [
+      ["/config", "/config"],
+      ["/capabilities", "/capabilities"],
+      ["/exchange-rates", "/exchange-rates"],
+      ["/places?q=Lagos", "/places"],
+      [
+        "/flights/search",
+        "/flights/search",
+        {
+          origin: "LOS",
+          destination: "JED",
+          departureDate: tomorrow,
+          adults: 1,
+        },
+      ],
+      ["/flights/offers/off_test", "/flights/offers/{id}"],
+      [
+        "/hotels/search",
+        "/hotels/search",
+        {
+          latitude: 21.42,
+          longitude: 39.82,
+          checkIn: tomorrow,
+          checkOut: later,
+          rooms: 1,
+          adults: 1,
+        },
+      ],
+      ["/hotels/rates/srr_test", "/hotels/rates/{id}", {}],
+      ["/hotels/quotes", "/hotels/quotes", { rateId: "rat_prepaid" }, "user"],
+      ["/hotels/quotes/quo_test", "/hotels/quotes/{id}", undefined, "user"],
+      ["/me/bootstrap", "/me/bootstrap", {}, "user"],
+      ["/me", "/me", undefined, "user"],
+    ] as [string, string, unknown?, string?][]) {
+      const response = await nativeRequest(path, user, body);
+      expect(response.status, path).toBe(200);
+      validateOtaResponse(
+        template,
+        body === undefined ? "GET" : "POST",
+        response.status,
+        await response.json(),
+      );
+    }
+  });
+  it("validates native checkout, payment recovery and trip lifecycle contracts", async () => {
+    await create(true);
+    validateOtaResponse("/bookings", "POST", 201, { booking });
+    const actions: [string, string, unknown?][] = [
+      ["/bookings", "/bookings"],
+      [`/bookings/${booking.id}`, "/bookings/{id}"],
+      [`/bookings/${booking.id}/pay`, "/bookings/{id}/pay", {}],
+      [`/bookings/${booking.id}/complete`, "/bookings/{id}/complete", {}],
+      [`/bookings/${booking.id}/refresh`, "/bookings/{id}/refresh", {}],
+      [
+        `/bookings/${booking.id}/service-request`,
+        "/bookings/{id}/service-request",
+        { message: "Please review a change of departure date." },
+      ],
+      [`/bookings/${booking.id}/timeline`, "/bookings/{id}/timeline"],
+      ["/updates", "/updates"],
+      ["/updates/read-all", "/updates/read-all", {}],
+    ];
+    for (const [path, template, body] of actions) {
+      const response = await nativeRequest(path, "user", body);
+      expect(response.status, path).toBe(200);
+      validateOtaResponse(
+        template,
+        body === undefined ? "GET" : "POST",
+        200,
+        await response.json(),
+      );
+    }
+    expect(supplierCalls).toBe(1);
+  });
+  it("returns JSON errors for wrong methods, malformed bodies and malformed encoding", async () => {
+    for (const path of ["/config", "/flights/search", "/bookings/id/refresh"]) {
+      const response = await httpFetch(`${baseUrl}/v1${path}`, {
+        method: "DELETE",
+      });
+      expect(response.status).toBe(405);
+      expect(response.headers.get("allow")).toBeTruthy();
+      expect((await response.json()).error).toBeTruthy();
+    }
+    const malformed = await httpFetch(`${baseUrl}/v1/flights/search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{",
+    });
+    expect(malformed.status).toBe(400);
+    expect((await malformed.json()).error).not.toContain("SyntaxError");
+    const encoding = await nativeRequest("/bookings/%E0%A4%A", "user");
+    expect(encoding.status).toBe(400);
+    expect((await encoding.json()).error).toBeTruthy();
+  });
+  it("accepts scoped search keys consistently with trailing slashes and HEAD", async () => {
+    const created = await (
+      await request("/admin/developer/keys", "super", {
+        name: "Canonical paths",
+        mode: "test",
+        scopes: ["config:read"],
+      })
+    ).json();
+    expect(
+      (await nativeRequest("/config/", undefined, undefined, created.secret))
+        .status,
+    ).toBe(200);
+    const head = await httpFetch(`${baseUrl}/v1/config`, {
+      method: "HEAD",
+      headers: { "X-OTA-API-Key": created.secret },
+    });
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+  });
   it("serves a protected OTA-only contract and customer-only v1 alias", async () => {
     expect((await request("/admin/developer/openapi")).status).toBe(401);
     expect((await request("/admin/developer/openapi", "admin")).status).toBe(
@@ -807,17 +1067,15 @@ describe("OTA native contract and integration keys", () => {
     }
   });
   it("paginates OTA updates and read actions cannot affect other users or non-OTA records", async () => {
-    await module.db
-      .insert(module.notificationsTable)
-      .values(
-        Array.from({ length: 23 }, (_, index) => ({
-          id: `ota:mobile-${String(index).padStart(2, "0")}`,
-          userId: "user",
-          title: "Trip update",
-          message: "Example message",
-          type: "booking",
-        })),
-      );
+    await module.db.insert(module.notificationsTable).values(
+      Array.from({ length: 23 }, (_, index) => ({
+        id: `ota:mobile-${String(index).padStart(2, "0")}`,
+        userId: "user",
+        title: "Trip update",
+        message: "Example message",
+        type: "booking",
+      })),
+    );
     await module.db.insert(module.notificationsTable).values([
       {
         id: "ota:other-mobile",
@@ -835,6 +1093,7 @@ describe("OTA native contract and integration keys", () => {
       },
     ]);
     const page = await (await nativeRequest("/updates", "user")).json();
+    validateOtaResponse("/updates", "GET", 200, page);
     expect(page.updates).toHaveLength(20);
     expect(page.nextOffset).toBe(20);
     expect(page.unreadCount).toBe(23);

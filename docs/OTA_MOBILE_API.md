@@ -1,6 +1,22 @@
-# Raudah OTA Mobile API
+# FlyRaudah OTA Mobile API
 
-Contract version: 1.0.0. Base URL: https://flyraudah.com.ng/api/ota/v1.
+Contract version: 1.0.1. Base URL: https://flyraudah.com.ng/api/ota/v1.
+
+## FlyRaudah OTA app screen blueprint
+
+Build the FlyRaudah mobile app on the same customer accounts and OTA engine as the web app. Product access, prices, payments and reservation status remain authoritative on the server. This guide describes the current implemented contract; a native application itself is a separate deliverable.
+
+1. Home: GET /capabilities, /config and /exchange-rates. Show test/live mode and support contacts; hide disabled search/checkout products. Reference FX is informational, not the selling price.
+2. Flights: debounce GET /places?q=, choose returned IATA codes, POST /flights/search, then GET /flights/offers/{id}. Use each slice/segment for local departure/arrival times, stops, airline and available baggage/conditions. Filtering/sorting runs on the returned offers; do not invent cheaper date prices.
+3. Hotels: select a destination with latitude/longitude from the app's city list or a separately integrated geocoder, POST /hotels/search, POST /hotels/rates/{id} with {}, then sign in and POST /hotels/quotes with rateId. Arbitrary destination text is not accepted as coordinates. Show room conditions, cancellation deadlines and any separately payable property extras.
+4. Account: use Clerk sign-up/sign-in/verification and secure SDK token storage, POST /me/bootstrap, then GET /me. Names/contact from the checkout do not change the account profile. Account editing and deletion use the identity provider's account flow; there is no OTA password or administrator API for mobile customers.
+5. Traveller review: retain refreshed offer passenger IDs and ask for matching birth dates, names, E.164 contact and required passports. Hotel guest count must match the final quote. Explicitly accept terms and use the latest pricing.totalKobo.
+6. Checkout: POST /bookings once per explicit confirmation. Save the returned booking ID before POST /bookings/{id}/pay. Disable repeated taps; do not silently retry checkout creation after a timeout because Idempotency-Key is not supported. Recover GET /bookings first.
+7. Payment: open only the server authorizationUrl in the system authentication/browser flow. On web return, app resume or app restart, GET the retained booking and POST /complete only when appropriate. A browser success screen or mobile deep link is never payment proof.
+8. My Trips: GET /bookings?offset=; use nextOffset, merge by ID, compare revisions and show pending/confirmed/attention summaries. Trip details use GET /bookings/{id}, GET /timeline and occasional POST /refresh with {}. Show supplied documents safely; never synthesize ticket numbers.
+9. Inbox and help: GET /updates?offset=, POST /updates/{encodedId}/read or /updates/read-all, and POST /bookings/{id}/service-request. Poll only while active and respect Retry-After; native push, seats, infants, multi-city and instant self-service refunds/exchanges are not currently exposed.
+10. Release acceptance: run the documented staging payment/provider tests with matching modes, migration 0012 only if backend keys are used, HTTPS, secret isolation, ownership tests, timeout recovery and operator reconciliation. Production Stays access and a funded supplier account are separate provider requirements.
+
 
 ## Build the Raudah mobile experience
 
@@ -92,7 +108,7 @@ POST /bookings currently does not support an Idempotency-Key header. If its resp
 Booking endpoints always derive ownership from the verified session. GET /bookings returns 50 rows, nextOffset and all-owner summary counts. GET /bookings/{id}/timeline returns up to 100 customer-safe lifecycle events; the raw admin audit is not available. GET /updates returns 20 OTA-only notifications, nextOffset and an all-owner unreadCount. Mark an update read through /updates/{id}/read, URL-encoding the whole notification ID; read-all affects only the signed-in customer’s OTA updates. Retrieve providerResult.documents when supplied for ticket identifiers/documents. Do not invent e-ticket numbers or promise a PDF URL when none is returned.
 
 1. Persist only the booking ID/reference needed for recovery; re-fetch sensitive details from the authenticated API.
-2. GET /bookings/{id}/refresh performs a supplier read, not a repeat purchase. Use sparingly because it consumes provider capacity.
+2. POST /bookings/{id}/refresh with {} performs a supplier read, not a repeat purchase. Use sparingly because it consumes provider capacity.
 3. Show providerNotice and the customer-safe issue message; booking timelines may contain customer support replies.
 4. POST /bookings/{id}/service-request saves a 10–2000 character request for support. It does not itself cancel, change or refund a reservation.
 5. My Trips on the web remains at /dashboard/my-trips and a booking web page is /travel/bookings/{id}. No dedicated native PDF-export or push-token registration endpoint is implemented.
@@ -1310,7 +1326,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
     "id": "off_example123",
     "total_amount": "100.00",
     "total_currency": "USD",
-    "expires_at": "2026-10-30T00:46:12.077Z",
+    "expires_at": "2026-10-30T11:43:03.294Z",
     "passengers": [
       {
         "id": "pas_example123",
@@ -1732,7 +1748,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
       "id": "off_example123",
       "total_amount": "100.00",
       "total_currency": "USD",
-      "expires_at": "2026-10-30T00:46:12.077Z",
+      "expires_at": "2026-10-30T11:43:03.294Z",
       "passengers": [
         {
           "id": "pas_example123",
@@ -1802,7 +1818,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
       "email": "traveller@example.com",
       "phone": "+2348012345678"
     },
-    "expiresAt": "2026-10-30T00:46:12.077Z",
+    "expiresAt": "2026-10-30T11:43:03.294Z",
     "paidAt": null,
     "providerResult": null,
     "providerNotice": null,
@@ -1851,7 +1867,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "id": "off_example123",
         "total_amount": "100.00",
         "total_currency": "USD",
-        "expires_at": "2026-10-30T00:46:12.077Z",
+        "expires_at": "2026-10-30T11:43:03.294Z",
         "passengers": [
           {
             "id": "pas_example123",
@@ -1921,7 +1937,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "email": "traveller@example.com",
         "phone": "+2348012345678"
       },
-      "expiresAt": "2026-10-30T00:46:12.077Z",
+      "expiresAt": "2026-10-30T11:43:03.294Z",
       "paidAt": null,
       "providerResult": null,
       "providerNotice": null,
@@ -1969,7 +1985,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
     "travellers": {
       "type": "array",
       "items": {
-        "oneOf": [
+        "anyOf": [
           {
             "$ref": "#/components/schemas/FlightTraveller"
           },
@@ -1990,6 +2006,48 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
     "expectedTotalKobo",
     "contact",
     "travellers"
+  ],
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "flight"
+          ]
+        },
+        "travellers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/FlightTraveller"
+          }
+        }
+      },
+      "required": [
+        "kind"
+      ]
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "hotel"
+          ]
+        },
+        "travellers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/Guest"
+          }
+        }
+      },
+      "required": [
+        "kind"
+      ]
+    }
   ],
   "example": {
     "kind": "flight",
@@ -2098,3 +2156,1038 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
   ]
 }
 ```
+
+## Response contracts
+
+### GET /config
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "flightsEnabled": {
+        "type": "boolean",
+        "description": "Flight search enabled"
+      },
+      "hotelsEnabled": {
+        "type": "boolean",
+        "description": "Stays search enabled"
+      },
+      "salesEnabled": {
+        "type": "boolean",
+        "description": "Online checkout enabled"
+      },
+      "mode": {
+        "type": "string",
+        "description": "Mode",
+        "enum": [
+          "test",
+          "live"
+        ]
+      },
+      "supportEmail": {
+        "type": "string",
+        "description": "Support email"
+      },
+      "supportPhone": {
+        "type": "string",
+        "description": "Support phone"
+      }
+    },
+    "required": [
+      "flightsEnabled",
+      "hotelsEnabled",
+      "salesEnabled",
+      "mode",
+      "supportEmail",
+      "supportPhone"
+    ]
+  },
+  "example": {
+    "flightsEnabled": true,
+    "hotelsEnabled": false,
+    "salesEnabled": false,
+    "mode": "test",
+    "supportEmail": "",
+    "supportPhone": ""
+  }
+}
+```
+
+### GET /capabilities
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "apiVersion": {
+        "type": "string",
+        "description": "1"
+      },
+      "mode": {
+        "type": "string",
+        "description": "test/live"
+      },
+      "currency": {
+        "type": "string",
+        "description": "NGN"
+      },
+      "features": {
+        "type": "object",
+        "properties": {
+          "flightSearch": {
+            "type": "boolean",
+            "description": "Enabled flight search"
+          },
+          "hotelSearch": {
+            "type": "boolean",
+            "description": "Enabled hotel search"
+          },
+          "onlineCheckout": {
+            "type": "boolean",
+            "description": "Enabled checkout"
+          },
+          "bookingHistory": {
+            "type": "boolean",
+            "description": "Implemented"
+          },
+          "bookingUpdates": {
+            "type": "boolean",
+            "description": "Implemented"
+          },
+          "supportRequests": {
+            "type": "boolean",
+            "description": "Implemented"
+          },
+          "selfServiceCancellation": {
+            "type": "boolean",
+            "description": "False"
+          },
+          "selfServiceExchange": {
+            "type": "boolean",
+            "description": "False"
+          },
+          "multiCity": {
+            "type": "boolean",
+            "description": "False"
+          },
+          "infants": {
+            "type": "boolean",
+            "description": "False"
+          },
+          "ancillaries": {
+            "type": "boolean",
+            "description": "False"
+          }
+        }
+      },
+      "limits": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": {
+          "type": "integer"
+        }
+      },
+      "polling": {
+        "type": "object",
+        "properties": {
+          "processingSeconds": {
+            "type": "integer",
+            "description": "5",
+            "minimum": 0
+          },
+          "settledSeconds": {
+            "type": "integer",
+            "description": "30",
+            "minimum": 0
+          }
+        }
+      },
+      "support": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Support email"
+          },
+          "phone": {
+            "type": "string",
+            "description": "Support phone"
+          }
+        }
+      }
+    },
+    "required": [
+      "apiVersion",
+      "mode",
+      "currency",
+      "features",
+      "limits",
+      "polling",
+      "support"
+    ]
+  }
+}
+```
+
+### GET /exchange-rates
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "sellingRates": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": {
+          "type": "number"
+        }
+      },
+      "reference": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "Reference source"
+          },
+          "frequency": {
+            "type": "string",
+            "description": "Publication frequency, e.g. daily"
+          },
+          "status": {
+            "type": "string",
+            "description": "current/stale/unavailable"
+          },
+          "stale": {
+            "type": "boolean",
+            "description": "Stale reference"
+          },
+          "fetchedAt": {
+            "type": "string",
+            "description": "Fetch time",
+            "format": "date-time",
+            "nullable": true
+          },
+          "rates": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "ngnPerUnit": {
+                  "type": "number"
+                },
+                "date": {
+                  "type": "string",
+                  "description": "Source date",
+                  "format": "date"
+                }
+              }
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "sellingRates",
+      "reference"
+    ]
+  }
+}
+```
+
+### GET /me
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "$ref": "#/components/schemas/ProfileResponse"
+  }
+}
+```
+
+### POST /me/bootstrap
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "$ref": "#/components/schemas/ProfileResponse"
+  }
+}
+```
+
+### GET /places
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "places": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Supplier place ID"
+            },
+            "name": {
+              "type": "string",
+              "description": "Display name"
+            },
+            "iata_code": {
+              "type": "string",
+              "description": "IATA code",
+              "nullable": true
+            },
+            "type": {
+              "type": "string",
+              "description": "city/airport"
+            },
+            "city_name": {
+              "type": "string",
+              "description": "City name",
+              "nullable": true
+            },
+            "airports": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": true
+              },
+              "nullable": true
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    },
+    "required": [
+      "places"
+    ]
+  }
+}
+```
+
+### POST /flights/search
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "offers": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/FlightOffer"
+        }
+      }
+    },
+    "required": [
+      "offers"
+    ]
+  },
+  "example": {
+    "offers": [
+      {
+        "id": "off_example123",
+        "total_amount": "100.00",
+        "total_currency": "USD",
+        "expires_at": "2026-10-30T11:43:03.294Z",
+        "passengers": [
+          {
+            "id": "pas_example123",
+            "type": "adult"
+          }
+        ],
+        "owner": {
+          "id": "arl_example123",
+          "name": "Example airline"
+        },
+        "slices": [
+          {
+            "origin": {
+              "iata_code": "LOS",
+              "city_name": "Lagos"
+            },
+            "destination": {
+              "iata_code": "JED",
+              "city_name": "Jeddah"
+            },
+            "duration": "PT5H30M",
+            "segments": [
+              {
+                "departing_at": "2026-12-14T10:00:00",
+                "arriving_at": "2026-12-14T17:30:00",
+                "origin": {
+                  "iata_code": "LOS"
+                },
+                "destination": {
+                  "iata_code": "JED"
+                },
+                "passengers": [
+                  {
+                    "passenger_id": "pas_example123",
+                    "cabin_class": "economy",
+                    "baggages": []
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "pricing": {
+          "supplierKobo": 13447900,
+          "markupKobo": 0,
+          "feeKobo": 0,
+          "totalKobo": 13447900,
+          "currency": "NGN",
+          "rate": 1344.79,
+          "supplierCurrency": "USD",
+          "supplierAmount": "100.00"
+        }
+      }
+    ]
+  }
+}
+```
+
+### GET /flights/offers/{id}
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "offer": {
+        "$ref": "#/components/schemas/FlightOffer"
+      },
+      "pricing": {
+        "$ref": "#/components/schemas/Pricing"
+      }
+    },
+    "required": [
+      "offer",
+      "pricing"
+    ]
+  },
+  "example": {
+    "offer": {
+      "id": "off_example123",
+      "total_amount": "100.00",
+      "total_currency": "USD",
+      "expires_at": "2026-10-30T11:43:03.294Z",
+      "passengers": [
+        {
+          "id": "pas_example123",
+          "type": "adult"
+        }
+      ],
+      "owner": {
+        "id": "arl_example123",
+        "name": "Example airline"
+      },
+      "slices": [
+        {
+          "origin": {
+            "iata_code": "LOS",
+            "city_name": "Lagos"
+          },
+          "destination": {
+            "iata_code": "JED",
+            "city_name": "Jeddah"
+          },
+          "duration": "PT5H30M",
+          "segments": [
+            {
+              "departing_at": "2026-12-14T10:00:00",
+              "arriving_at": "2026-12-14T17:30:00",
+              "origin": {
+                "iata_code": "LOS"
+              },
+              "destination": {
+                "iata_code": "JED"
+              },
+              "passengers": [
+                {
+                  "passenger_id": "pas_example123",
+                  "cabin_class": "economy",
+                  "baggages": []
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "pricing": {
+      "supplierKobo": 13447900,
+      "markupKobo": 0,
+      "feeKobo": 0,
+      "totalKobo": 13447900,
+      "currency": "NGN",
+      "rate": 1344.79,
+      "supplierCurrency": "USD",
+      "supplierAmount": "100.00"
+    }
+  }
+}
+```
+
+### POST /hotels/search
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "results": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/HotelResult"
+        }
+      }
+    },
+    "required": [
+      "results"
+    ]
+  }
+}
+```
+
+### POST /hotels/rates/{id}
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "result": {
+        "type": "object",
+        "properties": {
+          "accommodation": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Property name"
+              },
+              "description": {
+                "type": "string",
+                "description": "Property description"
+              },
+              "rooms": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "description": "Room name"
+                    },
+                    "rates": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/HotelRate"
+                      }
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "result"
+    ]
+  }
+}
+```
+
+### POST /hotels/quotes
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "quote": {
+        "$ref": "#/components/schemas/HotelQuote"
+      },
+      "pricing": {
+        "$ref": "#/components/schemas/Pricing"
+      }
+    },
+    "required": [
+      "quote",
+      "pricing"
+    ]
+  }
+}
+```
+
+### GET /hotels/quotes/{id}
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "quote": {
+        "$ref": "#/components/schemas/HotelQuote"
+      },
+      "pricing": {
+        "$ref": "#/components/schemas/Pricing"
+      }
+    },
+    "required": [
+      "quote",
+      "pricing"
+    ]
+  }
+}
+```
+
+### POST /bookings
+
+#### HTTP 201
+
+Successful response
+
+```json
+{
+  "schema": {
+    "$ref": "#/components/schemas/BookingResponse"
+  },
+  "example": {
+    "booking": {
+      "id": "41af391c-653c-4eb0-a168-cbd81d8e12d1",
+      "reference": "OTA-example",
+      "kind": "flight",
+      "mode": "test",
+      "status": "payment_pending",
+      "revision": 0,
+      "providerOfferId": "off_example123",
+      "providerBookingId": null,
+      "amountKobo": 13447900,
+      "pricing": {
+        "supplierKobo": 13447900,
+        "markupKobo": 0,
+        "feeKobo": 0,
+        "totalKobo": 13447900,
+        "currency": "NGN",
+        "rate": 1344.79,
+        "supplierCurrency": "USD",
+        "supplierAmount": "100.00"
+      },
+      "offer": {
+        "id": "off_example123",
+        "total_amount": "100.00",
+        "total_currency": "USD",
+        "expires_at": "2026-10-30T11:43:03.294Z",
+        "passengers": [
+          {
+            "id": "pas_example123",
+            "type": "adult"
+          }
+        ],
+        "owner": {
+          "id": "arl_example123",
+          "name": "Example airline"
+        },
+        "slices": [
+          {
+            "origin": {
+              "iata_code": "LOS",
+              "city_name": "Lagos"
+            },
+            "destination": {
+              "iata_code": "JED",
+              "city_name": "Jeddah"
+            },
+            "duration": "PT5H30M",
+            "segments": [
+              {
+                "departing_at": "2026-12-14T10:00:00",
+                "arriving_at": "2026-12-14T17:30:00",
+                "origin": {
+                  "iata_code": "LOS"
+                },
+                "destination": {
+                  "iata_code": "JED"
+                },
+                "passengers": [
+                  {
+                    "passenger_id": "pas_example123",
+                    "cabin_class": "economy",
+                    "baggages": []
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "pricing": {
+          "supplierKobo": 13447900,
+          "markupKobo": 0,
+          "feeKobo": 0,
+          "totalKobo": 13447900,
+          "currency": "NGN",
+          "rate": 1344.79,
+          "supplierCurrency": "USD",
+          "supplierAmount": "100.00"
+        }
+      },
+      "travellers": [
+        {
+          "id": "pas_example123",
+          "given_name": "Example",
+          "family_name": "Traveller",
+          "born_on": "1990-01-01",
+          "title": "mr",
+          "gender": "m",
+          "email": "traveller@example.com",
+          "phone_number": "+2348012345678"
+        }
+      ],
+      "contact": {
+        "email": "traveller@example.com",
+        "phone": "+2348012345678"
+      },
+      "expiresAt": "2026-10-30T11:43:03.294Z",
+      "paidAt": null,
+      "providerResult": null,
+      "providerNotice": null,
+      "issue": null,
+      "serviceRequest": null,
+      "refund": null
+    }
+  }
+}
+```
+
+### GET /bookings
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "bookings": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/Booking"
+        }
+      },
+      "nextOffset": {
+        "type": "integer",
+        "description": "Next page offset",
+        "minimum": 0,
+        "nullable": true
+      },
+      "summary": {
+        "type": "object",
+        "properties": {
+          "confirmed": {
+            "type": "integer",
+            "description": "Confirmed count",
+            "minimum": 0
+          },
+          "pending": {
+            "type": "integer",
+            "description": "Payable unexpired count",
+            "minimum": 0
+          },
+          "attention": {
+            "type": "integer",
+            "description": "Processing/review/supplier-notice count",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "required": [
+      "bookings",
+      "nextOffset",
+      "summary"
+    ]
+  }
+}
+```
+
+### POST /bookings/{id}/pay
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "authorizationUrl": {
+        "type": "string",
+        "description": "https://checkout.paystack.com/...",
+        "format": "uri"
+      }
+    },
+    "required": [
+      "authorizationUrl"
+    ]
+  }
+}
+```
+
+### POST /bookings/{id}/complete
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "$ref": "#/components/schemas/BookingResponse"
+  }
+}
+```
+
+### GET /bookings/{id}
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "$ref": "#/components/schemas/BookingResponse"
+  }
+}
+```
+
+### POST /bookings/{id}/refresh
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "$ref": "#/components/schemas/BookingResponse"
+  }
+}
+```
+
+### GET /bookings/{id}/timeline
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "events": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/TimelineEvent"
+        }
+      }
+    },
+    "required": [
+      "events"
+    ]
+  }
+}
+```
+
+### POST /bookings/{id}/service-request
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "success": {
+        "type": "boolean",
+        "description": "Saved"
+      }
+    },
+    "required": [
+      "success"
+    ]
+  }
+}
+```
+
+### GET /updates
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "updates": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/TravelUpdate"
+        }
+      },
+      "nextOffset": {
+        "type": "integer",
+        "description": "Next offset",
+        "minimum": 0,
+        "nullable": true
+      },
+      "unreadCount": {
+        "type": "integer",
+        "description": "All owner OTA unread notifications",
+        "minimum": 0
+      }
+    },
+    "required": [
+      "updates",
+      "nextOffset",
+      "unreadCount"
+    ]
+  }
+}
+```
+
+### POST /updates/{id}/read
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "success": {
+        "type": "boolean",
+        "description": "Read"
+      }
+    },
+    "required": [
+      "success"
+    ]
+  }
+}
+```
+
+### POST /updates/read-all
+
+#### HTTP 200
+
+Successful response
+
+```json
+{
+  "schema": {
+    "type": "object",
+    "properties": {
+      "success": {
+        "type": "boolean",
+        "description": "Read"
+      }
+    },
+    "required": [
+      "success"
+    ]
+  }
+}
+```
+
+## Common error responses
+
+All errors use the Error schema and return JSON. HTTP 405 includes Allow; HTTP 429 includes Retry-After in seconds.
+
+- HTTP 400: Invalid input. Check error.fields when present.
+- HTTP 401: Customer session or supplied integration key is missing/invalid/expired.
+- HTTP 403: Inactive account, incorrect role, integration scope or key mode.
+- HTTP 404: Record not found or not owned by the customer. v1 unknown endpoints also return JSON 404.
+- HTTP 405: Wrong HTTP method. Use the method documented for this endpoint and inspect Allow.
+- HTTP 409: Offer/price/state changed. Refresh the saved booking or current offer; do not silently accept a new price.
+- HTTP 413: Request body exceeds the API size limit.
+- HTTP 415: Unsupported request encoding. Send JSON with Content-Type: application/json.
+- HTTP 429: Request limit exceeded. Respect the Retry-After response header.
+- HTTP 502: Supplier/payment request failed. A purchase may require reconciliation; never infer a refund or retry a supplier order yourself.
+- HTTP 503: Feature disabled, configuration unavailable or provider/storage unavailable. Saved paid bookings must remain recoverable.

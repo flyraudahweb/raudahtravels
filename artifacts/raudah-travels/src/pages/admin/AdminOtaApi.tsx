@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useGetProfile } from "@workspace/api-client-react";
@@ -197,11 +197,12 @@ export default function AdminOtaApi() {
     [search, setSearch] = useState(""),
     [selected, setSelected] = useState("post:/flights/search"),
     [language, setLanguage] = useState("curl"),
-    [guideId, setGuideId] = useState("authentication"),
+    [guideId, setGuideId] = useState("app-blueprint"),
     [message, setMessage] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const [newSecret, setNewSecret] = useState(""),
+    [newKeyId, setNewKeyId] = useState(""),
     [showSecret, setShowSecret] = useState(false),
     [keyName, setKeyName] = useState(""),
     [keyMode, setKeyMode] = useState("test"),
@@ -209,6 +210,18 @@ export default function AdminOtaApi() {
     [rate, setRate] = useState(30),
     [scopes, setScopes] = useState(["config:read", "flights:read"]);
   const spec = contract.data;
+  useEffect(() => {
+    setNewSecret("");
+    setNewKeyId("");
+    setShowSecret(false);
+  }, [profile?.id, allowed]);
+  async function copyToClipboard(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch {
+      setError("Clipboard access failed. Select and copy the text manually.");
+    }
+  }
   const operations = useMemo(
     () =>
       spec
@@ -231,7 +244,7 @@ export default function AdminOtaApi() {
       .includes(search.toLowerCase()),
   );
   const active =
-    operations.find((item) => item.id === selected) || operations[0];
+    filtered.find((item) => item.id === selected) || filtered[0];
   const guide =
     spec?.["x-guides"].find((item: any) => item.id === guideId) ||
     spec?.["x-guides"][0];
@@ -280,6 +293,7 @@ export default function AdminOtaApi() {
         requestsPerMinute: rate,
       });
       setNewSecret(result.secret);
+      setNewKeyId(result.key.id);
       setShowSecret(false);
       setKeyName("");
       setMessage(
@@ -303,6 +317,7 @@ export default function AdminOtaApi() {
     setError("");
     try {
       await ota(`/admin/developer/keys/${key.id}/revoke`, {});
+      if (key.id === newKeyId) setNewSecret("");
       setMessage("Integration key revoked.");
       await qc.invalidateQueries({ queryKey: ["ota", "developer", "keys"] });
     } catch (e: any) {
@@ -384,7 +399,7 @@ export default function AdminOtaApi() {
           </code>
           <button
             aria-label="Copy API base URL"
-            onClick={() => navigator.clipboard.writeText(base)}
+            onClick={() => copyToClipboard(base)}
             className="text-indigo-200"
           >
             <Copy size={14} />
@@ -895,7 +910,7 @@ export default function AdminOtaApi() {
                   {showSecret ? "Hide" : "Show"}
                 </button>
                 <button
-                  onClick={() => navigator.clipboard.writeText(newSecret)}
+                  onClick={() => copyToClipboard(newSecret)}
                   className="rounded-lg bg-emerald-700 px-3 text-xs font-semibold text-white"
                 >
                   Copy
@@ -985,7 +1000,10 @@ export default function AdminOtaApi() {
               </fieldset>
               <button
                 disabled={
-                  busy || !keyQuery.data?.storageReady || !scopes.length
+                  busy ||
+                  !keyQuery.data?.storageReady ||
+                  !scopes.length ||
+                  Boolean(newSecret)
                 }
                 className={`${travelButton} w-full`}
               >

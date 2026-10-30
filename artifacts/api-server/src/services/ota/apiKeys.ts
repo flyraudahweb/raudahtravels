@@ -45,8 +45,13 @@ export async function apiKeyStorageReady() {
       sql`SELECT id, token_hash, mode, scopes, requests_per_minute, request_count, expires_at, revoked_at FROM ota_api_keys LIMIT 0`,
     );
     return true;
-  } catch {
-    return false;
+  } catch (error: any) {
+    if (["42P01", "42703"].includes(error?.code || error?.cause?.code))
+      return false;
+    throw new OtaError(
+      "Integration key storage is temporarily unavailable",
+      503,
+    );
   }
 }
 export async function listApiKeys() {
@@ -84,19 +89,17 @@ export async function createApiKey(input: unknown, actor: string) {
         expiresAt: new Date(Date.now() + parsed.expiresInDays * 86400000),
       })
       .returning(publicColumns);
-    await tx
-      .insert(otaEventsTable)
-      .values({
-        id: randomUUID(),
-        actor,
-        action: "api_key_created",
-        details: {
-          keyId: created.id,
-          prefix,
-          scopes: created.scopes,
-          mode: created.mode,
-        },
-      });
+    await tx.insert(otaEventsTable).values({
+      id: randomUUID(),
+      actor,
+      action: "api_key_created",
+      details: {
+        keyId: created.id,
+        prefix,
+        scopes: created.scopes,
+        mode: created.mode,
+      },
+    });
     return created;
   });
   return { key, secret }; // The raw key is returned once and is never persisted.
@@ -110,14 +113,12 @@ export async function revokeApiKey(id: string, actor: string) {
       .where(and(eq(keys.id, id), isNull(keys.revokedAt)))
       .returning({ id: keys.id });
     if (revoked)
-      await tx
-        .insert(otaEventsTable)
-        .values({
-          id: randomUUID(),
-          actor,
-          action: "api_key_revoked",
-          details: { keyId: id },
-        });
+      await tx.insert(otaEventsTable).values({
+        id: randomUUID(),
+        actor,
+        action: "api_key_revoked",
+        details: { keyId: id },
+      });
     else if (
       !(await tx.select({ id: keys.id }).from(keys).where(eq(keys.id, id)))[0]
     )
@@ -131,7 +132,7 @@ export async function optionalSearchApiKey(
   next: NextFunction,
 ) {
   const token = req.get("x-ota-api-key");
-  if (!token) {
+  if (token === undefined) {
     next();
     return;
   }
@@ -178,13 +179,11 @@ export async function optionalSearchApiKey(
     }
     next();
   } catch (error) {
-    res
-      .status(error instanceof OtaError ? error.status : 503)
-      .json({
-        error:
-          error instanceof OtaError
-            ? error.message
-            : "Integration key authentication is unavailable",
-      });
+    res.status(error instanceof OtaError ? error.status : 503).json({
+      error:
+        error instanceof OtaError
+          ? error.message
+          : "Integration key authentication is unavailable",
+    });
   }
 }
