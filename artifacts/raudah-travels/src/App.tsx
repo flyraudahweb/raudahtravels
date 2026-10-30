@@ -35,6 +35,7 @@ const AgentPortal = lazy(() => import("@/pages/agent/AgentPortal"));
 const AdminConsole = lazy(() => import("@/pages/admin/AdminConsole"));
 const FlightsModule = lazy(() => import("@/pages/flights"));
 const HotelsModule = lazy(() => import("@/pages/hotels"));
+const TravelApp = lazy(() => import("@/pages/app/TravelApp"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -127,6 +128,7 @@ function AppRoutes() {
         <Route path="/privacy" component={Privacy} />
         <Route path="/terms" component={Terms} />
         <Route path="/faq" component={FAQ} />
+        <Route path="/app/*?" component={TravelApp} />
 
         <Route path="/sign-in/*?" component={SignInPage} />
         <Route path="/sign-up/*?" component={SignUpPage} />

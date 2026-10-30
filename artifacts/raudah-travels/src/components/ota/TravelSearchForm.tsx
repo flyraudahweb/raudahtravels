@@ -23,12 +23,14 @@ export default function TravelSearchForm({
   compact = false,
   onSearchAgain,
   packagesSectionId,
+  variant = "website",
 }: {
   initialKind?: "flight" | "hotel";
   initial?: URLSearchParams;
   compact?: boolean;
   onSearchAgain?: () => void;
   packagesSectionId?: string;
+  variant?: "website" | "app";
 }) {
   const [, navigate] = useLocation(),
     [kind, setKind] = useState(initialKind);
@@ -58,9 +60,10 @@ export default function TravelSearchForm({
     );
   const [error, setError] = useState("");
   const hotel = kind === "hotel";
+  const appLayout = variant === "app";
   return (
     <div
-      className={`relative rounded-[22px] border border-slate-200 bg-white text-slate-900 ${compact ? "p-4 shadow-sm md:p-5" : "p-4 shadow-[0_20px_70px_-25px_rgba(25,30,100,0.35)] md:p-6"}`}
+      className={`relative rounded-[22px] border border-slate-200 bg-white text-slate-900 ${appLayout ? "p-4 sm:p-6" : compact ? "p-4 shadow-sm md:p-5" : "p-4 shadow-[0_20px_70px_-25px_rgba(25,30,100,0.35)] md:p-6"}`}
     >
       <div
         className={`flex flex-wrap items-center gap-2 ${compact ? "mb-3" : "mb-4 border-b border-slate-100 pb-4"}`}
@@ -214,12 +217,16 @@ export default function TravelSearchForm({
           </fieldset>
         )}
         <div
-          className={`grid gap-3 ${compact ? "xl:grid-cols-[2fr_1.35fr_1fr_auto]" : "lg:grid-cols-[1.8fr_1.35fr_1fr_auto]"}`}
+          className={`grid gap-3 ${appLayout ? "sm:grid-cols-2" : compact ? "xl:grid-cols-[2fr_1.35fr_1fr_auto]" : "lg:grid-cols-[1.8fr_1.35fr_1fr_auto]"}`}
         >
           {hotel ? (
-            <StayDestinationPicker value={city} onChange={setCity} />
+            <div className={appLayout ? "sm:col-span-2" : undefined}>
+              <StayDestinationPicker value={city} onChange={setCity} />
+            </div>
           ) : (
-            <div className="relative grid grid-cols-2 gap-2">
+            <div
+              className={`relative grid grid-cols-2 gap-2 ${appLayout ? "sm:col-span-2" : ""}`}
+            >
               <AirportPicker
                 label="Flying from"
                 value={origin}
@@ -278,7 +285,7 @@ export default function TravelSearchForm({
           />
           <button
             type="submit"
-            className={`${travelButton} min-h-[62px] bg-[#FF3B00] text-[15px] shadow-[0_6px_18px_-8px_rgba(255,59,0,0.5)] hover:bg-[#dc3300] ${compact ? "xl:min-h-[76px]" : ""}`}
+            className={`${travelButton} min-h-[62px] bg-[#FF3B00] text-[15px] shadow-[0_6px_18px_-8px_rgba(255,59,0,0.5)] hover:bg-[#dc3300] ${appLayout ? "sm:col-span-2" : compact ? "xl:min-h-[76px]" : ""}`}
           >
             <Search size={21} />
             <span>Search {hotel ? "hotels" : "flights"}</span>
