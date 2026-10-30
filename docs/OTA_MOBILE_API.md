@@ -1,6 +1,71 @@
 # FlyRaudah OTA Mobile API
 
-Contract version: 1.0.1. Base URL: https://flyraudah.com.ng/api/ota/v1.
+Contract version: 1.0.2. Base URL: https://flyraudah.com.ng/api/ota/v1.
+
+## Developer kit, environments & first request
+
+Download the OpenAPI contract, TypeScript client/declarations, mobile README and Postman collection/environment from the Developer Centre. The types are generated from this exact contract with openapi-typescript; the client uses openapi-fetch and does not retry purchases. Install openapi-fetch in the mobile project and keep the client/declaration files together. This is a native integration starter, not a completed app.
+
+1. Create separate development/staging/production configurations. The full API base ends in /api/ota/v1 and production is https://flyraudah.com.ng/api/ota/v1. A test key does not turn a production host into a safe staging environment; check /capabilities mode and sales switches.
+2. Configure the same Clerk instance/publishable key as the target backend, secure SDK token storage, getToken per request and the native sign-in redirect scheme. Do not put any backend/provider secrets in EXPO_PUBLIC_* variables.
+3. First call GET /config and GET /capabilities without credentials. Then sign in, POST /me/bootstrap with {}, and GET /me with a fresh session token. 401 means missing/invalid session; 403 means profile/account access needs attention.
+4. The Postman environment contains blank tokens/IDs and writes disabled by default. Use a current Postman with pm.execution.skipRequest, set a local-only customer_session, and choose the intended staging base. Customer POSTs require allow_customer_writes=true; booking POSTs additionally require allow_booking_writes=true. Importing files makes no requests.
+5. Search responses capture non-secret offer/passenger/result/rate/quote/booking IDs into the local environment. Review sample contact/traveller data and refreshed expected_total_kobo before any write. The provided booking sample is for one adult flight; use the hotel journey guide to build hotel checkout payloads.
+6. Copy the client starter into the app, typecheck it, and verify Request/AbortController/redirect behavior on both device runtimes. Network/abort/invalid-JSON errors can throw; HTTP JSON errors return the typed error/response result. None are payment proof.
+7. Dart/Kotlin/Swift teams can use the same OpenAPI export for their client stack. The TypeScript starter is optional; use the same session, money, retry and ownership rules in every implementation.
+
+[OpenAPI specification](https://spec.openapis.org/oas/v3.0.3)
+
+[Typed fetch client](https://openapi-ts.dev/openapi-fetch/)
+
+[Postman request guards](https://learning.postman.com/latest-v-12/docs/tests-and-scripts/write-scripts/postman-sandbox-reference/pm-execution)
+
+## API conventions, pagination & compatibility
+
+All customer requests use HTTPS and JSON. Send Content-Type: application/json for POST bodies ({} for bodyless actions); GET has no JSON body. Responses use camelCase Raudah envelopes with nested supplier fields often in snake_case. Unknown v1 routes return JSON404 and wrong methods JSON405 with Allow. Administrative and supplier webhook endpoints are excluded from v1.
+
+1. Keep supplier IDs opaque. Preserve off_, srr_, rat_, quo_, pas_ and booking IDs exactly. URL-encode each raw path ID once, including ota: update IDs; typed client params.path handles serialization. Do not concatenate an untrusted URL as an API path.
+2. Null means explicitly absent; omitted optional properties may not be supplied by that provider. Do not assume documents, baggage, cancellation rules, property photos or all rate fields exist. Missing fields need an honest fallback, not invented inventory or terms.
+3. Money in amountKobo/pricing.totalKobo is integer NGN minor units. Supplier decimal amounts stay strings. Date-only dates stay YYYY-MM-DD; supplier local departure/arrival strings must retain airport/property timezone context. Revision is a monotonic booking snapshot version, not an HTTP ETag.
+4. GET /bookings returns 50 rows and GET /updates 20; offset defaults to0, maximum100000. Follow nextOffset until null, merge by ID and retain the newest booking.revision. Counts cover all owner records. New rows can shift offset pages, so deduplicate and refresh page0 after changes; there is no cursor or stable export snapshot.
+5. The v1 URL is the compatibility boundary; info.version identifies the documentation revision. Treat added optional fields as additive. Ignore unknown fields and handle unknown future enum values with a neutral state/support fallback. There is no announced deprecation date or API SLA in this contract; coordinate breaking changes before releasing a client.
+6. Authenticated responses are no-store. Keep minimal recovery IDs locally; clear account-bound caches on sign-out/account changes. Do not log tokens, passport/contact payloads or complete reservation responses to analytics/crash tools.
+
+
+## HTTP errors, throttling & retry decisions
+
+Error JSON currently contains human-readable error and optional validation fields. There are no stable machine error codes; branch on HTTP status, current booking state and fields rather than matching message text. Proxies, offline networks and invalid/non-JSON responses can fail outside the JSON contract, so catch thrown client errors as well as HTTP error results.
+
+1. 400: show field validation where fields are supplied; otherwise show the safe message and let the traveller correct details. 401: refresh the Clerk session or sign in, then recover state; avoid infinite authentication retries. 403: stop and resolve blocked/missing-profile or scope/mode access.
+2. 404: record missing/unowned or expired context; return to search/My Trips as appropriate. 405: correct the method using Allow. 409: re-fetch the offer/quote/booking, display any new price and require explicit acceptance; never silently charge a changed amount.
+3. 413/415: correct body size/encoding and send JSON. 429: honor Retry-After in seconds, show a countdown and coalesce polling/search calls. Do not attach generic automatic retries to customer mutation hooks.
+4. 502/503/offline/abort/timeout: public discovery/search may be repeated with bounded backoff and jitter. A failed checkout/payment POST is ambiguous; recover GET /bookings or the known booking ID first. Never create a supplier order, mark paid, refund, or auto-repeat checkout from the device.
+5. Current burst protection is60 requests/minute per signed-in user or unauthenticated IP in each process; edge limits can be stricter. Optional server search keys additionally use a shared database10–60/minute configured limit. These are limits, not guaranteed throughput; no X-RateLimit-Remaining header is promised.
+6. Poll processing bookings about every5 seconds and settled trips/inbox about every30 seconds while visible. Single-flight/coalesce refreshes; pause in the background. Separate UI request generations when the route/account changes, discard older booking revisions, and never let a late request navigate a different checkout.
+
+
+## Offline, app lifecycle, documents & safe links
+
+A device can lose connectivity or be terminated while payment or reservation work continues on the server. Retain the saved booking ID before opening hosted payment, and restore its state after app restart/resume. The server callback currently returns to the web booking page. Native app routing/universal links and push are application work, not completed OTA endpoints.
+
+1. Show offline/stale state and disable new checkout/payment while offline. Do not persist an automatic POST queue for payments or reservations. Aborting a fetch or dismissing the browser does not cancel a server operation.
+2. Use GET /bookings/{id} on resume. Show processing/requires_review without pay-again actions, and use /complete only against the same saved booking when appropriate. A query flag/deep link/browser success screen is never payment proof.
+3. Payment URLs must come from /pay and use https://checkout.paystack.com/. Do not accept a callback or arbitrary payment URL from user input. The typed starter rejects API redirects and limits bearer tokens to the configured HTTPS API origin/path.
+4. Display supplied ticket/voucher documents and identifiers when available; documents may arrive after confirmation. Open only valid HTTPS document links after checking the expected supplier/host policy. Relative notification links are web links, not native routes; map only known internal paths such as /travel/bookings/{id}.
+5. Keep passports/contact details in memory only when practical, use secure platform storage for session credentials, and clear per-account caches. Screen-capture/logging/analytics choices and account-deletion/privacy flows must be designed for the app; there is no OTA password-reset or account-deletion endpoint.
+
+
+## Mobile acceptance matrix & release handoff
+
+The documented API and starter do not certify a finished mobile app. Verify the integration on actual iOS/Android devices against a separate staging service with matching test credentials. Existing production Paystack settings must not be replaced just to make sandbox purchases work.
+
+1. Identity: new verified account/bootstrap, expired token, blocked account, sign-out/account switch, and owner isolation (another booking ID returns404). Confirm profile errors are shown clearly.
+2. Discovery: one-way/return/adult/child flights, no results, invalid dates/airports, offer expiry, changed total, disabled products and FX outage. Hotels: no rooms, prepaid filtering, room count/guest match, quote expiry and property extras/cancellation display.
+3. Checkout/payment: duplicate taps, app kill immediately before/after save, unknown save response, success/pending/failed payment, lost browser return, repeated callbacks and interrupted supplier confirmation. Confirm there is one fulfillment and no client-side paid-state shortcut.
+4. Trips/inbox: pagination with new incoming records, out-of-order revisions, late callback after navigation/account change, read-one/read-all ownership, support reply, delayed documents and server-observed cancellation/refund states.
+5. Operations: all required migrations (0012 only for optional server keys), Stays entitlement, matching modes, funded provider balance, signature-verified webhooks, continuously running workers, edge throttling and operator reconciliation. Review actual /capabilities before enabling UI actions.
+6. Handoff: record deployed API/documentation version, Clerk instance, staging/production base URLs, app release/build version, enabled features, test evidence, support contacts and rollback owner. Never include secrets or passenger data in that handoff record.
+
 
 ## FlyRaudah OTA app screen blueprint
 
@@ -207,6 +272,60 @@ Trusted server search (never from a native app):
 curl 'https://flyraudah.com.ng/api/ota/v1/config' -H "X-OTA-API-Key: $RAUDAH_SEARCH_KEY"
 ```
 
+
+## Named checkout examples
+
+### One adult flight checkout
+
+Illustrative data only; use a refreshed offer/quote and explicit terms acceptance.
+
+```json
+{
+  "kind": "flight",
+  "offerId": "off_example123",
+  "acceptedTerms": true,
+  "expectedTotalKobo": 13447900,
+  "contact": {
+    "email": "traveller@example.com",
+    "phone": "+2348012345678"
+  },
+  "travellers": [
+    {
+      "id": "pas_example123",
+      "given_name": "Example",
+      "family_name": "Traveller",
+      "born_on": "1990-01-01",
+      "title": "mr",
+      "gender": "m",
+      "email": "traveller@example.com",
+      "phone_number": "+2348012345678"
+    }
+  ]
+}
+```
+
+### One adult prepaid hotel checkout
+
+Illustrative data only; use a refreshed offer/quote and explicit terms acceptance.
+
+```json
+{
+  "kind": "hotel",
+  "offerId": "quo_example123",
+  "acceptedTerms": true,
+  "expectedTotalKobo": 13447900,
+  "contact": {
+    "email": "traveller@example.com",
+    "phone": "+2348012345678"
+  },
+  "travellers": [
+    {
+      "given_name": "Example",
+      "family_name": "Traveller"
+    }
+  ]
+}
+```
 
 ## Endpoint reference
 
@@ -1326,7 +1445,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
     "id": "off_example123",
     "total_amount": "100.00",
     "total_currency": "USD",
-    "expires_at": "2026-10-30T11:43:03.294Z",
+    "expires_at": "2026-10-30T13:05:18.914Z",
     "passengers": [
       {
         "id": "pas_example123",
@@ -1748,7 +1867,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
       "id": "off_example123",
       "total_amount": "100.00",
       "total_currency": "USD",
-      "expires_at": "2026-10-30T11:43:03.294Z",
+      "expires_at": "2026-10-30T13:05:18.914Z",
       "passengers": [
         {
           "id": "pas_example123",
@@ -1818,7 +1937,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
       "email": "traveller@example.com",
       "phone": "+2348012345678"
     },
-    "expiresAt": "2026-10-30T11:43:03.294Z",
+    "expiresAt": "2026-10-30T13:05:18.915Z",
     "paidAt": null,
     "providerResult": null,
     "providerNotice": null,
@@ -1867,7 +1986,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "id": "off_example123",
         "total_amount": "100.00",
         "total_currency": "USD",
-        "expires_at": "2026-10-30T11:43:03.294Z",
+        "expires_at": "2026-10-30T13:05:18.914Z",
         "passengers": [
           {
             "id": "pas_example123",
@@ -1937,7 +2056,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "email": "traveller@example.com",
         "phone": "+2348012345678"
       },
-      "expiresAt": "2026-10-30T11:43:03.294Z",
+      "expiresAt": "2026-10-30T13:05:18.915Z",
       "paidAt": null,
       "providerResult": null,
       "providerNotice": null,
@@ -2527,7 +2646,7 @@ Successful response
         "id": "off_example123",
         "total_amount": "100.00",
         "total_currency": "USD",
-        "expires_at": "2026-10-30T11:43:03.294Z",
+        "expires_at": "2026-10-30T13:05:18.914Z",
         "passengers": [
           {
             "id": "pas_example123",
@@ -2614,7 +2733,7 @@ Successful response
       "id": "off_example123",
       "total_amount": "100.00",
       "total_currency": "USD",
-      "expires_at": "2026-10-30T11:43:03.294Z",
+      "expires_at": "2026-10-30T13:05:18.914Z",
       "passengers": [
         {
           "id": "pas_example123",
@@ -2818,108 +2937,170 @@ Successful response
   "schema": {
     "$ref": "#/components/schemas/BookingResponse"
   },
-  "example": {
-    "booking": {
-      "id": "41af391c-653c-4eb0-a168-cbd81d8e12d1",
-      "reference": "OTA-example",
-      "kind": "flight",
-      "mode": "test",
-      "status": "payment_pending",
-      "revision": 0,
-      "providerOfferId": "off_example123",
-      "providerBookingId": null,
-      "amountKobo": 13447900,
-      "pricing": {
-        "supplierKobo": 13447900,
-        "markupKobo": 0,
-        "feeKobo": 0,
-        "totalKobo": 13447900,
-        "currency": "NGN",
-        "rate": 1344.79,
-        "supplierCurrency": "USD",
-        "supplierAmount": "100.00"
-      },
-      "offer": {
-        "id": "off_example123",
-        "total_amount": "100.00",
-        "total_currency": "USD",
-        "expires_at": "2026-10-30T11:43:03.294Z",
-        "passengers": [
-          {
-            "id": "pas_example123",
-            "type": "adult"
-          }
-        ],
-        "owner": {
-          "id": "arl_example123",
-          "name": "Example airline"
-        },
-        "slices": [
-          {
-            "origin": {
-              "iata_code": "LOS",
-              "city_name": "Lagos"
-            },
-            "destination": {
-              "iata_code": "JED",
-              "city_name": "Jeddah"
-            },
-            "duration": "PT5H30M",
-            "segments": [
+  "examples": {
+    "flight": {
+      "summary": "Saved flight checkout",
+      "value": {
+        "booking": {
+          "id": "41af391c-653c-4eb0-a168-cbd81d8e12d1",
+          "reference": "OTA-example",
+          "kind": "flight",
+          "mode": "test",
+          "status": "payment_pending",
+          "revision": 0,
+          "providerOfferId": "off_example123",
+          "providerBookingId": null,
+          "amountKobo": 13447900,
+          "pricing": {
+            "supplierKobo": 13447900,
+            "markupKobo": 0,
+            "feeKobo": 0,
+            "totalKobo": 13447900,
+            "currency": "NGN",
+            "rate": 1344.79,
+            "supplierCurrency": "USD",
+            "supplierAmount": "100.00"
+          },
+          "offer": {
+            "id": "off_example123",
+            "total_amount": "100.00",
+            "total_currency": "USD",
+            "expires_at": "2026-10-30T13:05:18.914Z",
+            "passengers": [
               {
-                "departing_at": "2026-12-14T10:00:00",
-                "arriving_at": "2026-12-14T17:30:00",
+                "id": "pas_example123",
+                "type": "adult"
+              }
+            ],
+            "owner": {
+              "id": "arl_example123",
+              "name": "Example airline"
+            },
+            "slices": [
+              {
                 "origin": {
-                  "iata_code": "LOS"
+                  "iata_code": "LOS",
+                  "city_name": "Lagos"
                 },
                 "destination": {
-                  "iata_code": "JED"
+                  "iata_code": "JED",
+                  "city_name": "Jeddah"
                 },
-                "passengers": [
+                "duration": "PT5H30M",
+                "segments": [
                   {
-                    "passenger_id": "pas_example123",
-                    "cabin_class": "economy",
-                    "baggages": []
+                    "departing_at": "2026-12-14T10:00:00",
+                    "arriving_at": "2026-12-14T17:30:00",
+                    "origin": {
+                      "iata_code": "LOS"
+                    },
+                    "destination": {
+                      "iata_code": "JED"
+                    },
+                    "passengers": [
+                      {
+                        "passenger_id": "pas_example123",
+                        "cabin_class": "economy",
+                        "baggages": []
+                      }
+                    ]
                   }
                 ]
               }
-            ]
-          }
-        ],
-        "pricing": {
-          "supplierKobo": 13447900,
-          "markupKobo": 0,
-          "feeKobo": 0,
-          "totalKobo": 13447900,
-          "currency": "NGN",
-          "rate": 1344.79,
-          "supplierCurrency": "USD",
-          "supplierAmount": "100.00"
+            ],
+            "pricing": {
+              "supplierKobo": 13447900,
+              "markupKobo": 0,
+              "feeKobo": 0,
+              "totalKobo": 13447900,
+              "currency": "NGN",
+              "rate": 1344.79,
+              "supplierCurrency": "USD",
+              "supplierAmount": "100.00"
+            }
+          },
+          "travellers": [
+            {
+              "id": "pas_example123",
+              "given_name": "Example",
+              "family_name": "Traveller",
+              "born_on": "1990-01-01",
+              "title": "mr",
+              "gender": "m",
+              "email": "traveller@example.com",
+              "phone_number": "+2348012345678"
+            }
+          ],
+          "contact": {
+            "email": "traveller@example.com",
+            "phone": "+2348012345678"
+          },
+          "expiresAt": "2026-10-30T13:05:18.915Z",
+          "paidAt": null,
+          "providerResult": null,
+          "providerNotice": null,
+          "issue": null,
+          "serviceRequest": null,
+          "refund": null
         }
-      },
-      "travellers": [
-        {
-          "id": "pas_example123",
-          "given_name": "Example",
-          "family_name": "Traveller",
-          "born_on": "1990-01-01",
-          "title": "mr",
-          "gender": "m",
-          "email": "traveller@example.com",
-          "phone_number": "+2348012345678"
+      }
+    },
+    "hotel": {
+      "summary": "Saved prepaid hotel checkout",
+      "value": {
+        "booking": {
+          "id": "41af391c-653c-4eb0-a168-cbd81d8e12d1",
+          "reference": "OTA-example",
+          "kind": "hotel",
+          "mode": "test",
+          "status": "payment_pending",
+          "revision": 0,
+          "providerOfferId": "quo_example123",
+          "providerBookingId": null,
+          "amountKobo": 13447900,
+          "pricing": {
+            "supplierKobo": 13447900,
+            "markupKobo": 0,
+            "feeKobo": 0,
+            "totalKobo": 13447900,
+            "currency": "NGN",
+            "rate": 1344.79,
+            "supplierCurrency": "USD",
+            "supplierAmount": "100.00"
+          },
+          "offer": {
+            "id": "quo_example123",
+            "total_amount": "100.00",
+            "total_currency": "USD",
+            "guests": [
+              {
+                "type": "adult"
+              }
+            ],
+            "accommodation": {
+              "name": "Example hotel",
+              "rooms": []
+            }
+          },
+          "travellers": [
+            {
+              "given_name": "Example",
+              "family_name": "Traveller"
+            }
+          ],
+          "contact": {
+            "email": "traveller@example.com",
+            "phone": "+2348012345678"
+          },
+          "expiresAt": "2026-10-30T13:05:18.915Z",
+          "paidAt": null,
+          "providerResult": null,
+          "providerNotice": null,
+          "issue": null,
+          "serviceRequest": null,
+          "refund": null
         }
-      ],
-      "contact": {
-        "email": "traveller@example.com",
-        "phone": "+2348012345678"
-      },
-      "expiresAt": "2026-10-30T11:43:03.294Z",
-      "paidAt": null,
-      "providerResult": null,
-      "providerNotice": null,
-      "issue": null,
-      "serviceRequest": null,
-      "refund": null
+      }
     }
   }
 }

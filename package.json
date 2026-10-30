@@ -4,6 +4,7 @@
   "license": "MIT",
   "scripts": {
     "docs:ota": "node scripts/export-ota-api-docs.mjs",
+    "typecheck:ota-client": "tsc -p docs/mobile/tsconfig.json",
     "dev:api": "pnpm --filter @workspace/api-server run dev",
     "dev:frontend": "pnpm --filter @workspace/raudah-travels run dev",
     "dev": "npx concurrently \"pnpm run dev:api\" \"pnpm run dev:frontend\"",
@@ -12,7 +13,7 @@
     "build:frontend": "pnpm --filter @workspace/raudah-travels run build",
     "db:push": "pnpm --filter @workspace/db run push",
     "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck && pnpm run typecheck:ota-client"
   },
   "private": true,
   "devDependencies": {

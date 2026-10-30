@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "noEmit": true, "strict": true, "target": "ES2022", "module": "ESNext",
+    "moduleResolution": "bundler", "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true, "baseUrl": ".",
+    "paths": { "openapi-fetch": ["../../artifacts/api-server/node_modules/openapi-fetch"] }
+  },
+  "include": ["flyraudah-client.ts", "flyraudah-api.d.ts"]
+}

@@ -1,0 +1,1561 @@
+{
+  "info": {
+    "name": "FlyRaudah OTA Mobile API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Contract 1.0.2. Import the companion environment. Use local-only tokens and a separate staging host. All customer writes are skipped by default; booking writes require a second explicit flag. Importing this collection never sends requests. Current Postman supporting pm.execution.skipRequest is required. Search/quote IDs expire; retrieve fresh inventory before checkout. No provider/admin endpoints or secrets are included."
+  },
+  "item": [
+    {
+      "name": "Discovery",
+      "item": [
+        {
+          "name": "GET /config",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/config",
+            "description": "Public feature switches, mode and support contacts. Hide disabled checkout and Stays actions.\n\nRead-only; bounded retry with backoff.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if ([].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "GET /capabilities",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/capabilities",
+            "description": "Implemented features, active switches, limits and suggested foreground polling intervals. No supplier credentials are exposed.\n\nRead-only; bounded retry with backoff.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if ([].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "GET /exchange-rates",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/exchange-rates",
+            "description": "sellingRates are operator-controlled NGN-per-unit selling rates. The separate reference object is a dated comparison feed and may be stale/unavailable; it never changes checkout prices.\n\nRead-only; bounded retry with backoff.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if ([].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Identity",
+      "item": [
+        {
+          "name": "GET /me",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_session}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/me",
+            "description": "Customer session required; 403 if profile is absent/inactive. Use bootstrap for a new account.\n\nRead-only; bounded retry with backoff.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if ([\"customer_session\"].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "POST /me/bootstrap",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_session}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/me/bootstrap",
+            "description": "Idempotently links the verified Clerk session to a user profile. A new account requires a verified primary Clerk email. Identity/role fields from the request body are ignored; blocked accounts remain blocked.\n\nSafe to repeat; a unique Clerk user ID prevents duplicate profiles.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if (pm.environment.get('allow_customer_writes') !== 'true') { pm.execution.skipRequest(); return; }",
+                  "if ([\"customer_session\"].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Flights",
+      "item": [
+        {
+          "name": "GET /places",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/places?q=Lagos",
+            "description": "Select an IATA code from returned places. A city result may represent all its airports. No customer login required.\n\nRead-only; bounded retry with backoff.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if ([].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "POST /flights/search",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/flights/search",
+            "description": "Adults plus children cannot exceed 9. Returns up to 80 currently available offers, priced and sorted by totalKobo. Empty offers is a valid no-inventory response.\n\nSearch only; repeat explicitly as needed. Supplier IDs/availability may change.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"origin\": \"{{origin}}\",\n  \"destination\": \"{{destination}}\",\n  \"departureDate\": \"{{departure_date}}\",\n  \"adults\": 1,\n  \"childAges\": [],\n  \"cabinClass\": \"economy\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if ([].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "GET /flights/offers/{id}",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/flights/offers/{{offer_id}}",
+            "description": "Use a current off_ ID. Revalidates availability/expiry and returns server selling price. Keep passenger IDs and conditions from this refreshed offer.\n\nRead-only; bounded retry with backoff.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if ([\"offer_id\"].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Hotels",
+      "item": [
+        {
+          "name": "POST /hotels/search",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/hotels/search",
+            "description": "Requires enabled Duffel Stays product. Uses a 10km radius and only supported instant/prepaid inventory; supplier access errors do not imply no hotels exist.\n\nDo not automatically retry after an ambiguous timeout; recover state first.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 21.4225,\n  \"longitude\": 39.8262,\n  \"checkIn\": \"2026-12-14\",\n  \"checkOut\": \"2026-12-21\",\n  \"rooms\": 1,\n  \"adults\": 1,\n  \"childAges\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if ([].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "POST /hotels/rates/{id}",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/hotels/rates/{{search_result_id}}",
+            "description": "Use an srr_ search result ID. Returns accommodation.rooms[].rates[] after supported-prepaid filtering; an empty rate list is valid.\n\nDo not automatically retry after an ambiguous timeout; recover state first.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if ([\"search_result_id\"].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "POST /hotels/quotes",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_session}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/hotels/quotes",
+            "description": "Signed-in customer only; search integration keys cannot access this endpoint. Quote creation does not reserve a room.\n\nDo not automatically retry after an ambiguous timeout; recover state first.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rateId\": \"{{rate_id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if (pm.environment.get('allow_customer_writes') !== 'true') { pm.execution.skipRequest(); return; }",
+                  "if ([\"customer_session\",\"rate_id\"].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "GET /hotels/quotes/{id}",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_session}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/hotels/quotes/{{quote_id}}",
+            "description": "Signed-in customer only. Use the quo_ ID from quote creation. Rechecks supported payment/guest rules and availability.\n\nRead-only; bounded retry with backoff.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if ([\"customer_session\",\"quote_id\"].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Checkout",
+      "item": [
+        {
+          "name": "POST /bookings",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_session}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/bookings",
+            "description": "Sales/product switches, modes and HTTPS callback must be configured. Fresh offer/quote, exact expectedTotalKobo and every traveller are revalidated. No supplier purchase occurs yet. Request has no Idempotency-Key support; recover history after a lost response.\n\nDo not automatically retry after an ambiguous timeout; recover state first.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"flight\",\n  \"offerId\": \"{{offer_id}}\",\n  \"acceptedTerms\": true,\n  \"expectedTotalKobo\": {{expected_total_kobo}},\n  \"contact\": {\n    \"email\": \"traveller@example.com\",\n    \"phone\": \"+2348012345678\"\n  },\n  \"travellers\": [\n    {\n      \"id\": \"{{passenger_id}}\",\n      \"given_name\": \"Example\",\n      \"family_name\": \"Traveller\",\n      \"born_on\": \"1990-01-01\",\n      \"title\": \"mr\",\n      \"gender\": \"m\",\n      \"email\": \"traveller@example.com\",\n      \"phone_number\": \"+2348012345678\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if (pm.environment.get('allow_customer_writes') !== 'true') { pm.execution.skipRequest(); return; }",
+                  "if (pm.environment.get('allow_booking_writes') !== 'true') { pm.execution.skipRequest(); return; }",
+                  "if ([\"customer_session\",\"offer_id\",\"passenger_id\",\"expected_total_kobo\"].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "POST /bookings/{id}/pay",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_session}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/bookings/{{booking_id}}/pay",
+            "description": "Returns a validated Paystack HTTPS authorizationUrl using the booking’s stable reference. Callback is the configured web booking page; client-supplied callback URLs are not supported. A previously prepared redirect can be reused while the checkout is payable.\n\nStable provider reference per booking; concurrent state changes may return 409. Refresh saved state first.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if (pm.environment.get('allow_customer_writes') !== 'true') { pm.execution.skipRequest(); return; }",
+                  "if (pm.environment.get('allow_booking_writes') !== 'true') { pm.execution.skipRequest(); return; }",
+                  "if ([\"customer_session\",\"booking_id\"].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "POST /bookings/{id}/complete",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_session}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/bookings/{{booking_id}}/complete",
+            "description": "Does not accept paid/status flags or amounts. Server verifies canonical Paystack proof and claims supplier creation once. May take over two minutes. Returns confirmed/review/processing/etc from the saved checkout. A repeated call cannot force automatic supplier repurchase.\n\nRepeat against the same saved booking after inspecting state; payment/supplier claims are protected against duplicate fulfillment.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if (pm.environment.get('allow_customer_writes') !== 'true') { pm.execution.skipRequest(); return; }",
+                  "if (pm.environment.get('allow_booking_writes') !== 'true') { pm.execution.skipRequest(); return; }",
+                  "if ([\"customer_session\",\"booking_id\"].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Trips",
+      "item": [
+        {
+          "name": "GET /bookings",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_session}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/bookings",
+            "description": "Returns 50 newest owner records per page. Summary counts cover all the owner’s records, not only the page; pending excludes expired checkouts.\n\nRead-only; bounded retry with backoff.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if ([\"customer_session\"].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "GET /bookings/{id}",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_session}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/bookings/{{booking_id}}",
+            "description": "The authenticated owner only. Someone else’s ID returns 404. Compare revision before replacing the current mobile snapshot.\n\nRead-only; bounded retry with backoff.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if ([\"customer_session\",\"booking_id\"].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "POST /bookings/{id}/refresh",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_session}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/bookings/{{booking_id}}/refresh",
+            "description": "Owner only. Performs a read-only supplier refresh for a linked reservation; never creates or repeats a reservation. Do not poll this supplier action aggressively.\n\nSupplier read/reconciliation only; material revisions may advance.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if (pm.environment.get('allow_customer_writes') !== 'true') { pm.execution.skipRequest(); return; }",
+                  "if (pm.environment.get('allow_booking_writes') !== 'true') { pm.execution.skipRequest(); return; }",
+                  "if ([\"customer_session\",\"booking_id\"].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "GET /bookings/{id}/timeline",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_session}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/bookings/{{booking_id}}/timeline",
+            "description": "Up to 100 newest customer-safe lifecycle entries; raw audit details are private. Unknown/internal audit actions are not exposed.\n\nRead-only; bounded retry with backoff.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if ([\"customer_session\",\"booking_id\"].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "POST /bookings/{id}/service-request",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_session}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/bookings/{{booking_id}}/service-request",
+            "description": "Saves a customer request; it does not itself cancel, exchange or refund anything. A later request replaces the current open message and is audited.\n\nDo not automatically retry after an ambiguous timeout; recover state first.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Please review whether I can change my departure date.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if (pm.environment.get('allow_customer_writes') !== 'true') { pm.execution.skipRequest(); return; }",
+                  "if (pm.environment.get('allow_booking_writes') !== 'true') { pm.execution.skipRequest(); return; }",
+                  "if ([\"customer_session\",\"booking_id\"].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Updates",
+      "item": [
+        {
+          "name": "GET /updates",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_session}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/updates",
+            "description": "20 newest owner OTA notifications, nextOffset and total unreadCount. No other customer’s/admin updates are returned.\n\nRead-only; bounded retry with backoff.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if ([\"customer_session\"].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "POST /updates/{id}/read",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_session}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/updates/{{encoded_update_id}}/read",
+            "description": "URL-encode the whole opaque ota: notification ID. Owner-only; an unknown/unowned/non-OTA ID cannot be marked read.\n\nSafe to repeat for the same owned update.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if (pm.environment.get('allow_customer_writes') !== 'true') { pm.execution.skipRequest(); return; }",
+                  "if ([\"customer_session\",\"update_id\"].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "POST /updates/read-all",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{customer_session}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/updates/read-all",
+            "description": "Only OTA notifications of the authenticated owner are changed.\n\nSafe to repeat.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "(function () {",
+                  "if (!/^https:\\/\\/[^/?#@]+\\/api\\/ota\\/v1\\/?$/.test(pm.environment.get('base_url') || '')) { pm.execution.skipRequest(); return; }",
+                  "if (pm.environment.get('allow_customer_writes') !== 'true') { pm.execution.skipRequest(); return; }",
+                  "if ([\"customer_session\"].some(key => !pm.environment.get(key))) { pm.execution.skipRequest(); return; }",
+                  "pm.variables.set('encoded_update_id', encodeURIComponent(pm.environment.get('update_id') || ''));",
+                  "})();"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API returns JSON', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json'));",
+                  "if (pm.response.code >= 200 && pm.response.code < 300) {",
+                  "const data = pm.response.json();",
+                  "if (data.offers?.[0]) { pm.environment.set('offer_id', data.offers[0].id); pm.environment.set('passenger_id', data.offers[0].passengers?.[0]?.id || ''); pm.environment.set('expected_total_kobo', String(data.offers[0].pricing?.totalKobo || 0)); }",
+                  "if (data.offer?.id) { pm.environment.set('offer_id', data.offer.id); pm.environment.set('passenger_id', data.offer.passengers?.[0]?.id || ''); }",
+                  "if (data.results?.[0]?.id) pm.environment.set('search_result_id', data.results[0].id);",
+                  "if (data.result?.accommodation?.rooms?.[0]?.rates?.[0]?.id) pm.environment.set('rate_id', data.result.accommodation.rooms[0].rates[0].id);",
+                  "if (data.quote?.id) pm.environment.set('quote_id', data.quote.id);",
+                  "if (data.offer && data.pricing?.totalKobo) pm.environment.set('expected_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.quote && data.pricing?.totalKobo) pm.environment.set('hotel_total_kobo', String(data.pricing.totalKobo));",
+                  "if (data.booking?.id) pm.environment.set('booking_id', data.booking.id);",
+                  "if (data.updates?.[0]?.id) pm.environment.set('update_id', data.updates[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    }
+  ]
+}

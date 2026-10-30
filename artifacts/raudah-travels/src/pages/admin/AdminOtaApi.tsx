@@ -197,6 +197,7 @@ export default function AdminOtaApi() {
     [search, setSearch] = useState(""),
     [selected, setSelected] = useState("post:/flights/search"),
     [language, setLanguage] = useState("curl"),
+    [requestVariant, setRequestVariant] = useState("flight"),
     [guideId, setGuideId] = useState("app-blueprint"),
     [message, setMessage] = useState(""),
     [error, setError] = useState(""),
@@ -243,8 +244,7 @@ export default function AdminOtaApi() {
       .toLowerCase()
       .includes(search.toLowerCase()),
   );
-  const active =
-    filtered.find((item) => item.id === selected) || filtered[0];
+  const active = filtered.find((item) => item.id === selected) || filtered[0];
   const guide =
     spec?.["x-guides"].find((item: any) => item.id === guideId) ||
     spec?.["x-guides"][0];
@@ -273,6 +273,24 @@ export default function AdminOtaApi() {
         format === "json"
           ? "raudah-ota-v1.openapi.json"
           : "raudah-ota-mobile-guide.md";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
+  async function downloadDeveloperAsset(asset: string, filename: string) {
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/ota/admin/developer/downloads/${encodeURIComponent(asset)}`,
+        { credentials: "include" },
+      );
+      if (!response.ok) throw new Error("Developer download failed");
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e: any) {
@@ -452,6 +470,67 @@ export default function AdminOtaApi() {
       )}
       {spec && tab === "overview" && (
         <>
+          <section className="rounded-2xl border border-indigo-100 bg-white p-6">
+            <h2 className="flex items-center gap-2 text-base font-bold">
+              <Download size={17} className="text-[#2D3199]" />
+              Mobile developer kit
+            </h2>
+            <p className="mt-2 text-xs leading-6 text-slate-500">
+              Contract-generated types, a tested session-aware TypeScript
+              starter, and a Postman collection with customer writes disabled by
+              default. Keep the client and declarations together; read the setup
+              guide before using staging payments.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {[
+                [
+                  "flyraudah-client.ts",
+                  "flyraudah-client.ts",
+                  "TypeScript client",
+                ],
+                [
+                  "flyraudah-api.d.ts",
+                  "flyraudah-api.d.ts",
+                  "API type declarations",
+                ],
+                [
+                  "README.md",
+                  "FlyRaudah-mobile-README.md",
+                  "Client setup guide",
+                ],
+                [
+                  "postman-collection",
+                  "flyraudah-ota.postman_collection.json",
+                  "Postman collection",
+                ],
+                [
+                  "postman-environment",
+                  "flyraudah-ota.postman_environment.json",
+                  "Postman environment",
+                ],
+              ].map(([asset, filename, label]) => (
+                <button
+                  type="button"
+                  key={asset}
+                  onClick={() => downloadDeveloperAsset(asset, filename)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold text-[#2D3199] hover:bg-indigo-50"
+                >
+                  <Download size={13} />
+                  {label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setGuideId("developer-kit");
+                setTab("guides");
+              }}
+              className="mt-4 text-xs font-semibold text-[#2D3199]"
+            >
+              Open environment and first-request guide →
+            </button>
+          </section>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-2xl border border-slate-200 bg-white p-6">
               <Smartphone className="text-[#2D3199]" />
@@ -790,9 +869,37 @@ export default function AdminOtaApi() {
                     ))}
                   </div>
                 </div>
+                {active.requestBody?.content?.["application/json"]
+                  ?.examples && (
+                  <label className="mb-3 flex items-center gap-3 text-xs text-slate-600">
+                    Example journey
+                    <select
+                      aria-label="Request example journey"
+                      className="rounded-lg border bg-white px-3 py-2"
+                      value={requestVariant}
+                      onChange={(event) =>
+                        setRequestVariant(event.target.value)
+                      }
+                    >
+                      {Object.entries(
+                        active.requestBody.content["application/json"].examples,
+                      ).map(([key, value]: [string, any]) => (
+                        <option key={key} value={key}>
+                          {value.summary || key}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <CodeBlock
                   label="Illustrative data · replace IDs and current prices"
-                  value={requestExample(active, spec, base, language)}
+                  value={requestExample(
+                    active,
+                    spec,
+                    base,
+                    language,
+                    requestVariant,
+                  )}
                 />
               </section>
               <section>
@@ -807,7 +914,10 @@ export default function AdminOtaApi() {
                       <CodeBlock
                         label="JSON response example / shape"
                         value={JSON.stringify(
-                          response.content?.["application/json"]?.example ||
+                          response.content?.["application/json"]?.examples?.[
+                            requestVariant
+                          ]?.value ||
+                            response.content?.["application/json"]?.example ||
                             example(
                               response.content?.["application/json"]?.schema,
                               spec,
@@ -1120,13 +1230,16 @@ function requestExample(
   spec: any,
   base: string,
   language: string,
+  variant = "flight",
 ) {
   const authenticated = operation.security.some(
     (security: any) => security.CustomerSession,
   );
   const bodySchema =
     operation.requestBody?.content?.["application/json"]?.schema;
-  const body = bodySchema ? example(bodySchema, spec) : undefined;
+  const body =
+    operation.requestBody?.content?.["application/json"]?.examples?.[variant]
+      ?.value ?? (bodySchema ? example(bodySchema, spec) : undefined);
   const path =
     operation.path + (operation.path === "/places" ? "?q=Lagos" : "");
   if (language === "javascript")

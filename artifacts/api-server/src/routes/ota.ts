@@ -66,6 +66,11 @@ import {
   otaOpenApi,
   mobileIntegrationGuide,
 } from "../services/ota/apiDocumentation";
+import {
+  otaPostmanCollection,
+  otaPostmanEnvironment,
+} from "../services/ota/apiDeveloperTools";
+import { MOBILE_CLIENT_FILES } from "../services/ota/mobileClientAssets";
 
 const router = Router();
 const endpoint =
@@ -951,15 +956,13 @@ router.post(
           updatedAt: new Date(),
         })
         .where(eq(bookings.id, row.id));
-      await tx
-        .insert(otaEventsTable)
-        .values({
-          id: randomUUID(),
-          bookingId: row.id,
-          actor: row.clerkUserId,
-          action: "service_requested",
-          details: { message },
-        });
+      await tx.insert(otaEventsTable).values({
+        id: randomUUID(),
+        bookingId: row.id,
+        actor: row.clerkUserId,
+        action: "service_requested",
+        details: { message },
+      });
     });
     res.json({ success: true });
   }),
@@ -1004,6 +1007,31 @@ router.get(
   endpoint(async (req, res) => {
     await identity(req, true);
     res.type("text/markdown").send(mobileIntegrationGuide());
+  }),
+);
+router.get(
+  "/ota/admin/developer/downloads/:asset",
+  endpoint(async (req, res) => {
+    await identity(req, true);
+    const asset = String(req.params.asset);
+    if (asset === "postman-collection" || asset === "postman-environment") {
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="flyraudah-ota.${asset === "postman-collection" ? "postman_collection" : "postman_environment"}.json"`,
+      );
+      res.json(
+        asset === "postman-collection"
+          ? otaPostmanCollection()
+          : otaPostmanEnvironment(),
+      );
+      return;
+    }
+    if (!Object.hasOwn(MOBILE_CLIENT_FILES, asset))
+      throw new OtaError("Developer download not found", 404);
+    res.setHeader("Content-Disposition", `attachment; filename="${asset}"`);
+    res
+      .type("text/plain")
+      .send(MOBILE_CLIENT_FILES[asset as keyof typeof MOBILE_CLIENT_FILES]);
   }),
 );
 router.get(

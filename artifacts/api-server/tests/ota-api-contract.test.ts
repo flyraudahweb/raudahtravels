@@ -35,9 +35,13 @@ describe("OTA mobile contract integrity", () => {
         const request = op.requestBody?.content["application/json"];
         if (request?.example)
           validateOtaSchema(request.schema, request.example);
+        for (const named of Object.values(request?.examples || {}) as any[])
+          validateOtaSchema(request.schema, named.value);
         for (const response of Object.values(op.responses) as any[]) {
           const json = response.content?.["application/json"];
           if (json?.example) validateOtaSchema(json.schema, json.example);
+          for (const named of Object.values(json?.examples || {}) as any[])
+            validateOtaSchema(json.schema, named.value);
         }
       }
   });

@@ -10,6 +10,7 @@ export default defineConfig({
     alias: {
       "@": fileURLToPath(new URL("../raudah-travels/src", import.meta.url)),
       wouter: frontendRequire.resolve("wouter"),
+      "openapi-fetch": createRequire(import.meta.url).resolve("openapi-fetch"),
       "@clerk/react": frontendRequire.resolve("@clerk/react"),
       "@workspace/api-client-react": frontendRequire.resolve(
         "@workspace/api-client-react",

@@ -612,6 +612,45 @@ async function nativeRequest(
   });
 }
 describe("OTA native contract and integration keys", () => {
+  it("provides the complete developer kit only to super admins", async () => {
+    expect(
+      (await request("/admin/developer/downloads/postman-collection")).status,
+    ).toBe(401);
+    expect(
+      (await request("/admin/developer/downloads/postman-collection", "admin"))
+        .status,
+    ).toBe(403);
+    for (const asset of [
+      "postman-collection",
+      "postman-environment",
+      "flyraudah-client.ts",
+      "flyraudah-api.d.ts",
+      "README.md",
+    ]) {
+      const response = await request(
+        `/admin/developer/downloads/${asset}`,
+        "super",
+      );
+      expect(response.status, asset).toBe(200);
+      expect(response.headers.get("content-disposition")).toContain(
+        "attachment;",
+      );
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect((await response.text()).length).toBeGreaterThan(100);
+    }
+    expect(
+      (await request("/admin/developer/downloads/package.json", "super"))
+        .status,
+    ).toBe(404);
+    expect(
+      (
+        await nativeRequest(
+          "/admin/developer/downloads/postman-collection",
+          "super",
+        )
+      ).status,
+    ).toBe(404);
+  });
   it("rolls back a support message if its durable audit cannot be saved", async () => {
     await create();
     await module.db.execute(
