@@ -147,6 +147,7 @@ export function AirportPicker({
         <button
           type="button"
           aria-label={`${label}: ${selection?.code === value ? selection.name : selectedLabel || airportTitle(value)}`}
+          data-booking-field=""
           className={searchField}
         >
           <MapPin
@@ -154,19 +155,31 @@ export function AirportPicker({
             size={20}
           />
           <span className="min-w-0 flex-1">
-            <span className="block whitespace-nowrap text-[11px] font-medium text-slate-500">
+            <span
+              data-booking-label=""
+              className="block whitespace-nowrap text-[11px] font-medium text-slate-500"
+            >
               {label}
             </span>
-            <span className="block truncate text-[15px] font-bold text-slate-950">
+            <span
+              data-booking-value=""
+              className="block truncate text-[15px] font-bold text-slate-950"
+            >
               {selection?.code === value
                 ? selection.name
                 : selectedLabel || airportTitle(value) || "Choose a city"}
             </span>
-            <span className="hidden truncate text-[10px] text-slate-500 sm:block">
+            <span
+              data-booking-hint=""
+              className="hidden truncate text-[10px] text-slate-500 sm:block"
+            >
               {known?.name ||
                 (value ? "City or airport" : "Select your airport")}
             </span>
-            <span className="block text-[10px] text-slate-500 sm:hidden">
+            <span
+              data-booking-hint=""
+              className="block text-[10px] text-slate-500 sm:hidden"
+            >
               {value || "Select airport"}
             </span>
           </span>
@@ -347,16 +360,22 @@ export function StayDestinationPicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button type="button" className={searchField}>
+        <button type="button" data-booking-field="" className={searchField}>
           <Building2 size={21} className="text-[#2D3199]" />
           <span className="min-w-0 flex-1">
-            <span className="block text-[11px] text-slate-500">
+            <span
+              data-booking-label=""
+              className="block text-[11px] text-slate-500"
+            >
               Where are you staying?
             </span>
-            <span className="block truncate text-[15px] font-bold">
+            <span
+              data-booking-value=""
+              className="block truncate text-[15px] font-bold"
+            >
               {destinations[Number(value)]?.name || "Choose a destination"}
             </span>
-            <span className="text-[10px] text-slate-500">
+            <span data-booking-hint="" className="text-[10px] text-slate-500">
               Explore our destinations
             </span>
           </span>
@@ -476,15 +495,19 @@ export function DatePicker({
       <PopoverTrigger asChild>
         <button
           type="button"
+          data-booking-field=""
           className={`${searchField} scroll-mt-24`}
           aria-label={`${rangeLabels[0]}${range ? ` and ${rangeLabels[1]}` : ""} dates`}
         >
           <CalendarDays size={20} className="shrink-0 text-[#2D3199]" />
           <span className="min-w-0 flex-1">
-            <span className="block text-[11px] text-slate-500">
+            <span
+              data-booking-label=""
+              className="block text-[11px] text-slate-500"
+            >
               {range ? `${rangeLabels[0]} — ${rangeLabels[1]}` : rangeLabels[0]}
             </span>
-            <span className="block text-[14px] font-bold">
+            <span data-booking-value="" className="block text-[14px] font-bold">
               {format(departure)}
               {range && (
                 <>
@@ -493,7 +516,7 @@ export function DatePicker({
                 </>
               )}
             </span>
-            <span className="text-[10px] text-slate-500">
+            <span data-booking-hint="" className="text-[10px] text-slate-500">
               {range
                 ? "Choose your travel dates"
                 : "Choose your departure date"}
@@ -676,21 +699,28 @@ export function TravellerPicker({
       <PopoverTrigger asChild>
         <button
           type="button"
+          data-booking-field=""
           className={searchField}
           aria-label="Travellers and trip details"
         >
           <Users size={20} className="shrink-0 text-[#2D3199]" />
           <span className="min-w-0 flex-1">
-            <span className="block text-[11px] text-slate-500">
+            <span
+              data-booking-label=""
+              className="block text-[11px] text-slate-500"
+            >
               {hotel ? "Guests & rooms" : "Travellers & cabin"}
             </span>
-            <span className="block truncate text-[14px] font-bold">
+            <span
+              data-booking-value=""
+              className="block truncate text-[14px] font-bold"
+            >
               {adults} adult{adults !== 1 ? "s" : ""}
               {ages.length
                 ? `, ${ages.length} child${ages.length > 1 ? "ren" : ""}`
                 : ""}
             </span>
-            <span className="text-[10px] text-slate-500">
+            <span data-booking-hint="" className="text-[10px] text-slate-500">
               {hotel
                 ? `${rooms} room${rooms > 1 ? "s" : ""}`
                 : cabinNames[cabin]}

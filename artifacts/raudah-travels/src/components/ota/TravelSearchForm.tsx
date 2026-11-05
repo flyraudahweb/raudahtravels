@@ -30,7 +30,7 @@ export default function TravelSearchForm({
   compact?: boolean;
   onSearchAgain?: () => void;
   packagesSectionId?: string;
-  variant?: "website" | "app";
+  variant?: "website" | "app" | "landing";
 }) {
   const [, navigate] = useLocation(),
     [kind, setKind] = useState(initialKind);
@@ -61,13 +61,17 @@ export default function TravelSearchForm({
   const [error, setError] = useState("");
   const hotel = kind === "hotel";
   const appLayout = variant === "app";
+  const landingLayout = variant === "landing";
   return (
     <div
-      className={`relative rounded-[22px] border border-slate-200 bg-white text-slate-900 ${appLayout ? "p-4 sm:p-6" : compact ? "p-4 shadow-sm md:p-5" : "p-4 shadow-[0_20px_70px_-25px_rgba(25,30,100,0.35)] md:p-6"}`}
+      role={landingLayout ? "region" : undefined}
+      aria-label={landingLayout ? "Travel booking search" : undefined}
+      className={`relative bg-white text-slate-900 ${landingLayout ? "rounded-3xl border border-slate-200 p-4 shadow-[0_18px_55px_-24px_rgba(28,31,102,0.35)] sm:p-6 md:p-7 [&_[data-booking-field]]:min-h-[94px] [&_[data-booking-field]]:border-slate-200 [&_[data-booking-field]]:bg-white [&_[data-booking-field]]:px-4 [&_[data-booking-label]]:mb-1 [&_[data-booking-label]]:text-sm [&_[data-booking-label]]:font-semibold [&_[data-booking-label]]:text-slate-700 [&_[data-booking-value]]:text-lg [&_[data-booking-hint]]:text-xs [&_[data-booking-hint]]:text-slate-600" : `rounded-2xl border border-slate-200 ${appLayout ? "p-4 sm:p-6" : compact ? "p-4 shadow-sm md:p-5" : "p-4 shadow-[0_20px_70px_-25px_rgba(25,30,100,0.35)] md:p-6"}`}`}
     >
       <div
         className={`flex flex-wrap items-center gap-2 ${compact ? "mb-3" : "mb-4 border-b border-slate-100 pb-4"}`}
       >
+        {landingLayout && <h2 className="sr-only">Book your next journey</h2>}
         {(
           [
             ["flight", "Flights", Plane],
@@ -88,7 +92,7 @@ export default function TravelSearchForm({
                     .map((age) => Math.min(11, Math.max(2, age))),
                 );
             }}
-            className={`flex items-center gap-2 rounded-xl font-bold transition-colors ${compact ? "px-3 py-1.5 text-xs" : "px-3 py-2.5 text-sm sm:px-5"} ${kind === key ? "bg-[#2D3199] text-white shadow-sm" : "text-slate-500 hover:bg-indigo-50 hover:text-[#2D3199]"}`}
+            className={`flex items-center gap-2 font-semibold transition-colors ${landingLayout ? "min-h-12 rounded-2xl px-3 py-3 text-sm sm:px-6 sm:text-base" : compact ? "rounded-xl px-3 py-1.5 text-xs" : "rounded-xl px-3 py-2.5 text-sm sm:px-5"} ${kind === key ? "bg-[#2D3199] text-white shadow-sm" : "border-transparent text-slate-500 hover:bg-indigo-50 hover:text-[#2D3199]"}`}
           >
             <Icon size={19} />
             {label}
@@ -119,7 +123,7 @@ export default function TravelSearchForm({
                 : "smooth",
             });
           }}
-          className={`flex items-center gap-2 rounded-xl font-bold text-slate-500 transition-colors hover:bg-indigo-50 hover:text-[#2D3199] ${compact ? "px-3 py-1.5 text-xs" : "px-3 py-2.5 text-sm sm:px-5"}`}
+          className={`flex items-center gap-2 rounded-xl font-bold text-slate-500 transition-colors hover:bg-indigo-50 hover:text-[#2D3199] ${landingLayout ? "min-h-12 px-3 py-3 text-sm sm:px-6 sm:text-base" : compact ? "px-3 py-1.5 text-xs" : "px-3 py-2.5 text-sm sm:px-5"}`}
         >
           <Package size={19} aria-hidden="true" />
           Packages

@@ -1,126 +1,34 @@
-import { useState, useEffect, useRef, type ReactNode } from "react";
-import { createPortal } from "react-dom";
+import { useState, useEffect } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { useListPackages, getListPackagesQueryKey } from "@workspace/api-client-react";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { MapPin, CalendarDays, Star, CheckCircle2, Phone, MessageCircle, Users, Search, ArrowRight, ChevronRight, Check, Globe, ChevronDown, Minus, Plus, Plane, Package, Pause, Play } from "lucide-react";
+import {
+  useListPackages,
+  getListPackagesQueryKey,
+} from "@workspace/api-client-react";
+import {
+  CalendarDays,
+  Star,
+  CheckCircle2,
+  Phone,
+  MessageCircle,
+  ArrowRight,
+  Check,
+  Plane,
+  Package,
+  Building2,
+  BookOpen,
+  ShieldCheck,
+  FileCheck,
+} from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import consultancyImg from "@/assets/images/consultancy.png";
 import heroAircraftImg from "@/assets/images/hero-aircraft.jpg";
-import { PackageAvailability } from "@/components/PackageAvailability";
+import PackageCard from "@/components/packages/PackageCard";
+import AppSection from "@/components/home/AppSection";
 import OtaSearchWidget from "@/components/ota/OtaSearchWidget";
 import ExchangeRates from "@/components/ota/ExchangeRates";
-/* ── Custom branded dropdown ────────────────────────────────────────────── */
-interface DropdownOption { value: string; label: string; }
-
-function SearchDropdown({
-  options, value, onChange, placeholder, icon,
-}: {
-  options: DropdownOption[];
-  value: string;
-  onChange: (v: string) => void;
-  placeholder: string;
-  icon: ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
-  const triggerRef = useRef<HTMLDivElement>(null);
-  const selected = options.find(o => o.value === value);
-
-  const openDropdown = () => {
-    if (triggerRef.current) {
-      const r = triggerRef.current.getBoundingClientRect();
-      setRect({ top: r.bottom + window.scrollY + 6, left: r.left + window.scrollX, width: r.width });
-    }
-    setOpen(true);
-  };
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => {
-      if (triggerRef.current && !triggerRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [open]);
-
-  const panel = open && rect && createPortal(
-    <div
-      style={{ position: "absolute", top: rect.top, left: rect.left, width: Math.max(rect.width, 180), zIndex: 9999, maxHeight: "208px", overflowY: "auto" }}
-      className="bg-white rounded-2xl shadow-[0_8px_40px_rgba(13,15,78,0.18)] border border-[#E8ECFA] py-1.5"
-      onMouseDown={(e) => e.stopPropagation()}
-    >
-      {options.map(opt => {
-        const isSelected = opt.value === value;
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => { onChange(opt.value); setOpen(false); }}
-            className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm font-semibold text-left transition-colors
-              ${isSelected ? "bg-[#EEF0FF] text-[#2D3199]" : "text-[#334155] hover:bg-[#F5F7FF] hover:text-[#2D3199]"}`}
-          >
-            <span className="flex-1">{opt.label}</span>
-            {isSelected && <Check className="w-3.5 h-3.5 text-[#2D3199] shrink-0" />}
-          </button>
-        );
-      })}
-    </div>,
-    document.body
-  );
-
-  return (
-    <>
-      <div
-        ref={triggerRef}
-        className="flex-1 group relative flex items-center gap-3 px-5 py-5 hover:bg-[#F5F7FF] rounded-xl transition-colors cursor-pointer"
-        onClick={() => open ? setOpen(false) : openDropdown()}
-      >
-        <div className="w-9 h-9 rounded-xl bg-[#EEF0FF] flex items-center justify-center shrink-0">
-          {icon}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-[9px] font-black text-[#2D3199] uppercase tracking-[0.16em] mb-0.5">{placeholder}</p>
-          <div className="flex items-center gap-1">
-            <span className={`text-sm font-bold truncate flex-1 ${selected ? "text-[#0F172A]" : "text-[#94A3B8]"}`}>
-              {selected ? selected.label : `Select ${placeholder.toLowerCase()}`}
-            </span>
-            <ChevronDown className={`w-3.5 h-3.5 text-[#94A3B8] shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
-          </div>
-        </div>
-      </div>
-      {panel}
-    </>
-  );
-}
-
-const PACKAGE_IMAGES_HOME = [
-  "https://images.pexels.com/photos/28209449/pexels-photo-28209449.jpeg",
-  "https://images.pexels.com/photos/26436662/pexels-photo-26436662.jpeg",
-  "https://images.pexels.com/photos/34246939/pexels-photo-34246939.jpeg",
-  "https://images.pexels.com/photos/29676866/pexels-photo-29676866.jpeg",
-];
-
-/** Returns a valid external image URL for a package.
- * Falls back to a Pexels photo when imageUrl is absent, a localhost URL,
- * a Render/Railway internal URL, or a relative path — all of which are
- * dead on the production deployment.
- */
-function getPackageImage(id: string, imageUrl?: string | null) {
-  const isDeadUrl = !imageUrl ||
-    imageUrl.startsWith("/") ||
-    imageUrl.includes("localhost") ||
-    imageUrl.includes("127.0.0.1") ||
-    imageUrl.includes(".onrender.com") ||
-    imageUrl.includes(".repl.co");
-
-  const idx = id.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % PACKAGE_IMAGES_HOME.length;
-  return isDeadUrl ? PACKAGE_IMAGES_HOME[idx] : imageUrl!;
-}
-
 const TESTIMONIALS = [
   {
     name: "Hajiya Fatima Usman",
@@ -145,7 +53,6 @@ const TESTIMONIALS = [
   },
 ];
 
-
 const HERO_IMAGES = [
   "https://images.pexels.com/photos/28209449/pexels-photo-28209449.jpeg",
   "https://images.pexels.com/photos/26436662/pexels-photo-26436662.jpeg",
@@ -153,12 +60,15 @@ const HERO_IMAGES = [
   "https://images.pexels.com/photos/29676866/pexels-photo-29676866.jpeg",
 ];
 export default function Home() {
-  const [searchForm, setSearchForm] = useState({ country: "Nigeria", packageType: "", month: "", persons: "" });
+  const [featuredType, setFeaturedType] = useState<"all" | "hajj" | "umrah">(
+    "all",
+  );
   const [showWhatsApp, setShowWhatsApp] = useState(false);
-  const [slideIndex,setSlideIndex] = useState(0),[slidesPaused,setSlidesPaused] = useState(false);
+  const [slideIndex, setSlideIndex] = useState(0);
 
   useEffect(() => {
-    const onScroll = () => setShowWhatsApp(window.scrollY > window.innerHeight * 0.8);
+    const onScroll = () =>
+      setShowWhatsApp(window.scrollY > window.innerHeight * 0.8);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
@@ -173,259 +83,342 @@ export default function Home() {
     staleTime: 60_000,
     refetchInterval: 60_000,
   });
-  const slideshowEnabled = pubSettings?.landing_hero?.slideshowEnabled !== false;
+  const slideshowEnabled =
+    pubSettings?.landing_hero?.slideshowEnabled !== false;
   const aircraftEnabled = pubSettings?.landing_hero?.aircraftEnabled !== false;
-  useEffect(()=>{
-    const media=window.matchMedia("(prefers-reduced-motion: reduce)");
-    let timer:ReturnType<typeof setInterval> | undefined;
-    const update=()=>{clearInterval(timer);if(slideshowEnabled&&!slidesPaused&&!media.matches)timer=setInterval(()=>setSlideIndex(index=>(index+1)%HERO_IMAGES.length),5000);};
-    update();media.addEventListener("change",update);
-    return()=>{clearInterval(timer);media.removeEventListener("change",update);};
-  },[slidesPaused,slideshowEnabled]);
-  const { data: packagesData, isLoading } = useListPackages(
-    { limit: 3, available: true },
-    { query: { queryKey: getListPackagesQueryKey({ limit: 3, available: true }) } }
-  );
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const update = () => {
+      clearInterval(timer);
+      if (slideshowEnabled && !media.matches)
+        timer = setInterval(
+          () => setSlideIndex((index) => (index + 1) % HERO_IMAGES.length),
+          5000,
+        );
+    };
+    update();
+    media.addEventListener("change", update);
+    return () => {
+      clearInterval(timer);
+      media.removeEventListener("change", update);
+    };
+  }, [slideshowEnabled]);
+  const packageParams = {
+    limit: 3,
+    available: true,
+    type: featuredType === "all" ? undefined : featuredType,
+  };
+  const {
+    data: packagesData,
+    isLoading,
+    isError,
+    refetch,
+  } = useListPackages(packageParams, {
+    query: { queryKey: getListPackagesQueryKey(packageParams) },
+  });
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-white">
       <main className="flex-1">
-
-        {/* Rotating pilgrimage photos with a separate, always-visible aircraft layer. */}
-        <section className="relative flex flex-col bg-[#1C1F66] pb-36 sm:pb-44 md:pb-48">
-          {slideshowEnabled && HERO_IMAGES.map((src,index)=><img key={src} src={src} alt="" aria-hidden className="absolute inset-0 h-full w-full object-cover pointer-events-none motion-safe:transition-opacity motion-safe:duration-1000" style={{opacity:index===slideIndex?0.7:0}} decoding="async" />)}
-          {aircraftEnabled && <img
-            src={heroAircraftImg}
-            alt=""
-            aria-hidden
-            className={`absolute inset-y-0 right-0 w-full ${slideshowEnabled ? "md:w-[72%] opacity-65" : "opacity-80"} h-full object-cover pointer-events-none`}
-            style={slideshowEnabled ? {maskImage:"linear-gradient(to right, transparent, black 38%)",WebkitMaskImage:"linear-gradient(to right, transparent, black 38%)"} : undefined}
-            fetchPriority="high"
-            decoding="async"
-          />}
-          {/* Dark gradient overlay — keeps text readable */}
-          <div className="absolute inset-0 pointer-events-none"
-            style={{ background: "linear-gradient(135deg, rgba(13,15,78,0.78) 0%, rgba(28,31,102,0.65) 50%, rgba(45,49,153,0.50) 100%)" }} />
-          {slideshowEnabled && <div className="absolute right-5 top-24 z-20 flex items-center gap-2 rounded-full bg-black/15 px-3 py-2 backdrop-blur-sm" aria-label="Header slideshow controls">
-            {HERO_IMAGES.map((_,index)=><button type="button" key={index} onClick={()=>setSlideIndex(index)} aria-label={`Show header photo ${index+1}`} aria-pressed={index===slideIndex} className={`rounded-full ${index===slideIndex?"h-2 w-6 bg-[#FF3B00]":"h-2 w-2 bg-white/50"}`}/>)}
-            <button type="button" onClick={()=>setSlidesPaused(value=>!value)} aria-label={slidesPaused?"Play header slideshow":"Pause header slideshow"} className="ml-1 text-white">{slidesPaused?<Play size={13}/>:<Pause size={13}/>}</button>
-          </div>}
-          {/* Navbar — transparent, becomes solid on scroll */}
-          <Navbar transparent />
-
-          {/* Hero content — Centered Trip.com layout shifted comfortably below top nav */}
-          <div className="relative z-10 flex flex-col justify-center items-center text-center px-4 pt-32 sm:pt-36 md:pt-40 lg:pt-44 pb-6 sm:pb-8 max-w-4xl mx-auto">
-            <span className="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-white/10 backdrop-blur border border-white/20 text-white/90 text-xs font-semibold mb-3">
-              <span className="w-2 h-2 rounded-full bg-[#FF3B00] inline-block" />
-              Online Travel Agency • Nigeria's Most Trusted Partner
-            </span>
-
-            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-[2.85rem] font-black text-white leading-tight tracking-tight">
-              Every check-in is a new beginning
-              <br />
-              <span className="text-[#FF4E00]">Raudah Travels &amp; Tours</span>
-            </h1>
-
-            {/* Trip.com Guarantee Trust Pills — Now including Packages */}
-            <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-5 text-white/90 text-xs sm:text-sm font-semibold mt-4">
-              <span className="flex items-center gap-1.5">
-                <Check className="w-4 h-4 text-emerald-400 stroke-[3]" /> Compare flight options
-              </span>
-              <span className="text-white/30 hidden sm:inline">|</span>
-              <span className="flex items-center gap-1.5">
-                <Package className="w-4 h-4 text-amber-300" /> Hajj & Umrah specialists
-              </span>
-              <span className="text-white/30 hidden sm:inline">|</span>
-              <span className="flex items-center gap-1.5">
-                <CalendarDays className="w-4 h-4 text-sky-300" /> Find your next stay
-              </span>
-              <span className="text-white/30 hidden sm:inline">|</span>
-              <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-purple-300" /> Personal travel support
-              </span>
+        <Navbar transparent />
+        <div>
+          <section className="relative isolate bg-[#1C1F66] px-4 pb-28 pt-28 text-white sm:pb-36 sm:pt-36 md:px-8 md:pt-40">
+            <div
+              className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
+              aria-label="Raudah travel photography"
+            >
+              {slideshowEnabled &&
+                HERO_IMAGES.map((src, index) => (
+                  <img
+                    key={src}
+                    src={src}
+                    alt=""
+                    aria-hidden
+                    className="absolute inset-0 h-full w-full object-cover motion-safe:transition-opacity motion-safe:duration-1000"
+                    style={{ opacity: index === slideIndex ? 1 : 0 }}
+                    decoding="async"
+                  />
+                ))}
+              {aircraftEnabled && (
+                <img
+                  src={heroAircraftImg}
+                  alt=""
+                  aria-hidden
+                  className={`absolute inset-y-0 right-0 h-full w-full object-cover ${slideshowEnabled ? "md:w-[75%] opacity-75" : ""}`}
+                  style={
+                    slideshowEnabled
+                      ? {
+                          maskImage:
+                            "linear-gradient(to right, transparent, black 35%)",
+                          WebkitMaskImage:
+                            "linear-gradient(to right, transparent, black 35%)",
+                        }
+                      : undefined
+                  }
+                  fetchPriority="high"
+                  decoding="async"
+                />
+              )}
+              <div className="absolute inset-0 bg-[#1C1F66]/65" />
             </div>
-          </div>
-        </section>
-
-        {/* Search Widget — Overlaps bottom edge of hero like Trip.com */}
-          <div className="relative z-20 -mt-24 sm:-mt-28 md:-mt-32 px-4 md:px-8 max-w-7xl mx-auto w-full mb-0">
-          <OtaSearchWidget packagesSectionId="featured-packages" />
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm"><div><p className="font-bold text-slate-900">Already have a booking?</p><p className="mt-1 text-xs text-slate-500">Track confirmation, view travel documents or request help.</p></div><Link href="/dashboard/my-trips" className="inline-flex items-center gap-2 font-bold text-indigo-700">Manage my trips <ArrowRight size={16} /></Link></div>
-          <details className="mt-3 rounded-2xl border border-slate-200 bg-white px-5 py-3"><summary className="cursor-pointer text-xs font-semibold text-slate-600">Currency reference rates</summary><div className="mt-3"><ExchangeRates /></div></details>
-        </div>
-
-        {/* ── FEATURED PACKAGES (Restored) ── */}
-        <section id="featured-packages" tabIndex={-1} aria-label="Featured Hajj and Umrah packages" className="scroll-mt-24 outline-none py-12 md:py-16 bg-white border-b border-gray-100">
-          <div className="container mx-auto px-4 md:px-6">
-            <div className="text-center mb-12 max-w-3xl mx-auto">
-              <p className="text-[#2D3199] text-xs font-black uppercase tracking-widest mb-2">Our Packages</p>
-              <h2 className="text-3xl md:text-4xl font-black text-[#0F172A] mb-3">Featured Pilgrimages</h2>
-              <div className="flex items-center justify-center gap-3 mb-4">
-                <div className="h-px w-16 bg-gradient-to-r from-transparent to-[#2D3199]" />
-                <div className="w-2 h-2 rotate-45 bg-[#2D3199]" />
-                <div className="h-px w-16 bg-gradient-to-l from-transparent to-[#2D3199]" />
-              </div>
-              <p className="text-[#64748B] text-base leading-relaxed">
-                Thoughtfully designed packages ensuring comfort, proximity to the Haramain, and deeply guided spiritual experiences.
+            <div className="mx-auto max-w-6xl text-center">
+              <p className="mb-5 inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-medium text-white sm:text-sm">
+                Online Travel Agency • Nigeria's Most Trusted Partner
               </p>
-            </div>
-
-            {isLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {[1, 2, 3].map((i) => <div key={i} className="h-[420px] rounded-3xl animate-pulse bg-[#F1F5F9]" />)}
+              <h1 className="text-[26px] font-bold leading-tight tracking-tight text-white sm:text-4xl md:text-5xl">
+                Every check-in is a new beginning
+                <span className="mt-3 block text-[#FF4E00]">
+                  Raudah Travels &amp; Tours
+                </span>
+              </h1>
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs font-medium text-white sm:text-sm">
+                <span className="flex items-center gap-2">
+                  <Check className="h-4 w-4 shrink-0 text-white" />
+                  Compare flight options
+                </span>
+                <span className="flex items-center gap-2">
+                  <Package className="h-4 w-4 shrink-0 text-white" />
+                  Hajj &amp; Umrah specialists
+                </span>
+                <span className="flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 shrink-0 text-white" />
+                  Find your next stay
+                </span>
+                <span className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-white" />
+                  Personal travel support
+                </span>
               </div>
+            </div>
+          </section>
+          <div className="relative z-20 mx-auto -mt-20 w-full max-w-7xl px-4 md:px-8 sm:-mt-24">
+            <OtaSearchWidget
+              packagesSectionId="featured-packages"
+              variant="landing"
+            />
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm">
+              <div>
+                <p className="font-bold text-slate-900">
+                  Already have a booking?
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Track confirmation, view travel documents or request help.
+                </p>
+              </div>
+              <Link
+                href="/dashboard/my-trips"
+                className="inline-flex items-center gap-2 font-bold text-indigo-700"
+              >
+                Manage my trips <ArrowRight size={16} />
+              </Link>
+            </div>
+            <details className="mt-3 rounded-2xl border border-slate-200 bg-white px-5 py-3">
+              <summary className="cursor-pointer text-xs font-semibold text-slate-600">
+                Currency reference rates
+              </summary>
+              <div className="mt-3">
+                <ExchangeRates />
+              </div>
+            </details>
+          </div>
+        </div>
+        <section
+          id="featured-packages"
+          tabIndex={-1}
+          aria-label="Featured Hajj and Umrah packages"
+          className="scroll-mt-28 bg-white py-16 outline-none md:py-24"
+        >
+          <div className="mx-auto max-w-7xl px-4 md:px-8">
+            <div className="mb-7 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+              <div className="max-w-2xl">
+                <p className="mb-3 inline-flex rounded-full bg-[#EEF0FF] px-3 py-1.5 text-sm font-medium text-[#2D3199]">
+                  Our Packages
+                </p>
+                <h2 className="text-3xl font-bold tracking-tight text-slate-900 md:text-4xl">
+                  Featured Pilgrimages
+                </h2>
+                <p className="mt-4 leading-relaxed text-slate-600">
+                  Thoughtfully designed packages ensuring comfort, proximity to
+                  the Haramain, and deeply guided spiritual experiences.
+                </p>
+              </div>
+              <Link
+                href="/packages"
+                className="inline-flex min-h-11 shrink-0 items-center gap-2 self-start rounded-lg border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:border-[#2D3199] hover:text-[#2D3199]"
+              >
+                View All Packages
+                <ArrowRight size={16} />
+              </Link>
+            </div>
+            <div
+              role="group"
+              aria-label="Featured package type"
+              className="mb-8 flex gap-5 border-b border-slate-200"
+            >
+              {(
+                [
+                  ["all", "All Types"],
+                  ["hajj", "Hajj"],
+                  ["umrah", "Umrah"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setFeaturedType(value)}
+                  aria-pressed={featuredType === value}
+                  className={`min-h-12 border-b-2 px-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2D3199] ${featuredType === value ? "border-[#2D3199] text-[#2D3199]" : "border-transparent text-slate-500 hover:text-[#2D3199]"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {isLoading ? (
+              <div
+                role="status"
+                aria-label="Loading packages"
+                className="grid gap-6 md:grid-cols-3"
+              >
+                {[1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className="h-[520px] animate-pulse rounded-2xl bg-slate-100"
+                  />
+                ))}
+              </div>
+            ) : isError ? (
+              <div
+                role="alert"
+                className="rounded-2xl bg-slate-50 p-8 text-center"
+              >
+                <p className="text-slate-600">Unable to load packages.</p>
+                <button
+                  type="button"
+                  onClick={() => refetch()}
+                  className="mt-4 min-h-11 rounded-lg bg-[#2D3199] px-5 text-sm font-semibold text-white"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : (packagesData?.packages.length ?? 0) === 0 ? (
+              <p className="py-12 text-center text-slate-500">
+                No packages found. View all packages for more options.
+              </p>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {(packagesData?.packages || []).map((pkg) => {
-                  const spacesLeft = pkg.maxCapacity - pkg.currentBookings;
-                  const isLowAvail = spacesLeft > 0 && spacesLeft <= 10;
-                  const imgSrc = getPackageImage(pkg.id, pkg.imageUrl);
-                  return (
-                    <Link key={pkg.id} href={`/packages/${pkg.id}`}
-                      className="group block bg-white rounded-3xl border border-[#DCE3F0] overflow-hidden shadow-[0_2px_16px_rgba(45,49,153,0.06)] hover:shadow-[0_8px_40px_rgba(45,49,153,0.14)] hover:-translate-y-1 transition-all duration-300">
-                      {/* Image */}
-                      <div className="relative h-52 overflow-hidden bg-[#1C1F66]">
-                        <img src={imgSrc} alt={pkg.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                        <div className="absolute inset-0"
-                          style={{ background: "linear-gradient(to top, rgba(28,31,102,0.80) 0%, transparent 60%)" }} />
-                        <span className="absolute top-4 left-4 px-3 py-1 bg-[#FF3B00] text-white text-xs font-black uppercase tracking-wider rounded-full">
-                          {pkg.type}
-                        </span>
-                        <span className="absolute top-4 right-4 flex items-center gap-1 px-3 py-1 bg-white/15 backdrop-blur border border-white/20 text-white text-xs font-bold rounded-full">
-                          <Star className="w-3 h-3 fill-white" /> {pkg.starRating} Star
-                        </span>
-                        {isLowAvail && (
-                          <span className="absolute bottom-4 left-4 px-3 py-1 bg-amber-500 text-white text-xs font-bold rounded-full">
-                            Only {spacesLeft} left!
-                          </span>
-                        )}
-                        <div className="absolute bottom-4 right-4 text-right">
-                          <p className="text-white text-xl font-black leading-none">₦{pkg.price.toLocaleString()}</p>
-                          <p className="text-white/60 text-[10px] font-medium">per person</p>
-                        </div>
-                      </div>
-
-                      {/* Body */}
-                      <div className="p-5">
-                        <h3 className="text-lg font-black text-[#0F172A] leading-snug mb-3 group-hover:text-[#2D3199] transition-colors line-clamp-1">
-                          {pkg.name}
-                        </h3>
-                        <div className="flex items-center gap-4 text-sm text-[#64748B] mb-4">
-                          <span className="flex items-center gap-1.5">
-                            <CalendarDays className="w-4 h-4 text-[#2D3199]" /> {pkg.durationDays} Days
-                          </span>
-                          <span className="w-1 h-1 rounded-full bg-[#DCE3F0]" />
-                          <span className="flex items-center gap-1.5">
-                            <MapPin className="w-4 h-4 text-[#2D3199]" /> Makkah
-                          </span>
-                        </div>
-                        <div className="space-y-1.5 mb-5">
-                          {pkg.inclusions.slice(0, 3).map((inc, idx) => (
-                            <div key={idx} className="flex items-center gap-2 text-sm text-[#475569]">
-                              <span className="w-4 h-4 rounded-full bg-[#EEF0FF] flex items-center justify-center shrink-0">
-                                <Check className="w-2.5 h-2.5 text-[#2D3199]" />
-                              </span>
-                              <span className="truncate">{inc}</span>
-                            </div>
-                          ))}
-                          {pkg.inclusions.length > 3 && (
-                            <p className="text-xs text-[#94A3B8] pl-6">+{pkg.inclusions.length - 3} more inclusions</p>
-                          )}
-                        </div>
-                        <PackageAvailability
-                          maxCapacity={pkg.maxCapacity}
-                          currentBookings={pkg.currentBookings}
-                          className="mb-5"
-                        />
-                        <div className="flex items-center justify-between pt-4 border-t border-[#F1F5F9]">
-                          <div>
-                            <p className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-widest">Departure</p>
-                            <p className="text-sm font-bold text-[#334155]">
-                              {new Date(pkg.departureDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
-                            </p>
-                          </div>
-                          <span className="flex items-center gap-1 px-4 py-2 bg-[#2D3199] group-hover:bg-[#FF3B00] text-white text-sm font-bold rounded-full transition-colors duration-300">
-                            View Details <ChevronRight className="w-3.5 h-3.5" />
-                          </span>
-                        </div>
-                      </div>
-                    </Link>
-                  );
-                })}
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {packagesData?.packages.map((pkg) => (
+                  <PackageCard key={pkg.id} pkg={pkg} />
+                ))}
               </div>
             )}
-
-            <div className="text-center mt-10">
-              <Button asChild className="bg-[#2D3199] hover:bg-[#25297F] text-white rounded-full px-8 py-5 font-bold shadow-brand">
-                <Link href="/packages" className="flex items-center gap-2">View All Packages <ArrowRight className="w-4 h-4" /></Link>
-              </Button>
-            </div>
           </div>
         </section>
 
         {/* ── INTERACTIVE ROUTE & FLIGHT EXPLORER (Trip.com style) ── */}
-        <section id="flight-routes" className="py-12 md:py-16 bg-[#F8FAFC] border-b border-slate-200/80">
+        <section
+          id="flight-routes"
+          className="py-12 md:py-16 bg-[#F8FAFC] border-b border-slate-200/80"
+        >
           <div className="container mx-auto px-4 md:px-6">
             <div className="text-center mb-10 md:mb-12 max-w-3xl mx-auto">
               <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1C1F66]/10 text-[#1C1F66] text-xs font-bold uppercase tracking-wider mb-3">
-                <Plane className="w-3.5 h-3.5 text-[#FF4E00]" /> A world of possibilities
+                <Plane className="w-3.5 h-3.5 text-[#FF4E00]" /> A world of
+                possibilities
               </span>
               <h2 className="text-3xl md:text-4xl lg:text-5xl font-black text-[#0F172A] tracking-tight">
                 From your home city to your next chapter.
               </h2>
               <div className="flex items-center justify-center gap-3 my-4">
-                <div className="h-px w-16 bg-gradient-to-r from-transparent to-[#2D3199]" />
-                <div className="w-2 h-2 rotate-45 bg-[#2D3199]" />
-                <div className="h-px w-16 bg-gradient-to-l from-transparent to-[#2D3199]" />
+                <div className="h-px w-12 bg-[#2D3199]/20" />
+                <div className="h-1 w-8 rounded-full bg-[#2D3199]" />
+                <div className="h-px w-12 bg-[#2D3199]/20" />
               </div>
               <p className="text-[#64748B] text-base md:text-lg leading-relaxed">
-                Search flights from Nigeria and beyond, explore available hotels, and keep your travel plans together in your Raudah account.
+                Search flights from Nigeria and beyond, explore available
+                hotels, and keep your travel plans together in your Raudah
+                account.
               </p>
-            </div>
-
-            <div className="max-w-5xl mx-auto">
-              <div className="grid gap-4 sm:grid-cols-3">
-                {[{ title: "Fly your way", text: "Compare itineraries, baggage and fare conditions before you book.", href: "/flights", cta: "Explore flights", icon: Plane }, { title: "Stay somewhere special", text: "Choose available rooms with clear pricing and cancellation policies.", href: "/hotels", cta: "Discover hotels", icon: CalendarDays }, { title: "Every journey, together", text: "Return to saved checkouts, view supplier confirmations and request support.", href: "/dashboard/my-trips", cta: "Open my trips", icon: CheckCircle2 }].map(card => <Link key={card.href} href={card.href} className="group rounded-3xl border border-indigo-100 bg-white p-7 shadow-sm transition hover:-translate-y-1 hover:shadow-lg"><card.icon className="mb-6 h-9 w-9 text-[#2D3199]" /><h3 className="text-xl font-black text-slate-900">{card.title}</h3><p className="mt-3 text-sm leading-relaxed text-slate-500">{card.text}</p><p className="mt-6 text-sm font-bold text-[#2D3199]">{card.cta} →</p></Link>)}
-              </div>
             </div>
           </div>
         </section>
+        <AppSection />
 
         {/* ── WHY CHOOSE US ── */}
-        <section className="py-24 bg-[#F8FAFC] overflow-hidden">
+        <section className="py-16 md:py-24 bg-white overflow-hidden">
           <div className="container mx-auto px-4 md:px-6">
             <div className="text-center mb-16">
-              <p className="text-[#2D3199] text-sm font-bold uppercase tracking-widest mb-3">Our Promise</p>
-              <h2 className="text-3xl md:text-4xl font-black text-[#0F172A] mb-4">Why Choose Raudah Travels?</h2>
+              <p className="text-[#2D3199] text-sm font-bold uppercase tracking-widest mb-3">
+                Our Promise
+              </p>
+              <h2 className="text-3xl md:text-4xl font-black text-[#0F172A] mb-4">
+                Why Choose Raudah Travels?
+              </h2>
               <div className="flex items-center justify-center gap-3">
-                <div className="h-px w-16 bg-gradient-to-r from-transparent to-[#2D3199]" />
-                <div className="w-2 h-2 rotate-45 bg-[#2D3199]" />
-                <div className="h-px w-16 bg-gradient-to-l from-transparent to-[#2D3199]" />
+                <div className="h-px w-12 bg-[#2D3199]/20" />
+                <div className="h-1 w-8 rounded-full bg-[#2D3199]" />
+                <div className="h-px w-12 bg-[#2D3199]/20" />
               </div>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
               <div className="space-y-6">
                 {[
-                  { title: "Premium Accommodations", desc: "Carefully selected hotels within walking distance of the Haramain in Mecca and Medina.", color: "#EEF0FF", icon: "🏨" },
-                  { title: "Expert Scholars On-Trip", desc: "Accompanied by knowledgeable scholars who guide you through every ritual and supplication.", color: "#FFF4F1", icon: "📖" },
-                  { title: "Transparent, Fair Pricing", desc: "No hidden fees. Clear payment plans and flexible deposit options for every budget.", color: "#F0FDF4", icon: "✅" },
-                  { title: "End-to-End Visa Support", desc: "We handle all Nigerian Consulate and Saudi Embassy documentation from start to finish.", color: "#EFF6FF", icon: "🛂" },
+                  {
+                    title: "Premium Accommodations",
+                    desc: "Carefully selected hotels within walking distance of the Haramain in Mecca and Medina.",
+                    color: "#EEF0FF",
+                    icon: Building2,
+                  },
+                  {
+                    title: "Expert Scholars On-Trip",
+                    desc: "Accompanied by knowledgeable scholars who guide you through every ritual and supplication.",
+                    color: "#FFF4F1",
+                    icon: BookOpen,
+                  },
+                  {
+                    title: "Transparent, Fair Pricing",
+                    desc: "No hidden fees. Clear payment plans and flexible deposit options for every budget.",
+                    color: "#F0FDF4",
+                    icon: ShieldCheck,
+                  },
+                  {
+                    title: "End-to-End Visa Support",
+                    desc: "We handle all Nigerian Consulate and Saudi Embassy documentation from start to finish.",
+                    color: "#EFF6FF",
+                    icon: FileCheck,
+                  },
                 ].map((val, i) => (
-                  <div key={i} className="flex gap-4 p-5 rounded-2xl bg-white border border-[#DCE3F0] shadow-soft hover:-translate-y-0.5 hover:shadow-soft-lg transition-all">
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0" style={{ background: val.color }}>
-                      {val.icon}
+                  <div
+                    key={i}
+                    className="flex gap-4 p-5 rounded-xl bg-[#F8FAFC]"
+                  >
+                    <div
+                      className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0"
+                      style={{ background: val.color }}
+                    >
+                      <val.icon
+                        className="h-6 w-6 text-[#2D3199]"
+                        aria-hidden="true"
+                      />
                     </div>
                     <div>
-                      <h4 className="text-base font-bold text-[#0F172A] mb-1">{val.title}</h4>
-                      <p className="text-[#64748B] text-sm leading-relaxed">{val.desc}</p>
+                      <h4 className="text-base font-bold text-[#0F172A] mb-1">
+                        {val.title}
+                      </h4>
+                      <p className="text-[#64748B] text-sm leading-relaxed">
+                        {val.desc}
+                      </p>
                     </div>
                   </div>
                 ))}
               </div>
               <div className="relative">
-                <div className="aspect-[4/5] rounded-3xl overflow-hidden border-4 border-[#EEF0FF] shadow-brand-glow relative z-10">
-                  <img src={consultancyImg} alt="Raudah Travel Consultancy" className="w-full h-full object-cover" />
+                <div className="aspect-[4/5] rounded-3xl overflow-hidden border border-[#EEF0FF] relative z-10">
+                  <img
+                    src={consultancyImg}
+                    alt="Raudah Travel Consultancy"
+                    className="w-full h-full object-cover"
+                  />
                 </div>
                 <div className="absolute -bottom-8 -left-8 w-64 h-64 bg-[#2D3199]/10 rounded-full blur-3xl -z-10" />
               </div>
@@ -434,31 +427,23 @@ export default function Home() {
         </section>
 
         {/* ── TESTIMONIALS ── */}
-        <section className="relative py-28 overflow-hidden"
-          style={{ background: "linear-gradient(160deg, #0D0F4E 0%, #1C1F66 45%, #12145C 100%)" }}>
-
-          {/* Background decoration */}
-          <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#2D3199]/30 rounded-full blur-[120px]" />
-            <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-[#FF3B00]/15 rounded-full blur-[100px]" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#2D3199]/10 rounded-full blur-[140px]" />
-            {/* Subtle dot grid */}
-            <div className="absolute inset-0 opacity-[0.04]"
-              style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
-          </div>
-
+        <section
+          className="relative py-28 overflow-hidden"
+          style={{ background: "#1C1F66" }}
+        >
           <div className="relative container mx-auto px-4 md:px-6">
-
             {/* Header */}
             <div className="text-center mb-16 max-w-2xl mx-auto">
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-white/15 bg-white/8 text-white/70 text-xs font-bold uppercase tracking-widest mb-5">
-                <Star className="w-3 h-3 fill-[#FF3B00] text-[#FF3B00]" /> Testimonials
+                <Star className="w-3 h-3 fill-[#FF3B00] text-[#FF3B00]" />{" "}
+                Testimonials
               </div>
               <h2 className="text-4xl md:text-5xl font-black text-white mb-4 leading-tight">
                 What Our Pilgrims Say
               </h2>
               <p className="text-white/55 text-lg leading-relaxed">
-                Thousands of Nigerian Muslims have trusted Raudah Travels for their sacred journey.
+                Thousands of Nigerian Muslims have trusted Raudah Travels for
+                their sacred journey.
               </p>
             </div>
 
@@ -470,13 +455,20 @@ export default function Home() {
                 { val: "8 yrs", label: "Trusted Since 2016" },
                 { val: "100%", label: "Visa Success Rate" },
               ];
-              const landingStats = (pubSettings?.landing_stats as typeof defaultLandingStats | undefined) ?? defaultLandingStats;
+              const landingStats =
+                (pubSettings?.landing_stats as
+                  | typeof defaultLandingStats
+                  | undefined) ?? defaultLandingStats;
               return (
                 <div className="flex flex-wrap items-center justify-center gap-6 md:gap-12 mb-14">
                   {landingStats.map((s) => (
                     <div key={s.label} className="text-center">
-                      <p className="text-2xl font-black text-white leading-none">{s.val}</p>
-                      <p className="text-white/45 text-xs mt-1 font-medium">{s.label}</p>
+                      <p className="text-2xl font-black text-white leading-none">
+                        {s.val}
+                      </p>
+                      <p className="text-white/45 text-xs mt-1 font-medium">
+                        {s.label}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -486,14 +478,15 @@ export default function Home() {
             {/* Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
               {TESTIMONIALS.map((t, i) => (
-                <div key={i}
-                  className={`relative rounded-3xl p-7 border transition-all duration-300 hover:-translate-y-2 group ${
+                <div
+                  key={i}
+                  className={`relative rounded-3xl p-7 border transition-all duration-300 group ${
                     i === 1
-                      ? "border-[#FF3B00]/30 bg-gradient-to-br from-[#FF3B00]/10 to-[#2D3199]/20 md:mt-[-20px]"
-                      : "border-white/10 bg-white/6"
+                      ? "border-white/20 bg-white/10"
+                      : "border-white/20 bg-white/5"
                   }`}
-                  style={{ backdropFilter: "blur(12px)" }}>
-
+                  style={{ backdropFilter: "blur(12px)" }}
+                >
                   {/* Featured badge on center card */}
                   {i === 1 && (
                     <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 bg-[#FF3B00] rounded-full text-white text-[10px] font-black uppercase tracking-wider whitespace-nowrap shadow-[0_4px_12px_rgba(255,59,0,0.4)]">
@@ -502,15 +495,26 @@ export default function Home() {
                   )}
 
                   {/* Giant quote mark */}
-                  <div className="text-7xl font-black leading-none mb-2 select-none"
-                    style={{ color: i === 1 ? "rgba(255,59,0,0.25)" : "rgba(255,255,255,0.08)", fontFamily: "Georgia, serif" }}>
+                  <div
+                    className="text-7xl font-black leading-none mb-2 select-none"
+                    style={{
+                      color:
+                        i === 1
+                          ? "rgba(255,59,0,0.25)"
+                          : "rgba(255,255,255,0.08)",
+                      fontFamily: "Georgia, serif",
+                    }}
+                  >
                     "
                   </div>
 
                   {/* Stars */}
                   <div className="flex gap-0.5 mb-4">
                     {Array.from({ length: t.rating }).map((_, j) => (
-                      <Star key={j} className="w-4 h-4 fill-[#FF3B00] text-[#FF3B00]" />
+                      <Star
+                        key={j}
+                        className="w-4 h-4 fill-[#FF3B00] text-[#FF3B00]"
+                      />
                     ))}
                   </div>
 
@@ -521,45 +525,67 @@ export default function Home() {
 
                   {/* Author */}
                   <div className="flex items-center gap-3 pt-5 border-t border-white/10">
-                    <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black text-lg shrink-0 shadow-lg ${
-                      i === 0 ? "bg-gradient-to-br from-[#2D3199] to-[#4C56B8]" :
-                      i === 1 ? "bg-gradient-to-br from-[#FF3B00] to-[#FF6B35]" :
-                               "bg-gradient-to-br from-[#0EA5E9] to-[#2D3199]"
-                    } text-white`}>
+                    <div
+                      className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black text-lg shrink-0 shadow-lg ${
+                        i === 0
+                          ? "bg-gradient-to-br from-[#2D3199] to-[#4C56B8]"
+                          : i === 1
+                            ? "bg-gradient-to-br from-[#FF3B00] to-[#FF6B35]"
+                            : "bg-gradient-to-br from-[#0EA5E9] to-[#2D3199]"
+                      } text-white`}
+                    >
                       {t.name.charAt(0)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-white text-sm leading-tight truncate">{t.name}</p>
+                      <p className="font-bold text-white text-sm leading-tight truncate">
+                        {t.name}
+                      </p>
                       <p className="text-white/45 text-xs mt-0.5">{t.city}</p>
                     </div>
-                    <span className={`text-[10px] font-bold px-3 py-1.5 rounded-full shrink-0 ${
-                      i === 1
-                        ? "bg-[#FF3B00]/20 text-[#FF3B00] border border-[#FF3B00]/30"
-                        : "bg-white/8 text-white/60 border border-white/10"
-                    }`}>
+                    <span
+                      className={`text-[10px] font-bold px-3 py-1.5 rounded-full shrink-0 ${
+                        i === 1
+                          ? "bg-[#FF3B00]/20 text-[#FF3B00] border border-[#FF3B00]/30"
+                          : "bg-white/8 text-white/60 border border-white/10"
+                      }`}
+                    >
                       {t.trip}
                     </span>
                   </div>
                 </div>
               ))}
             </div>
-
           </div>
         </section>
 
         {/* ── CTA BANNER ── */}
-        <section className="py-20" style={{ background: "linear-gradient(135deg, #2D3199 0%, #4C56B8 100%)" }}>
+        <section className="py-20" style={{ background: "#2D3199" }}>
           <div className="container mx-auto px-4 md:px-6 text-center max-w-3xl">
-            <h2 className="text-3xl md:text-4xl font-black text-white mb-4">Begin Your Sacred Journey Today</h2>
+            <h2 className="text-3xl md:text-4xl font-black text-white mb-4">
+              Begin Your Sacred Journey Today
+            </h2>
             <p className="text-white/75 text-lg mb-10 leading-relaxed">
-              Spaces are limited for each season. Reserve your package now and let our team handle every detail — from visa to hotel to ziyarah.
+              Spaces are limited for each season. Reserve your package now and
+              let our team handle every detail — from visa to hotel to ziyarah.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Button size="lg" asChild className="bg-[#FF3B00] hover:bg-[#D63200] text-white font-bold text-lg px-8 py-6 w-full sm:w-auto rounded-full shadow-cta hover:-translate-y-0.5 transition-all">
+              <Button
+                size="lg"
+                asChild
+                className="bg-[#FF3B00] hover:bg-[#D63200] text-white font-bold text-lg px-8 py-6 w-full sm:w-auto rounded-lg transition-colors"
+              >
                 <Link href="/packages">Book a Package</Link>
               </Button>
-              <Button size="lg" variant="outline" asChild className="border-white/30 text-white bg-transparent hover:bg-white/10 hover:text-white font-semibold text-lg px-8 py-6 w-full sm:w-auto rounded-full">
-                <a href="tel:+2348012345678" className="flex items-center gap-2">
+              <Button
+                size="lg"
+                variant="outline"
+                asChild
+                className="border-white/30 text-white bg-transparent hover:bg-white/10 hover:text-white font-semibold text-lg px-8 py-6 w-full sm:w-auto rounded-full"
+              >
+                <a
+                  href="tel:+2348012345678"
+                  className="flex items-center gap-2"
+                >
                   <Phone className="w-5 h-5" /> Call Us Now
                 </a>
               </Button>
@@ -577,7 +603,9 @@ export default function Home() {
         rel="noopener noreferrer"
         aria-label="Chat on WhatsApp"
         className={`fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-[#25D366] text-white rounded-full shadow-2xl hover:bg-[#20b958] hover:scale-105 active:scale-95 px-4 py-3.5 group transition-all duration-500 ${
-          showWhatsApp ? "opacity-100 translate-y-0 pointer-events-auto" : "opacity-0 translate-y-4 pointer-events-none"
+          showWhatsApp
+            ? "opacity-100 translate-y-0 pointer-events-auto"
+            : "opacity-0 translate-y-4 pointer-events-none"
         }`}
       >
         <MessageCircle className="w-6 h-6 shrink-0" />
