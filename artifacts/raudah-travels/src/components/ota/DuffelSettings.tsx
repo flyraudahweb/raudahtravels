@@ -1,3 +1,4 @@
+import { providerDisplay } from "@/lib/providerDisplay";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ota, travelInput, travelButton } from "@/lib/ota";
@@ -44,7 +45,7 @@ export default function DuffelSettings({
       await qc.invalidateQueries({ queryKey: ["ota"] });
       await status.refetch();
     } catch (e: any) {
-      setError(e.message);
+      setError(providerDisplay(e.message));
     } finally {
       setBusy(false);
     }
@@ -76,7 +77,7 @@ export default function DuffelSettings({
       className="scroll-mt-24 space-y-5 rounded-2xl border bg-white p-6"
     >
       <div>
-        <h2 className="text-lg font-bold">Duffel keys and webhooks</h2>
+        <h2 className="text-lg font-bold">Api Provider keys and webhooks</h2>
         <p className="mt-2 text-sm text-slate-500">
           Test and live credentials are stored separately and encrypted. Save
           credentials and event selections before using webhook controls.
@@ -92,7 +93,11 @@ export default function DuffelSettings({
               className="space-y-4 rounded-xl border border-slate-200 p-4"
             >
               <h3 className="font-bold">{title} configuration</h3>
-              {input(`duffel${title}Token`, `${title} Duffel API token`, true)}
+              {input(
+                `duffel${title}Token`,
+                `${title} Api Provider API token`,
+                true,
+              )}
               {input(
                 `webhook${title}Secret`,
                 `${title} webhook signing secret`,
@@ -141,8 +146,8 @@ export default function DuffelSettings({
           ))}
         </div>
         <p className="mt-3 text-xs text-slate-500">
-          Car, airline-credit and Duffel payment-link events are not used by
-          this app. Paystack has a separate webhook.
+          Car, airline-credit and Api Provider payment-link events are not used
+          by this app. Paystack has a separate webhook.
         </p>
       </div>
       <div className="space-y-3 border-t pt-4">
@@ -188,17 +193,17 @@ export default function DuffelSettings({
         ))}
         {status.error && (
           <p role="alert" className="text-sm text-red-700">
-            {status.error.message}
+            {providerDisplay(status.error.message)}
           </p>
         )}
         {error && (
           <p role="alert" className="text-sm text-red-700">
-            {error}
+            {providerDisplay(error)}
           </p>
         )}
         {message && (
           <p role="status" className="text-sm text-emerald-700">
-            {message}
+            {providerDisplay(message)}
           </p>
         )}
       </div>
@@ -211,7 +216,7 @@ export default function DuffelSettings({
           </p>
         ) : !deliveries.data?.events?.length ? (
           <p className="text-sm text-slate-500">
-            No Duffel events received yet.
+            No Api Provider events received yet.
           </p>
         ) : (
           <div className="space-y-2">
@@ -233,7 +238,9 @@ export default function DuffelSettings({
                   · attempts {event.attempts}
                 </p>
                 {event.issue && (
-                  <p className="mt-1 text-amber-800">{event.issue}</p>
+                  <p className="mt-1 text-amber-800">
+                    {providerDisplay(event.issue)}
+                  </p>
                 )}
                 {!event.completedAt && event.attempts >= 10 && (
                   <button
@@ -253,7 +260,7 @@ export default function DuffelSettings({
                           "Supplier event queued for another read-only reconciliation attempt.",
                         );
                       } catch (e: any) {
-                        setError(e.message);
+                        setError(providerDisplay(e.message));
                       } finally {
                         setBusy(false);
                       }

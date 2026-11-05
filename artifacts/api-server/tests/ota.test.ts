@@ -76,6 +76,7 @@ let newerSupplierSnapshot = false;
 let gatewayPatch: Record<string, unknown> = {};
 let refundTransaction: string | number = 101;
 let changeDuringInitialization = false;
+let supplierSnapshotPatch: Record<string, unknown> = {};
 let testClientId = 0;
 const offer = () => ({
   id: "off_test",
@@ -271,6 +272,7 @@ beforeEach(async () => {
   gatewayPatch = {};
   refundTransaction = 101;
   changeDuringInitialization = false;
+  supplierSnapshotPatch = {};
   await module.db.delete(module.otaDuffelEventsTable);
   await module.db.delete(module.otaPaymentJobsTable);
   await module.db.delete(module.otaEventsTable);
@@ -399,6 +401,7 @@ beforeEach(async () => {
             metadata: { ota_booking_id: booking.id },
             cancelled_at: supplierCancelled ? new Date().toISOString() : null,
             slices: [],
+            ...supplierSnapshotPatch,
           },
         });
       }
@@ -2601,4 +2604,127 @@ it("prices supported currencies and rejects replay, currency and mode mismatches
     { amount: 1 },
   ])
     expect(() => validatePayment({ ...valid, ...patch }, checkout)).toThrow();
+});
+
+it("rejects mismatched supplier snapshots without replacing a confirmed itinerary", async () => {
+  await create();
+  await request(`/bookings/${booking.id}/complete`, "user", {});
+  const { refreshBooking } = await import("../src/services/ota/booking");
+  const original = (await module.db.query.otaBookingsTable.findFirst())!;
+  for (const patch of [
+    { metadata: { ota_booking_id: "another-checkout" } },
+    { total_amount: "1.00" },
+    { total_currency: "USD" },
+    { live_mode: true },
+  ]) {
+    supplierSnapshotPatch = patch;
+    await expect(refreshBooking(original)).rejects.toThrow(
+      "Provider record mismatch",
+    );
+    const saved = (await module.db.query.otaBookingsTable.findFirst())!;
+    expect(saved.revision).toBe(original.revision);
+    expect(saved.providerResult).toEqual(original.providerResult);
+  }
+  expect(supplierCalls).toBe(1);
+});
+
+it("rejects opposite-mode supplier data during manual and webhook reconciliation", async () => {
+  await create();
+  await request(`/bookings/${booking.id}/complete`, "user", {});
+  const original = (await module.db.query.otaBookingsTable.findFirst())!;
+  supplierSnapshotPatch = { live_mode: true };
+  expect(
+    (
+      await request(`/admin/bookings/${booking.id}/reconcile`, "super", {
+        providerId: "ord_test",
+      })
+    ).status,
+  ).toBe(409);
+  await deliverDuffel("order.created", { id: "ord_test" });
+  const saved = (await module.db.query.otaBookingsTable.findFirst())!;
+  expect(saved.revision).toBe(original.revision);
+  expect(
+    (await module.db.query.otaDuffelEventsTable.findFirst())?.issue,
+  ).toBeTruthy();
+});
+
+it("rejects concurrent stale OTA setting saves instead of losing a credential rotation", async () => {
+  const { saveOtaConfig, getOtaConfig } =
+    await import("../src/services/ota/config");
+  const query = module.db.query.siteSettingsTable;
+  const original = query.findFirst.bind(query);
+  let arrived = 0;
+  let release!: () => void;
+  const barrier = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const spy = vi
+    .spyOn(query, "findFirst")
+    .mockImplementation(async (...args: any[]) => {
+      const row = await (original as any)(...args);
+      if (arrived < 2) {
+        arrived++;
+        if (arrived === 2) release();
+        await barrier;
+      }
+      return row;
+    });
+  let outcomes: PromiseSettledResult<any>[];
+  try {
+    outcomes = await Promise.allSettled([
+      saveOtaConfig({ duffelTestToken: "duffel_test_rotated" }, "super"),
+      saveOtaConfig({ serviceFeeNgn: 250 }, "super"),
+    ]);
+  } finally {
+    spy.mockRestore();
+  }
+  expect(outcomes.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+  const failure = outcomes.find(
+    (r) => r.status === "rejected",
+  ) as PromiseRejectedResult;
+  expect(failure.reason.status).toBe(409);
+  // Retrying the rejected partial change after refreshing preserves both edits.
+  if (outcomes[0].status === "rejected")
+    await saveOtaConfig({ duffelTestToken: "duffel_test_rotated" }, "super");
+  else await saveOtaConfig({ serviceFeeNgn: 250 }, "super");
+  const config = await getOtaConfig();
+  expect(config.duffelTestToken).toBe("duffel_test_rotated");
+  expect(config.serviceFeeNgn).toBe(250);
+});
+
+it("emails a verified full refund even when an earlier cancellation notice was already sent", async () => {
+  await create();
+  await module.db
+    .update(module.otaBookingsTable)
+    .set({
+      status: "cancelled",
+      paidAt: new Date(),
+      notificationSentAt: new Date(),
+    })
+    .where(eq(module.otaBookingsTable.id, booking.id));
+  expect(
+    (
+      await request(`/admin/bookings/${booking.id}/refund-record`, "super", {
+        refundId: "77",
+        supplierResolved: true,
+        note: "Supplier cancellation has been verified",
+      })
+    ).status,
+  ).toBe(200);
+  expect(
+    (await module.db.query.otaBookingsTable.findFirst())?.notificationSentAt,
+  ).toBeNull();
+  const { sendEmail } = await import("../src/utils/email");
+  vi.mocked(sendEmail).mockClear();
+  await (await import("../src/services/ota/maintenance")).maintainOta();
+  expect(
+    vi
+      .mocked(sendEmail)
+      .mock.calls.some(([message]) =>
+        message.subject.includes("fully refunded"),
+      ),
+  ).toBe(true);
+  expect(
+    (await module.db.query.otaBookingsTable.findFirst())?.notificationSentAt,
+  ).toBeTruthy();
 });

@@ -233,7 +233,7 @@ export default function AdminSettings() {
       <Section title="AI Registration Agent" icon={MessageCircle}>
         <RegistrationAgentSettings />
       </Section>
-      {actorProfile?.role === "super_admin" && <Section title="Duffel flights, hotels and webhooks" icon={Globe}><p className="mb-4 text-sm text-slate-500">Manage test/live API tokens, signing secrets, webhook events, search switches and OTA pricing in the protected travel console.</p><Link href="/admin/ota" className="inline-flex rounded-xl bg-[#2D3199] px-5 py-3 text-sm font-bold text-white">Open Duffel & OTA settings →</Link></Section>}
+      {actorProfile?.role === "super_admin" && <Section title="Api Provider flights, hotels and webhooks" icon={Globe}><p className="mb-4 text-sm text-slate-500">Manage test/live API tokens, signing secrets, webhook events, search switches and OTA pricing in the protected travel console.</p><Link href="/admin/ota" className="inline-flex rounded-xl bg-[#2D3199] px-5 py-3 text-sm font-bold text-white">Open Api Provider & OTA settings →</Link></Section>}
 
       <Section title="Contact Information" icon={Phone}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

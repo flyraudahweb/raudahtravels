@@ -75,7 +75,12 @@ async function maintainBookings() {
   await publishBookingUpdates();
   const notify = await db.query.otaBookingsTable.findMany({
     where: and(
-      inArray(bookings.status, ["confirmed", "cancelled", "requires_review"]),
+      inArray(bookings.status, [
+        "confirmed",
+        "cancelled",
+        "requires_review",
+        "refunded",
+      ]),
       isNull(bookings.notificationSentAt),
       or(
         isNull(bookings.notificationAttemptAt),
@@ -110,11 +115,16 @@ async function maintainBookings() {
     const url = `${(process.env.APP_URL || "").replace(/\/$/, "")}/travel/bookings/${row.id}`;
     if (!url.startsWith("https://")) continue;
     // Only server-generated IDs/URLs enter the HTML; traveller names are omitted.
-    const label = row.providerNotice
-      ? "There is an important update to your travel reservation"
-      : row.status === "confirmed"
-        ? "Your travel reservation is confirmed"
-        : "Your travel reservation needs support review";
+    const label =
+      row.status === "refunded"
+        ? "Your travel booking has been fully refunded"
+        : row.status === "cancelled"
+          ? "Your travel reservation has been cancelled; contact support about refund options"
+          : row.providerNotice
+            ? "There is an important update to your travel reservation"
+            : row.status === "confirmed"
+              ? "Your travel reservation is confirmed"
+              : "Your travel reservation needs support review";
     try {
       const sent = await sendEmail({
         to: (row.contact as any).email,

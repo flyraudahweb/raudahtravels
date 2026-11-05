@@ -5,7 +5,7 @@ import {
   randomUUID,
 } from "node:crypto";
 import { db, siteSettingsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { OtaError } from "./provider";
 import { DUFFEL_EVENTS } from "./duffelWebhookProtocol";
@@ -102,7 +102,10 @@ export async function getOtaConfig(): Promise<OtaConfig> {
   const row = await db.query.siteSettingsTable.findFirst({
     where: eq(siteSettingsTable.key, OTA_CONFIG_KEY),
   });
-  const stored = { ...((row?.value as Record<string, unknown>) || {}) };
+  return configFromStored(row?.value);
+}
+function configFromStored(value: unknown): OtaConfig {
+  const stored = { ...((value as Record<string, unknown>) || {}) };
   for (const field of OTA_SECRET_FIELDS)
     if (stored[field]) stored[field] = crypt(String(stored[field]), true);
     else delete stored[field]; // Blank stored fields retain hosting credentials.
@@ -153,8 +156,11 @@ export function safeConfig(c: OtaConfig) {
   return safe;
 }
 export async function saveOtaConfig(patch: unknown, actor: string) {
-  const parsed = configSchema.partial().parse(patch),
-    current = await getOtaConfig();
+  const parsed = configSchema.partial().parse(patch);
+  const previous = await db.query.siteSettingsTable.findFirst({
+    where: eq(siteSettingsTable.key, OTA_CONFIG_KEY),
+  });
+  const current = configFromStored(previous?.value);
   for (const field of OTA_SECRET_FIELDS)
     if (!parsed[field]) delete parsed[field]; // Blank means retain.
   if (parsed.duffelToken) {
@@ -191,9 +197,6 @@ export async function saveOtaConfig(patch: unknown, actor: string) {
       );
   }
   const stored = { ...next };
-  const previous = await db.query.siteSettingsTable.findFirst({
-    where: eq(siteSettingsTable.key, OTA_CONFIG_KEY),
-  });
   const previousValues = (previous?.value as Record<string, unknown>) || {};
   // Saving switches/rates must not copy hosting secrets into the database or
   // require an encryption key when credentials are managed by the host.
@@ -201,7 +204,7 @@ export async function saveOtaConfig(patch: unknown, actor: string) {
     stored[field] = parsed[field]
       ? crypt(next[field])
       : String(previousValues[field] || "");
-  await db
+  const [saved] = await db
     .insert(siteSettingsTable)
     .values({
       id: randomUUID(),
@@ -212,6 +215,17 @@ export async function saveOtaConfig(patch: unknown, actor: string) {
     .onConflictDoUpdate({
       target: siteSettingsTable.key,
       set: { value: stored, updatedBy: actor, updatedAt: new Date() },
-    });
+      // Never overwrite settings or encrypted secrets changed since this save
+      // read its snapshot. Includes concurrent first-time configuration saves.
+      setWhere: previous
+        ? sql`${siteSettingsTable.id} = ${previous.id} AND ${siteSettingsTable.value}::jsonb = ${JSON.stringify(previous.value)}::jsonb`
+        : sql`false`,
+    })
+    .returning({ id: siteSettingsTable.id });
+  if (!saved)
+    throw new OtaError(
+      "OTA settings changed during this save. Refresh the settings and review your changes before saving again.",
+      409,
+    );
   return safeConfig(next);
 }

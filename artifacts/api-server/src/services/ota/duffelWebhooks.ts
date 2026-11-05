@@ -240,6 +240,8 @@ async function applyEvent(event: typeof events.$inferSelect) {
   if (metadataId && metadataId !== row.id)
     throw new OtaError("Booking metadata mismatch", 409);
   if (
+    (supplier.live_mode !== undefined &&
+      supplier.live_mode !== (mode === "live")) ||
     !sameSupplierAmount(supplier.total_amount, row.supplierAmount) ||
     supplier.total_currency !== row.supplierCurrency
   )

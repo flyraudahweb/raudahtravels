@@ -199,15 +199,13 @@ export async function fulfill(reference: string) {
         .where(and(eq(bookings.id, row.id), eq(bookings.status, "processing")))
         .returning();
       if (saved)
-        await tx
-          .insert(otaEventsTable)
-          .values({
-            id: randomUUID(),
-            bookingId: row.id,
-            actor: "system",
-            action: "provider_confirmed",
-            details: { providerId: result.id },
-          });
+        await tx.insert(otaEventsTable).values({
+          id: randomUUID(),
+          bookingId: row.id,
+          actor: "system",
+          action: "provider_confirmed",
+          details: { providerId: result.id },
+        });
       return saved;
     });
     if (!confirmed)
@@ -263,7 +261,15 @@ export async function refreshBooking(row: OtaBooking) {
       ? `/air/orders/${row.providerBookingId}`
       : `/stays/bookings/${row.providerBookingId}`,
   );
-  if (result.id !== row.providerBookingId)
+  if (
+    result.id !== row.providerBookingId ||
+    (result.metadata?.ota_booking_id &&
+      result.metadata.ota_booking_id !== row.id) ||
+    !sameSupplierAmount(result.total_amount, row.supplierAmount) ||
+    result.total_currency !== row.supplierCurrency ||
+    (result.live_mode !== undefined &&
+      result.live_mode !== (row.mode === "live"))
+  )
     throw new OtaError("Provider record mismatch", 502);
   const cancelled = !!result.cancelled_at || result.status === "cancelled";
   const previousDocuments = new Set(

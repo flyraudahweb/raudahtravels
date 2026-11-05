@@ -1,3 +1,4 @@
+import { providerDisplay } from "@/lib/providerDisplay";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useGetProfile } from "@workspace/api-client-react";
@@ -111,7 +112,7 @@ export default function AdminOta() {
       setNotice(typeof result === "string" ? result : message);
       await qc.invalidateQueries({ queryKey: ["ota"] });
     } catch (e: any) {
-      setError(e.message);
+      setError(providerDisplay(e.message));
     } finally {
       setBusy(false);
     }
@@ -179,17 +180,21 @@ export default function AdminOta() {
             {t}
           </button>
         ))}
-        <Link href="/admin/ota-api" className="ml-auto self-center px-3 text-xs font-bold text-[#2D3199]">API & Mobile →</Link>
+        <Link
+          href="/admin/ota-api"
+          className="ml-auto self-center px-3 text-xs font-bold text-[#2D3199]"
+        >
+          API & Mobile →
+        </Link>
       </div>
       {(error || config.error || records.error || linked.error) && (
         <ErrorMessage
-          message={
+          message={providerDisplay(
             error ||
-            config.error?.message ||
-            records.error?.message ||
-            linked.error?.message ||
-            ""
-          }
+              config.error?.message ||
+              records.error?.message ||
+              linked.error?.message,
+          )}
         />
       )}
       {notice && (
@@ -197,7 +202,7 @@ export default function AdminOta() {
           role="status"
           className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800"
         >
-          {notice}
+          {providerDisplay(notice)}
         </p>
       )}
       {tab === "settings" ? (
@@ -251,7 +256,7 @@ export default function AdminOta() {
             >
               {[
                 ["ota-distribution", "Distribution"],
-                ["ota-duffel", "Duffel & webhooks"],
+                ["ota-duffel", "Api Provider & webhooks"],
                 ["ota-pricing", "Pricing"],
                 ["ota-support", "Support"],
               ].map(([id, title]) => (
@@ -287,9 +292,9 @@ export default function AdminOta() {
                 . Keep the OTA mode aligned with those saved keys.
               </p>
               <p className="text-sm text-slate-500">
-                Stays access must be enabled by Duffel. Sales require a funded
-                Duffel balance, matching Paystack mode, currency rates, HTTPS
-                APP_URL and a support email.
+                Stays access must be enabled by Api Provider. Sales require a
+                funded Api Provider balance, matching Paystack mode, currency
+                rates, HTTPS APP_URL and a support email.
               </p>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="text-sm">
@@ -307,7 +312,7 @@ export default function AdminOta() {
                 </label>
                 <p className="self-center text-sm text-slate-500">
                   Manage separate test/live keys and webhook signing secrets in
-                  the Duffel section below.
+                  the Api Provider section below.
                 </p>
               </div>
               <p className="text-xs text-slate-500">
@@ -320,7 +325,7 @@ export default function AdminOta() {
               <div className="flex flex-wrap gap-5">
                 {[
                   ["flightsEnabled", "Flight search"],
-                  ["hotelsEnabled", "Duffel Stays search"],
+                  ["hotelsEnabled", "Api Provider Stays search"],
                   ["salesEnabled", "Accept online payments"],
                 ].map(([key, label]) => (
                   <label
@@ -378,7 +383,7 @@ export default function AdminOta() {
                       "Reference rates copied into your draft. Review and Save settings to apply your booking rates.",
                     );
                   } catch (e: any) {
-                    setError(e.message);
+                    setError(providerDisplay(e.message));
                   }
                 }}
               />
@@ -472,7 +477,10 @@ export default function AdminOta() {
                   action(async () => {
                     const data = await ota("/admin/check", {});
                     return Object.entries(data.results)
-                      .map(([k, v]) => `${k}: ${v}`)
+                      .map(
+                        ([k, v]) =>
+                          `${k === "duffel" ? "Api Provider" : k}: ${providerDisplay(String(v))}`,
+                      )
                       .join(" · ");
                   }, "Connection check finished. See diagnostics below.")
                 }
@@ -604,15 +612,17 @@ export default function AdminOta() {
                 Paid: {selected.paidAt || "Not verified"} · Status:{" "}
                 {selected.status}
               </p>
-              {selected.issue && <ErrorMessage message={selected.issue} />}
+              {selected.issue && (
+                <ErrorMessage message={providerDisplay(selected.issue)} />
+              )}
               {selected.providerNotice && (
                 <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
-                  {selected.providerNotice}
+                  {providerDisplay(selected.providerNotice)}
                 </p>
               )}
               {selected.providerRequestId && (
                 <p className="text-sm">
-                  Duffel request ID: {selected.providerRequestId}
+                  Api Provider request ID: {selected.providerRequestId}
                 </p>
               )}
               {selected.serviceRequest && (
@@ -676,8 +686,8 @@ export default function AdminOta() {
               )}
               <p className="text-sm text-slate-500">
                 For processing or uncertain bookings, locate the reservation in
-                the Duffel dashboard using this checkout's metadata or request
-                ID. Do not create another supplier reservation. Verify
+                the Api Provider dashboard using this checkout's metadata or
+                request ID. Do not create another supplier reservation. Verify
                 cancellation/refund conditions with the supplier before acting.
               </p>
               <form
@@ -694,7 +704,7 @@ export default function AdminOta() {
                 }}
               >
                 <input
-                  aria-label="Verified Duffel order or booking ID"
+                  aria-label="Verified Api Provider order or booking ID"
                   value={providerId}
                   onChange={(e) => setProviderId(e.target.value)}
                   placeholder="ord_… or bok_…"
@@ -731,10 +741,10 @@ export default function AdminOta() {
                       Record a completed customer refund
                     </h3>
                     <p className="text-sm text-slate-600">
-                      Resolve the supplier reservation in Duffel, then process
-                      any customer refund through Paystack. This verifies a
-                      completed full refund; it does not send money or cancel a
-                      reservation.
+                      Resolve the supplier reservation in Api Provider, then
+                      process any customer refund through Paystack. This
+                      verifies a completed full refund; it does not send money
+                      or cancel a reservation.
                     </p>
                     <label className="block text-sm">
                       Paystack refund ID
@@ -773,7 +783,9 @@ export default function AdminOta() {
               <div className="border-t pt-4">
                 <h3 className="mb-3 font-bold">Audit trail</h3>
                 {events.error && (
-                  <ErrorMessage message={events.error.message} />
+                  <ErrorMessage
+                    message={providerDisplay(events.error.message)}
+                  />
                 )}
                 {events.data?.events?.map((event: any) => (
                   <p key={event.id} className="mb-2 text-xs text-slate-500">

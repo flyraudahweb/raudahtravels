@@ -1257,6 +1257,8 @@ router.post(
     );
     if (
       result.id !== providerId ||
+      (result.live_mode !== undefined &&
+        result.live_mode !== (row.mode === "live")) ||
       result.metadata?.ota_booking_id !== row.id ||
       !sameSupplierAmount(result.total_amount, row.supplierAmount) ||
       result.total_currency !== row.supplierCurrency
@@ -1360,6 +1362,8 @@ router.post(
         .set({
           revision: sql`${bookings.revision}+1`,
           status: "refunded",
+          notificationSentAt: null,
+          notificationAttemptAt: null,
           refund: {
             id: refund.id,
             amount: refund.amount,

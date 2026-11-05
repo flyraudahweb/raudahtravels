@@ -1,3 +1,4 @@
+import { providerDisplay } from "@/lib/providerDisplay";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -125,7 +126,7 @@ function SchemaFields({ schema, spec }: { schema: any; spec: any }) {
             </div>
             {field?.description && (
               <p className="mt-1 text-xs leading-5 text-slate-500">
-                {field.description}
+                {providerDisplay(field.description)}
               </p>
             )}
             {field?.enum && (
@@ -276,7 +277,7 @@ export default function AdminOtaApi() {
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e: any) {
-      setError(e.message);
+      setError(providerDisplay(e.message));
     }
   }
   async function downloadDeveloperAsset(asset: string, filename: string) {
@@ -294,7 +295,7 @@ export default function AdminOtaApi() {
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e: any) {
-      setError(e.message);
+      setError(providerDisplay(e.message));
     }
   }
   async function createKey(event: React.FormEvent) {
@@ -319,7 +320,7 @@ export default function AdminOtaApi() {
       );
       await qc.invalidateQueries({ queryKey: ["ota", "developer", "keys"] });
     } catch (e: any) {
-      setError(e.message);
+      setError(providerDisplay(e.message));
     } finally {
       setBusy(false);
     }
@@ -339,7 +340,7 @@ export default function AdminOtaApi() {
       setMessage("Integration key revoked.");
       await qc.invalidateQueries({ queryKey: ["ota", "developer", "keys"] });
     } catch (e: any) {
-      setError(e.message);
+      setError(providerDisplay(e.message));
     } finally {
       setBusy(false);
     }
@@ -451,7 +452,9 @@ export default function AdminOtaApi() {
           role="alert"
           className="rounded-xl border border-red-100 bg-red-50 p-4 text-sm text-red-700"
         >
-          {error || contract.error?.message || keyQuery.error?.message}
+          {providerDisplay(
+            error || contract.error?.message || keyQuery.error?.message,
+          )}
         </p>
       )}
       {message && (
@@ -681,7 +684,7 @@ export default function AdminOtaApi() {
               {guide.title}
             </h2>
             <p className="mt-4 text-sm leading-7 text-slate-600">
-              {guide.body}
+              {providerDisplay(guide.body)}
             </p>
             <ol className="mt-7 space-y-4">
               {guide.steps.map((step: string, index: number) => (
@@ -692,7 +695,9 @@ export default function AdminOtaApi() {
                   <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-[10px] font-bold text-[#2D3199]">
                     {index + 1}
                   </span>
-                  <p className="text-xs leading-6 text-slate-600">{step}</p>
+                  <p className="text-xs leading-6 text-slate-600">
+                    {providerDisplay(step)}
+                  </p>
                 </li>
               ))}
             </ol>
@@ -794,7 +799,7 @@ export default function AdminOtaApi() {
                 </div>
                 <h2 className="mt-4 text-xl font-bold">{active.summary}</h2>
                 <p className="mt-3 text-xs leading-6 text-slate-500">
-                  {active.description}
+                  {providerDisplay(active.description)}
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2 text-[10px]">
                   <span className="flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1.5">
@@ -832,7 +837,7 @@ export default function AdminOtaApi() {
                           {parameter.required ? " · required" : ""}
                         </span>
                         <p className="mt-1 text-xs leading-5 text-slate-500">
-                          {parameter.description}
+                          {providerDisplay(parameter.description)}
                         </p>
                       </div>
                     ))}
@@ -955,7 +960,7 @@ export default function AdminOtaApi() {
                           {status}
                         </code>
                         <p className="text-xs leading-5 text-slate-500">
-                          {response.description}
+                          {providerDisplay(response.description)}
                         </p>
                       </div>
                     ))}
