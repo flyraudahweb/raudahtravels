@@ -14,6 +14,8 @@ import {
   OtaError,
   validatePayment,
   sameSupplierAmount,
+  supplierBookingTotalMatches,
+  supplierBookingConfirmed,
 } from "./provider";
 
 export async function audit(
@@ -130,22 +132,25 @@ export async function fulfill(reference: string) {
         fresh.total_currency !== row.supplierCurrency
       )
         throw new OtaError("Supplier price changed after payment.", 409);
-      result = await duffelRequest(config, "/air/orders", "POST", {
-        type: "instant",
-        selected_offers: [row.providerOfferId],
-        passengers: row.travellers,
-        payments: [
-          {
-            type: "balance",
-            amount: row.supplierAmount,
-            currency: row.supplierCurrency,
-          },
-        ],
-        metadata: { ota_booking_id: row.id },
-      });
-      // A confirmed order is distinct from the later availability of ticket documents.
-      if (!result.id || !result.booking_reference)
-        throw new OtaError("Provider booking needs reconciliation", 502);
+      result = await duffelRequest(
+        config,
+        "/air/orders",
+        "POST",
+        {
+          type: "instant",
+          selected_offers: [row.providerOfferId],
+          passengers: row.travellers,
+          payments: [
+            {
+              type: "balance",
+              amount: row.supplierAmount,
+              currency: row.supplierCurrency,
+            },
+          ],
+          metadata: { ota_booking_id: row.id },
+        },
+        row.id,
+      );
     } else {
       const quote = await duffelRequest(
         config,
@@ -158,24 +163,29 @@ export async function fulfill(reference: string) {
         quote.total_currency !== row.supplierCurrency
       )
         throw new OtaError("Supplier price changed after payment.", 409);
-      result = await duffelRequest(config, "/stays/bookings", "POST", {
-        quote_id: row.providerOfferId,
-        guests: row.travellers,
-        email: contact.email,
-        phone_number: contact.phone,
-        accommodation_special_requests: contact.specialRequests || undefined,
-        metadata: { ota_booking_id: row.id },
-      });
-      if (!result.id || result.status !== "confirmed")
-        throw new OtaError("Provider booking needs reconciliation", 502);
+      const guests = row.travellers as { given_name: string; family_name: string }[];
+      result = await duffelRequest(
+        config,
+        "/stays/bookings",
+        "POST",
+        {
+          quote_id: row.providerOfferId,
+          guests: guests.map(({ given_name, family_name }) => ({ given_name, family_name })),
+          email: contact.email,
+          phone_number: contact.phone,
+          accommodation_special_requests: contact.specialRequests || undefined,
+          metadata: { ota_booking_id: row.id },
+        },
+        row.id,
+      );
     }
     if (
+      typeof result?.id !== "string" ||
       !(
         row.kind === "flight" ? /^ord_[A-Za-z0-9]+$/ : /^bok_[A-Za-z0-9]+$/
       ).test(result.id) ||
       result.metadata?.ota_booking_id !== row.id ||
-      !sameSupplierAmount(result.total_amount, row.supplierAmount) ||
-      result.total_currency !== row.supplierCurrency ||
+      !supplierBookingTotalMatches(result, row) ||
       (result.live_mode !== undefined &&
         result.live_mode !== (row.mode === "live"))
     )
@@ -184,6 +194,8 @@ export async function fulfill(reference: string) {
         502,
       );
     verifiedSupplier = result;
+    if (!supplierBookingConfirmed(row.kind, result))
+      throw new OtaError("Provider booking needs reconciliation", 502);
     const confirmed = await db.transaction(async (tx) => {
       const [saved] = await tx
         .update(bookings)
@@ -265,13 +277,15 @@ export async function refreshBooking(row: OtaBooking) {
     result.id !== row.providerBookingId ||
     (result.metadata?.ota_booking_id &&
       result.metadata.ota_booking_id !== row.id) ||
-    !sameSupplierAmount(result.total_amount, row.supplierAmount) ||
-    result.total_currency !== row.supplierCurrency ||
+    !supplierBookingTotalMatches(result, row) ||
     (result.live_mode !== undefined &&
       result.live_mode !== (row.mode === "live"))
   )
     throw new OtaError("Provider record mismatch", 502);
   const cancelled = !!result.cancelled_at || result.status === "cancelled";
+  if (!cancelled && row.status === "cancelled") return row;
+  if (!cancelled && !supplierBookingConfirmed(row.kind, result))
+    throw new OtaError("Provider confirmation is incomplete", 409);
   const previousDocuments = new Set(
     ((row.providerResult as any)?.documents || [])
       .map((d: any) => d.unique_identifier)

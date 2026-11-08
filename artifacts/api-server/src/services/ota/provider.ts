@@ -15,7 +15,10 @@ export async function duffelRequest(
   path: string,
   method = "GET",
   data?: unknown,
+  correlationId?: string,
 ): Promise<any> {
+  const creatingReservation =
+    method === "POST" && ["/air/orders", "/stays/bookings"].includes(path);
   if (
     !config.duffelToken ||
     !config.duffelToken.startsWith(`duffel_${config.mode}_`)
@@ -29,26 +32,32 @@ export async function duffelRequest(
     response = await fetch(`https://api.duffel.com${path}`, {
       method,
       redirect: "error",
-      signal: AbortSignal.timeout(
-        method === "POST" && ["/air/orders", "/stays/bookings"].includes(path)
-          ? 135000
-          : 55000,
-      ),
+      signal: AbortSignal.timeout(creatingReservation ? 135000 : 55000),
       headers: {
         Authorization: `Bearer ${config.duffelToken}`,
         "Duffel-Version": "v2",
         "Content-Type": "application/json",
         Accept: "application/json",
+        ...(correlationId ? { "x-client-correlation-id": correlationId } : {}),
       },
       ...(data === undefined ? {} : { body: JSON.stringify({ data }) }),
     });
   } catch {
     throw new OtaError(
-      "The travel provider did not respond. Please try again later.",
+      creatingReservation
+        ? "The supplier reservation outcome is unknown. Reconcile before attempting another booking."
+        : "The travel provider did not respond. Please try again later.",
       502,
     );
   }
-  const body = (await response.json().catch(() => ({}))) as any;
+  const body = (await response.json().catch(() => null)) as any;
+  const requestId = response.headers.get("x-request-id") || body?.meta?.request_id;
+  if (creatingReservation && response.status === 202)
+    throw new OtaError(
+      "The travel provider accepted the reservation request. Await confirmation before taking further action.",
+      502,
+      requestId,
+    );
   if (response.status === 204) return null;
   if (!response.ok)
     throw new OtaError(
@@ -56,12 +65,13 @@ export async function duffelRequest(
         ? "Too many searches. Please wait a minute."
         : "The travel provider could not complete this request. Refresh availability or contact support.",
       response.status === 429 ? 429 : 502,
-      response.headers.get("x-request-id") || body.meta?.request_id,
+      requestId,
     );
-  if (body.data == null)
+  if (body?.data == null)
     throw new OtaError(
       "The travel provider returned an incomplete response.",
       502,
+      requestId,
     );
   return body.data;
 }
@@ -126,6 +136,41 @@ export function sameSupplierAmount(left: unknown, right: unknown) {
   } catch {
     return false;
   }
+}
+export function supplierBookingTotalMatches(
+  result: any,
+  booking: { kind: string; supplierAmount: string; supplierCurrency: string },
+) {
+  const matches = (total: any) =>
+    total?.total_currency === booking.supplierCurrency &&
+    sameSupplierAmount(total.total_amount, booking.supplierAmount);
+
+  // Stays quotes have a top-level total. A Stays booking returns the total
+  // on its selected accommodation rate, which covers the whole reservation.
+  const rooms = result?.accommodation?.rooms;
+  if (booking.kind !== "hotel" || rooms === undefined) return matches(result);
+  if (!Array.isArray(rooms)) return false;
+  const rates = rooms.flatMap((room) =>
+    Array.isArray(room?.rates) ? room.rates : [],
+  );
+  return (
+    rates.length === 1 &&
+    matches(rates[0]) &&
+    ((result.total_amount === undefined && result.total_currency === undefined) ||
+      matches(result))
+  );
+}
+
+export function supplierBookingConfirmed(kind: string, result: any) {
+  return (
+    !result?.cancelled_at &&
+    result?.status !== "cancelled" &&
+    (kind === "hotel"
+      ? result?.status === "confirmed"
+      : typeof result?.booking_reference === "string" &&
+        !!result.booking_reference.trim() &&
+        result.payment_status?.awaiting_payment !== true)
+  );
 }
 export function expiration(resource: any): number {
   const dates = [

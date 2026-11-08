@@ -185,3 +185,11 @@ At the user's request, replaced the split image panel with a full-width slidesho
 Verification:21 focused regressions passed, frontend typecheck passed and production build passed with existing nonfatal warnings. Isolated local desktop/laptop/mobile visual checks used sample read-only responses. No production writes, migration, purchase or push. Latest previews: scratch/nusuk-redesign/fullwidth-*.png.
 
 2026-11-05 header control visibility: removed public photo-selector dots and pause/play controls from Home as requested, including their unused pause state/imports. Automatic slideshow, reduced-motion handling and admin slideshow/aircraft settings retained. Existing5 public design regressions and frontend typecheck pass. No push/deployment.
+
+## 2026-11-08 Duffel launch review
+
+Reviewed the official Flights, Stays, creation response and webhook contracts. Fixed Stays booked-rate total validation across confirmation, refresh and reconciliation. Retained the request ID on accepted supplier requests, linked supplier calls to the checkout correlation ID, guarded confirmed and cancelled states, and checked the Paystack redirect reference and prepayment hotel eligibility. Live checkout requires a signing secret. Flight confirmation emails include the supplier reference and segment details. Existing OTA migrations cover these changes.
+
+Read-only deployed checks confirm test mode, flight search enabled, hotel search and checkout disabled, blank support contacts and missing test/live webhook signing secrets. Duffel sandbox returned 66 flight offers and HTTP 403 for Stays search. Its test webhook was inactive. No reservation, payment, configuration change, push or deployment. See docs/OTA_LAUNCH_READINESS.md for the activation sequence.
+
+Verification passed across 131 OTA regression tests in nine suites. After the confirmation-email update, all 94 booking and worker tests passed, including the new email test. API typecheck, production build and diff checks passed.

@@ -64,6 +64,13 @@ export const configSchema = z
   })
   .strict();
 export type OtaConfig = z.infer<typeof configSchema>;
+export function requireLiveWebhook(config: OtaConfig) {
+  if (config.mode === "live" && !config.webhookLiveSecret)
+    throw new OtaError(
+      "Live checkout requires a Duffel webhook signing secret.",
+      503,
+    );
+}
 export function duffelTokenForMode(c: OtaConfig, mode: "test" | "live") {
   const dedicated = mode === "test" ? c.duffelTestToken : c.duffelLiveToken;
   return (
@@ -195,6 +202,7 @@ export async function saveOtaConfig(patch: unknown, actor: string) {
         "Online sales cannot be enabled: the saved Paystack key must match the Duffel test/live mode. Existing Paystack settings have not been changed.",
         400,
       );
+    requireLiveWebhook(next);
   }
   const stored = { ...next };
   const previousValues = (previous?.value as Record<string, unknown>) || {};

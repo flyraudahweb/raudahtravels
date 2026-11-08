@@ -77,6 +77,21 @@ let gatewayPatch: Record<string, unknown> = {};
 let refundTransaction: string | number = 101;
 let changeDuringInitialization = false;
 let supplierSnapshotPatch: Record<string, unknown> = {};
+let hotelBookingStatus = 201;
+let hotelQuotePayNow = true;
+let paystackReferenceMismatch = false;
+function hotelReservation() {
+  return {
+    id: "bok_test",
+    status: "confirmed",
+    reference: "HOTEL123",
+    metadata: { ota_booking_id: booking.id },
+    accommodation: {
+      rooms: [{ rates: [{ total_amount: "100.00", total_currency: "GBP" }] }],
+    },
+    ...supplierSnapshotPatch,
+  };
+}
 let testClientId = 0;
 const offer = () => ({
   id: "off_test",
@@ -273,6 +288,9 @@ beforeEach(async () => {
   refundTransaction = 101;
   changeDuringInitialization = false;
   supplierSnapshotPatch = {};
+  hotelBookingStatus = 201;
+  hotelQuotePayNow = true;
+  paystackReferenceMismatch = false;
   await module.db.delete(module.otaDuffelEventsTable);
   await module.db.delete(module.otaPaymentJobsTable);
   await module.db.delete(module.otaEventsTable);
@@ -308,7 +326,7 @@ beforeEach(async () => {
           status: true,
           data: {
             authorization_url: "https://checkout.paystack.com/test-session",
-            reference: booking.reference,
+            reference: paystackReferenceMismatch ? "OTA-other" : booking.reference,
             access_code: "test-access",
           },
         });
@@ -496,7 +514,7 @@ beforeEach(async () => {
                 {
                   rates: [
                     {
-                      payment_type: "pay_now",
+                      payment_type: hotelQuotePayNow ? "pay_now" : "pay_at_accommodation",
                       available_payment_methods: [["balance"]],
                     },
                   ],
@@ -506,16 +524,7 @@ beforeEach(async () => {
           },
         });
       if (url.endsWith("/stays/bookings/bok_test"))
-        return Response.json({
-          data: {
-            id: "bok_test",
-            status: "confirmed",
-            reference: "HOTEL123",
-            total_amount: "100.00",
-            total_currency: "GBP",
-            metadata: { ota_booking_id: booking.id },
-          },
-        });
+        return Response.json({ data: hotelReservation() });
       if (url.endsWith("/air/webhooks"))
         return Response.json({
           data: [
@@ -539,16 +548,10 @@ beforeEach(async () => {
         });
       if (url.endsWith("/stays/bookings")) {
         supplierCalls++;
-        return Response.json({
-          data: {
-            id: "bok_test",
-            status: "confirmed",
-            reference: "HOTEL123",
-            total_amount: "100.00",
-            total_currency: "GBP",
-            metadata: { ota_booking_id: booking.id },
-          },
-        });
+        return Response.json(
+          { data: hotelReservation() },
+          { status: hotelBookingStatus, headers: { "x-request-id": "hotel-request" } },
+        );
       }
       throw new Error("Unexpected test request");
     }),
@@ -1459,7 +1462,11 @@ describe("shared Paystack payment isolation", () => {
         }),
       ),
     );
-    expect(responses.map((r) => r.status).sort()).toEqual([201, 409]);
+    expect(responses.filter((r) => r.status === 201)).toHaveLength(1);
+    // The loser can hit the balance check before or during the guarded debit.
+    const rejected = responses.find((r) => r.status !== 201)!;
+    expect([400, 409]).toContain(rejected.status);
+    expect((await rejected.json()).error).toContain("Insufficient wallet balance");
     expect(
       Number((await module.db.query.agentWalletsTable.findFirst())?.balance),
     ).toBe(25000);
@@ -1535,6 +1542,7 @@ describe("OTA authorization and payments", () => {
     expect((await module.db.query.otaBookingsTable.findFirst())?.status).toBe(
       "cancelled",
     );
+    supplierCancelled = false;
     await deliverDuffel("order.created", { id: "ord_test" });
     expect((await module.db.query.otaBookingsTable.findFirst())?.status).toBe(
       "cancelled",
@@ -1691,6 +1699,29 @@ describe("OTA authorization and payments", () => {
       where: eq(module.siteSettingsTable.key, "ota_config"),
     });
     expect((stored?.value as any).mode).toBe("test");
+  });
+  it("blocks enabling live sales without a webhook secret, including environment-enabled checkout", async () => {
+    await module.db.insert(module.siteSettingsTable).values({
+      id: randomUUID(),
+      key: "paystack_secret_key",
+      value: "sk_live_test_fixture",
+    });
+    const settings = await request("/admin/settings", "super", {
+      mode: "live", duffelLiveToken: "duffel_live_test_fixture", salesEnabled: true,
+    }, "PUT");
+    expect(settings.status).toBe(503);
+    expect((await settings.json()).error).toContain("webhook signing secret");
+    await module.db.update(module.siteSettingsTable)
+      .set({ value: { mode: "live", flightsEnabled: true, salesEnabled: true, supportEmail: "help@example.test" } })
+      .where(eq(module.siteSettingsTable.key, "ota_config"));
+    const checkout = await request("/bookings", "user", {
+      kind: "flight", offerId: "off_test", expectedTotalKobo: 10000000,
+      acceptedTerms: true, contact: { email: "user@example.test", phone: "+2348012345678" },
+      travellers: [{}],
+    });
+    expect(checkout.status).toBe(503);
+    expect((await checkout.json()).error).toContain("webhook signing secret");
+    expect(supplierCalls).toBe(0);
   });
   it("shows approved rates and references separately without leaking secrets or changing selling prices", async () => {
     const response = await request("/exchange-rates");
@@ -1860,6 +1891,54 @@ describe("OTA authorization and payments", () => {
       {},
     );
     expect((await confirmed.json()).booking.providerBookingId).toBe("bok_test");
+    const refreshed = await request(`/bookings/${booking.id}/refresh`, "user", {});
+    expect((await refreshed.json()).booking.status).toBe("confirmed");
+    const reconciled = await request(
+      `/admin/bookings/${booking.id}/reconcile`,
+      "super",
+      { providerId: "bok_test" },
+    );
+    expect(reconciled.status).toBe(200);
+    expect(supplierCalls).toBe(1);
+  });
+  it("reconciles an accepted Stays reservation without repeating the purchase", async () => {
+    const response = await request("/bookings", "user", {
+      kind: "hotel",
+      offerId: "quo_test",
+      expectedTotalKobo: 10000000,
+      acceptedTerms: true,
+      contact: { email: "user@example.test", phone: "+2348012345678" },
+      travellers: [{ given_name: "Test", family_name: "Guest" }],
+    });
+    expect(response.status).toBe(201);
+    booking = (await response.json()).booking;
+
+    hotelQuotePayNow = false;
+    expect((await request(`/bookings/${booking.id}/pay`, "user", {})).status).toBe(409);
+    expect(fetch).not.toHaveBeenCalledWith(
+      "https://api.paystack.co/transaction/initialize",
+      expect.anything(),
+    );
+    hotelQuotePayNow = true;
+
+    hotelBookingStatus = 202;
+    const complete = () => request(`/bookings/${booking.id}/complete`, "user", {});
+    expect((await (await complete()).json()).booking.status).toBe("requires_review");
+    const pending = await module.db.query.otaBookingsTable.findFirst();
+    expect(pending?.providerBookingId).toBeNull();
+    expect(pending?.providerRequestId).toBe("hotel-request");
+    await complete();
+    supplierSnapshotPatch = {
+      accommodation: { rooms: [{ rates: [{ total_amount: "101.00", total_currency: "GBP" }] }] },
+    };
+    const mismatch = await request(`/admin/bookings/${booking.id}/reconcile`, "super", { providerId: "bok_test" });
+    expect(mismatch.status).toBe(409);
+    supplierSnapshotPatch = {};
+    await deliverDuffel("stays.booking.created", {
+      booking_id: "bok_test",
+      quote_id: "quo_test",
+    });
+    expect((await module.db.query.otaBookingsTable.findFirst())?.status).toBe("confirmed");
     expect(supplierCalls).toBe(1);
   });
   it("rejects a stale displayed price and mismatched passenger identities before saving", async () => {
@@ -2030,6 +2109,14 @@ describe("OTA authorization and payments", () => {
     const saved = await module.db.query.otaBookingsTable.findFirst();
     expect(saved?.status).toBe("confirmed");
     expect(saved?.authorizationUrl).toBeNull();
+  });
+  it("rejects a payment redirect initialized for a different reference", async () => {
+    await create();
+    paystackReferenceMismatch = true;
+    const response = await request(`/bookings/${booking.id}/pay`, "user", {});
+    expect(response.status).toBe(502);
+    expect((await module.db.query.otaBookingsTable.findFirst())?.authorizationUrl).toBeNull();
+    expect(supplierCalls).toBe(0);
   });
   it("serializes simultaneous payment redirect updates", async () => {
     await create();
@@ -2437,6 +2524,28 @@ it("rejects a passport which expires before the itinerary ends before accepting 
   expect(response.status).toBe(400);
   expect((await response.json()).error).toContain("last flight");
   expect(supplierCalls).toBe(0);
+});
+
+it("includes the airline reference and operating carrier in a confirmation email", async () => {
+  await create();
+  await request(`/bookings/${booking.id}/complete`, "user", {});
+  supplierSnapshotPatch = {
+    slices: [{ segments: [{
+      origin: { iata_code: "LOS" },
+      destination: { iata_code: "LHR" },
+      departing_at: "2026-12-01T12:00:00",
+      arriving_at: "2026-12-01T18:00:00",
+      operating_carrier: { name: "A & B Airways" },
+    }] }],
+  };
+  await request(`/bookings/${booking.id}/refresh`, "user", {});
+  const { sendEmail } = await import("../src/utils/email");
+  vi.mocked(sendEmail).mockClear();
+  await (await import("../src/services/ota/maintenance")).maintainOta();
+  const email = vi.mocked(sendEmail).mock.calls[0]?.[0];
+  expect(email?.text).toContain("Supplier reference: ABC123");
+  expect(email?.text).toContain("LOS 2026-12-01T12:00:00 → LHR 2026-12-01T18:00:00");
+  expect(email?.html).toContain("Operated by A &amp; B Airways");
 });
 
 it("does not re-notify a cancellation or report an itinerary change for a cancelled reservation", async () => {

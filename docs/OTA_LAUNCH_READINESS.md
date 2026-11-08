@@ -1,6 +1,17 @@
 # OTA and mobile API launch readiness
 
-## Latest review — 5 November 2026
+## Latest review — 8 November 2026
+
+The deployed OTA is in test mode with flight search enabled, hotel search and online checkout disabled, and travel support contacts blank. Both deployed webhook receivers report storage ready and signing unconfigured. The configured Duffel test credential returned 66 LOS–LHR offers. A Stays search returned HTTP 403 and the listed test webhook is inactive. These checks created no reservations or payments.
+
+- Stays confirmations, refreshes and reconciliation now validate the booked rate under the accommodation against the checkout's amount and currency. Duffel quotes and bookings expose totals at different levels. [Stays booking schema](https://duffel.com/docs/api/v2/bookings/get-booking)
+- A Duffel `202 Accepted` purchase remains in review and retains the provider request ID for support. The checkout ID also travels as the client correlation ID. Signed events can resolve an accepted request without submitting a second purchase. Cancelled bookings stay cancelled when a later supplier read shows stale confirmed data. [Creation response handling](https://duffel.com/docs/api/overview/response-handling/order-and-booking-creation)
+- The Paystack redirect must match the checkout reference. Hotel checkout rechecks that the quote can still be paid online before starting the Paystack transaction. An explicitly unpaid flight order stays out of confirmed state. Flight confirmation emails include the airline reference, segment times and operating carriers. [Paystack Transaction API](https://paystack.com/docs/api/transaction/#initialize) and [Duffel Orders](https://duffel.com/docs/api/v2/orders/create-order)
+- Live checkout requires a live webhook signing secret. In Admin → OTA, save the secret, send a signed ping, activate the live webhook, and verify the required booking, failure, cancellation and schedule-change events before enabling sales.
+
+Deploy the fixes, configure a travel support email and approved selling rates, and complete staging payment-to-confirmation and recovery tests with matching test credentials. For live sales, activate the Duffel account, create a live read/write token, fund Duffel Balance and verify matching live Paystack credentials and callbacks. Enable only the channels that pass acceptance. Hotel sales also need confirmed Stays access. These fixes require no OTA migration. [Duffel launch guide](https://duffel.com/guides/getting-started)
+
+## Prior review — 5 November 2026
 
 The service is **not ready for live purchases**. Fresh public deployment checks returned readiness 200 and confirmed test mode, flight search enabled, hotels/checkout disabled and blank travel support contacts. Both test/live webhook receivers report storage ready but no signing secret. Read-only provider checks confirmed the existing test webhook is inactive and hotel search still returns 403.
 

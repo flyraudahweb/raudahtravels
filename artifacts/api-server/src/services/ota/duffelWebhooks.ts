@@ -13,7 +13,12 @@ import {
   saveOtaConfig,
   type OtaConfig,
 } from "./config";
-import { duffelRequest, OtaError, sameSupplierAmount } from "./provider";
+import {
+  duffelRequest,
+  OtaError,
+  supplierBookingConfirmed,
+  supplierBookingTotalMatches,
+} from "./provider";
 import { audit } from "./booking";
 import {
   DUFFEL_EVENTS,
@@ -242,14 +247,13 @@ async function applyEvent(event: typeof events.$inferSelect) {
   if (
     (supplier.live_mode !== undefined &&
       supplier.live_mode !== (mode === "live")) ||
-    !sameSupplierAmount(supplier.total_amount, row.supplierAmount) ||
-    supplier.total_currency !== row.supplierCurrency
+    !supplierBookingTotalMatches(supplier, row)
   )
     throw new OtaError("Supplier amount mismatch; operator review needed", 409);
   const cancelled = !!supplier.cancelled_at || supplier.status === "cancelled";
-  if (!cancelled && hotel && supplier.status !== "confirmed")
-    throw new OtaError("Supplier reservation is not yet confirmed", 409);
-  if (!cancelled && !hotel && !supplier.booking_reference)
+  if (!cancelled && row.status === "cancelled")
+    return { bookingId: row.id };
+  if (!cancelled && !supplierBookingConfirmed(row.kind, supplier))
     throw new OtaError("Supplier confirmation is incomplete", 409);
   const scheduleChanged =
     !cancelled && event.eventType === "order.airline_initiated_change_detected";

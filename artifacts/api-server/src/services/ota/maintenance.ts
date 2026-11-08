@@ -6,6 +6,14 @@ import { logger } from "../../lib/logger";
 import { processOtaPayments } from "./paymentQueue";
 import { processDuffelEvents } from "./duffelWebhooks";
 import { publishBookingUpdates } from "./bookingUpdates";
+import { otaAppOrigin } from "./appOrigin";
+
+function escapeEmailText(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
 
 export async function maintainOta() {
   // Paid checkouts must continue processing even when new sales are disabled.
@@ -73,6 +81,8 @@ async function maintainBookings() {
     }
   }
   await publishBookingUpdates();
+  const origin = otaAppOrigin();
+  if (!origin) return;
   const notify = await db.query.otaBookingsTable.findMany({
     where: and(
       inArray(bookings.status, [
@@ -112,9 +122,7 @@ async function maintainBookings() {
     if (!claimed) continue;
     // A notification claim must not acknowledge a newer booking update which
     // arrived while email delivery was in flight.
-    const url = `${(process.env.APP_URL || "").replace(/\/$/, "")}/travel/bookings/${row.id}`;
-    if (!url.startsWith("https://")) continue;
-    // Only server-generated IDs/URLs enter the HTML; traveller names are omitted.
+    const url = `${origin}/travel/bookings/${row.id}`;
     const label =
       row.status === "refunded"
         ? "Your travel booking has been fully refunded"
@@ -125,12 +133,39 @@ async function maintainBookings() {
             : row.status === "confirmed"
               ? "Your travel reservation is confirmed"
               : "Your travel reservation needs support review";
+    const result = row.providerResult as any;
+    const confirmationDetails: string[] = [];
+    if (row.status === "confirmed" && result) {
+      const reference =
+        row.kind === "flight" ? result.booking_reference : result.reference;
+      if (reference) confirmationDetails.push(`Supplier reference: ${reference}`);
+      if (row.kind === "flight" && Array.isArray(result.slices)) {
+        for (const slice of result.slices) {
+          if (!Array.isArray(slice?.segments)) continue;
+          for (const segment of slice.segments) {
+            const route = `${segment?.origin?.iata_code || ""} ${segment?.departing_at || ""} → ${segment?.destination?.iata_code || ""} ${segment?.arriving_at || ""}`;
+            const carrier = segment?.operating_carrier?.name;
+            confirmationDetails.push(
+              carrier ? `${route} · Operated by ${carrier}` : route,
+            );
+          }
+        }
+      }
+    }
+    const confirmationHtml = confirmationDetails
+      .map((line) => `<p>${escapeEmailText(line)}</p>`)
+      .join("");
     try {
       const sent = await sendEmail({
         to: (row.contact as any).email,
         subject: `${label} · ${row.reference}`,
-        text: `${label}. Reference: ${row.reference}. Sign in to view your itinerary and status: ${url}. Please do not pay again if payment was received.`,
-        html: `<p>${label}.</p><p>Reference: ${row.reference}</p><p><a href="${url}">Sign in to view your booking and travel documents</a></p><p>If your payment was received, please do not pay again.</p>`,
+        text: [
+          `${label}.`,
+          `Reference: ${row.reference}`,
+          ...confirmationDetails,
+          `Sign in to view your itinerary and status: ${url}. Please do not pay again if payment was received.`,
+        ].join("\n"),
+        html: `<p>${label}.</p><p>Reference: ${row.reference}</p>${confirmationHtml}<p><a href="${url}">Sign in to view your booking and travel documents</a></p><p>If your payment was received, please do not pay again.</p>`,
       });
       if (sent) {
         await db

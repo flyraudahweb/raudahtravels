@@ -21,6 +21,7 @@ import {
   saveOtaConfig,
   safeConfig,
   configSchema,
+  requireLiveWebhook,
 } from "../services/ota/config";
 import {
   duffelRequest,
@@ -31,6 +32,8 @@ import {
   expiration,
   OtaError,
   sameSupplierAmount,
+  supplierBookingConfirmed,
+  supplierBookingTotalMatches,
   validateRefundPayment,
 } from "../services/ota/provider";
 import {
@@ -619,6 +622,7 @@ router.post(
         503,
       );
     await paystackKey(c.mode);
+    requireLiveWebhook(c);
     if (!otaAppOrigin())
       throw new OtaError("Secure payment callback URL is not configured", 503);
     const offerId = id(input.offerId, input.kind === "flight" ? "off" : "quo");
@@ -734,6 +738,7 @@ router.post(
       c = await getOtaConfig();
     if (!c.salesEnabled || c.mode !== row.mode)
       throw new OtaError("Online payments are unavailable", 503);
+    requireLiveWebhook(c);
     if (
       row.status !== "payment_pending" ||
       row.expiresAt.getTime() <= Date.now() + 60000
@@ -754,6 +759,7 @@ router.post(
         : `/stays/quotes/${row.providerOfferId}`,
     );
     available(fresh);
+    if (row.kind === "hotel") assertHotelQuote(fresh);
     if (
       !sameSupplierAmount(fresh.total_amount, row.supplierAmount) ||
       fresh.total_currency !== row.supplierCurrency
@@ -776,6 +782,7 @@ router.post(
       metadata: { otaBookingId: row.id, type: "ota_booking" },
     });
     if (
+      data?.reference !== row.reference ||
       !/^https:\/\/checkout\.paystack\.com\//.test(data.authorization_url || "")
     )
       throw new OtaError("Invalid payment redirect", 502);
@@ -1249,6 +1256,8 @@ router.post(
       req.body.providerId || row.providerBookingId,
       row.kind === "flight" ? "ord" : "bok",
     );
+    if (row.providerBookingId && providerId !== row.providerBookingId)
+      throw new OtaError("Checkout is already linked to another supplier reservation", 409);
     const result = await duffelRequest(
       c,
       row.kind === "flight"
@@ -1260,16 +1269,15 @@ router.post(
       (result.live_mode !== undefined &&
         result.live_mode !== (row.mode === "live")) ||
       result.metadata?.ota_booking_id !== row.id ||
-      !sameSupplierAmount(result.total_amount, row.supplierAmount) ||
-      result.total_currency !== row.supplierCurrency
+      !supplierBookingTotalMatches(result, row)
     )
       throw new OtaError("Provider record does not match this checkout", 409);
     if (row.status === "refunded")
       throw new OtaError("This booking has already been fully refunded", 409);
     const cancelled = !!result.cancelled_at || result.status === "cancelled";
-    if (!cancelled && row.kind === "hotel" && result.status !== "confirmed")
-      throw new OtaError("Provider booking is not yet confirmed", 409);
-    if (!cancelled && row.kind === "flight" && !result.booking_reference)
+    if (!cancelled && row.status === "cancelled")
+      throw new OtaError("This booking already has a recorded cancellation", 409);
+    if (!cancelled && !supplierBookingConfirmed(row.kind, result))
       throw new OtaError("Provider confirmation is incomplete", 409);
     await db.transaction(async (tx) => {
       const [updated] = await tx
