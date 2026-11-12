@@ -1,7 +1,19 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useUser } from "@clerk/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, RefreshCw, ShieldCheck } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarCheck,
+  FileCheck2,
+  LayoutDashboard,
+  Package,
+  Plug,
+  RefreshCw,
+  ShieldCheck,
+  Upload,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -289,18 +301,24 @@ type Settings = {
   transportIssue: string | null;
   version: string | null;
   enabled: boolean;
+  saved: boolean;
   hasAgencyKey: boolean;
   hasJwt: boolean;
   encryptionReady: boolean;
 };
 
-function ConnectionSettings({ userId }: { userId: string }) {
-  const settings = useQuery({
+function useEhajjSettings(userId?: string, enabled = true) {
+  return useQuery({
     queryKey: ["ehajj", userId, "settings"],
     queryFn: ({ signal }) => ehajjRequest<Settings>("/settings", { signal }),
+    enabled: !!userId && enabled,
     retry: false,
     gcTime: 0,
   });
+}
+
+function ConnectionSettings({ userId }: { userId: string }) {
+  const settings = useEhajjSettings(userId);
   return (
     <section className={panel}>
       <h2 className="text-lg font-semibold">EHajj connection</h2>
@@ -385,7 +403,7 @@ function SettingsForm({
         JWT. Supply a matching JWT if you have one.
       </p>
       <label className="block space-y-1 text-sm font-medium">
-        Agency key {settings.hasAgencyKey ? "(saved)" : "(required)"}
+        Agency key {settings.hasAgencyKey ? "(configured)" : "(required)"}
         <Input
           type="password"
           autoComplete="new-password"
@@ -426,7 +444,10 @@ function SettingsForm({
       </label>
       <ErrorNotice error={error} />
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={busy || !settings.baseUrl}>
+        <Button
+          type="submit"
+          disabled={busy || !settings.baseUrl || !settings.encryptionReady}
+        >
           Save connection
         </Button>
         <Button
@@ -1057,10 +1078,289 @@ function RegistrationForm({
   );
 }
 
+const workspaceTabs = [
+  { key: "overview", label: "Overview", icon: LayoutDashboard },
+  { key: "products", label: "Packages & pilgrims", icon: Package },
+  { key: "registrations", label: "Register pilgrim", icon: UserPlus },
+  { key: "delivery", label: "Document delivery", icon: FileCheck2 },
+  { key: "connection", label: "Connection", icon: Plug },
+  { key: "access", label: "Access", icon: Users },
+] as const;
+type WorkspaceTab = (typeof workspaceTabs)[number]["key"];
+
+const workflow = [
+  {
+    title: "Booking & payment",
+    description:
+      "Customers select a package and pay through FlyRaudah checkout.",
+  },
+  {
+    title: "Payment confirmation",
+    description: "FlyRaudah verifies the payment and issues the receipt.",
+  },
+  {
+    title: "Transfer to EHajj",
+    description:
+      "Automatic transfer awaits the provider’s booking and payment contract.",
+  },
+  {
+    title: "Travel documents",
+    description:
+      "Collect the visa, ticket and other documents from EHajj. Automatic retrieval awaits the provider’s file access contract.",
+  },
+  {
+    title: "Customer delivery",
+    description: "Release a PDF to the booking owner’s FlyRaudah dashboard.",
+  },
+] as const;
+
+const deliveryTypes = [
+  ["visa", "Visa"],
+  ["flight_ticket", "Flight ticket"],
+  ["hotel_voucher", "Hotel voucher"],
+  ["pre_departure_guide", "Pre-departure guide"],
+] as const;
+type DeliveryRecord = {
+  booking: {
+    id: string;
+    recipientId: string;
+    reference: string;
+    customer: string;
+    packageName: string;
+    status: string;
+    eligible: boolean;
+  };
+  documents: {
+    id: string;
+    type: string;
+    fileName: string;
+    createdAt: string;
+  }[];
+};
+
+function DocumentDelivery({ userId }: { userId: string }) {
+  const [search, setSearch] = useState("");
+  const [reference, setReference] = useState("");
+  const lookup = useQuery({
+    queryKey: ["ehajj", userId, "delivery", reference],
+    queryFn: ({ signal }) =>
+      ehajjRequest<DeliveryRecord>(
+        "/delivery/bookings/" + encodeURIComponent(reference),
+        { signal },
+      ),
+    enabled: !!reference,
+    retry: false,
+    gcTime: 0,
+  });
+  return (
+    <section className={panel}>
+      <h2 className="text-xl font-semibold text-primary">Document delivery</h2>
+      <p className="text-sm text-slate-600">
+        Look up a confirmed booking, check the recipient, then upload a PDF to
+        their dashboard.
+      </p>
+      <form
+        className="flex flex-wrap items-end gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (search.trim() === reference) void lookup.refetch();
+          else setReference(search.trim());
+        }}
+      >
+        <label className="min-w-0 flex-1 space-y-1 text-sm font-medium">
+          FlyRaudah booking reference
+          <Input
+            value={search}
+            maxLength={100}
+            required
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setReference("");
+            }}
+          />
+        </label>
+        <Button type="submit" disabled={!search.trim() || lookup.isFetching}>
+          Find booking
+        </Button>
+      </form>
+      {lookup.isFetching && (
+        <p role="status" className="text-sm text-slate-600">
+          Checking booking…
+        </p>
+      )}
+      <ErrorNotice error={lookup.error} />
+      {lookup.isSuccess && (
+        <ReleaseDocumentForm
+          key={lookup.data.booking.id + ":" + lookup.data.booking.recipientId}
+          record={lookup.data}
+          onReleased={() => void lookup.refetch()}
+        />
+      )}
+    </section>
+  );
+}
+
+function ReleaseDocumentForm({
+  record,
+  onReleased,
+}: {
+  record: DeliveryRecord;
+  onReleased: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>(null);
+  const [released, setReleased] = useState(false);
+  const submitting = useRef(false);
+  const { booking } = record;
+  async function release(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submitting.current) return;
+    const form = event.currentTarget;
+    const body = new FormData(form);
+    body.set("bookingId", booking.id);
+    body.set("recipientId", booking.recipientId);
+    submitting.current = true;
+    setBusy(true);
+    setError(null);
+    setReleased(false);
+    try {
+      await ehajjRequest(
+        "/delivery/bookings/" + encodeURIComponent(booking.reference),
+        { method: "POST", body },
+      );
+      form.reset();
+      setReleased(true);
+      onReleased();
+    } catch (failure) {
+      setError(failure);
+    } finally {
+      submitting.current = false;
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+      <FieldList
+        fields={{
+          Customer: booking.customer,
+          Package: booking.packageName,
+          Reference: booking.reference,
+          Status: booking.status,
+        }}
+      />
+      {booking.eligible ? (
+        <form className="space-y-3" onSubmit={(event) => void release(event)}>
+          <fieldset className="grid gap-3 sm:grid-cols-2" disabled={busy}>
+            <label className="space-y-1 text-sm font-medium">
+              Document type
+              <select
+                className={selectClass}
+                name="type"
+                required
+                defaultValue=""
+              >
+                <option value="">Select type</option>
+                {deliveryTypes.map(([value, label]) => (
+                  <option value={value} key={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1 text-sm font-medium">
+              PDF file (up to 5 MB)
+              <Input
+                type="file"
+                name="file"
+                accept="application/pdf,.pdf"
+                required
+              />
+            </label>
+            <label className="flex items-start gap-2 text-sm sm:col-span-2">
+              <input
+                type="checkbox"
+                name="confirmed"
+                value="yes"
+                required
+                className="mt-1"
+              />
+              I’ve checked that this PDF belongs to the customer shown above.
+            </label>
+          </fieldset>
+          <Button type="submit" disabled={busy}>
+            <Upload size={16} /> {busy ? "Releasing…" : "Release to customer"}
+          </Button>
+        </form>
+      ) : (
+        <p className="text-sm text-amber-900">
+          Delivery requires a confirmed, fully paid booking and an active
+          customer login.
+        </p>
+      )}
+      <ErrorNotice error={error} />
+      {released && (
+        <p role="status" className="text-sm text-emerald-800">
+          Document released. The customer has a dashboard notification.
+        </p>
+      )}
+      {record.documents.length > 0 && (
+        <ul
+          className="space-y-2 border-t border-slate-200 pt-3 text-sm text-slate-700"
+          aria-label="Released documents"
+        >
+          {record.documents.map((document) => (
+            <li key={document.id} className="flex items-center gap-2">
+              <FileCheck2 size={16} aria-hidden="true" /> {document.fileName}{" "}
+              <span className="text-slate-500">
+                {new Date(document.createdAt).toLocaleDateString()}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function ProviderSetup({
+  settings,
+  openConnection,
+}: {
+  settings: Settings;
+  openConnection: () => void;
+}) {
+  const guidance = !settings.baseUrl
+    ? "Ask EHajj for its HTTPS API URL. A secure URL is needed before packages or pilgrim records can be retrieved."
+    : !settings.encryptionReady
+      ? "Configure server encryption before saving the provider connection."
+      : settings.saved
+        ? "Review the saved settings and enable EHajj in Connection."
+        : "Open Connection to save your agency credentials and enable EHajj.";
+  return (
+    <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 sm:flex sm:items-center sm:justify-between sm:gap-6">
+      <div>
+        <h2 className="font-semibold text-amber-950">
+          Provider setup required
+        </h2>
+        <p className="mt-1 text-sm text-amber-900">{guidance}</p>
+      </div>
+      <Button
+        variant="outline"
+        className="mt-3 shrink-0 sm:mt-0"
+        onClick={openConnection}
+      >
+        Connection settings <ArrowRight size={16} />
+      </Button>
+    </section>
+  );
+}
+
 export default function AdminEhajj() {
   const { user } = useUser();
   const access = useEhajjAccess(user?.id);
-  const [tab, setTab] = useState("products");
+  const manages = access.data?.manage === true;
+  const settings = useEhajjSettings(user?.id, manages);
+  const [tab, setTab] = useState<WorkspaceTab>("overview");
   if (!user || access.isPending)
     return (
       <p className="p-6" role="status">
@@ -1078,51 +1378,112 @@ export default function AdminEhajj() {
       <p className="p-6">Ask a Super Admin to assign EHajj product access.</p>
     );
   return (
-    <div className="mx-auto max-w-6xl space-y-5 p-4 sm:p-8">
-      <header className="rounded-2xl bg-[#1C1F66] p-6 text-white">
-        <p className="flex items-center gap-2 text-sm text-indigo-100">
-          <ShieldCheck size={16} /> Agency operations
-        </p>
-        <h1 className="mt-2 text-3xl font-bold !text-white">EHajj</h1>
-        <p className="mt-2 max-w-xl text-sm text-indigo-100">
-          View agency products, pilgrim records and assigned travel details
-          through the documented EHajj API.
-        </p>
+    <div className="mx-auto max-w-7xl space-y-5 p-4 sm:p-8">
+      <header className="relative overflow-hidden rounded-3xl bg-[#1C1F66] px-6 py-8 text-white shadow-sm sm:p-9">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-12 -top-24 h-80 w-80 rounded-full border-[40px] border-white/5"
+        />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight !text-white sm:text-4xl">
+              EHajj operations
+            </h1>
+            <p className="mt-2 max-w-xl text-sm text-indigo-100">
+              Manage agency packages, pilgrim records and customer travel
+              documents.
+            </p>
+          </div>
+          {manages && settings.data && (
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-sm font-medium text-white">
+              <ShieldCheck size={16} aria-hidden="true" />{" "}
+              {settings.data.enabled ? "Connection enabled" : "Setup required"}
+            </span>
+          )}
+        </div>
       </header>
-      {access.data.manage && (
-        <nav aria-label="EHajj workspace" className="flex flex-wrap gap-2">
-          {[
-            ["products", "Products and pilgrims"],
-            ["registrations", "Register pilgrim"],
-            ["connection", "Connection"],
-            ["access", "Access assignments"],
-          ].map(([key, label]) => (
+      {manages && (
+        <nav
+          aria-label="EHajj workspace"
+          className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2"
+        >
+          {workspaceTabs.map(({ key, label, icon: Icon }) => (
             <Button
               key={key}
-              variant={tab === key ? "default" : "outline"}
+              variant={tab === key ? "default" : "ghost"}
               aria-pressed={tab === key}
               onClick={() => setTab(key)}
             >
-              {label}
+              <Icon size={16} aria-hidden="true" /> {label}
             </Button>
           ))}
         </nav>
       )}
-      {(!access.data.manage || tab === "products") && (
+      {manages && tab === "overview" && (
+        <>
+          {settings.data && !settings.data.enabled && (
+            <ProviderSetup
+              settings={settings.data}
+              openConnection={() => setTab("connection")}
+            />
+          )}
+          <section className={panel}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="flex items-center gap-2 text-xl font-semibold text-primary">
+                <CalendarCheck size={21} aria-hidden="true" /> Booking to
+                delivery
+              </h2>
+              <Button variant="outline" onClick={() => setTab("delivery")}>
+                Deliver a document <ArrowRight size={16} />
+              </Button>
+            </div>
+            <ol className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              {workflow.map(({ title, description }) => (
+                <li
+                  className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                  key={title}
+                >
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    {title}
+                  </h3>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                    {description}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          </section>
+        </>
+      )}
+      {manages &&
+        ["overview", "products", "registrations", "access"].includes(tab) && (
+          <ErrorNotice error={settings.error} />
+        )}
+      {manages &&
+        ["products", "registrations", "access"].includes(tab) &&
+        settings.isPending && <p role="status">Checking provider setup…</p>}
+      {manages &&
+        ["products", "registrations", "access"].includes(tab) &&
+        settings.data &&
+        !settings.data.enabled && (
+          <ProviderSetup
+            settings={settings.data}
+            openConnection={() => setTab("connection")}
+          />
+        )}
+      {(!manages || (tab === "products" && settings.data?.enabled)) && (
         <ProductBrowser userId={user.id} />
       )}
-      {access.data.manage && tab === "connection" && (
+      {manages && tab === "connection" && (
         <ConnectionSettings userId={user.id} />
       )}
-      {access.data.manage && tab === "access" && (
+      {manages && tab === "access" && settings.data?.enabled && (
         <AccessAssignments userId={user.id} />
       )}
-      {access.data.manage && tab === "registrations" && (
+      {manages && tab === "registrations" && settings.data?.enabled && (
         <RegistrationsWorkspace key={user.id} userId={user.id} />
       )}
-      <p className="flex items-center gap-2 text-xs text-slate-500">
-        <BookOpen size={15} /> Source: eHadj 2.0 mobile API
-      </p>
+      {manages && tab === "delivery" && <DocumentDelivery userId={user.id} />}
     </div>
   );
 }

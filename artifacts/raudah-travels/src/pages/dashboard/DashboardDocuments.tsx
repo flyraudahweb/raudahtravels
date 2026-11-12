@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FileText, Upload, Plus, Eye } from "lucide-react";
+import { FileText, Upload, Plus, Eye, Download } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { uploadFile } from "@/lib/upload";
@@ -15,6 +15,7 @@ import { uploadFile } from "@/lib/upload";
 const typeIcons: Record<string, string> = { passport: "🛂", visa: "🗂", ticket: "✈", voucher: "📋" };
 const statusConfig: Record<string, { label: string; color: string }> = {
   pending: { label: "Pending Review", color: "bg-yellow-100 text-yellow-800 border-yellow-200" },
+  approved: { label: "Ready", color: "bg-green-100 text-green-800 border-green-200" },
   verified: { label: "Verified", color: "bg-green-100 text-green-800 border-green-200" },
   rejected: { label: "Rejected", color: "bg-red-100 text-red-800 border-red-200" },
 };
@@ -150,6 +151,8 @@ export default function DashboardDocuments() {
         <div className="space-y-3">
           {documents.map((doc) => {
             const config = statusConfig[doc.status] || statusConfig.pending;
+            const privateDownload = doc.status === "approved" &&
+              doc.url === `/api/documents/${doc.id}/ehajj-download`;
             return (
               <Card key={doc.id} data-testid={`card-document-${doc.id}`}>
                 <CardContent className="p-4 flex items-center justify-between gap-4">
@@ -164,10 +167,19 @@ export default function DashboardDocuments() {
                   </div>
                   <div className="flex items-center gap-3">
                     <span className={`text-xs px-2.5 py-0.5 rounded-full border font-medium ${config.color}`}>{config.label}</span>
-                    <Button variant="ghost" size="icon" className="h-8 w-8" data-testid={`button-view-doc-${doc.id}`}
-                      onClick={() => window.open(doc.url, "_blank", "noopener,noreferrer")}>
-                      <Eye className="w-4 h-4" />
-                    </Button>
+                    {privateDownload ? (
+                      <Button asChild variant="outline" size="sm">
+                        <a href={doc.url} download aria-label={`Download ${doc.fileName || "travel document"}`}>
+                          <Download className="w-4 h-4" aria-hidden="true" />
+                          <span className="hidden sm:inline">Download</span>
+                        </a>
+                      </Button>
+                    ) : (
+                      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`View ${doc.fileName || "document"}`} data-testid={`button-view-doc-${doc.id}`}
+                        onClick={() => window.open(doc.url, "_blank", "noopener,noreferrer")}>
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>

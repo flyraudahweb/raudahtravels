@@ -4,7 +4,7 @@
 
 ## Development checkpoint — 12 November 2026
 
-EHajj deployment on 12 November follows the user clarification that it is independent of Paystack. Super Admin enters pilgrim details and the externally received first payment in a standalone registration form. Encrypted drafts, passport/package deduplication, revision checks and durable submission claims protect the workflow. Migration 0013 creates ehajj_registrations and is registered in the journal. The connection awaits a valid HTTPS provider URL. See [current EHajj context](context/ehajj-integration.md).
+EHajj deployment on 12 November follows the user clarification that it is independent of Paystack. Super Admin enters pilgrim details and the externally received first payment in a standalone registration form. Encrypted drafts, passport/package deduplication, revision checks and durable submission claims protect the workflow. Migration 0013 creates ehajj_registrations, is registered in the journal and was applied to the shared database. Release c688f78 is deployed and active on Railway; CI passed 200 tests and both builds. Provider key/base are configured. SETTINGS_ENCRYPTION_KEY is configured on Railway with the user’s approval, and the production health check passed. The connection awaits a valid HTTPS provider URL. See [current EHajj context](context/ehajj-integration.md).
 
 The user requested a fresh codebase index before continuing development. Start with [the refreshed project map](../docs/PROJECT_INDEX.md). The summaries below include historical observations and earlier implementation states.
 

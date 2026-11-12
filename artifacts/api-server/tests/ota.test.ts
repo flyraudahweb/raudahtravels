@@ -46,6 +46,22 @@ vi.mock("../src/utils/email", () => ({
   sendEmail: vi.fn().mockResolvedValue(true),
   sendPaymentReceipt: vi.fn().mockResolvedValue(true),
 }));
+vi.mock("../src/lib/r2", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../src/lib/r2")>();
+  const files = new Map<string, Buffer>();
+  return {
+    ...original,
+    uploadToR2: vi.fn(async (key: string, buffer: Buffer) => {
+      files.set(key, buffer);
+      return key;
+    }),
+    getFromR2: vi.fn(async (key: string) => {
+      const buffer = files.get(key);
+      if (!buffer) throw new Error("Object not found");
+      return { body: (async function* () { yield buffer; })(), contentLength: buffer.length };
+    }),
+  };
+});
 vi.mock("../src/services/ota/exchangeRates", () => ({
   referenceRates: async () => ({
     provider: "Frankfurter",
@@ -251,6 +267,8 @@ beforeAll(async () => {
   app.use("/api", (await import("../src/routes/notifications")).default);
   app.use("/api", (await import("../src/routes/payments")).default);
   app.use("/api", (await import("../src/routes/ehajj")).default);
+  app.use("/api", (await import("../src/routes/documents")).default);
+  app.use("/api", (await import("../src/routes/upload")).default);
   app.use("/api", (await import("../src/routes/admin")).default);
   app.use((await import("../src/services/ota/mobileRoutes")).mobileOtaError);
   server = app.listen(0, "127.0.0.1");
@@ -2991,6 +3009,66 @@ describe("EHajj admin integration", () => {
     expect(JSON.stringify(settings)).not.toContain("fixture-");
     return settings;
   }
+
+  it("reports provider setup before fetching products and explains the HTTPS requirement", async () => {
+    expect(await (await request("/settings", "super")).json()).toMatchObject({
+      enabled: false, saved: false,
+    });
+    const missing = await request("/products", "super");
+    expect(missing.status).toBe(503);
+    expect(await missing.json()).toMatchObject({ error: expect.stringContaining("Save and enable") });
+    vi.stubEnv("EHAJJ_API_BASE_URL", "http://ehajj.example.test/mobile");
+    const insecure = await request("/products", "super");
+    expect(insecure.status).toBe(503);
+    expect(await insecure.json()).toMatchObject({ error: expect.stringContaining("HTTPS") });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("releases an encrypted PDF to the verified booking owner without contacting EHajj", async () => {
+    const bookingId = await packageFixture(["payment-one", "payment-two"]);
+    const reference = "RDH-DELIVERY-TEST";
+    const url = baseUrl.replace(/\/ota$/, "/admin/ehajj/delivery/bookings/") + reference;
+    const pdf = "%PDF-1.7\nPrivate fixture\n%%EOF";
+    await module.db.update(module.bookingsTable).set({ reference, status: "confirmed" })
+      .where(eq(module.bookingsTable.id, bookingId));
+    const release = (user: string, recipientId = "user") => {
+      const body = new FormData();
+      body.set("type", "visa");
+      body.set("bookingId", bookingId);
+      body.set("recipientId", recipientId);
+      body.set("confirmed", "yes");
+      body.set("file", new Blob([pdf], { type: "application/pdf" }), "visa.pdf");
+      return httpFetch(url, { method: "POST", headers: { "x-test-user": user }, body });
+    };
+    expect((await release("admin")).status).toBe(403);
+    expect((await release("super")).status).toBe(409);
+    await module.db.update(module.paymentsTable).set({ status: "verified" })
+      .where(eq(module.paymentsTable.bookingId, bookingId));
+    const lookup = await request("/delivery/bookings/" + reference, "super");
+    expect(await lookup.json()).toMatchObject({ booking: { id: bookingId, recipientId: "user", eligible: true } });
+    expect((await release("super", "other")).status).toBe(409);
+    const response = await release("super");
+    expect(response.status).toBe(201);
+    const { id } = await response.json();
+    const { uploadToR2 } = await import("../src/lib/r2");
+    expect(uploadToR2).toHaveBeenLastCalledWith("ehajj-private/" + id + "/payload", expect.any(Buffer), "application/octet-stream");
+    const [, stored] = vi.mocked(uploadToR2).mock.lastCall!;
+    expect(stored.toString()).toMatch(/^enc:v1:/);
+    expect(stored.includes(Buffer.from(pdf))).toBe(false);
+    const root = baseUrl.replace(/\/ota$/, "");
+    const docPath = "/documents/" + id + "/ehajj-download";
+    expect((await httpFetch(root + docPath)).status).toBe(401);
+    for (const user of ["other", "admin", "super"])
+      expect((await httpFetch(root + docPath, { headers: { "x-test-user": user } })).status).toBe(404);
+    expect((await httpFetch(root + "/files/ehajj-private/" + encodeURIComponent(id + "/payload"))).status).toBe(404);
+    const downloaded = await httpFetch(root + docPath, { headers: { "x-test-user": "user" } });
+    expect(downloaded.status).toBe(200);
+    expect(downloaded.headers.get("cache-control")).toBe("private, no-store");
+    expect(downloaded.headers.get("content-disposition")).toContain("attachment");
+    expect(await downloaded.text()).toBe(pdf);
+    expect(await module.db.query.notificationsTable.findFirst()).toMatchObject({ userId: "user", type: "document", link: "/dashboard/documents" });
+    expect(calls).toHaveLength(0);
+  });
 
   it("requires Super Admin for credential changes and invalidates grants on agency key replacement", async () => {
     expect((await request("/access")).status).toBe(401);

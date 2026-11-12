@@ -109,6 +109,8 @@ router.post("/files/upload", (req, res, next) => {
 router.get("/files/:folder/:filename", async (req, res) => {
   const { folder, filename } = req.params;
   const key = `${folder}/${filename}`;
+  if (key.startsWith("ehajj-private/"))
+    return res.status(404).json({ error: "File not found" });
 
   try {
     const { body, contentType, contentLength } = await getFromR2(key);

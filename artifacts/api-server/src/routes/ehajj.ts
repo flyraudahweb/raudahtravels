@@ -1,12 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { getAuth } from "@clerk/express";
 import { Router, type Request, type Response } from "express";
-import { and, eq, ilike, inArray, or } from "drizzle-orm";
+import { and, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   db,
+  bookingsTable,
+  documentsTable,
   ehajjConnectionsTable,
   ehajjGrantsTable,
+  notificationsTable,
+  packagesTable,
+  paymentsTable,
   profilesTable,
   userActivityTable,
 } from "@workspace/db";
@@ -31,10 +36,39 @@ import {
   registrationInput,
   listRegistrations,
 } from "../services/ehajjRegistrations";
+import multer from "multer";
+import {
+  ehajjDocumentPath,
+  saveEhajjDocument,
+} from "../services/ehajjDocuments";
 
 const router = Router();
 const connectionId = "primary";
 const operators = ["admin", "staff"] as const;
+const documentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+    files: 1,
+    fields: 4,
+    parts: 6,
+    fieldSize: 160,
+  },
+}).single("file");
+const deliveryReference = z.string().trim().min(1).max(100);
+const deliveryInput = z
+  .object({
+    bookingId: z.string().min(1).max(100),
+    recipientId: z.string().min(1).max(100),
+    type: z.enum([
+      "visa",
+      "flight_ticket",
+      "hotel_voucher",
+      "pre_departure_guide",
+    ]),
+    confirmed: z.literal("yes"),
+  })
+  .strict();
 type Actor = Pick<typeof profilesTable.$inferSelect, "id" | "role">;
 type Handler = (req: Request, res: Response, actor: Actor) => Promise<unknown>;
 const secret = z
@@ -135,7 +169,8 @@ function settingsView(connection?: Connection) {
         ? "EHajj requires a valid HTTPS API URL before credentials and personal records can be transferred."
         : null,
     version: connection?.version ?? null,
-    enabled: matches && !!connection?.enabled,
+    enabled: matches && !!connection?.enabled && !!connection.agencyKey,
+    saved: matches,
     hasAgencyKey:
       (matches && !!connection?.agencyKey) || !!process.env.EHAJJ_AGENCY_KEY,
     hasJwt: matches && !!connection?.jwt,
@@ -156,9 +191,17 @@ async function grantsFor(actor: Actor, connection: Connection) {
 }
 
 async function readContext(actor: Actor) {
+  if (!ehajjBaseUrl())
+    throw new EhajjError(
+      503,
+      "EHajj is waiting for the provider’s HTTPS API URL.",
+    );
   const connection = await getConnection();
   if (!connection)
-    throw new EhajjError(503, "EHajj connection settings have not been saved.");
+    throw new EhajjError(
+      503,
+      "Save and enable the EHajj connection before opening agency products.",
+    );
   const grants = await grantsFor(actor, connection);
   if (grants?.length === 0)
     throw new EhajjError(
@@ -183,8 +226,8 @@ function productPermissions(
   );
 }
 
-function throttle(actor: Actor) {
-  if (!allowChannelMessage("ehajj-admin", actor.id, 30)) {
+function throttle(actor: Actor, channel = "ehajj-admin", limit = 30) {
+  if (!allowChannelMessage(channel, actor.id, limit)) {
     throw new EhajjError(
       429,
       "Wait a minute before requesting more EHajj records.",
@@ -308,8 +351,8 @@ router.put(
 router.get(
   "/admin/ehajj/products",
   protectedRoute(async (_req, res, actor) => {
-    throttle(actor);
     const { client, grants } = await readContext(actor);
+    throttle(actor);
     const products = await client.products();
     return res.json({
       products: products
@@ -554,6 +597,169 @@ router.post(
     return res.json({
       registration: await submitRegistration(id, input.version, actor.id),
     });
+  }, true),
+);
+
+const verifiedDeliveryBooking = sql<boolean>`
+  ${bookingsTable.status} in ('confirmed', 'completed')
+  and ${bookingsTable.totalPrice} > 0
+  and ${profilesTable.accountStatus} = 'active'
+  and coalesce(${profilesTable.clerkUserId}, '') <> ''
+  and (select coalesce(sum(${paymentsTable.amount}), 0) from ${paymentsTable}
+       where ${paymentsTable.bookingId} = ${bookingsTable.id}
+         and ${paymentsTable.status} = 'verified'
+         and ${paymentsTable.isArchived} = false) >= ${bookingsTable.totalPrice}
+`;
+
+async function deliveryBooking(reference: string) {
+  const [booking] = await db
+    .select({
+      id: bookingsTable.id,
+      reference: bookingsTable.reference,
+      customer: profilesTable.fullName,
+      packageName: packagesTable.name,
+      status: bookingsTable.status,
+      eligible: verifiedDeliveryBooking,
+      ownerId: profilesTable.id,
+    })
+    .from(bookingsTable)
+    .innerJoin(profilesTable, eq(bookingsTable.userId, profilesTable.id))
+    .innerJoin(packagesTable, eq(bookingsTable.packageId, packagesTable.id))
+    .where(
+      and(
+        eq(bookingsTable.reference, reference),
+        eq(bookingsTable.isArchived, false),
+      ),
+    )
+    .limit(1);
+  if (!booking)
+    throw new EhajjError(
+      404,
+      "No active customer booking matches that reference.",
+    );
+  return booking;
+}
+
+router.get(
+  "/admin/ehajj/delivery/bookings/:reference",
+  protectedRoute(async (req, res, actor) => {
+    throttle(actor, "ehajj-delivery-lookup");
+    const { ownerId, ...booking } = await deliveryBooking(
+      deliveryReference.parse(req.params.reference),
+    );
+    const documents = await db
+      .select({
+        id: documentsTable.id,
+        type: documentsTable.type,
+        fileName: documentsTable.fileName,
+        createdAt: documentsTable.createdAt,
+      })
+      .from(documentsTable)
+      .where(
+        and(
+          eq(documentsTable.bookingId, booking.id),
+          eq(documentsTable.userId, ownerId),
+          eq(documentsTable.status, "approved"),
+          sql`${documentsTable.url} = '/api/documents/' || ${documentsTable.id} || '/ehajj-download'`,
+        ),
+      )
+      .orderBy(documentsTable.createdAt);
+    return res.json({
+      booking: { ...booking, recipientId: ownerId },
+      documents,
+    });
+  }, true),
+);
+
+router.post(
+  "/admin/ehajj/delivery/bookings/:reference",
+  protectedRoute(async (req, res, actor) => {
+    throttle(actor, "ehajj-delivery-upload", 10);
+    const reference = deliveryReference.parse(req.params.reference);
+    const booking = await deliveryBooking(reference);
+    if (!booking.eligible)
+      throw new EhajjError(
+        409,
+        "Document delivery requires a confirmed, fully paid booking and an active customer login.",
+      );
+    await new Promise<void>((resolve, reject) => {
+      documentUpload(req, res, (error) =>
+        error
+          ? reject(new EhajjError(400, "Upload one PDF of up to 5 MB."))
+          : resolve(),
+      );
+    });
+    const input = deliveryInput.parse(req.body);
+    if (input.bookingId !== booking.id || input.recipientId !== booking.ownerId)
+      throw new EhajjError(
+        409,
+        "The booking or recipient changed. Look it up again before releasing the file.",
+      );
+    if (
+      !req.file ||
+      req.file.mimetype !== "application/pdf" ||
+      req.file.buffer.subarray(0, 5).toString() !== "%PDF-"
+    )
+      throw new EhajjError(400, "Choose a valid PDF document.");
+    const ownerId = booking.ownerId;
+    const id = randomUUID();
+    const fileName = input.type.replaceAll("_", "-") + ".pdf";
+    try {
+      await saveEhajjDocument(id, req.file.buffer);
+    } catch {
+      throw new EhajjError(
+        503,
+        "Private travel document storage is unavailable. Check storage and encryption settings.",
+      );
+    }
+    await db.transaction(async (tx) => {
+      await tx
+        .select({ id: bookingsTable.id })
+        .from(bookingsTable)
+        .where(eq(bookingsTable.id, booking.id))
+        .for("update");
+      const [current] = await tx
+        .select({ eligible: verifiedDeliveryBooking })
+        .from(bookingsTable)
+        .innerJoin(profilesTable, eq(bookingsTable.userId, profilesTable.id))
+        .where(
+          and(
+            eq(bookingsTable.id, booking.id),
+            eq(bookingsTable.reference, reference),
+            eq(bookingsTable.userId, ownerId),
+            eq(bookingsTable.isArchived, false),
+          ),
+        );
+      if (!current?.eligible)
+        throw new EhajjError(
+          409,
+          "The booking changed. Review its payment and customer before releasing the file.",
+        );
+      await tx.insert(documentsTable).values({
+        id,
+        userId: ownerId,
+        bookingId: booking.id,
+        type: input.type,
+        fileName,
+        url: ehajjDocumentPath(id),
+        status: "approved",
+      });
+      await tx.insert(notificationsTable).values({
+        id: randomUUID(),
+        userId: ownerId,
+        type: "document",
+        title: "Travel document ready",
+        message: "A travel document is ready in your FlyRaudah dashboard.",
+        link: "/dashboard/documents",
+      });
+      await tx.insert(userActivityTable).values({
+        id: randomUUID(),
+        userId: actor.id,
+        eventType: "ehajj_document_released",
+        metadata: { bookingId: booking.id, documentId: id, type: input.type },
+      });
+    });
+    return res.status(201).json({ id, fileName });
   }, true),
 );
 
