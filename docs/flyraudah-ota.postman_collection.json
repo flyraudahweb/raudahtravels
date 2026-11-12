@@ -517,7 +517,7 @@
             "description": "Requires enabled Duffel Stays product. Uses a 10km radius and only supported instant/prepaid inventory; supplier access errors do not imply no hotels exist.\n\nDo not automatically retry after an ambiguous timeout; recover state first.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"latitude\": 21.4225,\n  \"longitude\": 39.8262,\n  \"checkIn\": \"2026-12-14\",\n  \"checkOut\": \"2026-12-21\",\n  \"rooms\": 1,\n  \"adults\": 1,\n  \"childAges\": []\n}",
+              "raw": "{\n  \"latitude\": 21.4225,\n  \"longitude\": 39.8262,\n  \"checkIn\": \"2026-12-27\",\n  \"checkOut\": \"2027-01-03\",\n  \"rooms\": 1,\n  \"adults\": 1,\n  \"childAges\": []\n}",
               "options": {
                 "raw": {
                   "language": "json"

@@ -38,7 +38,7 @@ export function encryptSetting(value: string, field: string): string {
   const body = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
   return `enc:v1:${iv.toString("hex")}:${cipher.getAuthTag().toString("hex")}:${body.toString("hex")}`;
 }
-function decryptSetting(value: string, field: string): string {
+export function decryptSetting(value: string, field: string): string {
   if (!value.startsWith("enc:v1:")) throw new Error("Invalid encrypted registration credential");
   const [, , iv, tag, body] = value.split(":");
   const cipher = createDecipheriv("aes-256-gcm", encryptionKey(), Buffer.from(iv, "hex"));

@@ -49,14 +49,12 @@ try {
   await writeFile(path.join(root, "docs/mobile/flyraudah-api.d.ts"), types);
   const assets = {
     "flyraudah-api.d.ts": types,
-    "flyraudah-client.ts": await readFile(
-      path.join(root, "docs/mobile/flyraudah-client.ts"),
-      "utf8",
-    ),
-    "README.md": await readFile(
-      path.join(root, "docs/mobile/README.md"),
-      "utf8",
-    ),
+    "flyraudah-client.ts": (
+      await readFile(path.join(root, "docs/mobile/flyraudah-client.ts"), "utf8")
+    ).replaceAll("\r\n", "\n"),
+    "README.md": (
+      await readFile(path.join(root, "docs/mobile/README.md"), "utf8")
+    ).replaceAll("\r\n", "\n"),
   };
   await writeFile(
     path.join(

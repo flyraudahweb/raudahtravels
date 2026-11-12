@@ -1,5 +1,7 @@
 # System Architecture & Index
 
+Refreshed navigation lives in [docs/PROJECT_INDEX.md](../../docs/PROJECT_INDEX.md), inspected on 12 November 2026. This older architecture snapshot predates the OTA expansion. Use the refreshed map for current request routing, schema counts, mobile API, pending EHajj integration and development ports.
+
 This document serves as a map for AI agents to quickly understand the structure of the Raudah Travels monorepo.
 
 ## Monorepo Structure (`pnpm`)

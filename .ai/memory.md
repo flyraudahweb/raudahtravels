@@ -2,6 +2,20 @@
 
 > **Agent Instruction**: This is the source of truth for the project context. Before starting any task, read this file and its linked context documents.
 
+## Development checkpoint — 12 November 2026
+
+EHajj deployment on 12 November follows the user clarification that it is independent of Paystack. Super Admin enters pilgrim details and the externally received first payment in a standalone registration form. Encrypted drafts, passport/package deduplication, revision checks and durable submission claims protect the workflow. Migration 0013 creates ehajj_registrations and is registered in the journal. The connection awaits a valid HTTPS provider URL. See [current EHajj context](context/ehajj-integration.md).
+
+The user requested a fresh codebase index before continuing development. Start with [the refreshed project map](../docs/PROJECT_INDEX.md). The summaries below include historical observations and earlier implementation states.
+
+- Local `main` and recorded `origin/main` are `a3e6ea6`, the Duffel fixes pushed on 8 November. This pass inspected local state without fetching the remote.
+- Active travel routes use `/api/ota` and 23 allowlisted `/api/ota/v1` customer operations. Legacy `/api/flights` and `/api/hotels` return 410. `/app` is a responsive web starter that shares the existing search/checkout flow. `/admin/ota` and `/admin/ota-api` require Super Admin.
+- EHajj registration is independent of local bookings and payment ledgers. Source, deployment and provider activation status are tracked in [EHajj context](context/ehajj-integration.md).
+- An existing local Vite modification falls back to an API proxy on 8081, while the API defaults to 8080. Align process PORT and frontend/proxy ports before local browser work. Preserve and review this pending change.
+- The working tree has 47 table declarations including three EHajj tables. Migration 0013 is registered in the journal and was applied to the configured database during deployment preparation.
+- Latest launch observations are dated 8 November in [OTA readiness](../docs/OTA_LAUNCH_READINESS.md). Provider credentials, support contacts, funded balance, active signed webhooks and staging acceptance must be checked before live sales. Historical test/build results are in [OTA progress](ota-progress.md).
+- This resumption pass updated documentation and memory. It did not perform runtime verification, provider requests, deployment, migrations or Git publication.
+
 ## 🏗️ Project Architecture
 - **Type**: PNPM Monorepo
 - **Frontend**: React/Vite (Port 5173) - [architecture.md](file:///c:/Users/DEEPMIND/Downloads/Travel-Master-Guide-main/Travel-Master-Guide-main/.ai/context/architecture.md)

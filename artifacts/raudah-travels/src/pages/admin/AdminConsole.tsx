@@ -31,6 +31,8 @@ import AdminBackup from "./AdminBackup";
 import AdminUsers from "./AdminUsers";
 import AdminOta from "./AdminOta";
 import AdminOtaApi from "./AdminOtaApi";
+import AdminEhajj from "./AdminEhajj";
+import { useEhajjAccess } from "@/lib/ehajj";
 import {
   LayoutDashboard, Package, CreditCard, Users, BookOpen, UserCheck,
   TrendingUp, MessageSquare, UserCog, LogOut, Home, ChevronRight,
@@ -286,20 +288,25 @@ export default function AdminConsole() {
   const { data: myPerms } = useGetMyPermissions({
     query: { queryKey: getGetMyPermissionsQueryKey(), enabled: isStaffOnly },
   });
+  const ehajjAccess = useEhajjAccess(user?.id, profile?.role === "admin" || isStaffOnly);
+  const showEhajj = profile?.role === "super_admin" || (ehajjAccess.isSuccess && ehajjAccess.data.allowed);
 
   const NAV_GROUPS: NavGroupDef[] = useMemo(() => {
-    if (profile?.role === "super_admin") return [...ALL_NAV_GROUPS, { label: "Travel Distribution", items: [{ href: "/admin/ota", label: "Online Travel Agency", icon: Building2 }, {href:"/admin/ota-api",label:"OTA API & Mobile",icon:Code2}] }];
-    if (!isStaffOnly) return ALL_NAV_GROUPS;
+    const groups = showEhajj
+      ? [...ALL_NAV_GROUPS, { label: "Pilgrim integrations", items: [{ href: "/admin/ehajj", label: "EHajj", icon: BookOpen }] }]
+      : ALL_NAV_GROUPS;
+    if (profile?.role === "super_admin") return [...groups, { label: "Travel Distribution", items: [{ href: "/admin/ota", label: "Online Travel Agency", icon: Building2 }, {href:"/admin/ota-api",label:"OTA API & Mobile",icon:Code2}] }];
+    if (!isStaffOnly) return groups;
     const allowed = new Set(myPerms?.permissions || []);
     // If the staff member has any support specialties, they must be able to see the Support page
     if ((myPerms?.specialties || []).length > 0) allowed.add("support_tickets");
-    return ALL_NAV_GROUPS
+    return groups
       .map(group => ({
         ...group,
         items: (group.items as any[]).filter((item: any) => !item.permKey || allowed.has(item.permKey)),
       }))
       .filter(group => group.items.length > 0);
-  }, [isStaffOnly, profile?.role, myPerms?.permissions, myPerms?.specialties]);
+  }, [isStaffOnly, profile?.role, myPerms?.permissions, myPerms?.specialties, showEhajj]);
 
   const [collapsed, setCollapsed] = useState(getInitialCollapsed);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -475,6 +482,7 @@ export default function AdminConsole() {
             <Switch>
               <Route path="/admin/ota" component={AdminOta} />
               <Route path="/admin/ota-api" component={AdminOtaApi} />
+              <Route path="/admin/ehajj" component={AdminEhajj} />
               <Route path="/admin"              component={AdminOverview} />
               <Route path="/admin/packages"     component={AdminPackages} />
               <Route path="/admin/bookings"     component={AdminBookings} />

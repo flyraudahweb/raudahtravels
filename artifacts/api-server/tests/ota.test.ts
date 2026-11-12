@@ -174,6 +174,10 @@ beforeAll(async () => {
       "utf8",
     ),
   );
+  await module.pool.query("DROP TABLE ehajj_registrations, ehajj_grants, ehajj_connections");
+  await module.pool.query(
+    await readFile(path.join(root, "lib/db/drizzle/0013_ehajj.sql"), "utf8"),
+  );
   await module.pool.query(
     "CREATE SEQUENCE IF NOT EXISTS bookings_id_number_seq",
   );
@@ -246,6 +250,7 @@ beforeAll(async () => {
   app.use("/api", otaRouter);
   app.use("/api", (await import("../src/routes/notifications")).default);
   app.use("/api", (await import("../src/routes/payments")).default);
+  app.use("/api", (await import("../src/routes/ehajj")).default);
   app.use("/api", (await import("../src/routes/admin")).default);
   app.use((await import("../src/services/ota/mobileRoutes")).mobileOtaError);
   server = app.listen(0, "127.0.0.1");
@@ -2836,4 +2841,476 @@ it("emails a verified full refund even when an earlier cancellation notice was a
   expect(
     (await module.db.query.otaBookingsTable.findFirst())?.notificationSentAt,
   ).toBeTruthy();
+});
+
+describe("EHajj admin integration", () => {
+  const upstream = "https://ehajj.example.test/mobile";
+  const calls: {
+    path: string;
+    headers: Headers;
+    method?: string;
+    form?: Record<string, FormDataEntryValue>;
+  }[] = [];
+  let registrationFails = false;
+  const documents = {
+    id_document: 1,
+    description: "Visa",
+    piece_jointe: "https://files.example.test/private.pdf",
+  };
+  const responses: Record<string, unknown> = {
+    getAllProduitsAgence: [
+      {
+        id_produit: 12,
+        libelle_produit: "Assigned programme",
+        activite_produit: "HADJ",
+        edition: "2026",
+      },
+      {
+        id_produit: 13,
+        libelle_produit: "Other programme",
+        activite_produit: "OUMRAH",
+        edition: "2026",
+      },
+    ],
+    "getPelerinsByProduit/12": [
+      {
+        id_pelerin: 101,
+        prenom_pelerin: "Test",
+        nom_pelerin: "Pilgrim",
+        amount_paid: 150,
+        rest: 50,
+      },
+    ],
+    "getPelerinDetails/101": {
+      civilite_pelerin: { prenom: "Test", groupe_ethenique: "excluded" },
+      package: { designation: "Standard", tarif: 200 },
+      passeport: { numero: "TEST5678" },
+    },
+    "getPelerinVersement/101": {
+      total_a_payer: 200,
+      total_verse: 150,
+      reste_a_payer: 50,
+      versements: [],
+    },
+    "getVoyagePelerin/101": {
+      lieu_depart_aller: "LOS",
+      lieu_arrivee_aller: "JED",
+    },
+    "getHebergementPelerin/101": {
+      hebergement_makkah: { batiment: "Hotel" },
+      hebergement_medine: "Non attribue",
+    },
+    "getPelerinServiceAdd/101":
+      "Aucun service additionnel trouve pour ce pelerin.",
+    "getPelerinGroupe/101": {
+      groupe: { nom_groupe: "Group A" },
+      membres_groupe: [{ nom_complet: "Other agency member" }],
+    },
+    "getDocumentsPelerin/101": [documents],
+    getAllBanquesAgence: [{ id_banque: 3, nom_banque: "Agency bank" }],
+    getAllComptesBancairesAgence: [
+      {
+        id_compte_bancaire: 5,
+        libelle_compte_bancaire: "Agency account",
+        numero_compte_bancaire: "TEST12345",
+        nom_banque: "Agency bank",
+      },
+    ],
+    addPelerin: {
+      id_pelerin: 245,
+      numero_pelerin: 37,
+      pelerin_uuid: "test-pilgrim",
+      id_versement_pelerin: 512,
+      code_versement_pelerin: 58,
+      reste_a_verse: 100000,
+    },
+  };
+
+  function request(
+    path: string,
+    user?: string,
+    method = "GET",
+    body?: unknown,
+  ) {
+    return httpFetch(baseUrl.replace(/\/ota$/, "/admin/ehajj") + path, {
+      method,
+      headers: {
+        ...(user ? { "x-test-user": user } : {}),
+        "Content-Type": "application/json",
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  }
+
+  beforeEach(async () => {
+    vi.stubEnv("EHAJJ_API_BASE_URL", upstream);
+    vi.stubEnv("EHAJJ_AGENCY_KEY", "");
+    await module.db.delete(module.ehajjRegistrationsTable);
+    await module.db.delete(module.ehajjGrantsTable);
+    await module.db.delete(module.ehajjConnectionsTable);
+    calls.length = 0;
+    registrationFails = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (!url.startsWith(upstream + "/api/"))
+          throw new Error("Unexpected fetch in EHajj test");
+        const endpoint = url.slice((upstream + "/api/").length);
+        calls.push({
+          path: endpoint,
+          headers: new Headers(init?.headers),
+          method: init?.method,
+          ...(init?.body instanceof FormData
+            ? { form: Object.fromEntries(init.body.entries()) }
+            : {}),
+        });
+        if (endpoint === "addPelerin" && registrationFails)
+          throw new Error("Lost response after provider commit");
+        if (!(endpoint in responses))
+          return Response.json({ code: 404, data: null }, { status: 404 });
+        return Response.json({ code: 200, data: responses[endpoint] });
+      }),
+    );
+  });
+
+  async function connect() {
+    const response = await request("/settings", "super", "PUT", {
+      version: null,
+      enabled: true,
+      agencyKey: "fixture-agency",
+      jwt: "fixture-jwt",
+    });
+    expect(response.status).toBe(200);
+    const settings = await response.json();
+    expect(settings).toMatchObject({
+      hasAgencyKey: true,
+      hasJwt: true,
+      enabled: true,
+    });
+    expect(JSON.stringify(settings)).not.toContain("fixture-");
+    return settings;
+  }
+
+  it("requires Super Admin for credential changes and invalidates grants on agency key replacement", async () => {
+    expect((await request("/access")).status).toBe(401);
+    expect((await request("/access", "user")).status).toBe(403);
+    expect((await request("/settings", "admin")).status).toBe(403);
+    const settings = await connect();
+    const stored = await module.db.query.ehajjConnectionsTable.findFirst();
+    expect(stored?.agencyKey).toMatch(/^enc:v1:/);
+    expect(stored?.jwt).toMatch(/^enc:v1:/);
+    expect(
+      (
+        await request("/grants", "admin", "PUT", {
+          userId: "admin",
+          productId: 12,
+          permissions: ["finance"],
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request("/grants", "super", "PUT", {
+          userId: "admin",
+          productId: 12,
+          permissions: ["pilgrims"],
+        })
+      ).status,
+    ).toBe(200);
+    expect(await (await request("/access", "admin")).json()).toMatchObject({
+      allowed: true,
+      manage: false,
+    });
+    const changed = await request("/settings", "super", "PUT", {
+      version: settings.version,
+      enabled: true,
+      agencyKey: "new-fixture-agency",
+    });
+    expect(changed.status).toBe(200);
+    expect(await changed.json()).toMatchObject({ hasJwt: false });
+    expect(await (await request("/access", "admin")).json()).toMatchObject({
+      allowed: false,
+    });
+    expect(
+      (
+        await request("/settings", "super", "PUT", {
+          version: settings.version,
+          enabled: false,
+        })
+      ).status,
+    ).toBe(409);
+  });
+
+  it("scopes product and pilgrim reads and redacts finance and document fields", async () => {
+    await connect();
+    expect((await request("/products", "admin")).status).toBe(403);
+    expect(
+      (
+        await request("/grants", "super", "PUT", {
+          userId: "admin",
+          productId: 12,
+          permissions: ["pilgrims", "operations"],
+        })
+      ).status,
+    ).toBe(200);
+    const products = await (await request("/products", "admin")).json();
+    expect(
+      products.products.map((product: { id: number }) => product.id),
+    ).toEqual([12]);
+    expect((await request("/products/13/pilgrims", "admin")).status).toBe(403);
+    const roster = await (
+      await request("/products/12/pilgrims", "admin")
+    ).json();
+    expect(roster.pilgrims[0].fields).toEqual({
+      "First name": "Test",
+      "Last name": "Pilgrim",
+    });
+    expect(
+      (await request("/products/12/pilgrims/101/payments", "admin")).status,
+    ).toBe(403);
+    expect(
+      (await request("/products/12/pilgrims/102/profile", "admin")).status,
+    ).toBe(404);
+    const profile = await (
+      await request("/products/12/pilgrims/101/profile", "admin")
+    ).json();
+    expect(profile.sections[0].fields).toEqual({ "First name": "Test" });
+    expect(JSON.stringify(profile)).not.toMatch(/Tariff|Passport|excluded/);
+    expect(
+      calls
+        .find((call) => call.path === "getAllProduitsAgence")
+        ?.headers.get("authorization"),
+    ).toBeNull();
+    const detail = calls.find((call) => call.path === "getPelerinDetails/101");
+    expect(detail?.method).toBe("GET");
+    expect(detail?.headers.get("authorizationagencekey")).toBe(
+      "fixture-agency",
+    );
+    expect(detail?.headers.get("authorization")).toBe("Bearer fixture-jwt");
+    expect(calls.some((call) => call.path === "getPelerinDetails/102")).toBe(
+      false,
+    );
+  });
+
+  it("reads documented detail shapes while keeping provider document URLs and member data private", async () => {
+    await connect();
+    for (const view of [
+      "travel",
+      "accommodation",
+      "services",
+      "group",
+      "payments",
+      "documents",
+    ]) {
+      const response = await request(
+        "/products/12/pilgrims/101/" + view,
+        "super",
+      );
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body.sections).toBeInstanceOf(Array);
+      expect(JSON.stringify(body)).not.toMatch(
+        /https:\/\/files|Other agency member/,
+      );
+      if (view === "services") expect(body.sections).toEqual([]);
+      if (view === "accommodation")
+        expect(body.sections[1].fields).toEqual({ Assignment: "Unassigned" });
+      if (view === "documents")
+        expect(body.sections[0].fields.Attachment).toBe("Reported by EHajj");
+    }
+  });
+
+  async function standaloneFixture() {
+    await connect();
+    await module.db.update(module.ehajjConnectionsTable).set({ jwt: null });
+    return {
+      firstName: "Test",
+      lastName: "Pilgrim",
+      gender: "f",
+      passportNumber: "TEST12345",
+      phone: "+2348012345678",
+      packageId: 88,
+      amount: "1500000",
+      currency: "XOF",
+      paymentMethod: 3,
+      paymentReference: "EXTERNAL-RECEIPT-1",
+      sourceBankId: 3,
+      destinationAccountId: 5,
+      accountingConfirmed: true,
+    };
+  }
+
+  it("registers an independent pilgrim and external first payment exactly once", async () => {
+    const input = await standaloneFixture();
+    expect((await request("/payment-options", "admin")).status).toBe(403);
+    expect(
+      (await request("/registrations/prepare", "admin", "POST", input)).status,
+    ).toBe(403);
+    const response = await request(
+      "/registrations/prepare",
+      "super",
+      "POST",
+      input,
+    );
+    expect(response.status).toBe(200);
+    const { registration } = await response.json();
+    const rows = await module.db.select().from(module.ehajjRegistrationsTable);
+    expect(rows[0].payload).toMatch(/^enc:v1:/);
+    expect(rows[0].payload).not.toContain("TEST12345");
+    expect(calls).toHaveLength(0);
+    const results = await Promise.all(
+      [1, 2].map(() =>
+        request(
+          "/registrations/" + registration.id + "/submit",
+          "super",
+          "POST",
+          { confirmed: true, version: registration.version },
+        ),
+      ),
+    );
+    expect(results.every((result) => result.ok)).toBe(true);
+    const sent = calls.filter((call) => call.path === "addPelerin");
+    expect(sent).toHaveLength(1);
+    expect(sent[0].headers.get("authorization")).toBeNull();
+    expect(sent[0].headers.get("authorizationagencekey")).toBe(
+      "fixture-agency",
+    );
+    expect(sent[0].headers.has("content-type")).toBe(false);
+    expect(sent[0].form).toMatchObject({
+      first_name: "Test",
+      last_name: "Pilgrim",
+      gender: "f",
+      passport_number: "TEST12345",
+      package_id: "88",
+      payment_amount: "1500000",
+      payment_method: "3",
+      payment_reference: "EXTERNAL-RECEIPT-1",
+      source_bank_id: "3",
+      destination_bank_account_id: "5",
+    });
+    expect(sent[0].form).not.toHaveProperty("currency");
+    expect(await module.db.select().from(module.paymentsTable)).toHaveLength(0);
+    expect(await module.db.select().from(module.bookingsTable)).toHaveLength(0);
+    expect(
+      (await module.db.query.ehajjRegistrationsTable.findFirst())?.state,
+    ).toBe("confirmed");
+    expect(
+      (await request("/registrations/prepare", "super", "POST", input)).status,
+    ).toBe(409);
+    expect(
+      (await (await request("/registrations", "super")).json()).registrations[0]
+        .result.id_pelerin,
+    ).toBe(245);
+    expect((await request("/registrations", "admin")).status).toBe(403);
+    expect((await request("/handoff?reference=anything", "super")).status).toBe(
+      404,
+    );
+  });
+
+  it("requires fresh confirmation after a prepared registration is edited", async () => {
+    const input = await standaloneFixture();
+    const first = (
+      await (
+        await request("/registrations/prepare", "super", "POST", input)
+      ).json()
+    ).registration;
+    const second = (
+      await (
+        await request("/registrations/prepare", "super", "POST", {
+          ...input,
+          amount: "1400000",
+        })
+      ).json()
+    ).registration;
+    expect(second.id).toBe(first.id);
+    expect(second.version).not.toBe(first.version);
+    expect(
+      (
+        await request(
+          "/registrations/" + first.id + "/submit",
+          "super",
+          "POST",
+          { confirmed: true, version: first.version },
+        )
+      ).status,
+    ).toBe(409);
+    expect(calls).toHaveLength(0);
+    expect(
+      (
+        await request(
+          "/registrations/" + second.id + "/submit",
+          "super",
+          "POST",
+          { confirmed: true, version: second.version },
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      calls.find((call) => call.path === "addPelerin")?.form?.payment_amount,
+    ).toBe("1400000");
+  });
+
+  it("holds an uncertain registration and prevents duplicate external payment records", async () => {
+    const input = await standaloneFixture();
+    const { registration } = await (
+      await request("/registrations/prepare", "super", "POST", input)
+    ).json();
+    registrationFails = true;
+    const submit = () =>
+      request(
+        "/registrations/" + registration.id + "/submit",
+        "super",
+        "POST",
+        { confirmed: true, version: registration.version },
+      );
+    expect((await (await submit()).json()).registration.state).toBe(
+      "requires_review",
+    );
+    await submit();
+    expect(calls.filter((call) => call.path === "addPelerin")).toHaveLength(1);
+  });
+
+  it("validates declared payment details and rejects unexpected gateway linkage", async () => {
+    const input = await standaloneFixture();
+    for (const invalid of [
+      { ...input, amount: "0" },
+      { ...input, paymentReference: undefined },
+      { ...input, destinationAccountId: undefined },
+      { ...input, accountingConfirmed: false },
+      { ...input, paymentId: "paystack-record" },
+    ])
+      expect(
+        (await request("/registrations/prepare", "super", "POST", invalid))
+          .status,
+      ).toBe(400);
+    expect(calls).toHaveLength(0);
+    const cash = { ...input, paymentMethod: 1, paymentReference: undefined };
+    expect(
+      (await request("/registrations/prepare", "super", "POST", cash)).status,
+    ).toBe(200);
+  });
+
+  it("holds insecure connections and rejects cross-origin financial mutations", async () => {
+    await connect();
+    vi.stubEnv("EHAJJ_API_BASE_URL", "http://5.196.194.160/ehadj/api_mobile");
+    const settings = await (await request("/settings", "super")).json();
+    expect(settings.baseUrl).toBeNull();
+    expect(settings.transportIssue).toContain("HTTPS");
+    expect((await request("/products", "super")).status).toBe(503);
+    const crossOrigin = await httpFetch(
+      baseUrl.replace(/\/ota$/, "/admin/ehajj/settings"),
+      {
+        method: "PUT",
+        headers: {
+          "x-test-user": "super",
+          "Content-Type": "application/json",
+          Origin: "https://untrusted.example",
+        },
+        body: JSON.stringify({ version: null, enabled: false }),
+      },
+    );
+    expect(crossOrigin.status).toBe(403);
+    expect(calls).toHaveLength(0);
+  });
 });

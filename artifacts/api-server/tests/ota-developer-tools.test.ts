@@ -48,10 +48,12 @@ describe("FlyRaudah integration kit", () => {
   it("keeps bundled downloads and generated declarations in sync with their sources", async () => {
     for (const [name, source] of Object.entries(MOBILE_CLIENT_FILES))
       expect(
-        await readFile(
-          new URL(`../../../docs/mobile/${name}`, import.meta.url),
-          "utf8",
-        ),
+        (
+          await readFile(
+            new URL(`../../../docs/mobile/${name}`, import.meta.url),
+            "utf8",
+          )
+        ).replaceAll("\r\n", "\n"),
       ).toBe(source);
     const regenerated = astToString(await openapiTS(otaOpenApi() as any));
     const print = (source: string) =>

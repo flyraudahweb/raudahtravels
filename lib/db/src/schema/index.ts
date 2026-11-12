@@ -21,3 +21,4 @@ export * from "./ai-registration";
 export * from "./hotel-bookings";
 export * from "./ota";
 export * from "./ota-api-keys";
+export * from "./ehajj";

@@ -1,8 +1,14 @@
 # Project index
 
-This is the baseline inspection before the OTA expansion. For the current Duffel flight/hotel implementation, resolved demo/security concerns, and deployment requirements, read [OTA deployment and operations](OTA_DEPLOYMENT.md).
+Code navigation map refreshed from source on 2026-11-12. Paths below are relative to the repository root. The working tree contains both committed OTA functionality and pending EHajj work. Deployment and production database state need their own checks.
 
-Code-grounded navigation map, inspected 2026-10-29. Paths below are relative to the repository root. This index describes the checked-out implementation; it does not establish the state of any live deployment.
+## Development checkpoint
+
+- Local `main` and its recorded `origin/main` point to `a3e6ea6`, the Duffel confirmation and live-checkout fixes pushed on 8 November. This pass inspected local Git state without fetching the remote.
+- The public homepage/package redesign, shared OTA search and booking screens, `/app` starter and mobile API developer centre are committed.
+- EHajj remains uncommitted in this working tree. It includes the admin workspace, API client/routes, encrypted connection settings, product grants, migration `0013_ehajj.sql`, tests and integration notes. The 12 November continuation adds the provider's combined registration/first-payment submission and bank lookups. HTTPS activation, accounting confirmation and customer document delivery remain pending. Read the [integration review](integrations/EHAJJ_INTEGRATION_REVIEW.md) and [endpoint index](integrations/EHAJJ_API_INDEX.json).
+- A separate uncommitted Vite change uses `FRONTEND_PORT`/`VITE_PORT` for the browser server and process `PORT` for the API proxy, falling back to 8081. The API itself defaults to 8080. Align these values before starting development.
+- The [launch review](OTA_LAUNCH_READINESS.md) records the latest environment checks from 8 November. At that time checkout/hotels were disabled, support email and webhook signing configuration were missing, Stays search returned 403 and the test webhook was inactive. These observations have not been repeated during this indexing pass.
 
 ## Purpose and stack
 
@@ -14,7 +20,7 @@ The pnpm workspace uses TypeScript, React 19.1, Vite 7, Tailwind 4, Radix/shadcn
 
 - `artifacts/raudah-travels/`: main React application; `src/pages/` groups public, auth, dashboard, agent, admin, flights and hotels screens.
 - `artifacts/api-server/`: Express API, route handlers, integration clients, registration services, tests and build script.
-- `lib/db/`: PostgreSQL pool, Drizzle schemas, SQL migrations and schema management commands. There are 39 `pgTable` declarations across the schema files at inspection time.
+- `lib/db/`: PostgreSQL pool, Drizzle schemas, SQL migrations and schema management commands. The current working tree has 47 `pgTable` declarations across 24 schema modules, including three pending EHajj tables. Source counts do not establish which tables exist in production.
 - `lib/api-spec/`: OpenAPI contract and Orval code generation configuration.
 - `lib/api-client-react/`: generated API functions/React Query hooks and handwritten `src/custom-fetch.ts`.
 - `lib/api-zod/`: generated runtime validation schemas.
@@ -31,9 +37,9 @@ The pnpm workspace uses TypeScript, React 19.1, Vite 7, Tailwind 4, Radix/shadcn
 2. `App.tsx` installs Clerk, React Query, profile synchronization and the top-level Wouter routes.
 3. Portal route/layout components are `pages/dashboard/UserDashboard.tsx`, `pages/agent/AgentPortal.tsx` and `pages/admin/AdminConsole.tsx`. Flight and hotel routing lives in each module's `index.tsx`.
 4. Screens use both generated hooks and handwritten `fetch` calls. Inspect both when changing API behavior. Browser requests use the Clerk session; generated fetch also supports an optional bearer-token getter.
-5. Development Vite proxies `/api` to `http://localhost:8080`.
+5. Development Vite proxies `/api` to the local API. Check the pending Vite port change described above.
 6. API `src/index.ts` loads environment configuration before importing the application, checks registration readiness, initializes defaults/storage, starts the channel worker and schedules registration maintenance.
-7. API `src/app.ts` installs request logging, Clerk proxy support, Helmet, CORS, body parsing and Clerk middleware. It mounts flight/hotel routers and then `src/routes/index.ts` beneath `/api`.
+7. API `src/app.ts` installs request logging, Clerk proxy support, Helmet, CORS, body parsing with raw-body capture and Clerk middleware. It mounts `/api/ota/v1`, then the shared `/api/ota` router, returns HTTP 410 for retired `/api/flights` and `/api/hotels`, then mounts `src/routes/index.ts` beneath `/api`.
 8. Route handlers access `@workspace/db`, which exports a node-postgres pool, Drizzle client and schema. Many business operations remain directly in route files.
 9. In production, Express also serves `artifacts/raudah-travels/dist/public` with a SPA fallback. Launch from the repository root because static paths resolve from the working directory.
 
@@ -88,8 +94,35 @@ The pnpm workspace uses TypeScript, React 19.1, Vite 7, Tailwind 4, Radix/shadcn
 
 ### Flights and hotels
 
-- Flights: `pages/flights/`, `components/flights/`, `routes/flights.ts`, `src/lib/duffel.ts`, `schema/flight-bookings.ts`. Duffel provides flight offers/orders; Paystack handles payment. GBP-to-NGN conversion currently uses a fixed source-code rate.
-- Hotels: `pages/hotels/`, `routes/hotels.ts`, `schema/hotel-bookings.ts`. Search uses hardcoded demo hotel inventory, with bookings persisted to PostgreSQL; no live bedbank integration is present in this route.
+- Shared UI lives in `components/ota/`. `pages/flights/index.tsx` and `pages/hotels/index.tsx` route search, checkout and confirmation to shared components. `TravelSearchForm.tsx`, `SearchPickers.tsx`, `SearchPopoverContent.tsx`, `FlightResults.tsx`, `TravelCheckout.tsx` and `TravelBooking.tsx` own the customer flow. Saved bookings use `/travel/bookings/:id`; dashboard and agent My Trips use `MyTravelTrips.tsx`.
+- API entry is `routes/ota.ts`; `services/ota/provider.ts` supplies Duffel v2 requests, price calculations and supplier validation. Flights use offers and balance-funded instant orders. Hotels use search, fetched rates, quote and balance-funded prepaid booking. Deposits, card-only and pay-at-property rates are excluded from online purchase.
+- `services/ota/booking.ts` verifies Paystack evidence and atomically claims fulfillment before the supplier purchase. State progresses from `payment_pending` through `processing` to `confirmed` or `requires_review`, with cancellation and verified full-refund states. An ambiguous supplier response stays available for reconciliation. `revision` guards competing state updates.
+- `paymentQueue.ts`, `duffelWebhooks.ts`, `maintenance.ts` and `bookingUpdates.ts` implement durable payment jobs, signed/deduplicated supplier notifications, recovery, owner updates and email delivery. Startup launches the maintenance stages independently.
+- Data is in `schema/ota.ts` and `ota-api-keys.ts`. The old `flight-bookings.ts`, `hotel-bookings.ts` and legacy frontend components remain in source. Their presence does not identify the active purchase engine. The old API routes return 410 and `src/lib/duffel.ts` is a compatibility stub.
+- Super Admin manages credentials, pricing, channels, webhooks and reconciliation at `/admin/ota` through `pages/admin/AdminOta.tsx`. API checks the role independently. `config.ts` supports encrypted test/live credentials and editable selling rates. Preserve `SETTINGS_ENCRYPTION_KEY`.
+- `exchangeRates.ts` fetches dated market references, using Frankfurter by default or optional ExchangeRate-API configuration. Approved admin rates price checkout. References have a provider schedule and cache, so the default feed supplies daily observations.
+
+### Mobile API and app starter
+
+- `/app`, `/app/login` and `/app/signup` are a responsive web starter in `pages/app/TravelApp.tsx`. It uses Clerk, real package reads and the shared OTA search, continuing into existing web checkout. See [app scope](OTA_APP_STARTER.md).
+- `services/ota/mobileRoutes.ts` and `mobileApiPaths.ts` expose 23 customer operations under `/api/ota/v1`. Owner actions require a Clerk session and an active profile. Optional hashed, scoped, expiring/revocable search keys serve trusted backends. Mobile clients use customer authentication.
+- `/admin/ota-api` is the Super Admin developer centre in `pages/admin/AdminOtaApi.tsx`. Contract source is `services/ota/apiDocumentation.ts`; `apiDeveloperTools.ts` and `mobileClientAssets.ts` supply protected download assets. Run `pnpm run docs:ota` after changing the OTA contract to refresh `docs/ota-openapi.json`, the integration guide, Postman files and typed mobile client/declarations. See [mobile API](OTA_MOBILE_API.md) and `docs/mobile/README.md`.
+- Native packaging, device acceptance, push, deep links, infants, multi-city, paid extras and self-service changes/cancellations remain outside the supported starter. Customer service requests provide the current support workflow.
+
+### Public design and package discovery
+
+- `pages/public/Home.tsx`, `Packages.tsx`, `PackageDetail.tsx` and `components/packages/PackageCard.tsx` implement the current package discovery and booking entry points.
+- Home uses the shared OTA widget with Flights, Hotels and Packages. Slideshow/aircraft settings use the public `landing_hero` setting and `services/landingHero.ts`. Admin page edits control the switches. The public slideshow controls are hidden.
+- The design follows the supplied Nusuk/Trip.com layout references while using Raudah colours, content and existing booking actions. See [design implementation](NUSUK_UI_IMPLEMENTATION.md).
+
+### EHajj integration pending publication
+
+- `routes/ehajj.ts`, `services/ehajj.ts`, frontend `lib/ehajj.ts` and `pages/admin/AdminEhajj.tsx` implement `/admin/ehajj`. The current route index mounts EHajj before the broad admin router.
+- Super Admin configures credentials and grants. Selected active admins/staff get per-product access with separate pilgrim, operations, finance and document-metadata permissions. Detail requests verify upstream roster membership.
+- Connection base comes from `EHAJJ_API_BASE_URL`. Agency key and manually supplied provider JWT are encrypted in dedicated connection storage. The two key-only reads list products/rosters; the remaining seven also need the provider JWT.
+- `0013_ehajj.sql` creates `ehajj_connections`, `ehajj_grants` and `ehajj_registrations`, and is registered in the journal. The migration remains local. The 12 November continuation added durable transfer storage to the earlier two-table SQL.
+- `services/ehajjRegistrations.ts` prepares and submits standalone multipart `addPelerin` registrations with staff-entered pilgrim details and first payments. Currency is explicitly declared and the amount is sent unchanged. Encrypted drafts, a passport/package fingerprint and versioned submission claims protect recovery and concurrency.
+- EHajj operates independently of FlyRaudah booking, Paystack and wallet ledgers. Later installments, token issuance/refresh, signed fulfillment callbacks and protected customer file delivery await further provider contracts.
 
 ## Local commands and deployment
 
@@ -106,7 +139,7 @@ pnpm run build:frontend
 pnpm --filter @workspace/api-spec run codegen
 ```
 
-Run the API and frontend development commands in separate terminals. API defaults to port 8080; frontend defaults to 5173. Vite reads the process-level `PORT`, so ensure the frontend's process does not inherit `PORT=8080`. Root `pnpm run dev` wraps both with `npx concurrently`; concurrently is not declared in the root manifest.
+Run the API and frontend development commands in separate terminals. API defaults to port 8080 and frontend to 5173. Check the pending local proxy configuration before starting. Root `pnpm run dev` wraps both with `npx concurrently`; concurrently is not declared in the root manifest.
 
 Start configuration from `.env.example`. Core dependencies are PostgreSQL and Clerk; `VITE_CLERK_PUBLISHABLE_KEY` must exist before the frontend build. Optional integrations include Paystack, Duffel, AI providers, R2, messaging channels and email. Some credentials/settings live in the database rather than environment variables. `SETTINGS_ENCRYPTION_KEY` must remain stable for saved encrypted registration credentials.
 
@@ -116,17 +149,16 @@ Start configuration from `.env.example`. Core dependencies are PostgreSQL and Cl
 
 ## Contracts and verification
 
-- API contract workflow: edit `lib/api-spec/openapi.yaml`, then run codegen; generated client/schema files should be regenerated rather than edited manually. Additional handwritten endpoints exist, so inspect runtime routes too.
+- Core API contract workflow uses `lib/api-spec/openapi.yaml` and Orval codegen. OTA maintains its own contract source and export command described above. Additional handwritten endpoints exist, so inspect runtime routes too.
 - CI runs dependency installation, codegen, workspace typechecking, API tests, API build and frontend build.
-- Tests: `artifacts/api-server/tests/connections.test.ts`, `extraction.test.ts`, `registration.test.ts`.
-- Connection and extraction tests mock integrations. Registration tests create a temporary embedded PostgreSQL instance and exercise schema/migration and registration behavior. Existing tests primarily cover registration; they do not establish end-to-end coverage of every business module.
-- This indexing pass does not start the application, contact live providers, run migrations, seed data or change application behavior.
+- Sixteen test files currently cover registration/connections/extraction, payment proofs, Duffel signatures, FX, OTA integration/readiness/workers/contracts/developer assets, search/navigation/state, app starter and public design. `ota.test.ts` also contains the pending EHajj integration tests.
+- Integration suites use disposable PostgreSQL and provider mocks. Earlier Windows registration setup/cleanup failures are documented in progress notes. The latest 8 November verification ran 131 tests across nine suites, then 94 booking/worker tests after the email update, with API typecheck/build passing. Those are historical results.
+- This 12 November pass refreshed code navigation and memory. Runtime tests and deployed checks belong to subsequent development verification.
 
-## Concrete concerns found while navigating
+## Resume points
 
-These are source observations, not a complete audit:
-
-- `routes/flights.ts` exposes `/flights/admin/bookings` and `/flights/admin/bookings/:id` without an explicit authentication/role guard. `app.ts` mounts this router before the guarded admin router, and Clerk middleware alone does not deny anonymous requests.
-- `routes/hotels.ts` accepts `paystackStatus` from the request body and uses it to mark a booking confirmed; that handler does not verify payment with Paystack.
-- `src/lib/duffel.ts` and flight place suggestions contain a hardcoded test-token fallback. No token value is reproduced here.
-- `project.md` and historical architecture/sprint notes contain stale stack versions, table counts and deployment/startup descriptions. Use manifests, runtime source and CI as the implementation references.
+- For OTA release work, start with `OTA_LAUNCH_READINESS.md`, current Admin diagnostics, provider/payment credentials and staging acceptance. A successful build or flight search alone does not establish live booking readiness.
+- For EHajj, resolve HTTPS transport, confirm provider package/currency/accounting details, and verify the deployed standalone registration workspace. The new addPelerin contract covers registration and its first payment.
+- For UI work, use the current shared search/checkout components and package card, and preserve existing owner/session and route-state handling.
+- For payment changes, inspect both OTA and package ledgers plus all agent wallet paths. They are separate booking domains sharing Paystack evidence validation.
+- Earlier descriptions in `project.md`, `.ai/context/architecture.md` and sprint/session notes contain outdated counts and pre-OTA route behaviour. This refreshed map and runtime source should guide new navigation.

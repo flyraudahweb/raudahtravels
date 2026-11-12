@@ -666,7 +666,7 @@ export interface components {
          *       "id": "off_example123",
          *       "total_amount": "100.00",
          *       "total_currency": "USD",
-         *       "expires_at": "2026-10-30T13:05:18.905Z",
+         *       "expires_at": "2026-11-12T20:45:09.096Z",
          *       "passengers": [
          *         {
          *           "id": "pas_example123",
@@ -690,8 +690,8 @@ export interface components {
          *           "duration": "PT5H30M",
          *           "segments": [
          *             {
-         *               "departing_at": "2026-12-14T10:00:00",
-         *               "arriving_at": "2026-12-14T17:30:00",
+         *               "departing_at": "2026-12-27T10:00:00",
+         *               "arriving_at": "2026-12-27T17:30:00",
          *               "origin": {
          *                 "iata_code": "LOS"
          *               },
@@ -867,7 +867,7 @@ export interface components {
          *         "id": "off_example123",
          *         "total_amount": "100.00",
          *         "total_currency": "USD",
-         *         "expires_at": "2026-10-30T13:05:18.905Z",
+         *         "expires_at": "2026-11-12T20:45:09.096Z",
          *         "passengers": [
          *           {
          *             "id": "pas_example123",
@@ -891,8 +891,8 @@ export interface components {
          *             "duration": "PT5H30M",
          *             "segments": [
          *               {
-         *                 "departing_at": "2026-12-14T10:00:00",
-         *                 "arriving_at": "2026-12-14T17:30:00",
+         *                 "departing_at": "2026-12-27T10:00:00",
+         *                 "arriving_at": "2026-12-27T17:30:00",
          *                 "origin": {
          *                   "iata_code": "LOS"
          *                 },
@@ -937,7 +937,7 @@ export interface components {
          *         "email": "traveller@example.com",
          *         "phone": "+2348012345678"
          *       },
-         *       "expiresAt": "2026-10-30T13:05:18.905Z",
+         *       "expiresAt": "2026-11-12T20:45:09.096Z",
          *       "paidAt": null,
          *       "providerResult": null,
          *       "providerNotice": null,
@@ -1052,7 +1052,7 @@ export interface components {
          *           "id": "off_example123",
          *           "total_amount": "100.00",
          *           "total_currency": "USD",
-         *           "expires_at": "2026-10-30T13:05:18.905Z",
+         *           "expires_at": "2026-11-12T20:45:09.096Z",
          *           "passengers": [
          *             {
          *               "id": "pas_example123",
@@ -1076,8 +1076,8 @@ export interface components {
          *               "duration": "PT5H30M",
          *               "segments": [
          *                 {
-         *                   "departing_at": "2026-12-14T10:00:00",
-         *                   "arriving_at": "2026-12-14T17:30:00",
+         *                   "departing_at": "2026-12-27T10:00:00",
+         *                   "arriving_at": "2026-12-27T17:30:00",
          *                   "origin": {
          *                     "iata_code": "LOS"
          *                   },
@@ -1122,7 +1122,7 @@ export interface components {
          *           "email": "traveller@example.com",
          *           "phone": "+2348012345678"
          *         },
-         *         "expiresAt": "2026-10-30T13:05:18.905Z",
+         *         "expiresAt": "2026-11-12T20:45:09.096Z",
          *         "paidAt": null,
          *         "providerResult": null,
          *         "providerNotice": null,
@@ -2442,8 +2442,8 @@ export interface operations {
                  * @example {
                  *       "origin": "LOS",
                  *       "destination": "JED",
-                 *       "departureDate": "2026-12-14",
-                 *       "returnDate": "2026-12-21",
+                 *       "departureDate": "2026-12-27",
+                 *       "returnDate": "2027-01-03",
                  *       "adults": 1,
                  *       "childAges": [],
                  *       "cabinClass": "economy"
@@ -2491,7 +2491,7 @@ export interface operations {
                      *           "id": "off_example123",
                      *           "total_amount": "100.00",
                      *           "total_currency": "USD",
-                     *           "expires_at": "2026-10-30T13:05:18.905Z",
+                     *           "expires_at": "2026-11-12T20:45:09.096Z",
                      *           "passengers": [
                      *             {
                      *               "id": "pas_example123",
@@ -2515,8 +2515,8 @@ export interface operations {
                      *               "duration": "PT5H30M",
                      *               "segments": [
                      *                 {
-                     *                   "departing_at": "2026-12-14T10:00:00",
-                     *                   "arriving_at": "2026-12-14T17:30:00",
+                     *                   "departing_at": "2026-12-27T10:00:00",
+                     *                   "arriving_at": "2026-12-27T17:30:00",
                      *                   "origin": {
                      *                     "iata_code": "LOS"
                      *                   },
@@ -2737,7 +2737,7 @@ export interface operations {
                      *         "id": "off_example123",
                      *         "total_amount": "100.00",
                      *         "total_currency": "USD",
-                     *         "expires_at": "2026-10-30T13:05:18.905Z",
+                     *         "expires_at": "2026-11-12T20:45:09.096Z",
                      *         "passengers": [
                      *           {
                      *             "id": "pas_example123",
@@ -2761,8 +2761,8 @@ export interface operations {
                      *             "duration": "PT5H30M",
                      *             "segments": [
                      *               {
-                     *                 "departing_at": "2026-12-14T10:00:00",
-                     *                 "arriving_at": "2026-12-14T17:30:00",
+                     *                 "departing_at": "2026-12-27T10:00:00",
+                     *                 "arriving_at": "2026-12-27T17:30:00",
                      *                 "origin": {
                      *                   "iata_code": "LOS"
                      *                 },
@@ -2972,8 +2972,8 @@ export interface operations {
                  * @example {
                  *       "latitude": 21.4225,
                  *       "longitude": 39.8262,
-                 *       "checkIn": "2026-12-14",
-                 *       "checkOut": "2026-12-21",
+                 *       "checkIn": "2026-12-27",
+                 *       "checkOut": "2027-01-03",
                  *       "rooms": 1,
                  *       "adults": 1,
                  *       "childAges": []

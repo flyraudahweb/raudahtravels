@@ -1,0 +1,31 @@
+# EHajj integration context
+
+## Current deployment on 12 November 2026
+
+The user clarified that EHajj must be independent of Paystack and requested deployment while they ask the provider for HTTPS. The previous local booking/verified-receipt handoff was replaced with a standalone Super Admin registration form and recent-registration history. The form sends staff-entered pilgrim details and the externally received first payment through addPelerin. It does not read or modify local package bookings, Paystack payments, wallets or OTA jobs. Currency is explicitly declared for review and the amount is sent unchanged.
+
+Use services/ehajjRegistrations.ts, routes/ehajj.ts and pages/admin/AdminEhajj.tsx. Personal details are encrypted in ehajj_registrations. A keyed passport/package fingerprint blocks duplicates, version checks prevent stale confirmation, and a committed submitting claim prevents a repeated write after timeout/crash. The API still requires agency key only for addPelerin and bank/account lookups, and JWT for the seven detailed read endpoints.
+
+The supplied HTTP base is recorded locally; the HTTPS certificate on that IP fails hostname verification. The connection remains gated on valid HTTPS. The user will ask the provider for a secure URL. No insecure transmission of the agency key or pilgrim data has been authorized or performed. Full source fingerprints and endpoint schemas are in docs/integrations/EHAJJ_API_INDEX.json.
+
+Migration 0013 creates ehajj_connections, ehajj_grants and ehajj_registrations and is registered in the journal. It was applied to the configured shared database on 12 November and all three tables were verified. The full OTA suite passed 97 tests, the developer tools suite passed 7 tests, API/frontend type checks and both production builds passed. The documentation exporter now normalizes embedded source line endings to prevent the previous Linux CI mismatch. Railway deployment is in progress; the supplied agency key and HTTP base are staged, and explicit approval for the missing settings encryption key is pending.
+
+## Earlier checkpoints
+
+12 November checkpoint. Implementation and migration 0013 remain uncommitted in the working tree. Local `main` is `a3e6ea6`, which published the separate Duffel review. The migration is outside the Drizzle journal, currently ending at 0012. Provider credentials, JWT issuance instructions and the automatic write/fulfillment contract are still required for activation and expansion. Runtime and production database state were not rechecked during indexing.
+
+Implementation on 2026-11-06 adds the scoped admin workspace at /admin/ehajj, encrypted connection settings, Super Admin product grants, all nine documented reads and a local verified-payment handoff check. Activation requires migration 0013, EHAJJ_API_BASE_URL and provider credentials. The later pasted text repeats the read contract. The endpoint image describes the required write, booking-status, document and webhook interfaces without payload or verification contracts. The implemented handoff displays that provider dependency. See the implementation section in docs/integrations/EHAJJ_INTEGRATION_REVIEW.md.
+
+Historical status on 2026-11-05. Documentation indexing/recommendation was complete before the user requested implementation on 6 November. User-facing name is EHajj, with the provider document using eHadj.
+
+Source: `C:/Users/DEEPMIND/Downloads/API_Documentation_eHadj_Pilgrims_Products_EN (1).docx`, SHA-256 `2ffc46c0636dc8cbb637a580d263ac71b52c7c6591d52897ee30e06f27986237`. Document label: eHadj 2.0 mobile API v2.0.0. Read all375 extracted blocks,9 endpoint tables and9 successful response examples. No embedded media. Original unchanged. Local extraction in ignored scratch/ehajj-docs.
+
+Authoritative project analysis: docs/integrations/EHAJJ_INTEGRATION_REVIEW.md and EHAJJ_API_INDEX.json. JSON includes9 uniqueGET endpoints, authentication, shape notes and128 observed response field paths. Types are derived from examples, not exhaustive validated schemas; no sample personal values or real credentials copied.
+
+Critical finding: all9 documented operations are read-only. Products/rosters use AuthorizationAgenceKey only; profile/payments/trip/accommodation/services/group/documents also require Bearer JWT. Only localhost development base supplied. Production URL, JWT issuance/refresh/principal scope, currency/units/refund semantics, request limits, pagination and document protection are missing. There are no documented booking/write APIs or webhooks. Trips/hotels describe existing assignments, not OTA search/availability/ticketing. Product list lacks price/dates/capacity, so cannot be published as sellable Raudah packages without additional data/contracts.
+
+Recommendation: /admin/ehajj dedicated read-only console, Super Admin owns connection and grants; ordinary admins/staff need explicit granular capabilities and assigned product/edition scope. Separate finance, operations, passport/document read/download, exports and refresh rights. No agent/customer access in phase one. Enforce server-side, including roster/profile/service-field redaction. Super Admin hard role check for settings and reserved ehajj.* grants must also cover staff-create/permission-update paths. Existing staff string-permission storage is reusable but broad admin/router gates and navigation filtering do not establish these new guarantees.
+
+Important data rules: external connection/product/pilgrim IDs remain distinct from Raudah package/profile/booking IDs; link explicitly, not by name/email alone. Keep external financial snapshots out of Paystack/wallet settlement. Normalize object/array/French-message unions. Minimize ethnicity/other unnecessary sensitive fields; restrict QR/passport data and mixed-agency group/roommate information. Provider files require approved HTTPS hosts and authorised file access, not arbitrary URL fetching. Fetch tabs on demand to avoid7N request fan-out; preserve last successful data on upstream errors.
+
+Interactive index: Codex managed canvases/EHajj-API-index.canvas.tsx; TypeScript check passed. Machine index/source fingerprint and operation/auth/field counts validated. No live API requests, credentials, account changes, application code edits, migration, deployment, commit or push in this indexing task.

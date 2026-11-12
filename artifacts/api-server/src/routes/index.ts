@@ -14,6 +14,7 @@ import agentsRouter from "./agents";
 import documentsRouter from "./documents";
 import dashboardRouter from "./dashboard";
 import adminRouter from "./admin";
+import ehajjRouter from "./ehajj";
 import aiRouter from "./ai";
 import backupRouter from "./backup";
 import uploadRouter from "./upload";
@@ -147,6 +148,7 @@ router.use(uploadRouter);
 router.use(whatsappRouter);
 router.use(telegramRouter);
 router.use(aiRegistrationRouter);
+router.use(ehajjRouter);
 router.use(adminRouter);
 router.use(backupRouter);
 

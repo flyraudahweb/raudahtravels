@@ -1,0 +1,859 @@
+{
+  "metadata": {
+    "displayName": "EHajj",
+    "documentName": "eHadj 2.0 mobile API",
+    "documentVersion": "2.0.0",
+    "indexedAt": "2026-11-12",
+    "sourceFile": "API_Documentation_eHadj_Pilgrims_Products_EN-1 (1).docx",
+    "sourceSha256": "07e1277a98f3099de76fa778f1eca9cf1fe197cea7b13d9b0ec323b8fe7e3841",
+    "scope": "Supplied 12-operation contract; separate unauthenticated HTTP/HTTPS transport checks only",
+    "documentedDevelopmentBaseUrl": "http://localhost/ehadj/api_mobile/public",
+    "productionBaseUrl": null,
+    "operationCount": 12,
+    "documentedWriteOperations": 1,
+    "documentedWebhooks": false,
+    "containsRealCredentials": false,
+    "schemaStatus": "Observed response fields from examples, not an exhaustive validated provider schema",
+    "providedBaseUrl": "http://5.196.194.160/ehadj/api_mobile",
+    "previousSourceSha256": "2ffc46c0636dc8cbb637a580d263ac71b52c7c6591d52897ee30e06f27986237"
+  },
+  "authentication": {
+    "agencyKeyHeader": "AuthorizationAgenceKey",
+    "jwtHeader": "Authorization",
+    "jwtValueFormat": "Bearer <EHajj JWT>",
+    "jwtIssuanceDocumented": false,
+    "jwtRefreshDocumented": false,
+    "jwtPrincipalScopeDocumented": false,
+    "notRaudahClerkJwt": true
+  },
+  "operations": [
+    {
+      "operation": "getAllProduitsAgence",
+      "method": "GET",
+      "path": "/api/getAllProduitsAgence",
+      "headers": [
+        "AuthorizationAgenceKey"
+      ],
+      "responseFields": [
+        {
+          "path": "data",
+          "exampleType": "array"
+        },
+        {
+          "path": "data[].id_produit",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data[].libelle_produit",
+          "exampleType": "string"
+        },
+        {
+          "path": "data[].description_produit",
+          "exampleType": "string"
+        },
+        {
+          "path": "data[].activite_produit",
+          "exampleType": "string"
+        },
+        {
+          "path": "data[].edition",
+          "exampleType": "string"
+        }
+      ],
+      "title": "Agency products",
+      "description": "Active products only: identity, description, Hajj/Umrah activity and edition year. No sellable inventory contract.",
+      "readOnly": true,
+      "authentication": "agency_key",
+      "proposedRaudahPermissions": [
+        "ehajj.access"
+      ],
+      "responseShapeNotes": "array; active products only",
+      "fieldTypesAreExamplesOnly": true
+    },
+    {
+      "operation": "getPelerinsByProduit",
+      "method": "GET",
+      "path": "/api/getPelerinsByProduit/{id_produit}",
+      "headers": [
+        "AuthorizationAgenceKey"
+      ],
+      "responseFields": [
+        {
+          "path": "data",
+          "exampleType": "array"
+        },
+        {
+          "path": "data[].id_pelerin",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data[].numero_pelerin",
+          "exampleType": "string"
+        },
+        {
+          "path": "data[].nom_pelerin",
+          "exampleType": "string"
+        },
+        {
+          "path": "data[].prenom_pelerin",
+          "exampleType": "string"
+        },
+        {
+          "path": "data[].sexe_pelerin",
+          "exampleType": "string"
+        },
+        {
+          "path": "data[].libelle_edition",
+          "exampleType": "string"
+        },
+        {
+          "path": "data[].nom_produit",
+          "exampleType": "string"
+        },
+        {
+          "path": "data[].nom_package",
+          "exampleType": "string"
+        },
+        {
+          "path": "data[].tarif_fixe",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data[].amount_paid",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data[].rest",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data[].statut",
+          "exampleType": "string"
+        },
+        {
+          "path": "data[].date_naissance_pelerin",
+          "exampleType": "string"
+        },
+        {
+          "path": "data[].lieu_naissance_pelerin",
+          "exampleType": "string"
+        },
+        {
+          "path": "data[].nationalite_pelerin",
+          "exampleType": "string"
+        },
+        {
+          "path": "data[].photo_pelerin",
+          "exampleType": "string"
+        }
+      ],
+      "title": "Pilgrim roster",
+      "description": "Product-scoped identity and financial summary; redact financial fields without finance permission.",
+      "readOnly": true,
+      "authentication": "agency_key",
+      "proposedRaudahPermissions": [
+        "ehajj.access",
+        "ehajj.pilgrims.read"
+      ],
+      "responseShapeNotes": "array; documented 404 can mean no pilgrims or an unavailable product",
+      "fieldTypesAreExamplesOnly": true
+    },
+    {
+      "operation": "getPelerinDetails",
+      "method": "GET",
+      "path": "/api/getPelerinDetails/{id_pelerin}",
+      "headers": [
+        "AuthorizationAgenceKey",
+        "Authorization"
+      ],
+      "responseFields": [
+        {
+          "path": "data.civilite_pelerin.numero_pelerin",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.civilite_pelerin.nom",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.civilite_pelerin.prenom",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.civilite_pelerin.photo",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.civilite_pelerin.sexe",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.civilite_pelerin.date_naissance",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.civilite_pelerin.lieu_naissance",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.civilite_pelerin.nationalite",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.civilite_pelerin.profession",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.civilite_pelerin.situation_matrimoniale",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.civilite_pelerin.partenaire",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.civilite_pelerin.groupe_ethenique",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.civilite_pelerin.niveau_etude",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.contact_pelerin.telephone.principal",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.contact_pelerin.telephone.whatsapp",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.contact_pelerin.telephone.ice",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.contact_pelerin.email",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.contact_pelerin.adresse",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.contact_pelerin.ville",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.contact_pelerin.pays",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.package.designation",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.package.tarif",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data.package.categorie",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.package.type_tarif",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.passeport.numero",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.passeport.date_delivrance",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.passeport.date_expiration",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.passeport.autorite_delivrance",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.passeport.copie_passeport",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.hotel",
+          "exampleType": "array"
+        },
+        {
+          "path": "data.hotel[].batiment",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.hotel[].numero_chambre",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.hotel[].ville",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.info_qr_code.uuid_code_pelerin",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.info_qr_code.nom_pelerin_qr",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.info_qr_code.prenom_pelerin_qr",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.info_qr_code.numero_passeport_qr",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.info_qr_code.numero_visa_qr",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.info_qr_code.nom_groupe_qr",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.info_qr_code.hotel_medine_qr",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.info_qr_code.adress_hotel_medine_qr",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.info_qr_code.hotel_makkah_qr",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.info_qr_code.adress_hotel_makkah_qr",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.info_qr_code.telephone_qr.telephone_1",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.info_qr_code.telephone_qr.telephone_2",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.info_qr_code.telephone_qr.telephone_3",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.info_qr_code.telephone_qr.pays_agence",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.info_qr_code.telephone_qr.date_impression",
+          "exampleType": "string"
+        }
+      ],
+      "title": "Pilgrim profile",
+      "description": "Identity, contact, package, passport, accommodation and QR data; field-level redaction required.",
+      "readOnly": true,
+      "authentication": "agency_key_and_jwt",
+      "proposedRaudahPermissions": [
+        "ehajj.access",
+        "ehajj.pilgrims.read"
+      ],
+      "responseShapeNotes": "object; contains sensitive and financial fields",
+      "fieldTypesAreExamplesOnly": true
+    },
+    {
+      "operation": "getPelerinVersement",
+      "method": "GET",
+      "path": "/api/getPelerinVersement/{id_pelerin}",
+      "headers": [
+        "AuthorizationAgenceKey",
+        "Authorization"
+      ],
+      "responseFields": [
+        {
+          "path": "data.nom_complet",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.total_a_payer",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data.total_verse",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data.reste_a_payer",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data.versements",
+          "exampleType": "array"
+        },
+        {
+          "path": "data.versements[].code_versement",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.versements[].montant",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data.versements[].reference",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.versements[].date_versement",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.versements[].moyen_paiement",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.versements[].type_versement",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.versements[].etat",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.versements[].total_avant_versement",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data.versements[].total_actuel_versement",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data.versements[].total_reste_versement",
+          "exampleType": "integer"
+        }
+      ],
+      "title": "Payments and balances",
+      "description": "External payment/refund history and balances for display; currency, units and refund representation unspecified.",
+      "readOnly": true,
+      "authentication": "agency_key_and_jwt",
+      "proposedRaudahPermissions": [
+        "ehajj.access",
+        "ehajj.finance.read"
+      ],
+      "responseShapeNotes": "object with versements array",
+      "fieldTypesAreExamplesOnly": true
+    },
+    {
+      "operation": "getVoyagePelerin",
+      "method": "GET",
+      "path": "/api/getVoyagePelerin/{id_pelerin}",
+      "headers": [
+        "AuthorizationAgenceKey",
+        "Authorization"
+      ],
+      "responseFields": [
+        {
+          "path": "data.id_voyage",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data.type_vol",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.date_depart_aller",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.date_arrivee_aller",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.lieu_depart_aller",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.lieu_arrivee_aller",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.airline_aller",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.lieu_depart_retour",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.lieu_arrivee_retour",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.airline_retour",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.date_depart_retour",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.date_arrivee_retour",
+          "exampleType": "string"
+        }
+      ],
+      "title": "Assigned travel",
+      "description": "Existing trip dates, routes and airlines; not flight search, ticket purchase or cancellation.",
+      "readOnly": true,
+      "authentication": "agency_key_and_jwt",
+      "proposedRaudahPermissions": [
+        "ehajj.access",
+        "ehajj.operations.read"
+      ],
+      "responseShapeNotes": "object; one-way behaviour not illustrated",
+      "fieldTypesAreExamplesOnly": true
+    },
+    {
+      "operation": "getHebergementPelerin",
+      "method": "GET",
+      "path": "/api/getHebergementPelerin/{id_pelerin}",
+      "headers": [
+        "AuthorizationAgenceKey",
+        "Authorization"
+      ],
+      "responseFields": [
+        {
+          "path": "data.hebergement_makkah.batiment",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.hebergement_makkah.numero_etage",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.hebergement_makkah.numero_chambre",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.hebergement_makkah.date_entree",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.hebergement_makkah.date_sortie",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.hebergement_makkah.restauration",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.hebergement_makkah.ville",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.hebergement_makkah.colocataires",
+          "exampleType": "array"
+        },
+        {
+          "path": "data.hebergement_makkah.colocataires[].nom",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.hebergement_makkah.colocataires[].prenom",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.hebergement_makkah.colocataires[].numero_pelerin",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.hebergement_medine",
+          "exampleType": "string"
+        }
+      ],
+      "title": "Assigned accommodation",
+      "description": "Makkah/Madinah building, floor, room, dates, meals and roommates; not hotel inventory.",
+      "readOnly": true,
+      "authentication": "agency_key_and_jwt",
+      "proposedRaudahPermissions": [
+        "ehajj.access",
+        "ehajj.operations.read"
+      ],
+      "responseShapeNotes": "each city is object or the string Non attribue",
+      "fieldTypesAreExamplesOnly": true
+    },
+    {
+      "operation": "getPelerinServiceAdd",
+      "method": "GET",
+      "path": "/api/getPelerinServiceAdd/{id_pelerin}",
+      "headers": [
+        "AuthorizationAgenceKey",
+        "Authorization"
+      ],
+      "responseFields": [
+        {
+          "path": "data",
+          "exampleType": "array"
+        },
+        {
+          "path": "data[].id_service",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data[].description",
+          "exampleType": "string"
+        },
+        {
+          "path": "data[].total_a_payer",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data[].total_verse",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data[].reste",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data[].etat",
+          "exampleType": "string"
+        }
+      ],
+      "title": "Additional services",
+      "description": "Subscribed service descriptions and external balances; money requires finance permission.",
+      "readOnly": true,
+      "authentication": "agency_key_and_jwt",
+      "proposedRaudahPermissions": [
+        "ehajj.access",
+        "ehajj.operations.read"
+      ],
+      "responseShapeNotes": "array or French no-services message string",
+      "fieldTypesAreExamplesOnly": true
+    },
+    {
+      "operation": "getPelerinGroupe",
+      "method": "GET",
+      "path": "/api/getPelerinGroupe/{id_pelerin}",
+      "headers": [
+        "AuthorizationAgenceKey",
+        "Authorization"
+      ],
+      "responseFields": [
+        {
+          "path": "data.groupe.id_groupe",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data.groupe.nom_groupe",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.groupe.activite",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.membres_groupe",
+          "exampleType": "array"
+        },
+        {
+          "path": "data.membres_groupe[].nom_complet",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.membres_groupe[].photo",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.membres_groupe[].agence",
+          "exampleType": "string"
+        }
+      ],
+      "title": "Group membership",
+      "description": "Group identity and member name/photo/agency; cross-agency visibility needs clarification.",
+      "readOnly": true,
+      "authentication": "agency_key_and_jwt",
+      "proposedRaudahPermissions": [
+        "ehajj.access",
+        "ehajj.operations.read"
+      ],
+      "responseShapeNotes": "groupe is object or message string; membres_groupe is array or message string",
+      "fieldTypesAreExamplesOnly": true
+    },
+    {
+      "operation": "getDocumentsPelerin",
+      "method": "GET",
+      "path": "/api/getDocumentsPelerin/{id_pelerin}",
+      "headers": [
+        "AuthorizationAgenceKey",
+        "Authorization"
+      ],
+      "responseFields": [
+        {
+          "path": "data",
+          "exampleType": "array"
+        },
+        {
+          "path": "data[].id_document",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data[].description",
+          "exampleType": "string"
+        },
+        {
+          "path": "data[].piece_jointe",
+          "exampleType": "string"
+        }
+      ],
+      "title": "Pilgrim documents",
+      "description": "Document identifiers, descriptions and attachment links; no upload or document-write endpoint.",
+      "readOnly": true,
+      "authentication": "agency_key_and_jwt",
+      "proposedRaudahPermissions": [
+        "ehajj.access",
+        "ehajj.documents.read"
+      ],
+      "responseShapeNotes": "array; null/empty attachment behaviour not specified",
+      "fieldTypesAreExamplesOnly": true
+    },
+    {
+      "operation": "getAllBanquesAgence",
+      "method": "GET",
+      "path": "/api/getAllBanquesAgence",
+      "headers": [
+        "AuthorizationAgenceKey"
+      ],
+      "responseFields": [
+        {
+          "path": "data[].id_banque",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data[].nom_banque",
+          "exampleType": "string"
+        }
+      ]
+    },
+    {
+      "operation": "getAllComptesBancairesAgence",
+      "method": "GET",
+      "path": "/api/getAllComptesBancairesAgence",
+      "headers": [
+        "AuthorizationAgenceKey"
+      ],
+      "responseFields": [
+        {
+          "path": "data[].id_compte_bancaire",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data[].libelle_compte_bancaire",
+          "exampleType": "string"
+        },
+        {
+          "path": "data[].numero_compte_bancaire",
+          "exampleType": "string"
+        },
+        {
+          "path": "data[].nom_banque",
+          "exampleType": "string"
+        }
+      ]
+    },
+    {
+      "operation": "addPelerin",
+      "method": "POST",
+      "path": "/api/addPelerin",
+      "headers": [
+        "AuthorizationAgenceKey"
+      ],
+      "contentType": "multipart/form-data",
+      "requiredFields": [
+        "last_name",
+        "first_name",
+        "gender",
+        "passport_number",
+        "phone_number",
+        "package_id",
+        "payment_amount",
+        "payment_method"
+      ],
+      "conditionalFields": {
+        "payment_reference": "Required unless payment_method is 1",
+        "source_bank_id": "Required for payment_method 3",
+        "destination_bank_account_id": "Required for payment_method 3"
+      },
+      "optionalFields": [
+        "date_of_birth",
+        "place_of_birth",
+        "passport_issue_date",
+        "passport_expiry_date",
+        "passport_issuing_authority",
+        "whatsapp_number",
+        "emergency_contact_number",
+        "email",
+        "address",
+        "occupation",
+        "city_of_residence",
+        "marital_status",
+        "photo",
+        "passport_copy",
+        "manual_receipt_number",
+        "payment_note",
+        "payment_date",
+        "payment_attachment"
+      ],
+      "responseFields": [
+        {
+          "path": "data.id_pelerin",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data.numero_pelerin",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data.pelerin_uuid",
+          "exampleType": "string"
+        },
+        {
+          "path": "data.id_versement_pelerin",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data.code_versement_pelerin",
+          "exampleType": "integer"
+        },
+        {
+          "path": "data.reste_a_verse",
+          "exampleType": "number"
+        }
+      ],
+      "notes": [
+        "Creates the pilgrim and first payment in a single provider transaction",
+        "Passport must be unique for the product",
+        "No JWT required",
+        "No currency request field or idempotency contract supplied",
+        "No additional-payment endpoint or booking-update webhook supplied"
+      ]
+    }
+  ],
+  "implementationBlockers": [
+    "Production HTTPS base URL and permitted agency credentials",
+    "Provider JWT issuance, expiry, refresh and agency-versus-pilgrim scope",
+    "Currency, amount units/precision and refund conventions",
+    "Ownership/agency rules for all endpoints, group members and roommates",
+    "Rate limits, pagination, data freshness and change tracking",
+    "HTTPS file hosts, attachment access/expiry and private document handling",
+    "Separate write API documentation if bidirectional booking or record updates are required"
+  ]
+}
