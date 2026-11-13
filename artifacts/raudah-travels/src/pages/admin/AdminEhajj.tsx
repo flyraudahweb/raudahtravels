@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useUser } from "@clerk/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -6,6 +6,7 @@ import {
   CalendarCheck,
   FileCheck2,
   LayoutDashboard,
+  Minimize2,
   Package,
   Plug,
   RefreshCw,
@@ -301,7 +302,6 @@ type Settings = {
   transportIssue: string | null;
   version: string | null;
   enabled: boolean;
-  saved: boolean;
   hasAgencyKey: boolean;
   hasJwt: boolean;
   encryptionReady: boolean;
@@ -1322,168 +1322,216 @@ function ReleaseDocumentForm({
   );
 }
 
-function ProviderSetup({
-  settings,
-  openConnection,
-}: {
-  settings: Settings;
-  openConnection: () => void;
-}) {
-  const guidance = !settings.baseUrl
-    ? "Ask EHajj for its HTTPS API URL. A secure URL is needed before packages or pilgrim records can be retrieved."
-    : !settings.encryptionReady
-      ? "Configure server encryption before saving the provider connection."
-      : settings.saved
-        ? "Review the saved settings and enable EHajj in Connection."
-        : "Open Connection to save your agency credentials and enable EHajj.";
-  return (
-    <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 sm:flex sm:items-center sm:justify-between sm:gap-6">
-      <div>
-        <h2 className="font-semibold text-amber-950">
-          Provider setup required
-        </h2>
-        <p className="mt-1 text-sm text-amber-900">{guidance}</p>
-      </div>
-      <Button
-        variant="outline"
-        className="mt-3 shrink-0 sm:mt-0"
-        onClick={openConnection}
-      >
-        Connection settings <ArrowRight size={16} />
-      </Button>
-    </section>
-  );
-}
-
-export default function AdminEhajj() {
+export default function AdminEhajj({ onExit }: { onExit: () => void }) {
   const { user } = useUser();
   const access = useEhajjAccess(user?.id);
   const manages = access.data?.manage === true;
   const settings = useEhajjSettings(user?.id, manages);
   const [tab, setTab] = useState<WorkspaceTab>("overview");
-  if (!user || access.isPending)
-    return (
-      <p className="p-6" role="status">
-        Checking EHajj access…
-      </p>
-    );
-  if (access.isError)
-    return (
-      <div className="p-6">
-        <ErrorNotice error={access.error} />
-      </div>
-    );
-  if (!access.data.allowed)
-    return (
-      <p className="p-6">Ask a Super Admin to assign EHajj product access.</p>
-    );
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const requiresConnection =
+    tab === "products" || tab === "registrations" || tab === "access";
+  const activeTab = manages ? tab : "products";
+  const activeLabel = workspaceTabs.find(({ key }) => key === activeTab)?.label;
+  const canAccess = !!user && access.isSuccess && access.data.allowed;
+
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    function exitOnEscape(event: KeyboardEvent) {
+      if (
+        event.key !== "Escape" ||
+        event.defaultPrevented ||
+        event.repeat ||
+        event.isComposing
+      )
+        return;
+      // Let an open picker or dialog handle Escape first.
+      if (
+        event.target instanceof Element &&
+        event.target.closest(
+          'select, [role="combobox"], [role="dialog"], [role="alertdialog"], [role="listbox"]',
+        )
+      )
+        return;
+      event.preventDefault();
+      onExit();
+    }
+    window.addEventListener("keydown", exitOnEscape);
+    return () => window.removeEventListener("keydown", exitOnEscape);
+  }, [onExit]);
+
   return (
-    <div className="mx-auto max-w-7xl space-y-5 p-4 sm:p-8">
-      <header className="relative overflow-hidden rounded-3xl bg-[#1C1F66] px-6 py-8 text-white shadow-sm sm:p-9">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -right-12 -top-24 h-80 w-80 rounded-full border-[40px] border-white/5"
-        />
-        <div className="relative flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight !text-white sm:text-4xl">
-              EHajj operations
-            </h1>
-            <p className="mt-2 max-w-xl text-sm text-indigo-100">
-              Manage agency packages, pilgrim records and customer travel
-              documents.
-            </p>
-          </div>
-          {manages && settings.data && (
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-sm font-medium text-white">
-              <ShieldCheck size={16} aria-hidden="true" />{" "}
-              {settings.data.enabled ? "Connection enabled" : "Setup required"}
+    <div className="min-h-dvh bg-[#F5F6FC]">
+      <header className="sticky top-0 z-30 border-b border-white/15 bg-[#1C1F66] text-white">
+        <div className="flex h-16 items-center justify-between gap-3 px-4 sm:px-7">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-white/10 ring-1 ring-white/15">
+              <Package size={19} aria-hidden="true" />
             </span>
-          )}
+            <h1
+              ref={headingRef}
+              tabIndex={-1}
+              className="text-xl font-semibold tracking-tight !text-white"
+            >
+              EHajj
+            </h1>
+          </div>
+          <div className="flex items-center gap-4">
+            {canAccess && manages && settings.data?.enabled && (
+              <span className="hidden items-center gap-2 text-sm text-indigo-100 sm:inline-flex">
+                <ShieldCheck
+                  size={16}
+                  className="text-emerald-300"
+                  aria-hidden="true"
+                />{" "}
+                Connected
+              </span>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onExit}
+              aria-keyshortcuts="Escape"
+              className="shrink-0 border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+            >
+              <Minimize2 size={16} aria-hidden="true" /> Exit workspace
+              <kbd
+                aria-hidden="true"
+                className="ml-1 hidden rounded border border-white/30 px-1.5 py-0.5 font-sans text-[11px] leading-none text-indigo-100 md:inline"
+              >
+                Esc
+              </kbd>
+            </Button>
+          </div>
         </div>
       </header>
-      {manages && (
-        <nav
-          aria-label="EHajj workspace"
-          className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2"
-        >
-          {workspaceTabs.map(({ key, label, icon: Icon }) => (
-            <Button
-              key={key}
-              variant={tab === key ? "default" : "ghost"}
-              aria-pressed={tab === key}
-              onClick={() => setTab(key)}
+      <div
+        className={
+          canAccess && manages
+            ? "lg:grid lg:grid-cols-[14rem_minmax(0,1fr)]"
+            : ""
+        }
+      >
+        {canAccess && manages && (
+          <aside className="sticky top-[65px] z-20 self-start border-b border-slate-200 bg-white lg:min-h-[calc(100dvh-65px)] lg:border-b-0 lg:border-r">
+            <nav
+              aria-label="EHajj workspace"
+              className="flex gap-1 overflow-x-auto p-2 lg:flex-col lg:p-3"
             >
-              <Icon size={16} aria-hidden="true" /> {label}
-            </Button>
-          ))}
-        </nav>
-      )}
-      {manages && tab === "overview" && (
-        <>
-          {settings.data && !settings.data.enabled && (
-            <ProviderSetup
-              settings={settings.data}
-              openConnection={() => setTab("connection")}
-            />
-          )}
-          <section className={panel}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="flex items-center gap-2 text-xl font-semibold text-primary">
-                <CalendarCheck size={21} aria-hidden="true" /> Booking to
-                delivery
-              </h2>
-              <Button variant="outline" onClick={() => setTab("delivery")}>
-                Deliver a document <ArrowRight size={16} />
-              </Button>
-            </div>
-            <ol className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-              {workflow.map(({ title, description }) => (
-                <li
-                  className="rounded-xl border border-slate-200 bg-slate-50 p-4"
-                  key={title}
+              {workspaceTabs.map(({ key, label, icon: Icon }) => (
+                <Button
+                  key={key}
+                  variant="ghost"
+                  aria-pressed={tab === key}
+                  onClick={() => setTab(key)}
+                  className={
+                    "shrink-0 justify-start whitespace-nowrap px-3 " +
+                    (tab === key
+                      ? "bg-indigo-50 font-semibold text-[#2D3199] hover:bg-indigo-100"
+                      : "text-slate-600")
+                  }
                 >
-                  <h3 className="text-sm font-semibold text-slate-900">
-                    {title}
-                  </h3>
-                  <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                    {description}
-                  </p>
-                </li>
+                  <Icon size={17} aria-hidden="true" /> {label}
+                </Button>
               ))}
-            </ol>
-          </section>
-        </>
-      )}
-      {manages &&
-        ["overview", "products", "registrations", "access"].includes(tab) && (
-          <ErrorNotice error={settings.error} />
+            </nav>
+          </aside>
         )}
-      {manages &&
-        ["products", "registrations", "access"].includes(tab) &&
-        settings.isPending && <p role="status">Checking provider setup…</p>}
-      {manages &&
-        ["products", "registrations", "access"].includes(tab) &&
-        settings.data &&
-        !settings.data.enabled && (
-          <ProviderSetup
-            settings={settings.data}
-            openConnection={() => setTab("connection")}
-          />
-        )}
-      {(!manages || (tab === "products" && settings.data?.enabled)) && (
-        <ProductBrowser userId={user.id} />
-      )}
-      {manages && tab === "connection" && (
-        <ConnectionSettings userId={user.id} />
-      )}
-      {manages && tab === "access" && settings.data?.enabled && (
-        <AccessAssignments userId={user.id} />
-      )}
-      {manages && tab === "registrations" && settings.data?.enabled && (
-        <RegistrationsWorkspace key={user.id} userId={user.id} />
-      )}
-      {manages && tab === "delivery" && <DocumentDelivery userId={user.id} />}
+        <main className="mx-auto w-full min-w-0 max-w-7xl space-y-5 px-4 py-6 sm:px-7 lg:py-8">
+          {!user || access.isPending ? (
+            <p role="status">Checking EHajj access…</p>
+          ) : access.isError ? (
+            <ErrorNotice error={access.error} />
+          ) : !canAccess ? (
+            <p>Ask a Super Admin to assign EHajj product access.</p>
+          ) : (
+            <>
+              <div className="border-b border-slate-200 pb-4">
+                <h2 className="text-2xl font-semibold tracking-tight text-[#1C1F66] sm:text-3xl">
+                  {activeLabel}
+                </h2>
+                {activeTab === "overview" && (
+                  <p className="mt-1 text-sm text-slate-600">
+                    Manage agency packages, pilgrim records and customer travel
+                    documents.
+                  </p>
+                )}
+              </div>
+              {manages && tab === "overview" && (
+                <section className={panel}>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 className="flex items-center gap-2 text-xl font-semibold text-primary">
+                      <CalendarCheck size={21} aria-hidden="true" /> Booking to
+                      delivery
+                    </h2>
+                    <Button
+                      variant="outline"
+                      onClick={() => setTab("delivery")}
+                    >
+                      Deliver a document <ArrowRight size={16} />
+                    </Button>
+                  </div>
+                  <ol className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                    {workflow.map(({ title, description }) => (
+                      <li
+                        className="rounded-xl border border-indigo-100 bg-[#F7F8FF] p-4"
+                        key={title}
+                      >
+                        <h3 className="text-sm font-semibold text-slate-900">
+                          {title}
+                        </h3>
+                        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                          {description}
+                        </p>
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              )}
+              {manages && (tab === "overview" || requiresConnection) && (
+                <ErrorNotice error={settings.error} />
+              )}
+              {manages && requiresConnection && settings.isPending && (
+                <p role="status">Checking connection…</p>
+              )}
+              {manages &&
+                requiresConnection &&
+                settings.data &&
+                !settings.data.enabled && (
+                  <section className={panel}>
+                    <p className="text-sm text-slate-600">
+                      EHajj is disconnected.
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() => setTab("connection")}
+                    >
+                      Connection settings <ArrowRight size={16} />
+                    </Button>
+                  </section>
+                )}
+              {(!manages || (tab === "products" && settings.data?.enabled)) && (
+                <ProductBrowser userId={user.id} />
+              )}
+              {manages && tab === "connection" && (
+                <ConnectionSettings userId={user.id} />
+              )}
+              {manages && tab === "access" && settings.data?.enabled && (
+                <AccessAssignments userId={user.id} />
+              )}
+              {manages && tab === "registrations" && settings.data?.enabled && (
+                <RegistrationsWorkspace key={user.id} userId={user.id} />
+              )}
+              {manages && tab === "delivery" && (
+                <DocumentDelivery userId={user.id} />
+              )}
+            </>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

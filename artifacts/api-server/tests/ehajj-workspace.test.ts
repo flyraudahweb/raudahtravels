@@ -9,7 +9,7 @@ vi.mock("@clerk/react", () => ({
   useUser: () => ({ user: { id: "super" } }),
 }));
 
-it("shows HTTPS setup instead of fetching packages when the provider is unavailable", async () => {
+it("keeps the overview clear and the connection accessible while EHajj is disconnected", async () => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   const fetchApi = vi.fn(async (url: string) => {
     if (url.endsWith("/access"))
@@ -29,31 +29,48 @@ it("shows HTTPS setup instead of fetching packages when the provider is unavaila
   document.body.append(container);
   const root = createRoot(container);
   const client = new QueryClient();
+  const onExit = vi.fn();
   try {
     await act(async () =>
       root.render(
         createElement(
           QueryClientProvider,
           { client },
-          createElement(AdminEhajj),
+          createElement(AdminEhajj, { onExit }),
         ),
       ),
     );
     await vi.waitFor(async () => {
       await act(async () => {});
-      expect(container.textContent).toContain("Provider setup required");
+      expect(container.textContent).toContain("Booking to delivery");
     });
-    expect(container.textContent).toContain("Booking to delivery");
+    expect(container.textContent).not.toContain("Provider setup required");
     const packages = [...container.querySelectorAll("button")].find((button) =>
       button.textContent?.includes("Packages & pilgrims"),
     );
     expect(packages).toBeDefined();
     await act(async () => packages?.click());
-    expect(container.textContent).toContain("Ask EHajj for its HTTPS API URL");
+    await vi.waitFor(async () => {
+      await act(async () => {});
+      expect(container.textContent).toContain("EHajj is disconnected.");
+    });
+    expect(container.textContent).toContain("Connection settings");
+    expect(container.textContent).not.toContain(
+      "Ask EHajj for its HTTPS API URL",
+    );
     expect(fetchApi.mock.calls.map(([url]) => url)).toEqual([
       "/api/admin/ehajj/access",
       "/api/admin/ehajj/settings",
     ]);
+    const exit = [...container.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes("Exit workspace"),
+    );
+    await act(async () => exit?.click());
+    expect(onExit).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    expect(onExit).toHaveBeenCalledTimes(2);
   } finally {
     await act(async () => root.unmount());
     container.remove();

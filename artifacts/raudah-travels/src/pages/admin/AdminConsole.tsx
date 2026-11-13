@@ -350,6 +350,10 @@ export default function AdminConsole() {
     return null;
   }
 
+  if (location.replace(/\/+$/, "") === "/admin/ehajj") {
+    return <AdminEhajj onExit={() => setLocation("/admin", { replace: true })} />;
+  }
+
   return (
     <SidebarCtx.Provider value={collapsed}>
       <div className="flex min-h-screen bg-[#F0F2FF]">
@@ -482,7 +486,6 @@ export default function AdminConsole() {
             <Switch>
               <Route path="/admin/ota" component={AdminOta} />
               <Route path="/admin/ota-api" component={AdminOtaApi} />
-              <Route path="/admin/ehajj" component={AdminEhajj} />
               <Route path="/admin"              component={AdminOverview} />
               <Route path="/admin/packages"     component={AdminPackages} />
               <Route path="/admin/bookings"     component={AdminBookings} />
