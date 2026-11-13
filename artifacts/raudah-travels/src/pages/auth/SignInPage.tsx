@@ -2,6 +2,7 @@ import { SignIn } from "@clerk/react";
 import { Link } from "wouter";
 import { Thermometer, MapPin, Clock, Calendar, ArrowLeft, Phone } from "lucide-react";
 import { useState, useEffect } from "react";
+import { MobileContactBar } from "@/components/layout/MobileContactBar";
 
 export default function SignInPage() {
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -17,6 +18,7 @@ export default function SignInPage() {
 
   return (
     <div className="min-h-[100dvh] flex flex-col">
+      <MobileContactBar />
       {/* Top info bar */}
       <div className="hidden md:block bg-[#1C1F66] text-white/80 text-xs">
         <div className="flex items-center justify-center gap-4 lg:gap-5 h-8">

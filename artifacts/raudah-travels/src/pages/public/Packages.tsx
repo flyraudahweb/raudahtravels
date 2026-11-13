@@ -223,7 +223,7 @@ export default function Packages() {
         <Navbar />
 
         {/* Page header */}
-        <div className="bg-[#F8F9FF] border-b border-[#DCE3F0] pt-20 md:pt-28">
+        <div className="bg-[#F8F9FF] border-b border-[#DCE3F0] pt-28">
           <div className="mx-auto max-w-7xl px-4 md:px-8 py-8 md:py-12">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div>

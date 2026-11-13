@@ -139,7 +139,7 @@ export default function BecomeAgent() {
     return (
       <div className="min-h-screen flex flex-col bg-[#F8FAFC]">
         <Navbar />
-        <main className="flex-1 flex items-center justify-center px-4 py-20">
+        <main className="flex-1 flex items-center justify-center px-4 pb-20 pt-28 md:pt-20">
           <div className="max-w-lg w-full text-center">
             <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-6">
               <CheckCircle2 className="w-10 h-10 text-emerald-600" />
@@ -178,7 +178,7 @@ export default function BecomeAgent() {
       <Navbar />
 
       {/* Hero */}
-      <section className="py-16 px-4" style={{ background: "linear-gradient(135deg, #0D0F4E 0%, #1C1F66 100%)" }}>
+      <section className="px-4 pb-16 pt-28 md:pt-16" style={{ background: "linear-gradient(135deg, #0D0F4E 0%, #1C1F66 100%)" }}>
         <div className="max-w-3xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 border border-white/20 text-white/80 text-xs font-bold uppercase tracking-widest mb-5">
             <Star className="w-3 h-3 fill-[#FF3B00] text-[#FF3B00]" /> Partnership Programme

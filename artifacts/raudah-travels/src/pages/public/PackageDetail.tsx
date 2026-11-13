@@ -85,7 +85,7 @@ export default function PackageDetail() {
       <Navbar />
 
       <main className="flex-1">
-        <header className="bg-[#F8F9FF] pb-9 pt-24 md:pt-32">
+        <header className="bg-[#F8F9FF] pb-9 pt-28 md:pt-32">
           <div className="mx-auto max-w-7xl px-4 md:px-8">
             <Link
               href="/packages"

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useGetProfile, getGetProfileQueryKey } from "@workspace/api-client-react";
 import { Menu, Globe, Thermometer, MapPin, Clock, Calendar, ChevronRight, Phone } from "lucide-react";
+import { MobileContactBar } from "./MobileContactBar";
 
 interface NavbarProps {
   transparent?: boolean;
@@ -83,6 +84,8 @@ export function Navbar({ transparent = false }: NavbarProps) {
         ? "bg-white/95 backdrop-blur-xl shadow-[0_1px_32px_rgba(45,49,153,0.08)] border-b border-[#DCE3F0]"
         : "bg-transparent"
     }`}>
+
+      <MobileContactBar />
 
       {/* ── Top info bar ── */}
       <div className={`hidden md:block overflow-hidden transition-all duration-500 ${

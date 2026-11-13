@@ -60,7 +60,7 @@ export default function About() {
         <Navbar transparent />
 
         <div className="relative z-10 flex-1 flex items-center justify-center">
-          <div className="container mx-auto px-4 md:px-8 py-20 text-center max-w-3xl">
+          <div className="container mx-auto px-4 pb-20 pt-28 text-center max-w-3xl md:px-8 md:pt-20">
             <span className="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-white/10 backdrop-blur border border-white/20 text-white/90 text-xs font-semibold mb-6">
               <span className="w-2 h-2 rounded-full bg-[#FF3B00] inline-block" />
               NAHCON Licensed · Est. 2009
