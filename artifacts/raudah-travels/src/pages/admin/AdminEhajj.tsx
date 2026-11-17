@@ -1,19 +1,32 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { useUser } from "@clerk/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight,
+  Banknote,
   CalendarCheck,
+  ChevronLeft,
+  ChevronRight,
   FileCheck2,
+  FileUp,
   LayoutDashboard,
   Minimize2,
   Package,
   Plug,
   RefreshCw,
+  Search,
   ShieldCheck,
+  ShieldOff,
   Upload,
   UserPlus,
   Users,
+  type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,9 +39,9 @@ import {
 } from "@/lib/ehajj";
 
 const panel =
-  "space-y-4 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6";
+  "min-w-0 space-y-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6";
 const selectClass =
-  "h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm";
+  "h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm focus-visible:outline-2 focus-visible:outline-primary";
 const views = [
   { key: "profile", label: "Profile", permission: "pilgrims" },
   { key: "travel", label: "Travel", permission: "operations" },
@@ -42,6 +55,34 @@ const permissionLabels = {
   finance: "Financial details",
   documents: "Document metadata and masked passport",
 };
+
+function PanelHeading({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon: LucideIcon;
+  title: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="flex min-w-0 items-start gap-3">
+      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-indigo-50 text-primary">
+        <Icon size={19} aria-hidden="true" />
+      </span>
+      <div className="min-w-0">
+        <h3 className="text-lg font-semibold tracking-tight text-[#1C1F66]">
+          {title}
+        </h3>
+        {children && (
+          <p className="mt-0.5 break-words text-sm leading-relaxed text-slate-600">
+            {children}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function ErrorNotice({ error }: { error: unknown }) {
   if (!error) return null;
@@ -59,11 +100,11 @@ function ErrorNotice({ error }: { error: unknown }) {
 
 function FieldList({ fields }: { fields: Record<string, string> }) {
   return (
-    <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+    <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
       {Object.entries(fields).map(([label, value]) => (
-        <div key={label} className="min-w-0">
-          <dt className="text-xs font-medium text-slate-500">{label}</dt>
-          <dd className="break-words text-sm text-slate-900">{value}</dd>
+        <div key={label} className="min-w-0 border-b border-slate-100 pb-2">
+          <dt className="text-xs font-medium text-slate-600">{label}</dt>
+          <dd className="mt-1 break-words text-sm text-slate-900">{value}</dd>
         </div>
       ))}
     </dl>
@@ -82,26 +123,31 @@ function useProducts(userId: string) {
 
 function ProductBrowser({ userId }: { userId: string }) {
   const products = useProducts(userId);
-  const [productId, setProductId] = useState(0);
-  const product = products.isError
-    ? undefined
-    : products.data?.products.find((item) => item.id === productId);
+  const [productId, setProductId] = useState<number>();
+  const [search, setSearch] = useState("");
+  const available = products.isSuccess ? products.data.products : [];
+  const product =
+    available.find((item) => item.id === productId) ??
+    (available.length === 1 ? available[0] : undefined);
+  const term = search.trim().toLowerCase();
+  const matchingProducts = available.filter((item) =>
+    [item.name, item.activity, item.edition, String(item.id)].some((value) =>
+      value.toLowerCase().includes(term),
+    ),
+  );
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <section className={panel}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold">Agency products</h2>
-            <p className="text-sm text-slate-600">
-              Select a product to see its registered pilgrims.
-            </p>
-          </div>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <PanelHeading icon={Package} title="Active EHajj products">
+            Select a product to view its registered pilgrims.
+          </PanelHeading>
           <Button
             variant="outline"
             onClick={() => void products.refetch()}
             disabled={products.isFetching}
           >
-            <RefreshCw size={16} /> Refresh products
+            <RefreshCw size={16} aria-hidden="true" /> Refresh products
           </Button>
         </div>
         <ErrorNotice error={products.error} />
@@ -110,32 +156,87 @@ function ProductBrowser({ userId }: { userId: string }) {
             Loading agency products…
           </p>
         )}
-        {products.isSuccess && products.data.products.length === 0 && (
-          <p className="text-sm text-slate-600">
-            There are no active products in your EHajj assignment.
+        {products.isSuccess && available.length === 0 && (
+          <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
+            No active EHajj products are available to this account.
           </p>
         )}
-        {products.isSuccess && products.data.products.length > 0 && (
-          <label className="block space-y-1 text-sm font-medium">
-            Product
-            <select
-              className={selectClass}
-              value={product?.id ?? 0}
-              onChange={(event) => setProductId(Number(event.target.value))}
-            >
-              <option value={0}>Choose a product</option>
-              {products.data.products.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {[item.name, item.activity, item.edition]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </option>
+        {available.length > 0 && (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+              <p
+                role="status"
+                className="rounded-full bg-indigo-50 px-3 py-1 text-sm font-medium text-primary"
+              >
+                {available.length} active{" "}
+                {available.length === 1 ? "product" : "products"}
+              </p>
+              {available.length > 1 && (
+                <div className="relative w-full sm:w-64">
+                  <Search
+                    size={16}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+                  />
+                  <Input
+                    aria-label="Search products"
+                    className="pl-9"
+                    value={search}
+                    placeholder="Name, activity or edition"
+                    onChange={(event) => setSearch(event.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+            {matchingProducts.length === 0 && (
+              <p className="text-sm text-slate-600">
+                No products match your search.
+              </p>
+            )}
+            <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {matchingProducts.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    aria-pressed={product?.id === item.id}
+                    className="group flex h-full w-full flex-col gap-3 rounded-xl border border-slate-200 p-4 text-left transition-colors hover:border-indigo-300 hover:bg-indigo-50/50 focus-visible:outline-2 focus-visible:outline-primary aria-pressed:border-primary aria-pressed:bg-indigo-50"
+                    onClick={() => setProductId(item.id)}
+                  >
+                    <span className="flex w-full items-center justify-between gap-2">
+                      <span className="rounded-lg bg-indigo-100 p-2 text-primary">
+                        <Package size={18} aria-hidden="true" />
+                      </span>
+                      <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
+                        #{item.id}
+                      </span>
+                    </span>
+                    <span className="w-full min-w-0 flex-1">
+                      <span className="block break-words font-semibold text-slate-900">
+                        {item.name}
+                      </span>
+                      <span className="mt-1 block text-xs text-slate-600">
+                        {[
+                          item.activity,
+                          item.edition && "Edition " + item.edition,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    </span>
+                    <span className="flex w-full items-center justify-between gap-2 border-t border-indigo-100 pt-3 text-xs font-semibold text-primary">
+                      {product?.id === item.id
+                        ? "Selected product"
+                        : "View pilgrims"}
+                      <ChevronRight size={16} aria-hidden="true" />
+                    </span>
+                  </button>
+                </li>
               ))}
-            </select>
-          </label>
+            </ul>
+          </>
         )}
         {product?.description && (
-          <p className="whitespace-pre-wrap break-words text-sm text-slate-600">
+          <p className="whitespace-pre-wrap break-words rounded-xl bg-slate-50 p-4 text-sm leading-relaxed text-slate-600">
             {product.description}
           </p>
         )}
@@ -155,8 +256,13 @@ function PilgrimBrowser({
   product: EhajjProduct;
 }) {
   const [filter, setFilter] = useState("");
+  const [page, setPage] = useState(1);
   const [pilgrimId, setPilgrimId] = useState(0);
   const [viewKey, setViewKey] = useState("");
+  const summaryRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (pilgrimId) summaryRef.current?.focus();
+  }, [pilgrimId]);
   const availableViews = views.filter((view) =>
     product.permissions.includes(view.permission),
   );
@@ -185,22 +291,36 @@ function PilgrimBrowser({
     retry: false,
     gcTime: 0,
   });
-  const matches = (roster.data?.pilgrims ?? []).filter((item) =>
-    Object.values(item.fields).some((value) =>
-      value.toLowerCase().includes(filter.trim().toLowerCase()),
-    ),
+  const records = roster.data?.pilgrims ?? [];
+  const search = filter.trim().toLowerCase();
+  const matches = records.filter(
+    ({ id, fields }) =>
+      !search ||
+      [
+        [fields["First name"], fields["Last name"]].filter(Boolean).join(" "),
+        fields["Pilgrim number"] ?? "",
+        String(id),
+      ].some((value) => value.toLowerCase().includes(search)),
   );
+  const pageSize = 25;
+  const lastPage = Math.max(1, Math.ceil(matches.length / pageSize));
+  const currentPage = Math.min(page, lastPage);
+  const start = (currentPage - 1) * pageSize;
   return (
-    <>
+    <div
+      className={pilgrim ? "grid items-start gap-5 xl:grid-cols-2" : undefined}
+    >
       <section className={panel}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">Registered pilgrims</h2>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <PanelHeading icon={Users} title="Registered pilgrims">
+            {product.name}
+          </PanelHeading>
           <Button
             variant="outline"
             onClick={() => void roster.refetch()}
             disabled={roster.isFetching}
           >
-            <RefreshCw size={16} /> Refresh list
+            <RefreshCw size={16} aria-hidden="true" /> Refresh list
           </Button>
         </div>
         <ErrorNotice error={roster.error} />
@@ -209,45 +329,118 @@ function PilgrimBrowser({
             Loading pilgrims…
           </p>
         )}
-        {roster.isSuccess && (
-          <>
-            <Input
-              aria-label="Find a pilgrim"
-              placeholder="Find a pilgrim by name or number"
-              value={filter}
-              onChange={(event) => setFilter(event.target.value)}
+        {roster.isSuccess && records.length === 0 && (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
+            <Users
+              size={24}
+              aria-hidden="true"
+              className="mx-auto mb-2 text-indigo-600"
             />
-            <p className="text-sm text-slate-600">
-              {matches.length} matching records
-              {matches.length > 100 &&
-                ". Showing the first 100. Refine your search for the others."}
+            <p className="font-medium text-slate-900">No registered pilgrims</p>
+            <p className="mt-1 text-sm text-slate-600">
+              EHajj returned no pilgrim records for this product.
             </p>
-            <div className="max-h-72 divide-y divide-slate-100 overflow-auto">
-              {matches.slice(0, 100).map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  aria-pressed={pilgrimId === item.id}
-                  className="flex w-full flex-wrap justify-between gap-2 rounded px-3 py-2.5 text-left text-sm hover:bg-indigo-50 aria-pressed:bg-indigo-100"
-                  onClick={() => setPilgrimId(item.id)}
-                >
-                  <span className="font-medium">
-                    {[item.fields["First name"], item.fields["Last name"]]
-                      .filter(Boolean)
-                      .join(" ") || "Pilgrim " + item.id}
-                  </span>
-                  <span className="text-slate-600">
-                    {item.fields["Pilgrim number"] ?? item.id}
-                  </span>
-                </button>
-              ))}
+          </div>
+        )}
+        {roster.isSuccess && records.length > 0 && (
+          <>
+            <div className="relative">
+              <Search
+                size={16}
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+              />
+              <Input
+                aria-label="Find a pilgrim"
+                className="pl-9"
+                placeholder="Find a pilgrim by name or number"
+                value={filter}
+                onChange={(event) => {
+                  setFilter(event.target.value);
+                  setPage(1);
+                }}
+              />
             </div>
+            <p role="status" className="text-sm text-slate-600">
+              {matches.length === 0
+                ? "No pilgrims match your search."
+                : `Showing ${start + 1}–${Math.min(start + pageSize, matches.length)} of ${matches.length} ${search ? "matching records" : "registered pilgrims"}`}
+            </p>
+            {matches.length > 0 && (
+              <div className="max-h-96 divide-y divide-slate-100 overflow-auto rounded-xl border border-slate-200">
+                {matches.slice(start, start + pageSize).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-pressed={pilgrimId === item.id}
+                    className="flex w-full items-center gap-3 px-3 py-3 text-left text-sm transition-colors hover:bg-indigo-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary aria-pressed:bg-indigo-50"
+                    onClick={() => {
+                      if (item.id === pilgrimId) summaryRef.current?.focus();
+                      else setPilgrimId(item.id);
+                    }}
+                  >
+                    <span className="grid size-8 shrink-0 place-items-center rounded-full bg-indigo-100 text-primary">
+                      <Users size={15} aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0 flex-1 break-words">
+                      <span className="block font-semibold text-slate-900">
+                        {[item.fields["First name"], item.fields["Last name"]]
+                          .filter(Boolean)
+                          .join(" ") || "Pilgrim " + item.id}
+                      </span>
+                      <span className="mt-0.5 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600">
+                        <span>#{item.fields["Pilgrim number"] ?? item.id}</span>
+                        {item.fields["Package"] && (
+                          <span>{item.fields["Package"]}</span>
+                        )}
+                      </span>
+                    </span>
+                    <ChevronRight
+                      size={16}
+                      className="shrink-0 text-primary"
+                      aria-hidden="true"
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+            {lastPage > 1 && (
+              <nav
+                aria-label="Pilgrim list pages"
+                className="flex flex-wrap items-center justify-between gap-2"
+              >
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage === 1}
+                  onClick={() => setPage(currentPage - 1)}
+                >
+                  <ChevronLeft size={16} aria-hidden="true" /> Previous
+                </Button>
+                <span className="text-sm text-slate-600">
+                  Page {currentPage} of {lastPage}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={currentPage === lastPage}
+                  onClick={() => setPage(currentPage + 1)}
+                >
+                  Next <ChevronRight size={16} aria-hidden="true" />
+                </Button>
+              </nav>
+            )}
           </>
         )}
       </section>
       {pilgrim && (
-        <section className={panel}>
-          <h2 className="text-lg font-semibold">Pilgrim summary</h2>
+        <section
+          ref={summaryRef}
+          tabIndex={-1}
+          aria-label="Pilgrim summary"
+          className={`${panel} scroll-mt-36 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:scroll-mt-20`}
+        >
+          <PanelHeading icon={FileCheck2} title="Pilgrim summary" />
           <FieldList fields={pilgrim.fields} />
           <p className="text-xs text-slate-600">
             EHajj reports financial figures in its source units. Currency and
@@ -292,7 +485,7 @@ function PilgrimBrowser({
           )}
         </section>
       )}
-    </>
+    </div>
   );
 }
 
@@ -321,7 +514,7 @@ function ConnectionSettings({ userId }: { userId: string }) {
   const settings = useEhajjSettings(userId);
   return (
     <section className={panel}>
-      <h2 className="text-lg font-semibold">EHajj connection</h2>
+      <PanelHeading icon={Plug} title="EHajj connection" />
       <ErrorNotice error={settings.error} />
       {settings.isPending && <p role="status">Loading settings…</p>}
       {settings.isSuccess && (
@@ -380,11 +573,14 @@ function SettingsForm({
   }
   return (
     <form className="space-y-4" onSubmit={save}>
-      <p className="break-all text-sm text-slate-600">
-        {settings.configuredBaseUrl ??
-          settings.baseUrl ??
-          "Set EHAJJ_API_BASE_URL to the provider’s approved HTTPS base URL on the server."}
-      </p>
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <p className="text-sm font-semibold text-slate-900">Provider API URL</p>
+        <p className="mt-1 break-all text-sm text-slate-600">
+          {settings.configuredBaseUrl ??
+            settings.baseUrl ??
+            "Set EHAJJ_API_BASE_URL to the provider’s approved HTTPS base URL on the server."}
+        </p>
+      </div>
       {settings.transportIssue && (
         <p
           role="alert"
@@ -434,9 +630,10 @@ function SettingsForm({
           Remove saved JWT
         </label>
       )}
-      <label className="flex gap-2 text-sm">
+      <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-medium">
         <input
           type="checkbox"
+          className="size-4 shrink-0 accent-primary"
           checked={enabled}
           onChange={(event) => setEnabled(event.target.checked)}
         />{" "}
@@ -521,7 +718,7 @@ function AccessAssignments({ userId }: { userId: string }) {
   }
   return (
     <section className={panel}>
-      <h2 className="text-lg font-semibold">Product access assignments</h2>
+      <PanelHeading icon={ShieldCheck} title="Product access assignments" />
       <form
         className="flex flex-wrap gap-2"
         onSubmit={(event) => {
@@ -716,15 +913,12 @@ function RegistrationsWorkspace({ userId }: { userId: string }) {
     <div className="space-y-5">
       <section className={panel}>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold">Pilgrim registration</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Enter the pilgrim and their first payment for your EHajj agency.
-              Review the details before sending.
-            </p>
-          </div>
+          <PanelHeading icon={UserPlus} title="Pilgrim registration">
+            Enter the pilgrim and their first payment for your EHajj agency.
+            Review the details before sending.
+          </PanelHeading>
           <Button variant="outline" onClick={() => setSelected(null)}>
-            New registration
+            <UserPlus aria-hidden="true" /> New registration
           </Button>
         </div>
         <RegistrationForm
@@ -741,7 +935,7 @@ function RegistrationsWorkspace({ userId }: { userId: string }) {
       </section>
       <section className={panel}>
         <div className="flex items-center justify-between gap-3">
-          <h2 className="font-semibold">Recent registrations</h2>
+          <PanelHeading icon={Users} title="Recent registrations" />
           <Button
             variant="outline"
             disabled={history.isFetching}
@@ -1080,35 +1274,66 @@ function RegistrationForm({
 
 const workspaceTabs = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
-  { key: "products", label: "Packages & pilgrims", icon: Package },
-  { key: "registrations", label: "Register pilgrim", icon: UserPlus },
-  { key: "delivery", label: "Document delivery", icon: FileCheck2 },
-  { key: "connection", label: "Connection", icon: Plug },
-  { key: "access", label: "Access", icon: Users },
+  {
+    key: "products",
+    label: "Packages & pilgrims",
+    icon: Package,
+    description: "Browse agency packages and open registered pilgrim records.",
+  },
+  {
+    key: "registrations",
+    label: "Register pilgrim",
+    icon: UserPlus,
+    description: "Prepare a new registration or review a saved submission.",
+  },
+  {
+    key: "delivery",
+    label: "Document delivery",
+    icon: FileCheck2,
+    description:
+      "Release travel documents to a booking owner’s FlyRaudah dashboard.",
+  },
+  {
+    key: "connection",
+    label: "Connection",
+    icon: Plug,
+    description: "Manage the agency credentials and connection to EHajj.",
+  },
+  {
+    key: "access",
+    label: "Access",
+    icon: ShieldCheck,
+    description: "Assign products and record permissions to staff.",
+  },
 ] as const;
 type WorkspaceTab = (typeof workspaceTabs)[number]["key"];
 
 const workflow = [
   {
+    icon: Banknote,
     title: "Booking & payment",
     description:
       "Customers select a package and pay through FlyRaudah checkout.",
   },
   {
+    icon: CalendarCheck,
     title: "Payment confirmation",
     description: "FlyRaudah verifies the payment and issues the receipt.",
   },
   {
+    icon: Plug,
     title: "Transfer to EHajj",
     description:
       "Automatic transfer awaits the provider’s booking and payment contract.",
   },
   {
+    icon: FileCheck2,
     title: "Travel documents",
     description:
       "Collect the visa, ticket and other documents from EHajj. Automatic retrieval awaits the provider’s file access contract.",
   },
   {
+    icon: FileUp,
     title: "Customer delivery",
     description: "Release a PDF to the booking owner’s FlyRaudah dashboard.",
   },
@@ -1154,13 +1379,12 @@ function DocumentDelivery({ userId }: { userId: string }) {
   });
   return (
     <section className={panel}>
-      <h2 className="text-xl font-semibold text-primary">Document delivery</h2>
-      <p className="text-sm text-slate-600">
+      <PanelHeading icon={FileCheck2} title="Find a booking">
         Look up a confirmed booking, check the recipient, then upload a PDF to
         their dashboard.
-      </p>
+      </PanelHeading>
       <form
-        className="flex flex-wrap items-end gap-2"
+        className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-end"
         onSubmit={(event) => {
           event.preventDefault();
           if (search.trim() === reference) void lookup.refetch();
@@ -1180,7 +1404,7 @@ function DocumentDelivery({ userId }: { userId: string }) {
           />
         </label>
         <Button type="submit" disabled={!search.trim() || lookup.isFetching}>
-          Find booking
+          <Search aria-hidden="true" /> Find booking
         </Button>
       </form>
       {lookup.isFetching && (
@@ -1329,15 +1553,29 @@ export default function AdminEhajj({ onExit }: { onExit: () => void }) {
   const settings = useEhajjSettings(user?.id, manages);
   const [tab, setTab] = useState<WorkspaceTab>("overview");
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const sectionHeadingRef = useRef<HTMLHeadingElement>(null);
+  const focusSection = useRef(false);
   const requiresConnection =
     tab === "products" || tab === "registrations" || tab === "access";
   const activeTab = manages ? tab : "products";
-  const activeLabel = workspaceTabs.find(({ key }) => key === activeTab)?.label;
+  const activeSection = workspaceTabs.find(({ key }) => key === activeTab);
   const canAccess = !!user && access.isSuccess && access.data.allowed;
 
   useEffect(() => {
     headingRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    if (focusSection.current) {
+      sectionHeadingRef.current?.focus();
+      focusSection.current = false;
+    }
+  }, [activeTab]);
+
+  function openSection(nextTab: WorkspaceTab) {
+    focusSection.current = true;
+    setTab(nextTab);
+  }
 
   useEffect(() => {
     function exitOnEscape(event: KeyboardEvent) {
@@ -1364,38 +1602,33 @@ export default function AdminEhajj({ onExit }: { onExit: () => void }) {
   }, [onExit]);
 
   return (
-    <div className="min-h-dvh bg-[#F5F6FC]">
-      <header className="sticky top-0 z-30 border-b border-white/15 bg-[#1C1F66] text-white">
-        <div className="flex h-16 items-center justify-between gap-3 px-4 sm:px-7">
+    <div className="min-h-dvh bg-[#F5F6FC] text-slate-900">
+      <header className="sticky top-0 z-30 border-b border-white/15 bg-[#1C1F66] text-white shadow-sm">
+        <div className="flex h-16 items-center justify-between gap-3 px-3 sm:px-7">
           <div className="flex min-w-0 items-center gap-3">
-            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-white/10 ring-1 ring-white/15">
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-white/20 bg-white/10 text-white">
               <Package size={19} aria-hidden="true" />
             </span>
-            <h1
-              ref={headingRef}
-              tabIndex={-1}
-              className="text-xl font-semibold tracking-tight !text-white"
-            >
-              EHajj
-            </h1>
+            <div className="min-w-0">
+              <h1
+                ref={headingRef}
+                tabIndex={-1}
+                className="text-lg font-semibold leading-tight tracking-tight !text-white"
+              >
+                EHajj
+              </h1>
+              <span className="hidden text-xs text-indigo-200 sm:block">
+                FlyRaudah Admin
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-4">
-            {canAccess && manages && settings.data?.enabled && (
-              <span className="hidden items-center gap-2 text-sm text-indigo-100 sm:inline-flex">
-                <ShieldCheck
-                  size={16}
-                  className="text-emerald-300"
-                  aria-hidden="true"
-                />{" "}
-                Connected
-              </span>
-            )}
             <Button
               type="button"
               variant="outline"
               onClick={onExit}
               aria-keyshortcuts="Escape"
-              className="shrink-0 border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+              className="min-h-10 shrink-0 rounded-lg border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white focus-visible:ring-white"
             >
               <Minimize2 size={16} aria-hidden="true" /> Exit workspace
               <kbd
@@ -1411,15 +1644,15 @@ export default function AdminEhajj({ onExit }: { onExit: () => void }) {
       <div
         className={
           canAccess && manages
-            ? "lg:grid lg:grid-cols-[14rem_minmax(0,1fr)]"
+            ? "lg:grid lg:grid-cols-[14.5rem_minmax(0,1fr)]"
             : ""
         }
       >
         {canAccess && manages && (
-          <aside className="sticky top-[65px] z-20 self-start border-b border-slate-200 bg-white lg:min-h-[calc(100dvh-65px)] lg:border-b-0 lg:border-r">
+          <aside className="sticky top-[65px] z-20 self-start border-b border-slate-200 bg-white lg:h-[calc(100dvh-65px)] lg:overflow-y-auto lg:border-b-0 lg:border-r">
             <nav
               aria-label="EHajj workspace"
-              className="flex gap-1 overflow-x-auto p-2 lg:flex-col lg:p-3"
+              className="flex gap-1 overflow-x-auto px-3 py-2 lg:flex-col lg:px-3 lg:py-6"
             >
               {workspaceTabs.map(({ key, label, icon: Icon }) => (
                 <Button
@@ -1428,10 +1661,10 @@ export default function AdminEhajj({ onExit }: { onExit: () => void }) {
                   aria-pressed={tab === key}
                   onClick={() => setTab(key)}
                   className={
-                    "shrink-0 justify-start whitespace-nowrap px-3 " +
-                    (tab === key
-                      ? "bg-indigo-50 font-semibold text-[#2D3199] hover:bg-indigo-100"
-                      : "text-slate-600")
+                    "min-h-11 shrink-0 justify-start gap-2 rounded-lg border-l-2 px-3 " +
+                    (activeTab === key
+                      ? "border-l-[#FF3B00] bg-indigo-50 font-semibold text-primary hover:bg-indigo-100"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900")
                   }
                 >
                   <Icon size={17} aria-hidden="true" /> {label}
@@ -1440,56 +1673,117 @@ export default function AdminEhajj({ onExit }: { onExit: () => void }) {
             </nav>
           </aside>
         )}
-        <main className="mx-auto w-full min-w-0 max-w-7xl space-y-5 px-4 py-6 sm:px-7 lg:py-8">
+        <main className="mx-auto w-full min-w-0 max-w-7xl space-y-6 px-3 py-5 sm:px-7 lg:py-8">
           {!user || access.isPending ? (
-            <p role="status">Checking EHajj access…</p>
+            <p role="status" className={panel}>
+              Checking EHajj access…
+            </p>
           ) : access.isError ? (
             <ErrorNotice error={access.error} />
           ) : !canAccess ? (
-            <p>Ask a Super Admin to assign EHajj product access.</p>
+            <section className={panel}>
+              <PanelHeading icon={ShieldOff} title="Product access required">
+                Ask a Super Admin to assign EHajj product access.
+              </PanelHeading>
+            </section>
           ) : (
             <>
-              <div className="border-b border-slate-200 pb-4">
-                <h2 className="text-2xl font-semibold tracking-tight text-[#1C1F66] sm:text-3xl">
-                  {activeLabel}
-                </h2>
-                {activeTab === "overview" && (
+              {activeSection && "description" in activeSection && (
+                <div className="border-b border-slate-200 pb-5">
+                  <h2
+                    ref={sectionHeadingRef}
+                    tabIndex={-1}
+                    className="scroll-mt-32 text-2xl font-semibold tracking-tight text-[#1C1F66] sm:text-3xl"
+                  >
+                    {activeSection.label}
+                  </h2>
                   <p className="mt-1 text-sm text-slate-600">
-                    Manage agency packages, pilgrim records and customer travel
-                    documents.
+                    {activeSection.description}
                   </p>
-                )}
-              </div>
+                </div>
+              )}
               {manages && tab === "overview" && (
-                <section className={panel}>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h2 className="flex items-center gap-2 text-xl font-semibold text-primary">
-                      <CalendarCheck size={21} aria-hidden="true" /> Booking to
-                      delivery
-                    </h2>
-                    <Button
-                      variant="outline"
-                      onClick={() => setTab("delivery")}
-                    >
-                      Deliver a document <ArrowRight size={16} />
-                    </Button>
-                  </div>
-                  <ol className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                    {workflow.map(({ title, description }) => (
-                      <li
-                        className="rounded-xl border border-indigo-100 bg-[#F7F8FF] p-4"
-                        key={title}
+                <>
+                  <section className="rounded-2xl border border-indigo-900 bg-linear-to-br from-[#1C1F66] to-[#2D3199] p-5 text-white shadow-sm sm:p-8">
+                    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                      <h2 className="text-2xl font-semibold tracking-tight !text-white sm:text-3xl">
+                        EHajj overview
+                      </h2>
+                      {settings.data && (
+                        <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-medium text-indigo-50">
+                          <span
+                            aria-hidden="true"
+                            className={
+                              "size-2 rounded-full " +
+                              (settings.data.enabled
+                                ? "bg-emerald-300"
+                                : "bg-amber-300")
+                            }
+                          />
+                          {settings.data.enabled
+                            ? "Connection enabled"
+                            : "Disconnected"}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-2 max-w-xl text-sm leading-relaxed text-indigo-100 sm:text-base">
+                      Manage agency packages, pilgrim records and customer
+                      travel documents.
+                    </p>
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      {settings.data?.enabled ? (
+                        <Button
+                          onClick={() => openSection("products")}
+                          className="min-h-10 rounded-lg border-white bg-white text-[#1C1F66] focus-visible:ring-white"
+                        >
+                          <Package aria-hidden="true" /> Browse packages
+                        </Button>
+                      ) : (
+                        settings.data && (
+                          <Button
+                            onClick={() => openSection("connection")}
+                            className="min-h-10 rounded-lg border-white bg-white text-[#1C1F66] focus-visible:ring-white"
+                          >
+                            <Plug aria-hidden="true" /> Open connection settings
+                          </Button>
+                        )
+                      )}
+                      <Button
+                        variant="outline"
+                        onClick={() => openSection("delivery")}
+                        className="min-h-10 rounded-lg border-white/30 bg-white/10 text-white focus-visible:ring-white"
                       >
-                        <h3 className="text-sm font-semibold text-slate-900">
-                          {title}
-                        </h3>
-                        <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                          {description}
-                        </p>
-                      </li>
-                    ))}
-                  </ol>
-                </section>
+                        <FileCheck2 aria-hidden="true" /> Deliver a document
+                      </Button>
+                    </div>
+                  </section>
+                  <section className={panel}>
+                    <PanelHeading
+                      icon={CalendarCheck}
+                      title="Booking to delivery"
+                    />
+                    <ol className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                      {workflow.map(({ icon: Icon, title, description }) => (
+                        <li
+                          className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                          key={title}
+                        >
+                          <Icon
+                            size={19}
+                            className="mb-3 text-primary"
+                            aria-hidden="true"
+                          />
+                          <h4 className="text-sm font-semibold text-slate-900">
+                            {title}
+                          </h4>
+                          <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                            {description}
+                          </p>
+                        </li>
+                      ))}
+                    </ol>
+                  </section>
+                </>
               )}
               {manages && (tab === "overview" || requiresConnection) && (
                 <ErrorNotice error={settings.error} />
@@ -1502,12 +1796,13 @@ export default function AdminEhajj({ onExit }: { onExit: () => void }) {
                 settings.data &&
                 !settings.data.enabled && (
                   <section className={panel}>
-                    <p className="text-sm text-slate-600">
-                      EHajj is disconnected.
-                    </p>
+                    <PanelHeading
+                      icon={ShieldOff}
+                      title="EHajj is disconnected."
+                    />
                     <Button
                       variant="outline"
-                      onClick={() => setTab("connection")}
+                      onClick={() => openSection("connection")}
                     >
                       Connection settings <ArrowRight size={16} />
                     </Button>
