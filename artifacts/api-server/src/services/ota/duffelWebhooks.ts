@@ -159,6 +159,7 @@ async function applyEvent(event: typeof events.$inferSelect) {
     beforeSupplierRead = await db.query.otaBookingsTable.findFirst({
       where: and(
         eq(bookings.mode, mode),
+        eq(bookings.supplier, "duffel"),
         eq(bookings.kind, hotel ? "hotel" : "flight"),
         eq(bookings.providerBookingId, providerId),
       ),
@@ -174,6 +175,7 @@ async function applyEvent(event: typeof events.$inferSelect) {
   const matches = await db.query.otaBookingsTable.findMany({
     where: and(
       eq(bookings.mode, mode),
+      eq(bookings.supplier, "duffel"),
       eq(bookings.kind, hotel ? "hotel" : "flight"),
       metadataId
         ? eq(bookings.id, String(metadataId))

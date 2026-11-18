@@ -17,6 +17,7 @@ export const otaBookingsTable = pgTable(
     id: text("id").primaryKey(),
     clerkUserId: text("clerk_user_id").notNull(),
     kind: text("kind").notNull(),
+    supplier: text("supplier").notNull().default("duffel"),
     mode: text("mode").notNull(),
     status: text("status").notNull().default("payment_pending"),
     revision: integer("revision").notNull().default(0),
@@ -58,6 +59,10 @@ export const otaBookingsTable = pgTable(
     index("ota_bookings_owner_created").on(t.clerkUserId, t.createdAt),
     check("ota_kind", sql`${t.kind} IN ('flight', 'hotel')`),
     check("ota_mode", sql`${t.mode} IN ('test', 'live')`),
+    check(
+      "ota_supplier",
+      sql`${t.supplier} = 'duffel' OR (${t.supplier} = 'bilalsadasub' AND ${t.kind} = 'flight')`,
+    ),
     check(
       "ota_status",
       sql`${t.status} IN ('payment_pending','processing','confirmed','cancelled','requires_review','refunded')`,

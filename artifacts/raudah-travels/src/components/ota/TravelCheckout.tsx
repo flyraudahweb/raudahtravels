@@ -98,6 +98,10 @@ export default function TravelCheckout({
   }, [offerId, kind, isLoaded, isSignedIn, user?.id]);
   const offer =
     data?.checkoutKey === checkoutKey ? data?.offer || data?.quote : null;
+  const domestic = kind === "flight" && offerId.startsWith("bilal_");
+  const salesEnabled = domestic
+    ? config?.bilalCheckoutEnabled
+    : config?.salesEnabled;
   const lastTravelDate = (offer?.slices || [])
     .flatMap((slice: any) =>
       (slice.segments || []).map((segment: any) =>
@@ -142,6 +146,14 @@ export default function TravelCheckout({
                         form.get(`country_${i}`),
                       ).toUpperCase(),
                       expires_on: String(form.get(`expiry_${i}`)),
+                      ...(domestic
+                        ? {
+                            issued_on: String(form.get(`issued_${i}`)),
+                            nationality: String(
+                              form.get(`nationality_${i}`),
+                            ).toUpperCase(),
+                          }
+                        : {}),
                     },
                   ],
                 }
@@ -304,7 +316,10 @@ export default function TravelCheckout({
                               required
                               className={`${travelInput} mt-1`}
                             >
-                              {["mr", "ms", "mrs", "miss", "dr"].map((t) => (
+                              {(domestic
+                                ? ["mr", "ms", "mrs", "miss"]
+                                : ["mr", "ms", "mrs", "miss", "dr"]
+                              ).map((t) => (
                                 <option key={t} value={t}>
                                   {t.toUpperCase()}
                                 </option>
@@ -363,6 +378,29 @@ export default function TravelCheckout({
                               className={`${travelInput} mt-1`}
                             />
                           </label>
+                          {domestic && passportNumbers[i] && (
+                            <>
+                              <label className="text-sm">
+                                Passport issue date
+                                <input
+                                  name={`issued_${i}`}
+                                  type="date"
+                                  required
+                                  className={`${travelInput} mt-1`}
+                                />
+                              </label>
+                              <label className="text-sm">
+                                Nationality (2 letters)
+                                <input
+                                  name={`nationality_${i}`}
+                                  pattern="[a-zA-Z]{2}"
+                                  maxLength={2}
+                                  required
+                                  className={`${travelInput} mt-1 uppercase`}
+                                />
+                              </label>
+                            </>
+                          )}
                         </>
                       )}
                     </div>
@@ -404,13 +442,13 @@ export default function TravelCheckout({
                   </span>
                 </label>
                 <button
-                  disabled={busy || !config?.salesEnabled}
+                  disabled={busy || !salesEnabled}
                   className={`${travelButton} w-full`}
                 >
                   {busy ? "Saving checkout…" : "Save and continue to payment"}
                   <ArrowRight size={16} />
                 </button>
-                {!config?.salesEnabled && (
+                {!salesEnabled && (
                   <p className="text-sm text-amber-800">
                     Online sales are currently unavailable. Please contact
                     support.
@@ -475,7 +513,7 @@ export default function TravelCheckout({
                     <dd>{money(data.pricing.totalKobo)}</dd>
                   </div>
                 </dl>
-                {config?.mode === "test" && (
+                {(domestic ? offer.mode : config?.mode) === "test" && (
                   <p className="mt-4 rounded-lg bg-amber-100 p-3 text-xs text-amber-900">
                     Sandbox booking · test payments only
                   </p>

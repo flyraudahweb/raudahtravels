@@ -72,7 +72,7 @@ The documented API and starter do not certify a finished mobile app. Verify the 
 Build the FlyRaudah mobile app on the same customer accounts and OTA engine as the web app. Product access, prices, payments and reservation status remain authoritative on the server. This guide describes the current implemented contract; a native application itself is a separate deliverable.
 
 1. Home: GET /capabilities, /config and /exchange-rates. Show test/live mode and support contacts; hide disabled search/checkout products. Reference FX is informational, not the selling price.
-2. Flights: debounce GET /places?q=, choose returned IATA codes, POST /flights/search, then GET /flights/offers/{id}. Use each slice/segment for local departure/arrival times, stops, airline and available baggage/conditions. Filtering/sorting runs on the returned offers; do not invent cheaper date prices.
+2. Flights: debounce GET /places?q=, choose returned IATA codes, then POST /flights/search. Refresh items from offers with GET /flights/offers/{id} before checkout. Items in estimatedFares require support confirmation and carry no checkout ID. Use each slice/segment of an online offer for local times, stops, airline and available baggage/conditions.
 3. Hotels: select a destination with latitude/longitude from the app's city list or a separately integrated geocoder, POST /hotels/search, POST /hotels/rates/{id} with {}, then sign in and POST /hotels/quotes with rateId. Arbitrary destination text is not accepted as coordinates. Show room conditions, cancellation deadlines and any separately payable property extras.
 4. Account: use Clerk sign-up/sign-in/verification and secure SDK token storage, POST /me/bootstrap, then GET /me. Names/contact from the checkout do not change the account profile. Account editing and deletion use the identity provider's account flow; there is no OTA password or administrator API for mobile customers.
 5. Traveller review: retain refreshed offer passenger IDs and ask for matching birth dates, names, E.164 contact and required passports. Hotel guest count must match the final quote. Explicitly accept terms and use the latest pricing.totalKobo.
@@ -402,7 +402,7 @@ Parameters:
 
 ### POST /flights/search
 
-Search one-way / return flights. Adults plus children cannot exceed 9. Returns up to 80 currently available offers, priced and sorted by totalKobo. Empty offers is a valid no-inventory response.
+Search one-way / return flights. Adults plus children cannot exceed 9. Returns up to 80 online offers sorted by totalKobo. Supported domestic searches may also return estimates sorted by estimatedTotalKobo. Only items in offers can go to checkout. If partialAvailability is true, at least one applicable supplier could not be checked.
 
 Authentication: Public; optional scoped server search key.
 
@@ -473,8 +473,8 @@ Request schema:
   "example": {
     "origin": "LOS",
     "destination": "JED",
-    "departureDate": "2026-12-27",
-    "returnDate": "2027-01-03",
+    "departureDate": "2027-01-02",
+    "returnDate": "2027-01-09",
     "adults": 1,
     "childAges": [],
     "cabinClass": "economy"
@@ -565,8 +565,8 @@ Request schema:
   "example": {
     "latitude": 21.4225,
     "longitude": 39.8262,
-    "checkIn": "2026-12-27",
-    "checkOut": "2027-01-03",
+    "checkIn": "2027-01-02",
+    "checkOut": "2027-01-09",
     "rooms": 1,
     "adults": 1,
     "childAges": []
@@ -1445,7 +1445,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
     "id": "off_example123",
     "total_amount": "100.00",
     "total_currency": "USD",
-    "expires_at": "2026-11-12T20:45:09.149Z",
+    "expires_at": "2026-11-18T11:34:32.584Z",
     "passengers": [
       {
         "id": "pas_example123",
@@ -1469,8 +1469,8 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "duration": "PT5H30M",
         "segments": [
           {
-            "departing_at": "2026-12-27T10:00:00",
-            "arriving_at": "2026-12-27T17:30:00",
+            "departing_at": "2027-01-02T10:00:00",
+            "arriving_at": "2027-01-02T17:30:00",
             "origin": {
               "iata_code": "LOS"
             },
@@ -1867,7 +1867,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
       "id": "off_example123",
       "total_amount": "100.00",
       "total_currency": "USD",
-      "expires_at": "2026-11-12T20:45:09.149Z",
+      "expires_at": "2026-11-18T11:34:32.584Z",
       "passengers": [
         {
           "id": "pas_example123",
@@ -1891,8 +1891,8 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
           "duration": "PT5H30M",
           "segments": [
             {
-              "departing_at": "2026-12-27T10:00:00",
-              "arriving_at": "2026-12-27T17:30:00",
+              "departing_at": "2027-01-02T10:00:00",
+              "arriving_at": "2027-01-02T17:30:00",
               "origin": {
                 "iata_code": "LOS"
               },
@@ -1937,7 +1937,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
       "email": "traveller@example.com",
       "phone": "+2348012345678"
     },
-    "expiresAt": "2026-11-12T20:45:09.149Z",
+    "expiresAt": "2026-11-18T11:34:32.584Z",
     "paidAt": null,
     "providerResult": null,
     "providerNotice": null,
@@ -1986,7 +1986,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "id": "off_example123",
         "total_amount": "100.00",
         "total_currency": "USD",
-        "expires_at": "2026-11-12T20:45:09.149Z",
+        "expires_at": "2026-11-18T11:34:32.584Z",
         "passengers": [
           {
             "id": "pas_example123",
@@ -2010,8 +2010,8 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
             "duration": "PT5H30M",
             "segments": [
               {
-                "departing_at": "2026-12-27T10:00:00",
-                "arriving_at": "2026-12-27T17:30:00",
+                "departing_at": "2027-01-02T10:00:00",
+                "arriving_at": "2027-01-02T17:30:00",
                 "origin": {
                   "iata_code": "LOS"
                 },
@@ -2056,7 +2056,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "email": "traveller@example.com",
         "phone": "+2348012345678"
       },
-      "expiresAt": "2026-11-12T20:45:09.149Z",
+      "expiresAt": "2026-11-18T11:34:32.584Z",
       "paidAt": null,
       "providerResult": null,
       "providerNotice": null,
@@ -2299,7 +2299,19 @@ Successful response
       },
       "salesEnabled": {
         "type": "boolean",
-        "description": "Online checkout enabled"
+        "description": "Primary supplier checkout enabled"
+      },
+      "bilalCheckoutEnabled": {
+        "type": "boolean",
+        "description": "Bilalsadasub web checkout enabled independently"
+      },
+      "bilalMode": {
+        "type": "string",
+        "description": "Bilalsadasub supplier mode",
+        "enum": [
+          "test",
+          "live"
+        ]
       },
       "mode": {
         "type": "string",
@@ -2322,6 +2334,8 @@ Successful response
       "flightsEnabled",
       "hotelsEnabled",
       "salesEnabled",
+      "bilalCheckoutEnabled",
+      "bilalMode",
       "mode",
       "supportEmail",
       "supportPhone"
@@ -2331,6 +2345,8 @@ Successful response
     "flightsEnabled": true,
     "hotelsEnabled": false,
     "salesEnabled": false,
+    "bilalCheckoutEnabled": false,
+    "bilalMode": "test",
     "mode": "test",
     "supportEmail": "",
     "supportPhone": ""
@@ -2634,6 +2650,62 @@ Successful response
         "items": {
           "$ref": "#/components/schemas/FlightOffer"
         }
+      },
+      "estimatedFares": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "airline": {
+              "type": "string",
+              "description": "Airline display name"
+            },
+            "origin": {
+              "type": "string",
+              "description": "Departure airport IATA code"
+            },
+            "destination": {
+              "type": "string",
+              "description": "Arrival airport IATA code"
+            },
+            "departure": {
+              "type": "string",
+              "description": "Local departure date and time"
+            },
+            "arrival": {
+              "type": "string",
+              "description": "Local arrival date and time"
+            },
+            "stops": {
+              "type": "integer",
+              "description": "Number of stops",
+              "minimum": 0
+            },
+            "cabin": {
+              "type": "string",
+              "description": "Cabin class"
+            },
+            "estimatedTotalKobo": {
+              "type": "integer",
+              "description": "Indicative fare in Nigerian kobo; confirm with Raudah",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "airline",
+            "origin",
+            "destination",
+            "departure",
+            "arrival",
+            "stops",
+            "cabin",
+            "estimatedTotalKobo"
+          ]
+        }
+      },
+      "partialAvailability": {
+        "type": "boolean",
+        "description": "Some eligible suppliers could not complete this search"
       }
     },
     "required": [
@@ -2646,7 +2718,7 @@ Successful response
         "id": "off_example123",
         "total_amount": "100.00",
         "total_currency": "USD",
-        "expires_at": "2026-11-12T20:45:09.149Z",
+        "expires_at": "2026-11-18T11:34:32.584Z",
         "passengers": [
           {
             "id": "pas_example123",
@@ -2670,8 +2742,8 @@ Successful response
             "duration": "PT5H30M",
             "segments": [
               {
-                "departing_at": "2026-12-27T10:00:00",
-                "arriving_at": "2026-12-27T17:30:00",
+                "departing_at": "2027-01-02T10:00:00",
+                "arriving_at": "2027-01-02T17:30:00",
                 "origin": {
                   "iata_code": "LOS"
                 },
@@ -2733,7 +2805,7 @@ Successful response
       "id": "off_example123",
       "total_amount": "100.00",
       "total_currency": "USD",
-      "expires_at": "2026-11-12T20:45:09.149Z",
+      "expires_at": "2026-11-18T11:34:32.584Z",
       "passengers": [
         {
           "id": "pas_example123",
@@ -2757,8 +2829,8 @@ Successful response
           "duration": "PT5H30M",
           "segments": [
             {
-              "departing_at": "2026-12-27T10:00:00",
-              "arriving_at": "2026-12-27T17:30:00",
+              "departing_at": "2027-01-02T10:00:00",
+              "arriving_at": "2027-01-02T17:30:00",
               "origin": {
                 "iata_code": "LOS"
               },
@@ -2965,7 +3037,7 @@ Successful response
             "id": "off_example123",
             "total_amount": "100.00",
             "total_currency": "USD",
-            "expires_at": "2026-11-12T20:45:09.149Z",
+            "expires_at": "2026-11-18T11:34:32.584Z",
             "passengers": [
               {
                 "id": "pas_example123",
@@ -2989,8 +3061,8 @@ Successful response
                 "duration": "PT5H30M",
                 "segments": [
                   {
-                    "departing_at": "2026-12-27T10:00:00",
-                    "arriving_at": "2026-12-27T17:30:00",
+                    "departing_at": "2027-01-02T10:00:00",
+                    "arriving_at": "2027-01-02T17:30:00",
                     "origin": {
                       "iata_code": "LOS"
                     },
@@ -3035,7 +3107,7 @@ Successful response
             "email": "traveller@example.com",
             "phone": "+2348012345678"
           },
-          "expiresAt": "2026-11-12T20:45:09.149Z",
+          "expiresAt": "2026-11-18T11:34:32.584Z",
           "paidAt": null,
           "providerResult": null,
           "providerNotice": null,
@@ -3092,7 +3164,7 @@ Successful response
             "email": "traveller@example.com",
             "phone": "+2348012345678"
           },
-          "expiresAt": "2026-11-12T20:45:09.149Z",
+          "expiresAt": "2026-11-18T11:34:32.584Z",
           "paidAt": null,
           "providerResult": null,
           "providerNotice": null,

@@ -39,22 +39,28 @@ export async function processOtaPayments() {
       .where(and(eq(jobs.reference, job.reference), ready))
       .returning();
     if (!claimed) continue;
+    const claim = and(
+      eq(jobs.reference, claimed.reference),
+      eq(jobs.attempts, claimed.attempts),
+      isNull(jobs.completedAt),
+    );
     try {
       await fulfill(job.reference);
       await db
         .update(jobs)
         .set({ completedAt: new Date(), lockedUntil: null, lastError: null })
-        .where(eq(jobs.reference, job.reference));
+        .where(claim);
     } catch {
-      await db
+      const [released] = await db
         .update(jobs)
         .set({
           lockedUntil: null,
           lastError: "Payment verification unavailable or transaction mismatch",
           availableAt: sql`now() + (${Math.min(30, 2 ** claimed.attempts)} * interval '1 minute')`,
         })
-        .where(eq(jobs.reference, job.reference));
-      if (claimed.attempts >= 10) {
+        .where(claim)
+        .returning({ reference: jobs.reference });
+      if (released && claimed.attempts >= 10) {
         const [flagged] = await db
           .update(bookings)
           .set({

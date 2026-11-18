@@ -26,12 +26,26 @@ export const OTA_SECRET_FIELDS = [
   "duffelToken",
   "duffelTestToken",
   "duffelLiveToken",
+  "bilalTestToken",
+  "bilalLiveToken",
   "webhookTestSecret",
   "webhookLiveSecret",
 ] as const;
 export const configSchema = z
   .object({
     flightsEnabled: z.boolean().default(true),
+    primaryFlightsEnabled: z.boolean().default(true),
+    bilalFlightsEnabled: z.boolean().default(true),
+    bilalMode: z.enum(["inherit", "test", "live"]).default("inherit"),
+    bilalSalesEnabled: z.boolean().default(false),
+    bilalAirports: z
+      .array(z.string().regex(/^[A-Z]{3}$/))
+      .min(2)
+      .max(50)
+      .refine((codes) => new Set(codes).size === codes.length)
+      .default(["LOS", "ABV", "KAN", "PHC"]),
+    bilalTestToken: z.string().trim().max(512).default(""),
+    bilalLiveToken: z.string().trim().max(512).default(""),
     hotelsEnabled: z.boolean().default(false),
     salesEnabled: z.boolean().default(false),
     mode: z.enum(["test", "live"]).default("test"),
@@ -56,7 +70,8 @@ export const configSchema = z
     rates: z
       .record(z.string().regex(/^[A-Z]{3}$/), z.number().positive().max(1e7))
       .default(() => ({ ...DEFAULT_OTA_RATES })),
-    flightMarkupPercent: z.number().min(0).max(50).default(0),
+    flightMarkupPercent: z.number().min(0).max(50).default(10),
+    bilalMarkupPercent: z.number().min(0).max(50).default(10),
     hotelMarkupPercent: z.number().min(0).max(50).default(0),
     serviceFeeNgn: z.number().min(0).max(1000000).default(0),
     supportEmail: z.string().email().or(z.literal("")).default(""),
@@ -77,6 +92,29 @@ export function duffelTokenForMode(c: OtaConfig, mode: "test" | "live") {
     dedicated ||
     (c.duffelToken.startsWith(`duffel_${mode}_`) ? c.duffelToken : "")
   );
+}
+export function primaryFlightSearchReady(c: OtaConfig) {
+  return (
+    c.primaryFlightsEnabled && c.duffelToken.startsWith(`duffel_${c.mode}_`)
+  );
+}
+export function bilalMode(c: OtaConfig): "test" | "live" {
+  return c.bilalMode === "inherit" ? c.mode : c.bilalMode;
+}
+export function bilalTokenForMode(c: OtaConfig, mode = bilalMode(c)) {
+  const token = mode === "test" ? c.bilalTestToken : c.bilalLiveToken;
+  // The provider documents a sandbox prefix but does not document a live prefix.
+  return /^[\x21-\x7e]+$/.test(token) &&
+    /^sk_test_.+$/.test(token) === (mode === "test") &&
+    token !== "sk_test_"
+    ? token
+    : "";
+}
+export function bilalFlightSearchReady(c: OtaConfig) {
+  return c.bilalFlightsEnabled && !!bilalTokenForMode(c);
+}
+export function bilalFlightCheckoutReady(c: OtaConfig) {
+  return c.bilalSalesEnabled && c.flightsEnabled && bilalFlightSearchReady(c);
 }
 function key() {
   if (!/^[a-f0-9]{64}$/i.test(process.env.SETTINGS_ENCRYPTION_KEY || ""))
@@ -120,6 +158,8 @@ function configFromStored(value: unknown): OtaConfig {
   const mode = stored.mode ?? process.env.OTA_MODE ?? "test";
   const config = configSchema.parse({
     duffelToken: process.env.DUFFEL_API_TOKEN || "",
+    bilalTestToken: process.env.BILALSADASUB_TEST_API_TOKEN || "",
+    bilalLiveToken: process.env.BILALSADASUB_LIVE_API_TOKEN || "",
     duffelTestToken:
       process.env.DUFFEL_TEST_API_TOKEN ||
       (active.startsWith("duffel_test_") ? active : ""),
@@ -183,10 +223,36 @@ export async function saveOtaConfig(patch: unknown, actor: string) {
   if (next.duffelLiveToken && !next.duffelLiveToken.startsWith("duffel_live_"))
     throw new OtaError("Enter a valid Duffel live token", 400);
   if (
-    (next.flightsEnabled || next.hotelsEnabled) &&
+    next.hotelsEnabled &&
     !next.duffelToken.startsWith(`duffel_${next.mode}_`)
   )
     throw new OtaError("Duffel token must match the selected mode", 400);
+  if (
+    (next.bilalTestToken && !bilalTokenForMode(next, "test")) ||
+    (next.bilalLiveToken && !bilalTokenForMode(next, "live"))
+  )
+    throw new OtaError(
+      "Bilalsadasub credentials must be saved in the matching mode",
+      400,
+    );
+  if (
+    next.flightsEnabled &&
+    !primaryFlightSearchReady(next) &&
+    !bilalFlightSearchReady(next)
+  )
+    throw new OtaError(
+      "Enable a flight supplier with a key for the selected mode, or turn off flight search",
+      400,
+    );
+  if (
+    next.salesEnabled &&
+    !primaryFlightSearchReady(next) &&
+    !next.hotelsEnabled
+  )
+    throw new OtaError(
+      "Online sales require a supplier that supports checkout",
+      400,
+    );
   if (next.rates.NGN !== 1) throw new OtaError("NGN rate must equal 1", 400);
   if (next.salesEnabled && (!next.supportEmail || !otaAppOrigin()))
     throw new OtaError("Sales require a support email and HTTPS APP_URL", 400);
@@ -203,6 +269,20 @@ export async function saveOtaConfig(patch: unknown, actor: string) {
         400,
       );
     requireLiveWebhook(next);
+  }
+  if (next.bilalSalesEnabled) {
+    if (
+      !bilalFlightCheckoutReady(next) ||
+      !next.supportEmail ||
+      !otaAppOrigin() ||
+      !/^[a-f0-9]{64}$/i.test(process.env.SETTINGS_ENCRYPTION_KEY || "")
+    )
+      throw new OtaError(
+        "Bilalsadasub sales require flight search, a matching supplier key, support email, HTTPS APP_URL and settings encryption",
+        400,
+      );
+    const { paystackKey } = await import("./booking");
+    await paystackKey(bilalMode(next), "bilalsadasub");
   }
   const stored = { ...next };
   const previousValues = (previous?.value as Record<string, unknown>) || {};

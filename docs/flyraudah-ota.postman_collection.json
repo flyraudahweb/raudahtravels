@@ -388,7 +388,7 @@
               }
             ],
             "url": "{{base_url}}/flights/search",
-            "description": "Adults plus children cannot exceed 9. Returns up to 80 currently available offers, priced and sorted by totalKobo. Empty offers is a valid no-inventory response.\n\nSearch only; repeat explicitly as needed. Supplier IDs/availability may change.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout.",
+            "description": "Adults plus children cannot exceed 9. Returns up to 80 online offers sorted by totalKobo. Supported domestic searches may also return estimates sorted by estimatedTotalKobo. Only items in offers can go to checkout. If partialAvailability is true, at least one applicable supplier could not be checked.\n\nSearch only; repeat explicitly as needed. Supplier IDs/availability may change.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"origin\": \"{{origin}}\",\n  \"destination\": \"{{destination}}\",\n  \"departureDate\": \"{{departure_date}}\",\n  \"adults\": 1,\n  \"childAges\": [],\n  \"cabinClass\": \"economy\"\n}",
@@ -517,7 +517,7 @@
             "description": "Requires enabled Duffel Stays product. Uses a 10km radius and only supported instant/prepaid inventory; supplier access errors do not imply no hotels exist.\n\nDo not automatically retry after an ambiguous timeout; recover state first.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"latitude\": 21.4225,\n  \"longitude\": 39.8262,\n  \"checkIn\": \"2026-12-27\",\n  \"checkOut\": \"2027-01-03\",\n  \"rooms\": 1,\n  \"adults\": 1,\n  \"childAges\": []\n}",
+              "raw": "{\n  \"latitude\": 21.4225,\n  \"longitude\": 39.8262,\n  \"checkIn\": \"2027-01-02\",\n  \"checkOut\": \"2027-01-09\",\n  \"rooms\": 1,\n  \"adults\": 1,\n  \"childAges\": []\n}",
               "options": {
                 "raw": {
                   "language": "json"

@@ -29,12 +29,17 @@ async function maintainBookings() {
       revision: sql`${bookings.revision}+1`,
       status: "requires_review",
       issue:
-        "Fulfillment was interrupted. Reconcile with Duffel before any further booking attempt.",
+        "Fulfillment was interrupted. Reconcile with the recorded supplier before any further booking attempt.",
       updatedAt: new Date(),
     })
     .where(
       and(
         eq(bookings.status, "processing"),
+        or(
+          sql`${bookings.supplier} <> 'bilalsadasub'`,
+          isNull(bookings.providerBookingId),
+          sql`${bookings.paidAt} < now() - interval '1 day'`,
+        ),
         lt(bookings.updatedAt, new Date(Date.now() - 10 * 60000)),
       ),
     )
@@ -42,17 +47,22 @@ async function maintainBookings() {
   for (const row of stale)
     await audit(row.id, "system", "interrupted_fulfillment_detected");
   const syncDeadline = Date.now() + 30000;
+  const syncCutoff = sql`now() - CASE WHEN ${bookings.supplier} = 'bilalsadasub' AND ${bookings.status} <> 'confirmed' THEN interval '30 seconds' ELSE interval '15 minutes' END`;
   const sync = await db.query.otaBookingsTable.findMany({
     where: and(
-      eq(bookings.status, "confirmed"),
+      or(
+        eq(bookings.status, "confirmed"),
+        and(
+          eq(bookings.supplier, "bilalsadasub"),
+          inArray(bookings.status, ["processing", "requires_review"]),
+          sql`${bookings.paidAt} > now() - interval '1 day'`,
+        ),
+      ),
       or(
         isNull(bookings.syncAttemptAt),
-        lt(bookings.syncAttemptAt, sql`now() - interval '15 minutes'`),
+        lt(bookings.syncAttemptAt, syncCutoff),
       ),
-      or(
-        isNull(bookings.syncedAt),
-        lt(bookings.syncedAt, new Date(Date.now() - 15 * 60000)),
-      ),
+      or(isNull(bookings.syncedAt), lt(bookings.syncedAt, syncCutoff)),
     ),
     orderBy: [sql`${bookings.syncAttemptAt} ASC NULLS FIRST`, asc(bookings.id)],
     limit: 10,
@@ -68,7 +78,7 @@ async function maintainBookings() {
           eq(bookings.revision, row.revision),
           or(
             isNull(bookings.syncAttemptAt),
-            lt(bookings.syncAttemptAt, sql`now() - interval '15 minutes'`),
+            lt(bookings.syncAttemptAt, syncCutoff),
           ),
         ),
       )
@@ -138,7 +148,8 @@ async function maintainBookings() {
     if (row.status === "confirmed" && result) {
       const reference =
         row.kind === "flight" ? result.booking_reference : result.reference;
-      if (reference) confirmationDetails.push(`Supplier reference: ${reference}`);
+      if (reference)
+        confirmationDetails.push(`Supplier reference: ${reference}`);
       if (row.kind === "flight" && Array.isArray(result.slices)) {
         for (const slice of result.slices) {
           if (!Array.isArray(slice?.segments)) continue;

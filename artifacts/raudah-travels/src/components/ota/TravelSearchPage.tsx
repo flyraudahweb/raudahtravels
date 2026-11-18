@@ -273,6 +273,7 @@ export default function TravelSearchPage({
     ),
     [error, setError] = useState("");
   const [sort, setSort] = useState("price");
+  const [partialAvailability, setPartialAvailability] = useState(false);
   const [rates, setRates] = useState<any>(null),
     [busy, setBusy] = useState("");
   const ratesSection = useRef<HTMLElement>(null);
@@ -308,6 +309,7 @@ export default function TravelSearchPage({
     setRates(null);
     setBusy("");
     setLoading(false);
+    setPartialAvailability(false);
     revealResults.current = false;
     if (!hasSearch) {
       setData([]);
@@ -353,7 +355,24 @@ export default function TravelSearchPage({
       .then((result) => {
         if (!abort.signal.aborted) {
           revealResults.current = true;
-          setData(result.offers || result.results || []);
+          setPartialAvailability(
+            kind === "flight" && result.partialAvailability === true,
+          );
+          setData(
+            kind === "flight"
+              ? [
+                  ...(result.offers || []),
+                  ...(result.estimatedFares || []).map(
+                    (estimate: any, index: number) => ({
+                      id: `estimate-${index}`,
+                      owner: { name: estimate.airline },
+                      pricing: { totalKobo: estimate.estimatedTotalKobo },
+                      estimate,
+                    }),
+                  ),
+                ]
+              : result.results || [],
+          );
         }
       })
       .catch((e) => {
@@ -471,6 +490,15 @@ export default function TravelSearchPage({
         className="scroll-mt-28 outline-none"
       >
         {error && <ErrorMessage message={error} />}
+        {partialAvailability && !loading && (
+          <p
+            role="status"
+            className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-slate-700"
+          >
+            Some fares could not be checked. You can browse the results that
+            came through or search again.
+          </p>
+        )}
         {loading ? (
           <SearchLoading
             query={query}

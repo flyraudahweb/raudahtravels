@@ -45,6 +45,8 @@ The pnpm workspace uses TypeScript, React 19.1, Vite 7, Tailwind 4, Radix/shadcn
 
 ## Feature navigation
 
+- [OTA flight supplier architecture and onboarding](integrations/OTA_FLIGHT_SUPPLIERS.md)
+
 ### Identity and permissions
 
 - Frontend auth: `src/App.tsx`, `src/pages/auth/` and each portal layout.

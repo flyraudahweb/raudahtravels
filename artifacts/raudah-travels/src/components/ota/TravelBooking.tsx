@@ -292,6 +292,16 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
                   Print itinerary / voucher
                 </button>
               )}
+              {confirmed &&
+                booking.supplier === "bilalsadasub" &&
+                booking.providerResult?.ticketPdfAvailable && (
+                  <a
+                    href={`/api/ota/bookings/${encodeURIComponent(booking.id)}/ticket`}
+                    className={travelButton}
+                  >
+                    Download e-ticket (PDF)
+                  </a>
+                )}
               {booking.status === "payment_pending" && (
                 <>
                   <button

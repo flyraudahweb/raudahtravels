@@ -104,6 +104,7 @@ export function moveDate(value: string, offset: number) {
   return dateKey(date);
 }
 export function flightStops(offer: any): number {
+  if (offer.estimate) return offer.estimate.stops;
   return Math.max(
     0,
     ...(offer.slices || []).map(
@@ -127,12 +128,20 @@ export function durationMinutes(value: string = "") {
     : Infinity;
 }
 export const flightDuration = (offer: any) =>
-  (offer.slices || []).reduce(
-    (n: number, slice: any) => n + durationMinutes(slice.duration),
-    0,
-  ) || Infinity;
+  offer.estimate
+    ? (Date.parse(offer.estimate.arrival.slice(0, 16) + "Z") -
+        Date.parse(offer.estimate.departure.slice(0, 16) + "Z")) /
+      60000
+    : (offer.slices || []).reduce(
+        (n: number, slice: any) => n + durationMinutes(slice.duration),
+        0,
+      ) || Infinity;
 export const airlineKey = (offer: any): string =>
   offer.owner?.id || offer.owner?.name || "other";
+const departureTime = (offer: any) =>
+  offer.estimate?.departure ??
+  offer.slices?.[0]?.segments?.[0]?.departing_at ??
+  "";
 export type FlightFilters = {
   stops: string;
   airlines: string[];
@@ -143,9 +152,7 @@ export type FlightFilters = {
 export function selectFlights(offers: any[], filter: FlightFilters) {
   return offers
     .filter((offer) => {
-      const hour = Number(
-        offer.slices?.[0]?.segments?.[0]?.departing_at?.slice(11, 13),
-      );
+      const hour = Number.parseInt(departureTime(offer).slice(11, 13), 10);
       return (
         (filter.stops === "all" ||
           flightStops(offer) <= Number(filter.stops)) &&
@@ -162,11 +169,7 @@ export function selectFlights(offers: any[], filter: FlightFilters) {
         ? flightDuration(a) - flightDuration(b) ||
           a.pricing.totalKobo - b.pricing.totalKobo
         : filter.sort === "departure"
-          ? String(
-              a.slices?.[0]?.segments?.[0]?.departing_at || "",
-            ).localeCompare(
-              String(b.slices?.[0]?.segments?.[0]?.departing_at || ""),
-            )
+          ? departureTime(a).localeCompare(departureTime(b))
           : a.pricing.totalKobo - b.pricing.totalKobo,
     );
 }

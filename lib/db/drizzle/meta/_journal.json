@@ -78,6 +78,13 @@
       "when": 1794441600000,
       "tag": "0013_ehajj",
       "breakpoints": false
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794873600000,
+      "tag": "0014_ota_booking_supplier",
+      "breakpoints": false
     }
   ]
 }

@@ -1,5 +1,7 @@
 # OTA expansion context
 
+For current flight routing and new supplier work, use the [flight supplier onboarding guide](../../docs/integrations/OTA_FLIGHT_SUPPLIERS.md). This file also retains the earlier Duffel rollout notes.
+
 Started 2026-10-29 at the user's request. Expand Duffel across public flight/hotel booking, landing search, user trips and a super-admin-only OTA management console. Preserve the Hajj/Umrah business flows and brand. Work in this checkout; do not run live bookings, charges or production migrations while developing.
 
 ## Confirmed provider capabilities

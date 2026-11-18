@@ -13,11 +13,20 @@ import { money, ota, travelButton, travelInput } from "@/lib/ota";
 import { ErrorMessage, Loading } from "@/components/ota/TravelSearchPage";
 import ExchangeRates from "@/components/ota/ExchangeRates";
 import DuffelSettings from "@/components/ota/DuffelSettings";
+import FlightSupplierSettings from "@/components/ota/FlightSupplierSettings";
 import PricingPreview from "@/components/ota/PricingPreview";
 import TravelUpdates from "@/components/ota/TravelUpdates";
 import OtaOperationsSummary from "@/components/ota/OtaOperationsSummary";
+import OtaEarnings from "@/components/ota/OtaEarnings";
+import OtaFareChanges from "@/components/ota/OtaFareChanges";
 import { BookingStatus, tripTitle } from "@/components/ota/BookingPresentation";
 import { Link, useSearch } from "wouter";
+
+const diagnosticLabels: Record<string, string> = {
+  duffel: "Api Provider",
+  bilalsadasubSearch: "Bilalsadasub fare search",
+  bilalsadasubCheckout: "Bilalsadasub checkout",
+};
 
 export default function AdminOta() {
   const { data: profile } = useGetProfile(),
@@ -33,9 +42,7 @@ export default function AdminOta() {
     enabled: allowed && !!linkedId,
   });
   const [tab, setTab] = useState(
-      new URLSearchParams(search).get("tab") === "settings"
-        ? "settings"
-        : "bookings",
+      new URLSearchParams(search).get("tab") || "bookings",
     ),
     [settings, setSettings] = useState<any>(null),
     [rates, setRates] = useState("");
@@ -101,6 +108,8 @@ export default function AdminOta() {
   useEffect(() => {
     const params = new URLSearchParams(search);
     if (params.get("tab") === "settings") setTab("settings");
+    else if (params.get("tab") === "earnings") setTab("earnings");
+    else if (params.get("tab") === "fare-changes") setTab("fare-changes");
     else if (params.get("booking")) setTab("bookings");
   }, [search]);
   async function action(fn: () => Promise<any>, message: string) {
@@ -170,14 +179,15 @@ export default function AdminOta() {
           </div>
         ))}
       </div>
-      <div className="flex gap-2 border-b pb-3">
-        {["bookings", "settings"].map((t) => (
+      <div className="flex flex-wrap gap-2 border-b pb-3">
+        {["bookings", "earnings", "fare-changes", "settings"].map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
+            aria-pressed={tab === t}
             className={`rounded-xl px-5 py-2.5 text-sm font-bold capitalize ${tab === t ? "bg-indigo-900 text-white" : "bg-white text-slate-600"}`}
           >
-            {t}
+            {t === "fare-changes" ? "Fare changes" : t}
           </button>
         ))}
         <Link
@@ -205,7 +215,11 @@ export default function AdminOta() {
           {providerDisplay(notice)}
         </p>
       )}
-      {tab === "settings" ? (
+      {tab === "earnings" ? (
+        <OtaEarnings />
+      ) : tab === "fare-changes" ? (
+        <OtaFareChanges />
+      ) : tab === "settings" ? (
         !settings ? (
           <Loading />
         ) : (
@@ -256,6 +270,7 @@ export default function AdminOta() {
             >
               {[
                 ["ota-distribution", "Distribution"],
+                ["ota-flight-suppliers", "Flight suppliers"],
                 ["ota-duffel", "Api Provider & webhooks"],
                 ["ota-pricing", "Pricing"],
                 ["ota-support", "Support"],
@@ -344,6 +359,10 @@ export default function AdminOta() {
                 ))}
               </div>
             </section>
+            <FlightSupplierSettings
+              settings={settings}
+              update={(patch) => updateSettings({ ...settings, ...patch })}
+            />
             <DuffelSettings
               settings={settings}
               setSettings={updateSettings}
@@ -407,7 +426,8 @@ export default function AdminOta() {
                 </label>
                 <div className="space-y-3">
                   {[
-                    ["flightMarkupPercent", "Flight markup (%)"],
+                    ["flightMarkupPercent", "Api Provider flight markup (%)"],
+                    ["bilalMarkupPercent", "Bilalsadasub flight markup (%)"],
                     ["hotelMarkupPercent", "Hotel markup (%)"],
                     ["serviceFeeNgn", "Service fee (NGN)"],
                   ].map(([key, label]) => (
@@ -479,7 +499,7 @@ export default function AdminOta() {
                     return Object.entries(data.results)
                       .map(
                         ([k, v]) =>
-                          `${k === "duffel" ? "Api Provider" : k}: ${providerDisplay(String(v))}`,
+                          `${diagnosticLabels[k] ?? k}: ${providerDisplay(String(v))}`,
                       )
                       .join(" · ");
                   }, "Connection check finished. See diagnostics below.")

@@ -22,6 +22,8 @@ import {
   safeConfig,
   configSchema,
   requireLiveWebhook,
+  bilalMode,
+  bilalFlightCheckoutReady,
 } from "../services/ota/config";
 import {
   duffelRequest,
@@ -43,9 +45,11 @@ import {
   paystackKey,
   paystackRequest,
   refreshBooking,
+  domesticBookingQuote,
 } from "../services/ota/booking";
 import { enqueuePayment } from "../services/ota/paymentQueue";
 import { referenceRates } from "../services/ota/exchangeRates";
+import { otaEarnings } from "../services/ota/earnings";
 import {
   receiveDuffel,
   receiverReadiness,
@@ -76,6 +80,16 @@ import {
 import { MOBILE_CLIENT_FILES } from "../services/ota/mobileClientAssets";
 import { checkOtaReadiness } from "../services/ota/readiness";
 import { otaAppOrigin } from "../services/ota/appOrigin";
+import {
+  bilalAirports,
+  checkDomesticFare,
+  prepareDomesticCheckout,
+  refreshDomesticQuote,
+  searchFlightPlaces,
+  searchFlights,
+} from "../services/ota/flightSuppliers";
+import { getBilalTicket } from "../services/ota/bilalOrders";
+import { listDomesticFareIncreases } from "../services/ota/domesticFareChecks";
 
 const router = Router();
 const endpoint =
@@ -368,6 +382,11 @@ const passengerSchema = guestSchema.extend({
         unique_identifier: z.string().min(4).max(30),
         expires_on: future,
         issuing_country_code: z.string().regex(/^[A-Z]{2}$/),
+        issued_on: date.optional(),
+        nationality: z
+          .string()
+          .regex(/^[A-Z]{2}$/)
+          .optional(),
       }),
     )
     .max(1)
@@ -382,6 +401,8 @@ router.get(
       flightsEnabled: c.flightsEnabled,
       hotelsEnabled: c.hotelsEnabled,
       salesEnabled: c.salesEnabled,
+      bilalCheckoutEnabled: bilalFlightCheckoutReady(c),
+      bilalMode: bilalMode(c),
       mode: c.mode,
       supportEmail: c.supportEmail,
       supportPhone: c.supportPhone,
@@ -396,10 +417,7 @@ router.get(
     if (!c.flightsEnabled)
       throw new OtaError("Flight search is not enabled", 503);
     res.json({
-      places: await duffelRequest(
-        c,
-        `/places/suggestions?query=${encodeURIComponent(q)}`,
-      ),
+      places: await searchFlightPlaces(c, q),
     });
   }),
 );
@@ -428,47 +446,30 @@ router.post(
     const c = await getOtaConfig();
     if (!c.flightsEnabled)
       throw new OtaError("Flight search is not enabled", 503);
-    const slices = [
-      {
-        origin: input.origin,
-        destination: input.destination,
-        departure_date: input.departureDate,
-      },
-    ];
-    if (input.returnDate)
-      slices.push({
-        origin: input.destination,
-        destination: input.origin,
-        departure_date: input.returnDate,
-      });
-    const data = await duffelRequest(
-      c,
-      "/air/offer_requests?return_offers=true",
-      "POST",
-      {
-        slices,
-        cabin_class: input.cabinClass,
-        passengers: [
-          ...Array.from({ length: input.adults }, () => ({ type: "adult" })),
-          ...input.childAges.map((age) => ({ age })),
-        ],
-      },
+    res.json(
+      await searchFlights(
+        c,
+        input,
+        !req.originalUrl.startsWith("/api/ota/v1/"),
+      ),
     );
-    const offers = (data.offers || [])
-      .map((o: any) => ({
-        ...o,
-        pricing: price(c, "flight", o.total_amount, o.total_currency),
-      }))
-      .sort((a: any, b: any) => a.pricing.totalKobo - b.pricing.totalKobo);
-    res.json({ offers: offers.slice(0, 80) });
   }),
 );
 router.get(
   "/ota/flights/offers/:id",
   endpoint(async (req, res) => {
     const c = await getOtaConfig();
-    if (!c.flightsEnabled)
-      throw new OtaError("Flight search is not enabled", 503);
+    const offerId = String(req.params.id);
+    if (
+      offerId.startsWith("bilal_") &&
+      !/^\/api\/ota\/v1\//i.test(req.originalUrl)
+    ) {
+      const { offer, pricing } = await prepareDomesticCheckout(c, offerId);
+      res.json({ offer, pricing });
+      return;
+    }
+    if (!c.flightsEnabled || !c.primaryFlightsEnabled)
+      throw new OtaError("Online flight offers are not enabled", 503);
     const offer = await duffelRequest(
       c,
       `/air/offers/${id(req.params.id, "off")}`,
@@ -478,6 +479,16 @@ router.get(
       offer,
       pricing: price(c, "flight", offer.total_amount, offer.total_currency),
     });
+  }),
+);
+router.post(
+  "/ota/flights/estimates/check",
+  endpoint(async (req, res) => {
+    const { token } = z
+      .object({ token: z.string().min(39).max(4096) })
+      .strict()
+      .parse(req.body);
+    res.json(await checkDomesticFare(await getOtaConfig(), token));
   }),
 );
 router.post(
@@ -613,25 +624,42 @@ router.post(
       })
       .parse(req.body);
     const c = await getOtaConfig();
+    const domestic =
+      input.kind === "flight" &&
+      input.offerId.startsWith("bilal_") &&
+      !/^\/api\/ota\/v1\//i.test(req.originalUrl);
     if (
-      !c.salesEnabled ||
-      !(input.kind === "flight" ? c.flightsEnabled : c.hotelsEnabled)
+      domestic
+        ? !bilalFlightCheckoutReady(c)
+        : !c.salesEnabled ||
+          !(input.kind === "flight"
+            ? c.flightsEnabled && c.primaryFlightsEnabled
+            : c.hotelsEnabled)
     )
       throw new OtaError(
         "Online booking is not enabled. Please contact support.",
         503,
       );
-    await paystackKey(c.mode);
-    requireLiveWebhook(c);
+    const mode = domestic ? bilalMode(c) : c.mode;
+    const supplier = domestic ? "bilalsadasub" : "duffel";
+    await paystackKey(mode, supplier);
+    if (!domestic) requireLiveWebhook(c);
     if (!otaAppOrigin())
       throw new OtaError("Secure payment callback URL is not configured", 503);
-    const offerId = id(input.offerId, input.kind === "flight" ? "off" : "quo");
-    const offer = await duffelRequest(
-      c,
-      input.kind === "flight"
-        ? `/air/offers/${offerId}`
-        : `/stays/quotes/${offerId}`,
-    );
+    const domesticCheckout = domestic
+      ? await prepareDomesticCheckout(c, input.offerId)
+      : null;
+    const offerId =
+      domesticCheckout?.quote.fare.supplierId ??
+      id(input.offerId, input.kind === "flight" ? "off" : "quo");
+    const offer =
+      domesticCheckout?.offer ??
+      (await duffelRequest(
+        c,
+        input.kind === "flight"
+          ? `/air/offers/${offerId}`
+          : `/stays/quotes/${offerId}`,
+      ));
     available(offer);
     let travellers: any[];
     if (input.kind === "flight") {
@@ -651,6 +679,20 @@ router.post(
       )
         throw new OtaError("Passport details are required for this flight");
       for (const p of travellers) {
+        if (
+          domestic &&
+          (p.title === "dr" ||
+            p.identity_documents?.some(
+              (d: any) =>
+                !d.issued_on ||
+                !d.nationality ||
+                d.issued_on >= d.expires_on ||
+                d.issued_on > new Date().toISOString().slice(0, 10),
+            ))
+        )
+          throw new OtaError(
+            "Choose a supported title and complete the issue date and nationality for any passport supplied.",
+          );
         const lastTravelDate = (offer.slices || [])
           .flatMap((slice: any) =>
             (slice.segments || []).map((segment: any) =>
@@ -694,12 +736,9 @@ router.post(
         throw new OtaError("Provide details for every guest in the quote");
       assertHotelQuote(offer);
     }
-    const pricing = price(
-      c,
-      input.kind,
-      offer.total_amount,
-      offer.total_currency,
-    );
+    const pricing =
+      domesticCheckout?.pricing ??
+      price(c, input.kind, offer.total_amount, offer.total_currency);
     if (pricing.totalKobo !== input.expectedTotalKobo)
       throw new OtaError(
         "The price has changed. Refresh the offer and review the new total before paying.",
@@ -708,26 +747,38 @@ router.post(
     const bookingId = randomUUID(),
       reference = `OTA-${randomUUID()}`;
     const expiresAt = new Date(expiration(offer));
-    const [row] = await db
-      .insert(bookings)
-      .values({
-        id: bookingId,
-        clerkUserId: userId,
-        kind: input.kind,
-        mode: c.mode,
-        reference,
-        providerOfferId: offerId,
-        supplierAmount: offer.total_amount,
-        supplierCurrency: offer.total_currency,
-        amountKobo: pricing.totalKobo,
-        pricing,
-        offer,
-        travellers,
-        contact: input.contact,
-        expiresAt,
-      })
-      .returning();
-    await audit(row.id, userId, "checkout_created", { termsAccepted: true });
+    const row = await db.transaction(async (tx) => {
+      const [saved] = await tx
+        .insert(bookings)
+        .values({
+          id: bookingId,
+          clerkUserId: userId,
+          kind: input.kind,
+          mode,
+          supplier,
+          reference,
+          providerOfferId: offerId,
+          supplierAmount: offer.total_amount,
+          supplierCurrency: offer.total_currency,
+          amountKobo: pricing.totalKobo,
+          pricing,
+          offer: domesticCheckout
+            ? { ...offer, id: undefined, domesticQuote: domesticCheckout.quote }
+            : offer,
+          travellers,
+          contact: input.contact,
+          expiresAt,
+        })
+        .returning();
+      await tx.insert(otaEventsTable).values({
+        id: randomUUID(),
+        bookingId,
+        actor: userId,
+        action: "checkout_created",
+        details: { termsAccepted: true },
+      });
+      return saved;
+    });
     res.status(201).json({ booking: customerBooking(row) });
   }),
 );
@@ -736,9 +787,14 @@ router.post(
   endpoint(async (req, res) => {
     const row = await owned(req),
       c = await getOtaConfig();
-    if (!c.salesEnabled || c.mode !== row.mode)
+    const domestic = row.supplier === "bilalsadasub";
+    if (
+      domestic
+        ? !bilalFlightCheckoutReady(c) || bilalMode(c) !== row.mode
+        : !c.salesEnabled || c.mode !== row.mode
+    )
       throw new OtaError("Online payments are unavailable", 503);
-    requireLiveWebhook(c);
+    if (!domestic) requireLiveWebhook(c);
     if (
       row.status !== "payment_pending" ||
       row.expiresAt.getTime() <= Date.now() + 60000
@@ -752,35 +808,63 @@ router.post(
     const appOrigin = otaAppOrigin();
     if (!appOrigin)
       throw new OtaError("Secure payment callback URL is not configured", 503);
-    const fresh = await duffelRequest(
-      c,
-      row.kind === "flight"
-        ? `/air/offers/${row.providerOfferId}`
-        : `/stays/quotes/${row.providerOfferId}`,
+    if (domestic) {
+      if (!(await refreshDomesticQuote(c, domesticBookingQuote(row))))
+        throw new OtaError(
+          "This itinerary is no longer available. Search again before paying.",
+          409,
+        );
+    } else {
+      const fresh = await duffelRequest(
+        c,
+        row.kind === "flight"
+          ? `/air/offers/${row.providerOfferId}`
+          : `/stays/quotes/${row.providerOfferId}`,
+      );
+      available(fresh);
+      if (row.kind === "hotel") assertHotelQuote(fresh);
+      if (
+        !sameSupplierAmount(fresh.total_amount, row.supplierAmount) ||
+        fresh.total_currency !== row.supplierCurrency
+      )
+        throw new OtaError(
+          "Supplier pricing has changed. Please start a new search before paying.",
+          409,
+        );
+    }
+    const canPreparePayment = and(
+      eq(bookings.id, row.id),
+      eq(bookings.status, "payment_pending"),
+      eq(bookings.revision, row.revision),
+      sql`${bookings.expiresAt} > now() + interval '1 minute'`,
     );
-    available(fresh);
-    if (row.kind === "hotel") assertHotelQuote(fresh);
-    if (
-      !sameSupplierAmount(fresh.total_amount, row.supplierAmount) ||
-      fresh.total_currency !== row.supplierCurrency
-    )
+    const current = await db.query.otaBookingsTable.findFirst({
+      where: canPreparePayment,
+      columns: { authorizationUrl: true },
+    });
+    if (!current)
       throw new OtaError(
-        "Supplier pricing has changed. Please start a new search before paying.",
+        "Booking changed while preparing payment. Refresh to see its current status.",
         409,
       );
-    if (row.authorizationUrl) {
-      res.json({ authorizationUrl: row.authorizationUrl });
+    if (current.authorizationUrl) {
+      res.json({ authorizationUrl: current.authorizationUrl });
       return;
     }
     // Stable reference prevents concurrent initialization from creating separate charges.
-    const data = await paystackRequest("/transaction/initialize", row.mode, {
-      email: (row.contact as any).email,
-      amount: row.amountKobo,
-      currency: "NGN",
-      reference: row.reference,
-      callback_url: `${appOrigin}/travel/bookings/${row.id}`,
-      metadata: { otaBookingId: row.id, type: "ota_booking" },
-    });
+    const data = await paystackRequest(
+      "/transaction/initialize",
+      row.mode,
+      {
+        email: (row.contact as any).email,
+        amount: row.amountKobo,
+        currency: "NGN",
+        reference: row.reference,
+        callback_url: `${appOrigin}/travel/bookings/${row.id}`,
+        metadata: { otaBookingId: row.id, type: "ota_booking" },
+      },
+      row.supplier,
+    );
     if (
       data?.reference !== row.reference ||
       !/^https:\/\/checkout\.paystack\.com\//.test(data.authorization_url || "")
@@ -793,13 +877,7 @@ router.post(
         authorizationUrl: data.authorization_url,
         updatedAt: new Date(),
       })
-      .where(
-        and(
-          eq(bookings.id, row.id),
-          eq(bookings.status, "payment_pending"),
-          eq(bookings.revision, row.revision),
-        ),
-      )
+      .where(canPreparePayment)
       .returning({ id: bookings.id });
     if (!initialized)
       throw new OtaError(
@@ -936,6 +1014,40 @@ router.get(
     res.json({ booking: customerBooking(await owned(req)) });
   }),
 );
+router.get(
+  "/ota/bookings/:id/ticket",
+  endpoint(async (req, res) => {
+    const row = await owned(req);
+    if (
+      row.supplier !== "bilalsadasub" ||
+      row.status !== "confirmed" ||
+      !row.providerBookingId ||
+      !(row.providerResult as any)?.ticketPdfAvailable
+    )
+      throw new OtaError("The ticket is not available yet.", 404);
+    const file = await getBilalTicket(
+      await getOtaConfig(),
+      z.enum(["test", "live"]).parse(row.mode),
+      row.providerBookingId,
+    );
+    const current = await owned(req);
+    if (
+      current.status !== "confirmed" ||
+      current.providerBookingId !== row.providerBookingId
+    )
+      throw new OtaError(
+        "The ticket is not available for the current booking status.",
+        409,
+      );
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="FlyRaudah-e-ticket.pdf"',
+    );
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.send(file);
+  }),
+);
 router.post(
   "/ota/bookings/:id/complete",
   endpoint(async (req, res) => {
@@ -984,7 +1096,24 @@ export async function otaPaymentWebhook(req: Request, res: Response) {
   try {
     const raw = (req as any).rawBody as Buffer;
     const signature = req.get("x-paystack-signature") || "";
-    const hash = createHmac("sha512", await paystackKey())
+    if (!raw || !/^[a-fA-F0-9]{128}$/.test(signature))
+      return res.status(401).json({ error: "Invalid signature" });
+    const reference = req.body?.data?.reference;
+    const bookingId = req.body?.data?.metadata?.otaBookingId;
+    const booking =
+      typeof reference === "string" && typeof bookingId === "string"
+        ? await db.query.otaBookingsTable.findFirst({
+            columns: { mode: true, supplier: true },
+            where: and(
+              eq(bookings.reference, reference),
+              eq(bookings.id, bookingId),
+            ),
+          })
+        : undefined;
+    const hash = createHmac(
+      "sha512",
+      await paystackKey(booking?.mode, booking?.supplier),
+    )
       .update(raw || Buffer.alloc(0))
       .digest();
     const sig = Buffer.from(signature, "hex");
@@ -1116,20 +1245,37 @@ router.put(
   }),
 );
 router.post(
+  "/ota/admin/suppliers/bilalsadasub/check",
+  endpoint(async (req, res) => {
+    await identity(req, true);
+    const { mode } = z
+      .object({ mode: z.enum(["test", "live"]) })
+      .parse(req.body);
+    const config = { ...(await getOtaConfig()), mode };
+    await bilalAirports(config, "Lagos");
+    res.json({ connected: true });
+  }),
+);
+router.post(
   "/ota/admin/price-preview",
   endpoint(async (req, res) => {
     await identity(req, true);
     const input = z
       .object({
-        kind: z.enum(["flight", "hotel"]),
+        kind: z.enum(["flight", "hotel", "bilalsadasub"]),
         amount: z.string().regex(/^\d{1,12}(?:\.\d{1,6})?$/),
         currency: z.string().regex(/^[A-Z]{3}$/),
-        pricing: configSchema.pick({
-          rates: true,
-          flightMarkupPercent: true,
-          hotelMarkupPercent: true,
-          serviceFeeNgn: true,
-        }),
+        pricing: configSchema
+          .pick({
+            rates: true,
+            flightMarkupPercent: true,
+            hotelMarkupPercent: true,
+            serviceFeeNgn: true,
+          })
+          .extend({
+            bilalMarkupPercent:
+              configSchema.shape.bilalMarkupPercent.optional(),
+          }),
       })
       .parse(req.body);
     if (input.pricing.rates.NGN !== 1)
@@ -1143,6 +1289,32 @@ router.post(
   endpoint(async (req, res) => {
     await identity(req, true);
     res.json({ results: await checkOtaReadiness() });
+  }),
+);
+router.get(
+  "/ota/admin/earnings",
+  endpoint(async (req, res) => {
+    await identity(req, true);
+    const { mode, offset } = z
+      .object({
+        mode: z.enum(["live", "test"]).default("live"),
+        offset: z.coerce.number().int().min(0).max(100000).default(0),
+      })
+      .parse(req.query);
+    res.json(await otaEarnings(mode, offset));
+  }),
+);
+router.get(
+  "/ota/admin/fare-changes",
+  endpoint(async (req, res) => {
+    await identity(req, true);
+    const { mode, offset } = z
+      .object({
+        mode: z.enum(["live", "test"]).default("live"),
+        offset: z.coerce.number().int().min(0).max(100000).default(0),
+      })
+      .parse(req.query);
+    res.json(await listDomesticFareIncreases(mode, offset));
   }),
 );
 router.get(
@@ -1248,6 +1420,16 @@ router.post(
       where: eq(bookings.id, String(req.params.id)),
     });
     if (!row || !row.paidAt) throw new OtaError("Paid booking not found", 404);
+    if (row.supplier === "bilalsadasub") {
+      const updated = await refreshBooking(row);
+      if (updated.revision === row.revision)
+        throw new OtaError(
+          "No matching supplier update was found. Review the Bilalsadasub booking by its transaction reference.",
+          409,
+        );
+      res.json({ success: true });
+      return;
+    }
     const c = modeConfig(
       await getOtaConfig(),
       z.enum(["test", "live"]).parse(row.mode),
@@ -1257,7 +1439,10 @@ router.post(
       row.kind === "flight" ? "ord" : "bok",
     );
     if (row.providerBookingId && providerId !== row.providerBookingId)
-      throw new OtaError("Checkout is already linked to another supplier reservation", 409);
+      throw new OtaError(
+        "Checkout is already linked to another supplier reservation",
+        409,
+      );
     const result = await duffelRequest(
       c,
       row.kind === "flight"
@@ -1276,7 +1461,10 @@ router.post(
       throw new OtaError("This booking has already been fully refunded", 409);
     const cancelled = !!result.cancelled_at || result.status === "cancelled";
     if (!cancelled && row.status === "cancelled")
-      throw new OtaError("This booking already has a recorded cancellation", 409);
+      throw new OtaError(
+        "This booking already has a recorded cancellation",
+        409,
+      );
     if (!cancelled && !supplierBookingConfirmed(row.kind, result))
       throw new OtaError("Provider confirmation is incomplete", 409);
     await db.transaction(async (tx) => {
@@ -1342,10 +1530,17 @@ router.post(
         "Reconcile supplier cancellation/non-booking before recording a refund",
         409,
       );
-    const refund = await paystackRequest(`/refund/${input.refundId}`, row.mode);
+    const refund = await paystackRequest(
+      `/refund/${input.refundId}`,
+      row.mode,
+      undefined,
+      row.supplier,
+    );
     const payment = await paystackRequest(
       `/transaction/verify/${encodeURIComponent(row.reference)}`,
       row.mode,
+      undefined,
+      row.supplier,
     );
     validateRefundPayment(payment, row);
     if (

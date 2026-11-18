@@ -1,6 +1,11 @@
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
-import { getOtaConfig } from "./config";
+import {
+  bilalFlightCheckoutReady,
+  bilalMode,
+  bilalTokenForMode,
+  getOtaConfig,
+} from "./config";
 import { duffelRequest } from "./provider";
 import { paystackKey } from "./booking";
 import { apiKeyStorageReady } from "./apiKeys";
@@ -11,7 +16,7 @@ export async function checkOtaReadiness() {
   const results: Record<string, string> = {};
   try {
     await db.execute(
-      sql`SELECT revision, sync_attempt_at, provider_notice FROM ota_bookings LIMIT 0`,
+      sql`SELECT revision, sync_attempt_at, provider_notice, supplier FROM ota_bookings LIMIT 0`,
     );
     await db.execute(sql`SELECT reference FROM ota_payment_jobs LIMIT 0`);
     await db.execute(sql`SELECT id FROM ota_events LIMIT 0`);
@@ -20,7 +25,7 @@ export async function checkOtaReadiness() {
   } catch (error: any) {
     const codes = [error?.code, error?.cause?.code, error?.cause?.cause?.code];
     results.database = codes.some((code) => ["42P01", "42703"].includes(code))
-      ? "missing schema: apply unapplied OTA migrations 0009, 0010 and 0011"
+      ? "missing schema: apply unapplied OTA migrations 0009, 0010, 0011 and 0014"
       : "unavailable: check database connectivity and permissions; a migration is not confirmed missing";
   }
   try {
@@ -43,6 +48,22 @@ export async function checkOtaReadiness() {
   results.flights = config.flightsEnabled
     ? "enabled"
     : "disabled in OTA settings";
+  results.bilalsadasubSearch =
+    !config.flightsEnabled || !config.bilalFlightsEnabled
+      ? "paused in OTA settings"
+      : bilalTokenForMode(config)
+        ? `configured for ${bilalMode(config)} mode; verify the saved key under Flight suppliers`
+        : `missing ${bilalMode(config)} API key`;
+  results.bilalsadasubCheckout =
+    "unavailable: Bilalsadasub online sales are paused or the supplier key is missing";
+  if (bilalFlightCheckoutReady(config)) {
+    try {
+      await paystackKey(bilalMode(config), "bilalsadasub");
+      results.bilalsadasubCheckout = `configured for ${bilalMode(config)} mode; verify booking and ticket delivery in sandbox`;
+    } catch {
+      results.bilalsadasubCheckout = `unavailable: missing Paystack key for Bilalsadasub ${bilalMode(config)} mode`;
+    }
+  }
   results.hotels = config.hotelsEnabled
     ? "enabled; Stays entitlement still requires a successful search"
     : "disabled; confirm Duffel Stays access before enabling";

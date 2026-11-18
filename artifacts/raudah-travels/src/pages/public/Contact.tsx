@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Phone, Mail, MapPin, MessageCircle, Clock, Send, ArrowRight, CheckCircle2 } from "lucide-react";
 import { SiFacebook, SiInstagram, SiX, SiYoutube } from "react-icons/si";
@@ -37,8 +37,15 @@ export default function Contact() {
 
   const socials = SOCIAL_DEFS.map(s => ({ ...s, href: sl[s.key] || "#" }));
 
-  const [form, setForm] = useState<FormState>({
-    name: "", email: "", phone: "", subject: "General Enquiry", message: "",
+  const search = useSearch();
+  const [form, setForm] = useState<FormState>(() => {
+    const message =
+      new URLSearchParams(search).get("flightEnquiry")?.slice(0, 350) || "";
+    return {
+      name: "", email: "", phone: "",
+      subject: message ? "Flight Enquiry" : "General Enquiry",
+      message,
+    };
   });
   const [sent, setSent] = useState(false);
 
@@ -203,7 +210,7 @@ export default function Contact() {
                     <label className="text-xs font-bold text-[#64748B] uppercase tracking-wider block mb-1">Subject *</label>
                     <select required value={form.subject} onChange={setF("subject")}
                       className="w-full px-4 py-2.5 rounded-xl border border-[#DCE3F0] text-sm text-[#0F172A] bg-white focus:outline-none focus:border-[#2D3199] focus:ring-2 focus:ring-[#2D3199]/10 transition-all">
-                      {["General Enquiry", "Hajj Package", "Umrah Package", "Visa Assistance", "Payment & Pricing", "Become an Agent", "Other"].map(s => (
+                      {["General Enquiry", "Flight Enquiry", "Hajj Package", "Umrah Package", "Visa Assistance", "Payment & Pricing", "Become an Agent", "Other"].map(s => (
                         <option key={s} value={s}>{s}</option>
                       ))}
                     </select>

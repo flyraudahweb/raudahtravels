@@ -18,6 +18,7 @@ export default function PricingPreview({
   const draft = JSON.stringify([
     ratesText,
     settings.flightMarkupPercent,
+    settings.bilalMarkupPercent,
     settings.hotelMarkupPercent,
     settings.serviceFeeNgn,
     amount,
@@ -52,9 +53,13 @@ export default function PricingPreview({
             <select
               className={`${travelInput} mt-1`}
               value={kind}
-              onChange={(e) => setKind(e.target.value)}
+              onChange={(e) => {
+                setKind(e.target.value);
+                if (e.target.value === "bilalsadasub") setCurrency("NGN");
+              }}
             >
-              <option value="flight">Flight ticket</option>
+              <option value="flight">Api Provider flight</option>
+              <option value="bilalsadasub">Bilalsadasub flight estimate</option>
               <option value="hotel">Hotel stay</option>
             </select>
           </label>
@@ -112,6 +117,7 @@ export default function PricingPreview({
                 pricing: {
                   rates,
                   flightMarkupPercent: settings.flightMarkupPercent,
+                  bilalMarkupPercent: settings.bilalMarkupPercent,
                   hotelMarkupPercent: settings.hotelMarkupPercent,
                   serviceFeeNgn: settings.serviceFeeNgn,
                 },

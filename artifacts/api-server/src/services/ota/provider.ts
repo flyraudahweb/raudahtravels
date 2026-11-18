@@ -77,7 +77,7 @@ export async function duffelRequest(
 }
 export function price(
   config: OtaConfig,
-  kind: "flight" | "hotel",
+  kind: "flight" | "hotel" | "bilalsadasub",
   amount: string,
   currency: string,
 ) {
@@ -94,9 +94,12 @@ export function price(
     [rateN, rateD] = decimalFraction(rate);
   const ceil = (n: bigint, d: bigint) => (n + d - 1n) / d;
   const supplierMinor = ceil(amountN * rateN * 100n, amountD * rateD);
-  const [markupN, markupD] = decimalFraction(
-    kind === "flight" ? config.flightMarkupPercent : config.hotelMarkupPercent,
-  );
+  const markups = {
+    flight: config.flightMarkupPercent,
+    hotel: config.hotelMarkupPercent,
+    bilalsadasub: config.bilalMarkupPercent,
+  };
+  const [markupN, markupD] = decimalFraction(markups[kind]);
   const [feeN, feeD] = decimalFraction(config.serviceFeeNgn);
   const supplierKobo = Number(supplierMinor);
   const markupKobo = Number(ceil(supplierMinor * markupN, markupD * 100n));

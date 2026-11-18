@@ -27,7 +27,7 @@ import {
   selectFlights,
   type FlightFilters,
 } from "@/lib/travelSearch";
-import { money, travelButton } from "@/lib/ota";
+import { money, ota, travelButton } from "@/lib/ota";
 
 const initialFilters: FlightFilters = {
   stops: "all",
@@ -209,6 +209,7 @@ export default function FlightResults({
     cheapest = offers.length
       ? Math.min(...offers.map((o) => o.pricing.totalKobo))
       : 0;
+  const hasEstimates = offers.some((offer) => offer.estimate);
   const filteredCheapest = results.length
     ? Math.min(...results.map((o) => o.pricing.totalKobo))
     : 0;
@@ -291,7 +292,7 @@ export default function FlightResults({
                 className={`mt-1 block text-[10px] ${offset === 0 ? "text-indigo-100" : "text-slate-400"}`}
               >
                 {offset === 0
-                  ? cheapest
+                  ? cheapest && !hasEstimates
                     ? money(cheapest)
                     : "Selected date"
                   : "Check fares"}
@@ -307,8 +308,10 @@ export default function FlightResults({
             {destination}
           </h2>
           <p className="mt-1 text-xs text-slate-500">
-            {results.length} of {offers.length} available flight options · Total
-            prices for all travellers
+            {results.length} of {offers.length} flight options ·{" "}
+            {hasEstimates
+              ? "Includes estimated fares"
+              : "Total prices for all travellers"}
           </p>
         </div>
         <button
@@ -481,7 +484,8 @@ export default function FlightResults({
                 >
                   <span className="block text-xs font-bold">{label}</span>
                   <span className="mt-1 block text-[11px]">
-                    {Number(amount) > 0 ? money(Number(amount)) : "—"}
+                    {!hasEstimates &&
+                      (Number(amount) > 0 ? money(Number(amount)) : "—")}
                   </span>
                 </button>
               ))}
@@ -523,152 +527,158 @@ export default function FlightResults({
               )}
             </div>
           )}
-          {results.map((offer) => (
-            <article
-              key={offer.id}
-              className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_3px_14px_-10px_rgba(28,31,102,0.2)] transition-shadow hover:shadow-md"
-            >
-              <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-[10px] sm:px-5">
-                {offer.pricing.totalKobo === cheapest && (
-                  <span className="rounded bg-[#EDEEFF] px-2 py-1 font-bold text-[#2D3199]">
-                    Lowest available fare
+          {results.map((offer) =>
+            offer.estimate ? (
+              <EstimatedFlightCard key={offer.id} fare={offer.estimate} />
+            ) : (
+              <article
+                key={offer.id}
+                className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_3px_14px_-10px_rgba(28,31,102,0.2)] transition-shadow hover:shadow-md"
+              >
+                <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-[10px] sm:px-5">
+                  {!hasEstimates && offer.pricing.totalKobo === cheapest && (
+                    <span className="rounded bg-[#EDEEFF] px-2 py-1 font-bold text-[#2D3199]">
+                      Lowest available fare
+                    </span>
+                  )}
+                  <span className="text-slate-500">
+                    {query.get("returnDate") ? "Round trip" : "One way"} ·{" "}
+                    {query.get("cabinClass")?.replace(/_/g, " ") || "Economy"}
                   </span>
-                )}
-                <span className="text-slate-500">
-                  {query.get("returnDate") ? "Round trip" : "One way"} ·{" "}
-                  {query.get("cabinClass")?.replace(/_/g, " ") || "Economy"}
-                </span>
-                {offer.conditions?.refund_before_departure?.allowed && (
-                  <span className="ml-auto text-[#2D3199]">
-                    Refunds allowed · conditions apply
-                  </span>
-                )}
-              </div>
-              <div className="grid gap-4 px-4 py-4 sm:px-5 xl:grid-cols-[minmax(0,1fr)_170px]">
-                <div className="space-y-3">
-                  {(offer.slices || []).map((slice: any, index: number) => {
-                    const first = slice.segments?.[0],
-                      last = slice.segments?.at(-1),
-                      stops = flightStops({ slices: [slice] });
-                    return (
-                      <div
-                        key={slice.id || index}
-                        className="grid grid-cols-[1fr_1fr_70px_1fr] items-center gap-2 sm:grid-cols-[130px_1fr_105px_1fr]"
-                      >
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            {offer.owner?.logo_symbol_url ? (
-                              <img
-                                src={offer.owner.logo_symbol_url}
-                                alt=""
-                                className="h-7 w-7 object-contain"
-                                loading="lazy"
-                              />
-                            ) : (
-                              <Plane size={23} className="text-[#2D3199]" />
-                            )}
-                            <span className="hidden truncate text-xs font-semibold text-slate-700 sm:block">
-                              {offer.owner?.name ||
-                                first?.marketing_carrier?.name}
-                            </span>
-                          </div>
-                          <p className="mt-1 text-[9px] text-slate-400">
-                            {offer.slices.length > 1
-                              ? index
-                                ? "Return"
-                                : "Outbound"
-                              : "Departure"}
-                          </p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-lg font-bold tracking-tight text-slate-950 sm:text-xl">
-                            {first?.departing_at?.slice(11, 16) || "—"}
-                          </p>
-                          <p className="mt-1 text-[11px] text-slate-500">
-                            {slice.origin?.iata_code ||
-                              first?.origin?.iata_code}
-                            {first?.origin_terminal
-                              ? ` · T${first.origin_terminal}`
-                              : ""}
-                          </p>
-                          <p className="mt-0.5 text-[9px] text-slate-400">
-                            {shortDate(first?.departing_at?.slice(0, 10) || "")}
-                          </p>
-                        </div>
-                        <div className="text-center">
-                          <p className="mb-2 text-[10px] text-slate-500">
-                            {duration(slice.duration)}
-                          </p>
-                          <div className="relative mx-1 h-px bg-slate-300">
-                            <span className="absolute -top-0.5 left-0 h-1 w-1 rounded-full bg-slate-300" />
-                            <span className="absolute -top-0.5 right-0 h-1 w-1 rounded-full bg-slate-300" />
-                          </div>
-                          <p
-                            className={`mt-2 text-[10px] ${stops ? "text-slate-500" : "text-[#2D3199]"}`}
-                          >
-                            {stops
-                              ? `${stops} stop${stops > 1 ? "s" : ""}`
-                              : "Non-stop"}
-                          </p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-lg font-bold tracking-tight text-slate-950 sm:text-xl">
-                            {last?.arriving_at?.slice(11, 16) || "—"}
-                          </p>
-                          <p className="mt-1 text-[11px] text-slate-500">
-                            {slice.destination?.iata_code ||
-                              last?.destination?.iata_code}
-                            {last?.destination_terminal
-                              ? ` · T${last.destination_terminal}`
-                              : ""}
-                          </p>
-                          <p className="mt-0.5 text-[9px] text-slate-400">
-                            {shortDate(last?.arriving_at?.slice(0, 10) || "")}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <p className="text-xs font-semibold text-slate-600 sm:hidden">
-                    {offer.owner?.name}
-                  </p>
+                  {offer.conditions?.refund_before_departure?.allowed && (
+                    <span className="ml-auto text-[#2D3199]">
+                      Refunds allowed · conditions apply
+                    </span>
+                  )}
                 </div>
-                <div className="flex items-center justify-between gap-3 border-t border-dashed border-slate-200 pt-4 xl:flex-col xl:items-end xl:justify-center xl:border-l xl:border-t-0 xl:pl-4 xl:pt-0">
-                  <div className="xl:text-right">
-                    <p className="text-[10px] text-slate-400">
-                      Total for all travellers
-                    </p>
-                    <p className="mt-1 whitespace-nowrap text-xl font-black tracking-tight text-[#2D3199]">
-                      {money(offer.pricing.totalKobo)}
-                    </p>
-                    <p className="mt-1 text-[10px] text-slate-400">
-                      Fare total in NGN
+                <div className="grid gap-4 px-4 py-4 sm:px-5 xl:grid-cols-[minmax(0,1fr)_170px]">
+                  <div className="space-y-3">
+                    {(offer.slices || []).map((slice: any, index: number) => {
+                      const first = slice.segments?.[0],
+                        last = slice.segments?.at(-1),
+                        stops = flightStops({ slices: [slice] });
+                      return (
+                        <div
+                          key={slice.id || index}
+                          className="grid grid-cols-[1fr_1fr_70px_1fr] items-center gap-2 sm:grid-cols-[130px_1fr_105px_1fr]"
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              {offer.owner?.logo_symbol_url ? (
+                                <img
+                                  src={offer.owner.logo_symbol_url}
+                                  alt=""
+                                  className="h-7 w-7 object-contain"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <Plane size={23} className="text-[#2D3199]" />
+                              )}
+                              <span className="hidden truncate text-xs font-semibold text-slate-700 sm:block">
+                                {offer.owner?.name ||
+                                  first?.marketing_carrier?.name}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-[9px] text-slate-400">
+                              {offer.slices.length > 1
+                                ? index
+                                  ? "Return"
+                                  : "Outbound"
+                                : "Departure"}
+                            </p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-lg font-bold tracking-tight text-slate-950 sm:text-xl">
+                              {first?.departing_at?.slice(11, 16) || "—"}
+                            </p>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              {slice.origin?.iata_code ||
+                                first?.origin?.iata_code}
+                              {first?.origin_terminal
+                                ? ` · T${first.origin_terminal}`
+                                : ""}
+                            </p>
+                            <p className="mt-0.5 text-[9px] text-slate-400">
+                              {shortDate(
+                                first?.departing_at?.slice(0, 10) || "",
+                              )}
+                            </p>
+                          </div>
+                          <div className="text-center">
+                            <p className="mb-2 text-[10px] text-slate-500">
+                              {duration(slice.duration)}
+                            </p>
+                            <div className="relative mx-1 h-px bg-slate-300">
+                              <span className="absolute -top-0.5 left-0 h-1 w-1 rounded-full bg-slate-300" />
+                              <span className="absolute -top-0.5 right-0 h-1 w-1 rounded-full bg-slate-300" />
+                            </div>
+                            <p
+                              className={`mt-2 text-[10px] ${stops ? "text-slate-500" : "text-[#2D3199]"}`}
+                            >
+                              {stops
+                                ? `${stops} stop${stops > 1 ? "s" : ""}`
+                                : "Non-stop"}
+                            </p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-lg font-bold tracking-tight text-slate-950 sm:text-xl">
+                              {last?.arriving_at?.slice(11, 16) || "—"}
+                            </p>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              {slice.destination?.iata_code ||
+                                last?.destination?.iata_code}
+                              {last?.destination_terminal
+                                ? ` · T${last.destination_terminal}`
+                                : ""}
+                            </p>
+                            <p className="mt-0.5 text-[9px] text-slate-400">
+                              {shortDate(last?.arriving_at?.slice(0, 10) || "")}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <p className="text-xs font-semibold text-slate-600 sm:hidden">
+                      {offer.owner?.name}
                     </p>
                   </div>
-                  <Link
-                    href={`/flights/checkout/${offer.id}`}
-                    className={`${travelButton} shrink-0 rounded-lg bg-[#FF3B00] px-4 py-2.5 hover:bg-[#dc3300] xl:w-full`}
-                  >
-                    Select flight
-                    <ArrowRight size={15} />
-                  </Link>
+                  <div className="flex items-center justify-between gap-3 border-t border-dashed border-slate-200 pt-4 xl:flex-col xl:items-end xl:justify-center xl:border-l xl:border-t-0 xl:pl-4 xl:pt-0">
+                    <div className="xl:text-right">
+                      <p className="text-[10px] text-slate-400">
+                        Total for all travellers
+                      </p>
+                      <p className="mt-1 whitespace-nowrap text-xl font-black tracking-tight text-[#2D3199]">
+                        {money(offer.pricing.totalKobo)}
+                      </p>
+                      <p className="mt-1 text-[10px] text-slate-400">
+                        Fare total in NGN
+                      </p>
+                    </div>
+                    <Link
+                      href={`/flights/checkout/${offer.id}`}
+                      className={`${travelButton} shrink-0 rounded-lg bg-[#FF3B00] px-4 py-2.5 hover:bg-[#dc3300] xl:w-full`}
+                    >
+                      Select flight
+                      <ArrowRight size={15} />
+                    </Link>
+                  </div>
                 </div>
-              </div>
-              <details className="border-t border-slate-100">
-                <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-3 text-[11px] font-semibold text-[#2D3199]">
-                  <span className="flex items-center gap-2">
-                    <Clock3 size={13} />
-                    Flight details & baggage
-                  </span>
-                  <ChevronDown size={14} />
-                </summary>
-                <div className="border-t border-slate-100 p-4">
-                  {details(offer)}
-                </div>
-              </details>
-            </article>
-          ))}
-          {offers.length > 0 && (
+                <details className="border-t border-slate-100">
+                  <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-3 text-[11px] font-semibold text-[#2D3199]">
+                    <span className="flex items-center gap-2">
+                      <Clock3 size={13} />
+                      Flight details & baggage
+                    </span>
+                    <ChevronDown size={14} />
+                  </summary>
+                  <div className="border-t border-slate-100 p-4">
+                    {details(offer)}
+                  </div>
+                </details>
+              </article>
+            ),
+          )}
+          {offers.some((offer) => !offer.estimate) && (
             <p className="flex items-center justify-center gap-2 py-4 text-[11px] text-slate-500">
               <ShieldCheck size={14} className="text-[#2D3199]" />
               Availability and final fare are checked again before payment.
@@ -677,6 +687,156 @@ export default function FlightResults({
         </div>
       </div>
     </>
+  );
+}
+type EstimatedFare = {
+  airline: string;
+  origin: string;
+  destination: string;
+  departure: string;
+  arrival: string;
+  stops: number;
+  cabin: string;
+  estimatedTotalKobo: number;
+  fareCheckToken?: string;
+  checkoutOfferId?: string;
+};
+
+function EstimatedFlightCard({ fare }: { fare: EstimatedFare }) {
+  const [result, setResult] = useState<
+    | {
+        status: "available";
+        estimatedTotalKobo: number;
+        match: "same_offer" | "matching_schedule";
+      }
+    | { status: "unavailable" }
+    | null
+  >(null);
+  const [error, setError] = useState("");
+  const [checking, setChecking] = useState(false);
+  const activeCheck = useRef<AbortController | null>(null);
+  useEffect(() => () => activeCheck.current?.abort(), []);
+  async function check() {
+    if (!fare.fareCheckToken || activeCheck.current) return;
+    const controller = new AbortController();
+    activeCheck.current = controller;
+    setChecking(true);
+    setError("");
+    setResult(null);
+    try {
+      const refreshed = await ota(
+        "/flights/estimates/check",
+        { token: fare.fareCheckToken },
+        undefined,
+        controller.signal,
+      );
+      if (!controller.signal.aborted) setResult(refreshed);
+    } catch (failure) {
+      if (!controller.signal.aborted)
+        setError(
+          failure instanceof Error
+            ? failure.message
+            : "Unable to check this fare.",
+        );
+    } finally {
+      activeCheck.current = null;
+      if (!controller.signal.aborted) setChecking(false);
+    }
+  }
+  const current =
+    result?.status === "available"
+      ? result.estimatedTotalKobo
+      : fare.estimatedTotalKobo;
+  const enquiry = new URLSearchParams({
+    flightEnquiry: `Please confirm the ${fare.airline} flight from ${fare.origin} to ${fare.destination} on ${fare.departure.slice(0, 10)} at ${fare.departure.slice(11, 16)} (${fare.cabin.replaceAll("_", " ")}).`,
+  });
+  return (
+    <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3 text-xs sm:px-5">
+        <span className="rounded bg-indigo-50 px-2 py-1 font-semibold text-[#2D3199]">
+          {fare.checkoutOfferId ? "Online booking" : "Confirmation required"}
+        </span>
+        <span className="capitalize text-slate-600">
+          One way · {fare.cabin.replaceAll("_", " ")}
+        </span>
+      </div>
+      <div className="grid gap-4 p-4 sm:p-5 xl:grid-cols-[minmax(0,1fr)_170px]">
+        <div>
+          <p className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <Plane className="text-primary" size={18} aria-hidden="true" />
+            {fare.airline}
+          </p>
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-center sm:gap-5">
+            {[
+              [fare.origin, fare.departure],
+              [fare.destination, fare.arrival],
+            ].map(([code, time], index) => (
+              <div
+                key={code}
+                className={
+                  index ? "col-start-3 row-start-1" : "col-start-1 row-start-1"
+                }
+              >
+                <p className="text-xl font-bold text-slate-950">
+                  {time.slice(11, 16)}
+                </p>
+                <p className="text-xs text-slate-600">{code}</p>
+                <p className="text-xs text-slate-600">
+                  {shortDate(time.slice(0, 10))}
+                </p>
+              </div>
+            ))}
+            <span className="col-start-2 row-start-1 border-b border-slate-200 px-2 pb-1 text-xs text-slate-600">
+              {fare.stops
+                ? `${fare.stops} ${fare.stops === 1 ? "stop" : "stops"}`
+                : "Nonstop"}
+            </span>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dashed border-slate-200 pt-3 xl:flex-col xl:items-end xl:justify-center xl:border-l xl:border-t-0 xl:pl-4 xl:pt-0">
+          <div className="xl:text-right">
+            <p className="text-xs text-slate-600">Estimated fare</p>
+            <p className="text-xl font-bold text-[#2D3199]">{money(current)}</p>
+          </div>
+          {fare.checkoutOfferId ? (
+            <Link
+              href={`/flights/checkout/${encodeURIComponent(fare.checkoutOfferId)}`}
+              className={`${travelButton} rounded-lg px-3`}
+            >
+              Select flight <ArrowRight size={15} aria-hidden="true" />
+            </Link>
+          ) : fare.fareCheckToken && !result && !error ? (
+            <button
+              type="button"
+              className={`${travelButton} rounded-lg px-3`}
+              onClick={() => void check()}
+              disabled={checking}
+            >
+              {checking ? "Checking fare…" : "Check fare"}
+              <ArrowRight size={15} aria-hidden="true" />
+            </button>
+          ) : (
+            <Link
+              href={`/contact?${enquiry}`}
+              className={`${travelButton} rounded-lg px-3`}
+            >
+              Ask Raudah <ArrowRight size={15} aria-hidden="true" />
+            </Link>
+          )}
+        </div>
+      </div>
+      {(result || error) && (
+        <p
+          role="status"
+          className="border-t border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-slate-700 sm:px-5"
+        >
+          {error ||
+            (result?.status === "unavailable"
+              ? "This fare could not be matched. Run your search again for the latest options."
+              : `${result?.status === "available" && result.match === "matching_schedule" ? "Latest estimate for the matching schedule" : "Latest fare estimate"} ${money(current)}.${current !== fare.estimatedTotalKobo ? ` Previous estimate ${money(fare.estimatedTotalKobo)}.` : ""} Ticketing requires confirmation.`)}
+        </p>
+      )}
+    </article>
   );
 }
 function SearchEmpty() {

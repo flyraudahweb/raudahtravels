@@ -217,6 +217,7 @@ beforeAll(async () => {
       "utf8",
     ),
   );
+  await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0014_ota_booking_supplier.sql"), "utf8"));
   await module.db.insert(module.profilesTable).values([
     {
       id: "user",
@@ -327,6 +328,7 @@ beforeEach(async () => {
       hotelsEnabled: true,
       salesEnabled: true,
       mode: "test",
+      flightMarkupPercent: 0,
       rates: { NGN: 1, GBP: 1000 },
       supportEmail: "help@example.test",
     },
@@ -596,14 +598,14 @@ async function request(
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 }
-async function create(native = false) {
+async function create(native = false, expectedTotalKobo = 10000000) {
   const response = await (native ? nativeRequest : request)(
     "/bookings",
     "user",
     {
       kind: "flight",
       offerId: "off_test",
-      expectedTotalKobo: 10000000,
+      expectedTotalKobo,
       acceptedTerms: true,
       contact: { email: "user@example.test", phone: "+2348012345678" },
       travellers: [
@@ -1519,6 +1521,469 @@ async function deliverDuffel(type: string, object: Record<string, unknown>) {
   await service.processDuffelEvents();
 }
 describe("OTA authorization and payments", () => {
+  it.each([false, true])(
+    "issues and downloads a live Bilalsadasub ticket while the primary provider stays in test (booking timeout %s)",
+    async (bookingTimeout) => {
+      const livePaymentKey = "sk_live_bilal_fixture";
+      vi.stubEnv("BILALSADASUB_PAYSTACK_LIVE_SECRET_KEY", livePaymentKey);
+      try {
+        const saved = await request(
+          "/admin/settings",
+          "super",
+          {
+            bilalMode: "live",
+            bilalSalesEnabled: true,
+            bilalLiveToken: "bilal_live_fixture",
+          },
+          "PUT",
+        );
+        expect(saved.status).toBe(200);
+        expect((await saved.json()).settings).toMatchObject({
+          mode: "test",
+          bilalMode: "live",
+          bilalSalesEnabled: true,
+          bilalLiveToken: "",
+        });
+        const departureDate = new Date(Date.now() + 86400000)
+          .toISOString()
+          .slice(0, 10);
+        const fallback = globalThis.fetch;
+        let issued = false;
+        let purchases = 0;
+        const supplierOrder = () => ({
+          reference: "FL_fixture",
+          my_trans_id: booking.id,
+          origin: "LOS",
+          destination: "ABV",
+          departure_date: departureDate,
+          trip_type: "oneway",
+          cabin: "economy",
+          pnr: issued ? "ABC123" : null,
+          status: issued ? "ticketed" : "reserved",
+          currency: "NGN",
+          amount: 105000,
+          addons_fee: 0,
+          tickets: issued ? [{ number: "0572101234567" }] : [],
+        });
+        vi.stubGlobal(
+          "fetch",
+          vi.fn(async (input: string | URL, init?: RequestInit) => {
+            const url = new URL(input);
+            if (url.hostname === "api.paystack.co") {
+              expect(init?.headers).toMatchObject({
+                Authorization: `Bearer ${livePaymentKey}`,
+              });
+              if (url.pathname.endsWith("initialize")) {
+                expect(JSON.parse(String(init.body))).toMatchObject({
+                  reference: booking.reference,
+                  amount: 11_000_000,
+                });
+                return fallback(input, init);
+              }
+              return Response.json({
+                status: true,
+                data: {
+                  id: 101,
+                  status: "success",
+                  domain: "live",
+                  currency: "NGN",
+                  amount: 11_000_000,
+                  reference: booking.reference,
+                  metadata: { otaBookingId: booking.id, type: "ota_booking" },
+                },
+              });
+            }
+            if (url.hostname !== "bilalsadasub.com")
+              return fallback(input, init);
+            expect(init?.headers).toMatchObject({
+              Authorization: "Token bilal_live_fixture",
+            });
+            if (url.pathname.endsWith("/search"))
+              return Response.json({
+                status: "success",
+                data: [
+                  {
+                    flight_id: "OF_fixture",
+                    airline: "Air Peace",
+                    price: 100000,
+                    currency: "NGN",
+                    cabin: "economy",
+                    departure: `${departureDate}T08:00`,
+                    arrival: `${departureDate}T09:05`,
+                    stops: 0,
+                  },
+                ],
+              });
+            if (url.pathname.endsWith("/book")) {
+              purchases++;
+              expect(JSON.parse(String(init?.body))).toMatchObject({
+                flight_id: "OF_fixture",
+                my_trans_id: booking.id,
+                passengers: [
+                  {
+                    passenger_type: "adult",
+                    first_name: "Test",
+                    gender: "male",
+                  },
+                ],
+              });
+              if (bookingTimeout)
+                throw new Error("simulated response loss after wallet debit");
+            }
+            if (url.pathname.endsWith("/bookings"))
+              return Response.json({
+                status: "success",
+                data: [supplierOrder()],
+              });
+            if (url.pathname.endsWith("/ticket"))
+              return new Response("%PDF-1.4\nfixture", {
+                headers: { "Content-Type": "application/pdf" },
+              });
+            return Response.json({ status: "success", data: supplierOrder() });
+          }),
+        );
+        const search = await request("/flights/search", undefined, {
+          origin: "LOS",
+          destination: "ABV",
+          departureDate,
+          adults: 1,
+        });
+        const { checkoutOfferId } = (await search.json()).estimatedFares[0];
+        const created = await request("/bookings", "user", {
+          kind: "flight",
+          offerId: checkoutOfferId,
+          expectedTotalKobo: 11_000_000,
+          acceptedTerms: true,
+          contact: { email: "user@example.test", phone: "+2348012345678" },
+          travellers: [
+            {
+              id: "pas_1",
+              given_name: "Test",
+              family_name: "Traveller",
+              born_on: "1990-01-01",
+              title: "mr",
+              gender: "m",
+              email: "user@example.test",
+              phone_number: "+2348012345678",
+            },
+          ],
+        });
+        expect(created.status).toBe(201);
+        booking = (await created.json()).booking;
+        expect(booking).toMatchObject({
+          supplier: "bilalsadasub",
+          mode: "live",
+          amountKobo: 11_000_000,
+          providerOfferId: null,
+        });
+        expect(booking.offer).not.toHaveProperty("domesticQuote");
+        expect(
+          (await request(`/bookings/${booking.id}/pay`, "user", {})).status,
+        ).toBe(200);
+        const webhookBody = JSON.stringify({
+          event: "charge.success",
+          data: {
+            reference: booking.reference,
+            metadata: { otaBookingId: booking.id },
+          },
+        });
+        for (const [key, status] of [
+          ["sk_test_fake", 401],
+          [livePaymentKey, 200],
+        ] as const) {
+          const webhook = await httpFetch(`${baseUrl}/payments/webhook`, {
+            method: "POST",
+            body: webhookBody,
+            headers: {
+              "content-type": "application/json",
+              "x-paystack-signature": createHmac("sha512", key)
+                .update(webhookBody)
+                .digest("hex"),
+            },
+          });
+          expect(webhook.status).toBe(status);
+        }
+        const { processOtaPayments } =
+          await import("../src/services/ota/paymentQueue");
+        await Promise.all([
+          processOtaPayments(),
+          request(`/bookings/${booking.id}/complete`, "user", {}),
+        ]);
+        expect(purchases).toBe(1);
+        expect(
+          (await request(`/bookings/${booking.id}/ticket`, "user")).status,
+        ).toBe(404);
+        issued = true;
+        const confirmed = await request(
+          `/bookings/${booking.id}/refresh`,
+          "user",
+          {},
+        );
+        expect((await confirmed.json()).booking).toMatchObject({
+          status: "confirmed",
+          pricing: {
+            supplierKobo: 10_500_000,
+            expectedSupplierKobo: 10_000_000,
+          },
+          amountKobo: 11_000_000,
+        });
+        const changes = (
+          await (await request("/admin/fare-changes?mode=live", "super")).json()
+        ).changes;
+        expect(changes).toHaveLength(1);
+        expect(changes[0].details).toMatchObject({
+          match: "wallet_debit",
+          previousSupplierKobo: 10_000_000,
+          currentSupplierKobo: 10_500_000,
+          currentTotalKobo: 11_000_000,
+        });
+        expect(
+          (await request(`/bookings/${booking.id}/ticket`, "other")).status,
+        ).toBe(404);
+        const pdf = await request(`/bookings/${booking.id}/ticket`, "user");
+        expect(pdf.headers.get("content-type")).toBe("application/pdf");
+        expect(await pdf.text()).toMatch(/^%PDF-/);
+        expect(purchases).toBe(1);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
+  it("activates domestic estimates on saving a key and keeps those fares out of checkout", async () => {
+    const credentials = { bilalTestToken: "sk_test_domestic_fixture" };
+    expect(
+      (await request("/admin/settings", "admin", credentials, "PUT")).status,
+    ).toBe(403);
+    const saved = await request("/admin/settings", "super", credentials, "PUT");
+    expect(saved.status).toBe(200);
+    expect((await saved.json()).settings).toMatchObject({
+      bilalFlightsEnabled: true,
+      bilalTestToken: "",
+      bilalTestTokenSet: true,
+    });
+    const row = await module.db.query.siteSettingsTable.findFirst({
+      where: eq(module.siteSettingsTable.key, "ota_config"),
+    });
+    expect(JSON.stringify(row?.value)).not.toContain(
+      credentials.bilalTestToken,
+    );
+    const fallback = globalThis.fetch;
+    const departureDate = new Date(Date.now() + 86400000)
+      .toISOString()
+      .slice(0, 10);
+    let supplierFare = 85500;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = new URL(input);
+        if (url.hostname !== "bilalsadasub.com") return fallback(input, init);
+        expect(init?.headers).toMatchObject({
+          Authorization: `Token ${credentials.bilalTestToken}`,
+        });
+        return Response.json({
+          status: "success",
+          data: url.pathname.endsWith("/airports")
+            ? []
+            : [
+                {
+                  flight_id: "OF_domestic",
+                  airline: "Air Peace",
+                  price: supplierFare,
+                  currency: "NGN",
+                  cabin: "economy",
+                  departure: `${departureDate}T08:00`,
+                  arrival: `${departureDate}T09:05`,
+                  stops: 0,
+                },
+              ],
+        });
+      }),
+    );
+    expect(
+      (
+        await request("/admin/suppliers/bilalsadasub/check", "admin", {
+          mode: "test",
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request("/admin/suppliers/bilalsadasub/check", "super", {
+          mode: "test",
+        })
+      ).status,
+    ).toBe(200);
+    const search = await request("/flights/search", undefined, {
+      origin: "LOS",
+      destination: "ABV",
+      departureDate,
+      adults: 1,
+    });
+    expect(search.status).toBe(200);
+    const result = await search.json();
+    expect(result.estimatedFares).toMatchObject([
+      { airline: "Air Peace", estimatedTotalKobo: 9_405_000 },
+    ]);
+    expect(JSON.stringify(result)).not.toContain("OF_domestic");
+    expect((await request("/flights/offers/OF_domestic", "user")).status).toBe(
+      400,
+    );
+    const checkout = await request("/bookings", "user", {
+      kind: "flight",
+      offerId: "OF_domestic",
+      expectedTotalKobo: 9_405_000,
+      acceptedTerms: true,
+      contact: { email: "user@example.test", phone: "+2348012345678" },
+      travellers: [{}],
+    });
+    expect(checkout.status).toBe(400);
+    expect(await module.db.query.otaBookingsTable.findMany()).toHaveLength(0);
+    const token = result.estimatedFares[0].fareCheckToken;
+    expect(typeof token).toBe("string");
+    const tampered = `${token[0] === "A" ? "B" : "A"}${token.slice(1)}`;
+    expect(
+      (
+        await request("/flights/estimates/check", undefined, {
+          token: tampered,
+        })
+      ).status,
+    ).toBe(400);
+    supplierFare = 90000;
+    const rechecks = await Promise.all([
+      request("/flights/estimates/check", undefined, { token }),
+      request("/flights/estimates/check", undefined, { token }),
+    ]);
+    for (const refreshed of rechecks) {
+      expect(refreshed.status).toBe(200);
+      expect(await refreshed.json()).toEqual({
+        status: "available",
+        match: "same_offer",
+        estimatedTotalKobo: 9_900_000,
+      });
+    }
+    expect(
+      (await request("/admin/fare-changes?mode=test", "admin")).status,
+    ).toBe(403);
+    const live = await request("/admin/fare-changes?mode=live", "super");
+    expect((await live.json()).changes).toEqual([]);
+    const sandbox = await request("/admin/fare-changes?mode=test", "super");
+    const { changes } = await sandbox.json();
+    expect(changes).toHaveLength(1);
+    expect(changes[0].details).toMatchObject({
+      previousSupplierKobo: 8_550_000,
+      currentSupplierKobo: 9_000_000,
+      previousTotalKobo: 9_405_000,
+      currentTotalKobo: 9_900_000,
+    });
+    expect(JSON.stringify(changes)).not.toContain("OF_domestic");
+  });
+  it("reports confirmed earnings from the saved checkout and separates sandbox and live", async () => {
+    const settings = await request(
+      "/admin/settings",
+      "super",
+      {
+        flightMarkupPercent: 10,
+        bilalMarkupPercent: 15,
+      },
+      "PUT",
+    );
+    expect(settings.status).toBe(200);
+    const preview = await request("/admin/price-preview", "super", {
+      kind: "bilalsadasub",
+      amount: "10000",
+      currency: "NGN",
+      pricing: {
+        rates: { NGN: 1 },
+        flightMarkupPercent: 10,
+        bilalMarkupPercent: 15,
+      },
+    });
+    expect((await preview.json()).pricing.totalKobo).toBe(1_150_000);
+    amount = 11_000_000;
+    await create(false, amount);
+    expect(
+      (await request(`/bookings/${booking.id}/complete`, "user", {})).status,
+    ).toBe(200);
+    expect((await request("/admin/earnings?mode=test", "admin")).status).toBe(
+      403,
+    );
+    const live = await request("/admin/earnings", "super");
+    expect((await live.json()).totals).toMatchObject({
+      bookingCount: 0,
+      grossKobo: "0",
+    });
+    const sandbox = await request("/admin/earnings?mode=test", "super");
+    expect(sandbox.status).toBe(200);
+    expect(await sandbox.json()).toMatchObject({
+      totals: {
+        bookingCount: 1,
+        paidKobo: "11000000",
+        supplierKobo: "10000000",
+        grossKobo: "1000000",
+      },
+      bookings: [{ id: booking.id, grossKobo: "1000000" }],
+      nextOffset: null,
+    });
+    await module.db
+      .update(module.otaBookingsTable)
+      .set({ status: "refunded" })
+      .where(eq(module.otaBookingsTable.id, booking.id));
+    const afterRefund = await request("/admin/earnings?mode=test", "super");
+    expect((await afterRefund.json()).totals).toMatchObject({
+      bookingCount: 0,
+      grossKobo: "0",
+    });
+  });
+  it("does not return a saved payment link if the booking changes during the supplier check", async () => {
+    await create();
+    expect(
+      (await request(`/bookings/${booking.id}/pay`, "user", {})).status,
+    ).toBe(200);
+    const fallback = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        if (String(input).includes("api.duffel.com/air/offers/"))
+          await module.db
+            .update(module.otaBookingsTable)
+            .set({ status: "processing" })
+            .where(eq(module.otaBookingsTable.id, booking.id));
+        return fallback(input, init);
+      }),
+    );
+    const stale = await request(`/bookings/${booking.id}/pay`, "user", {});
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).not.toHaveProperty("authorizationUrl");
+  });
+  it("prevents an expired payment worker from clearing a replacement lease", async () => {
+    await create();
+    const { enqueuePayment, processOtaPayments } =
+      await import("../src/services/ota/paymentQueue");
+    const jobs = module.otaPaymentJobsTable;
+    const replacementLease = new Date(Date.now() + 600000);
+    await enqueuePayment(booking.reference, booking.id);
+    const fallback = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        if (String(input).includes("api.paystack.co/transaction/verify/")) {
+          await module.db
+            .update(jobs)
+            .set({ attempts: 2, lockedUntil: replacementLease })
+            .where(eq(jobs.reference, booking.reference));
+          return Response.json({ status: false }, { status: 503 });
+        }
+        return fallback(input, init);
+      }),
+    );
+    await processOtaPayments();
+    const job = await module.db.query.otaPaymentJobsTable.findFirst();
+    expect(job).toMatchObject({
+      attempts: 2,
+      lockedUntil: replacementLease,
+      lastError: null,
+    });
+  });
   it("restricts launch diagnostics to super admins and reports optional key storage", async () => {
     expect((await request("/admin/check", "admin", {})).status).toBe(403);
     const response = await request("/admin/check", "super", {});
@@ -1729,17 +2194,35 @@ describe("OTA authorization and payments", () => {
       key: "paystack_secret_key",
       value: "sk_live_test_fixture",
     });
-    const settings = await request("/admin/settings", "super", {
-      mode: "live", duffelLiveToken: "duffel_live_test_fixture", salesEnabled: true,
-    }, "PUT");
+    const settings = await request(
+      "/admin/settings",
+      "super",
+      {
+        mode: "live",
+        duffelLiveToken: "duffel_live_test_fixture",
+        salesEnabled: true,
+      },
+      "PUT",
+    );
     expect(settings.status).toBe(503);
     expect((await settings.json()).error).toContain("webhook signing secret");
-    await module.db.update(module.siteSettingsTable)
-      .set({ value: { mode: "live", flightsEnabled: true, salesEnabled: true, supportEmail: "help@example.test" } })
+    await module.db
+      .update(module.siteSettingsTable)
+      .set({
+        value: {
+          mode: "live",
+          flightsEnabled: true,
+          salesEnabled: true,
+          supportEmail: "help@example.test",
+        },
+      })
       .where(eq(module.siteSettingsTable.key, "ota_config"));
     const checkout = await request("/bookings", "user", {
-      kind: "flight", offerId: "off_test", expectedTotalKobo: 10000000,
-      acceptedTerms: true, contact: { email: "user@example.test", phone: "+2348012345678" },
+      kind: "flight",
+      offerId: "off_test",
+      expectedTotalKobo: 10000000,
+      acceptedTerms: true,
+      contact: { email: "user@example.test", phone: "+2348012345678" },
       travellers: [{}],
     });
     expect(checkout.status).toBe(503);
@@ -1914,7 +2397,11 @@ describe("OTA authorization and payments", () => {
       {},
     );
     expect((await confirmed.json()).booking.providerBookingId).toBe("bok_test");
-    const refreshed = await request(`/bookings/${booking.id}/refresh`, "user", {});
+    const refreshed = await request(
+      `/bookings/${booking.id}/refresh`,
+      "user",
+      {},
+    );
     expect((await refreshed.json()).booking.status).toBe("confirmed");
     const reconciled = await request(
       `/admin/bookings/${booking.id}/reconcile`,
@@ -1937,7 +2424,9 @@ describe("OTA authorization and payments", () => {
     booking = (await response.json()).booking;
 
     hotelQuotePayNow = false;
-    expect((await request(`/bookings/${booking.id}/pay`, "user", {})).status).toBe(409);
+    expect(
+      (await request(`/bookings/${booking.id}/pay`, "user", {})).status,
+    ).toBe(409);
     expect(fetch).not.toHaveBeenCalledWith(
       "https://api.paystack.co/transaction/initialize",
       expect.anything(),
@@ -1945,23 +2434,34 @@ describe("OTA authorization and payments", () => {
     hotelQuotePayNow = true;
 
     hotelBookingStatus = 202;
-    const complete = () => request(`/bookings/${booking.id}/complete`, "user", {});
-    expect((await (await complete()).json()).booking.status).toBe("requires_review");
+    const complete = () =>
+      request(`/bookings/${booking.id}/complete`, "user", {});
+    expect((await (await complete()).json()).booking.status).toBe(
+      "requires_review",
+    );
     const pending = await module.db.query.otaBookingsTable.findFirst();
     expect(pending?.providerBookingId).toBeNull();
     expect(pending?.providerRequestId).toBe("hotel-request");
     await complete();
     supplierSnapshotPatch = {
-      accommodation: { rooms: [{ rates: [{ total_amount: "101.00", total_currency: "GBP" }] }] },
+      accommodation: {
+        rooms: [{ rates: [{ total_amount: "101.00", total_currency: "GBP" }] }],
+      },
     };
-    const mismatch = await request(`/admin/bookings/${booking.id}/reconcile`, "super", { providerId: "bok_test" });
+    const mismatch = await request(
+      `/admin/bookings/${booking.id}/reconcile`,
+      "super",
+      { providerId: "bok_test" },
+    );
     expect(mismatch.status).toBe(409);
     supplierSnapshotPatch = {};
     await deliverDuffel("stays.booking.created", {
       booking_id: "bok_test",
       quote_id: "quo_test",
     });
-    expect((await module.db.query.otaBookingsTable.findFirst())?.status).toBe("confirmed");
+    expect((await module.db.query.otaBookingsTable.findFirst())?.status).toBe(
+      "confirmed",
+    );
     expect(supplierCalls).toBe(1);
   });
   it("rejects a stale displayed price and mismatched passenger identities before saving", async () => {
@@ -2138,7 +2638,9 @@ describe("OTA authorization and payments", () => {
     paystackReferenceMismatch = true;
     const response = await request(`/bookings/${booking.id}/pay`, "user", {});
     expect(response.status).toBe(502);
-    expect((await module.db.query.otaBookingsTable.findFirst())?.authorizationUrl).toBeNull();
+    expect(
+      (await module.db.query.otaBookingsTable.findFirst())?.authorizationUrl,
+    ).toBeNull();
     expect(supplierCalls).toBe(0);
   });
   it("serializes simultaneous payment redirect updates", async () => {

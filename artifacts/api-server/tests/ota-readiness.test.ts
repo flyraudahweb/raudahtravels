@@ -3,12 +3,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   execute: vi.fn(),
   config: vi.fn(),
+  bilalToken: vi.fn(),
   keys: vi.fn(),
   payment: vi.fn(),
   duffel: vi.fn(),
 }));
 vi.mock("@workspace/db", () => ({ db: { execute: mocks.execute } }));
-vi.mock("../src/services/ota/config", () => ({ getOtaConfig: mocks.config }));
+vi.mock("../src/services/ota/config", () => ({
+  getOtaConfig: mocks.config,
+  bilalTokenForMode: mocks.bilalToken,
+  bilalMode: (config: { mode: string }) => config.mode,
+  bilalFlightCheckoutReady: () => false,
+}));
 vi.mock("../src/services/ota/apiKeys", () => ({
   apiKeyStorageReady: mocks.keys,
 }));
@@ -26,6 +32,7 @@ beforeEach(() => {
   mocks.config.mockResolvedValue({
     mode: "test",
     flightsEnabled: true,
+    bilalFlightsEnabled: true,
     hotelsEnabled: false,
     salesEnabled: false,
     supportEmail: "",
@@ -33,6 +40,7 @@ beforeEach(() => {
     duffelToken: "private-provider-token",
   });
   mocks.keys.mockResolvedValue(true);
+  mocks.bilalToken.mockReturnValue("");
   mocks.payment.mockResolvedValue("private-payment-token");
   mocks.duffel.mockResolvedValue([]);
 });
@@ -44,6 +52,8 @@ describe("OTA launch diagnostics", () => {
     expect(result.database).toBe("passed");
     expect(result.apiKeys).toBe("passed");
     expect(result.flights).toBe("enabled");
+    expect(result.bilalsadasubSearch).toBe("missing test API key");
+    expect(result.bilalsadasubCheckout).toContain("unavailable");
     expect(result.hotels).toContain("disabled");
     expect(result.sales).toContain("disabled");
     expect(result.support).toContain("missing");
@@ -57,6 +67,15 @@ describe("OTA launch diagnostics", () => {
     expect(JSON.stringify(result)).not.toMatch(
       /private-provider-token|private-payment-token/,
     );
+  });
+  it("reports a configured live fare key without treating it as checkout readiness", async () => {
+    const config = await mocks.config();
+    mocks.config.mockResolvedValue({ ...config, mode: "live" });
+    mocks.bilalToken.mockReturnValue("private-bilal-token");
+    const result = await checkOtaReadiness();
+    expect(result.bilalsadasubSearch).toContain("configured for live mode");
+    expect(result.bilalsadasubCheckout).toContain("unavailable");
+    expect(JSON.stringify(result)).not.toContain("private-bilal-token");
   });
   it("distinguishes missing schema from a transient database connection failure", async () => {
     mocks.execute.mockRejectedValueOnce({ cause: { code: "42703" } });
