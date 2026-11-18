@@ -33,6 +33,8 @@ Provider references are the [Bilalsadasub flight index](https://docs.bilalsadasu
 
 On 17 November 2026, a read-only search in the Bilalsadasub dashboard returned live fares for Lagos–Abuja. The dashboard offers an API token and the booking documentation still provides no charge ceiling or explicit fare lock. This confirms supplier dashboard search only. The Raudah launch checks show Bilalsadasub search and checkout separately. A working key does not verify supplier booking fulfillment. No live booking or debit was tested.
 
+On 18 November 2026, migration 0014 was applied to the shared database and release `867e6bc` passed GitHub CI and deployed successfully to Railway. The operator's displayed API token was saved encrypted, `bilalMode` was set to `live`, and primary `mode` remains `test` with primary sales off. The public contact email was reused for OTA support. The saved supplier token returned HTTP 403 with `Unauthorized. Access denied.` for `GET /api/flight/airports?keyword=Lagos`, including the provider's own documentation test with the documented Token header. Bilalsadasub sales remain off pending a working flight API credential. No paid supplier test was performed. Repeat the read-only credential check before activation.
+
 ## Add a search adapter
 
 1. Add the supplier to `flightSuppliers.ts`. Implement `isEnabled`, `covers`, `search` and `places`. `isEnabled` combines the saved preference and credentials for the active mode. `covers` limits requests to supported airports, journey types, cabins and passengers. Keep supplier-specific transport and schema validation together. Use the provider's fixed HTTPS hosts, a finite request timeout and safe local errors. Prevent redirects from carrying credentials.
