@@ -1,5 +1,13 @@
 # EHajj integration context
 
+## Live product and roster check on 17 November 2026
+
+The provider's configured HTTPS base is `https://ehadj.2ipreprod.com/api_mobile/`. An authenticated check with the existing agency key returned one active Umrah 2027 product from `getAllProduitsAgence` and an empty list from `getPelerinsByProduit` for that product. Both responses reported success. The supplied document revisions and repository history use these same list endpoints. Older editions or a different agency catalogue require provider confirmation before adding another source. The Admin list now shows the product count, opens the sole product automatically, and paginates the roster.
+
+The newly attached copies, `API_Documentation_eHadj_Pilgrims_Products_EN (4).docx` and `API_Documentation_eHadj_Pilgrims_Products_EN-1 (2).docx`, match the hashes of the previously indexed nine- and twelve-endpoint versions. All 12 unique endpoints map to the existing server client. The four agency-key-only GETs returned successful live responses. The two bank lookups each returned zero rows. The seven detail GETs require an agency JWT and a pilgrim ID from an accessible product roster. The registration POST creates both a pilgrim and an initial payment, so live verification requires a provider-approved test fixture.
+
+The product endpoint returns active agency product IDs. Registration takes a separate package ID, and no endpoint in these documents lists package IDs for a product or provides a price catalogue. Ask the provider to confirm which environment and agency key cover the expected records, and how staff can obtain active or historical editions, registration package IDs, and the JWT for detailed reads.
+
 ## Booking and document workflow follow-up
 
 The admin overview now explains the five steps requested in the endpoint screenshot and shows the provider setup state before loading packages or registration tools. The existing documented standalone registration remains available after activation. The screenshot supplies intended endpoint names but does not define the provider payloads, amount and package mapping, idempotency, signed webhooks, or authorized file download contract. Do not assume that the screenshot's routes are live.
