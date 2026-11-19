@@ -59,7 +59,7 @@ export default function PricingPreview({
               }}
             >
               <option value="flight">Api Provider flight</option>
-              <option value="bilalsadasub">Bilalsadasub flight estimate</option>
+              <option value="bilalsadasub">B flight estimate</option>
               <option value="hotel">Hotel stay</option>
             </select>
           </label>

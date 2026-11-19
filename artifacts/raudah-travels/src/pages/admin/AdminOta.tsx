@@ -25,10 +25,10 @@ import { Link, useSearch } from "wouter";
 
 const diagnosticLabels: Record<string, string> = {
   duffel: "Api Provider",
-  bilalsadasubSearch: "Bilalsadasub fare search",
-  bilalsadasubCheckout: "Bilalsadasub checkout",
-  nuiteeHotels: "Nuitee hotel search",
-  nuiteeCheckout: "Nuitee hotel checkout",
+  bilalsadasubSearch: "B fare search",
+  bilalsadasubCheckout: "B checkout",
+  nuiteeHotels: "N hotel search",
+  nuiteeCheckout: "N hotel checkout",
 };
 
 export default function AdminOta() {
@@ -124,7 +124,7 @@ export default function AdminOta() {
       setNotice(typeof result === "string" ? result : message);
       await qc.invalidateQueries({ queryKey: ["ota"] });
     } catch (e: any) {
-      setError(providerDisplay(e.message));
+      setError(providerDisplay(e.message, tab === "settings"));
     } finally {
       setBusy(false);
     }
@@ -274,6 +274,7 @@ export default function AdminOta() {
               {[
                 ["ota-distribution", "Distribution"],
                 ["ota-flight-suppliers", "Flight suppliers"],
+                ["ota-nuitee", "N hotels"],
                 ["ota-duffel", "Api Provider & webhooks"],
                 ["ota-pricing", "Pricing"],
                 ["ota-support", "Support"],
@@ -434,7 +435,7 @@ export default function AdminOta() {
                 <div className="space-y-3">
                   {[
                     ["flightMarkupPercent", "Api Provider flight markup (%)"],
-                    ["bilalMarkupPercent", "Bilalsadasub flight markup (%)"],
+                    ["bilalMarkupPercent", "B flight markup (%)"],
                     ["hotelMarkupPercent", "Hotel markup (%)"],
                     ["serviceFeeNgn", "Service fee (NGN)"],
                   ].map(([key, label]) => (
@@ -506,7 +507,7 @@ export default function AdminOta() {
                     return Object.entries(data.results)
                       .map(
                         ([k, v]) =>
-                          `${diagnosticLabels[k] ?? k}: ${providerDisplay(String(v))}`,
+                          `${diagnosticLabels[k] ?? k}: ${providerDisplay(String(v), true)}`,
                       )
                       .join(" · ");
                   }, "Connection check finished. See diagnostics below.")

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Building2 } from "lucide-react";
 import { ota, travelButton, travelInput } from "@/lib/ota";
+import { providerDisplay } from "@/lib/providerDisplay";
 
 export default function NuiteeSettings({
   settings,
@@ -19,11 +20,13 @@ export default function NuiteeSettings({
     try {
       await ota("/admin/suppliers/nuitee/check", { mode });
       setResult(
-        `Connected to Nuitee ${mode === "live" ? "production" : "sandbox"} hotel search.`,
+        `Connected to N ${mode === "live" ? "production" : "sandbox"} hotel search.`,
       );
     } catch (error) {
       setResult(
-        error instanceof Error ? error.message : "Connection check failed.",
+        error instanceof Error
+          ? providerDisplay(error.message, true)
+          : "Connection check failed.",
       );
     } finally {
       setChecking(false);
@@ -37,10 +40,10 @@ export default function NuiteeSettings({
       <div className="flex items-start gap-3">
         <Building2 className="mt-1 text-indigo-700" size={21} />
         <div>
-          <h2 className="text-lg font-bold">Nuitee hotel supplier</h2>
+          <h2 className="text-lg font-bold">N</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Use Nuitee hotels on the website. Paystack collects from the guest
-            and Nuitee books against the card on your Connect account.
+            Hotel supplier. Paystack collects from the guest, and N books
+            against the card on your Connect account.
           </p>
         </div>
       </div>
@@ -60,7 +63,7 @@ export default function NuiteeSettings({
           </select>
         </label>
         <label className="text-sm font-semibold">
-          Nuitee hotel markup (%)
+          N hotel markup (%)
           <input
             type="number"
             min={0}
@@ -75,16 +78,24 @@ export default function NuiteeSettings({
         </label>
         {(["Test", "Live"] as const).map((environment) => {
           const field = `nuitee${environment}Token`;
+          const saved = settings[`${field}Set`];
           return (
             <label key={field} className="text-sm font-semibold">
               {environment === "Test" ? "Sandbox" : "Production"} API key
+              <span className="ml-2 text-xs font-normal text-slate-600">
+                {settings[field]
+                  ? "Unsaved key"
+                  : saved
+                    ? "Key saved"
+                    : "No key saved"}
+              </span>
               <input
                 type="password"
                 autoComplete="new-password"
                 className={`${travelInput} mt-1`}
                 value={settings[field]}
                 placeholder={
-                  settings[`${field}Set`]
+                  saved
                     ? "Saved · enter a value to replace"
                     : "From Connect → API Keys"
                 }
@@ -110,7 +121,7 @@ export default function NuiteeSettings({
               )
             }
           />
-          Use Nuitee for website hotel search
+          Use N for website hotel search
         </label>
         <label className="flex items-center gap-2">
           <input
@@ -119,7 +130,7 @@ export default function NuiteeSettings({
             checked={settings.nuiteeSalesEnabled}
             onChange={(e) => update({ nuiteeSalesEnabled: e.target.checked })}
           />
-          Accept Nuitee hotel payments
+          Accept N hotel payments
         </label>
       </div>
       <div className="flex flex-wrap items-center gap-3">

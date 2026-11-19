@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Globe2, MapPin, Plug } from "lucide-react";
 import { ota, travelInput } from "@/lib/ota";
+import { providerDisplay } from "@/lib/providerDisplay";
 
 type SupplierSettings = {
   mode: "test" | "live";
@@ -46,7 +47,9 @@ export default function FlightSupplierSettings({
       setResult({
         mode,
         message:
-          error instanceof Error ? error.message : "Connection check failed.",
+          error instanceof Error
+            ? providerDisplay(error.message, true)
+            : "Connection check failed.",
       });
     } finally {
       setChecking(false);
@@ -96,7 +99,7 @@ export default function FlightSupplierSettings({
               aria-hidden="true"
             />
             <div>
-              <h3 className="font-semibold">Bilalsadasub</h3>
+              <h3 className="font-semibold">B</h3>
               <p className="mt-1 text-xs font-semibold text-indigo-800">
                 Fare search and enquiries
               </p>
@@ -118,7 +121,7 @@ export default function FlightSupplierSettings({
             Use domestic fares when configured
           </label>
           <label className="block text-sm font-medium">
-            Bilalsadasub mode
+            B mode
             <select
               className={`${travelInput} mt-1`}
               value={settings.bilalMode}
@@ -143,7 +146,7 @@ export default function FlightSupplierSettings({
                 update({ bilalSalesEnabled: event.target.checked })
               }
             />
-            Enable Bilalsadasub online sales
+            Enable B online sales
           </label>
           {settings.bilalFlightsEnabled && !hasSavedKey && (
             <p className="text-xs text-slate-600">
