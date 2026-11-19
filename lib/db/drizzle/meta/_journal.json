@@ -92,6 +92,13 @@
       "when": 1795046400000,
       "tag": "0015_ota_nuitee_hotels",
       "breakpoints": false
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795046401000,
+      "tag": "0016_ota_nuitee_flights",
+      "breakpoints": false
     }
   ]
 }

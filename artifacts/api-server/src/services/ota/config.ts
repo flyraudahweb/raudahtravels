@@ -51,6 +51,10 @@ export const configSchema = z
     hotelsEnabled: z.boolean().default(false),
     nuiteeHotelsEnabled: z.boolean().default(false),
     nuiteeSalesEnabled: z.boolean().default(false),
+    nuiteeFlightsEnabled: z.boolean().default(false),
+    nuiteeFlightSalesEnabled: z.boolean().default(false),
+    nuiteeFlightMode: z.enum(["test", "live"]).default("test"),
+    nuiteeFlightMarkupPercent: z.number().min(0).max(50).default(10),
     nuiteeMode: z.enum(["test", "live"]).default("test"),
     nuiteeTestToken: z.string().trim().max(512).default(""),
     nuiteeLiveToken: z.string().trim().max(512).default(""),
@@ -146,6 +150,18 @@ export function nuiteeHotelSearchReady(c: OtaConfig) {
 }
 export function nuiteeHotelCheckoutReady(c: OtaConfig) {
   return c.nuiteeSalesEnabled && nuiteeHotelSearchReady(c);
+}
+export function nuiteeFlightSearchReady(c: OtaConfig) {
+  return (
+    c.nuiteeFlightsEnabled &&
+    !!nuiteeTokenForMode(c, c.nuiteeFlightMode) &&
+    /^[a-f0-9]{64}$/i.test(process.env.SETTINGS_ENCRYPTION_KEY || "")
+  );
+}
+export function nuiteeFlightCheckoutReady(c: OtaConfig) {
+  return (
+    c.flightsEnabled && c.nuiteeFlightSalesEnabled && nuiteeFlightSearchReady(c)
+  );
 }
 function crypt(value: string, decrypt = false) {
   if (decrypt) {
@@ -265,8 +281,12 @@ export async function saveOtaConfig(patch: unknown, actor: string) {
     );
   if (
     next.flightsEnabled &&
+    (next.primaryFlightsEnabled ||
+      next.bilalFlightsEnabled ||
+      next.nuiteeFlightsEnabled) &&
     !primaryFlightSearchReady(next) &&
-    !bilalFlightSearchReady(next)
+    !bilalFlightSearchReady(next) &&
+    !nuiteeFlightSearchReady(next)
   )
     throw new OtaError(
       "Enable a flight supplier with a key for the selected mode, or turn off flight search",
@@ -274,6 +294,7 @@ export async function saveOtaConfig(patch: unknown, actor: string) {
     );
   if (
     next.salesEnabled &&
+    !current.salesEnabled &&
     !primaryFlightSearchReady(next) &&
     !next.hotelsEnabled
   )
@@ -282,9 +303,11 @@ export async function saveOtaConfig(patch: unknown, actor: string) {
       400,
     );
   if (next.rates.NGN !== 1) throw new OtaError("NGN rate must equal 1", 400);
-  if (next.salesEnabled && (!next.supportEmail || !otaAppOrigin()))
+  const primarySalesActive =
+    next.salesEnabled && (primaryFlightSearchReady(next) || next.hotelsEnabled);
+  if (primarySalesActive && (!next.supportEmail || !otaAppOrigin()))
     throw new OtaError("Sales require a support email and HTTPS APP_URL", 400);
-  if (next.salesEnabled) {
+  if (primarySalesActive) {
     const paymentSetting = await db.query.siteSettingsTable.findFirst({
       where: eq(siteSettingsTable.key, "paystack_secret_key"),
     });
@@ -325,6 +348,34 @@ export async function saveOtaConfig(patch: unknown, actor: string) {
       "Nuitee hotel search requires a matching API key and settings encryption.",
       400,
     );
+  if (next.nuiteeFlightsEnabled && !nuiteeFlightSearchReady(next))
+    throw new OtaError(
+      "N flight search requires a matching API key and settings encryption.",
+      400,
+    );
+  if (next.nuiteeFlightSalesEnabled) {
+    if (
+      !nuiteeFlightCheckoutReady(next) ||
+      !next.supportEmail ||
+      !otaAppOrigin()
+    )
+      throw new OtaError(
+        "N flight sales require flight search, a support email and HTTPS APP_URL.",
+        400,
+      );
+    const { paystackKey } = await import("./booking");
+    await paystackKey(next.nuiteeFlightMode, "nuitee");
+  }
+  if (
+    next.nuiteeFlightsEnabled &&
+    (!current.nuiteeFlightsEnabled ||
+      next.nuiteeFlightMode !== current.nuiteeFlightMode ||
+      nuiteeTokenForMode(next, next.nuiteeFlightMode) !==
+        nuiteeTokenForMode(current, next.nuiteeFlightMode))
+  ) {
+    const { checkNuiteeFlights } = await import("./nuiteeFlights");
+    await checkNuiteeFlights(next, next.nuiteeFlightMode);
+  }
   if (next.nuiteeSalesEnabled) {
     if (
       !nuiteeHotelCheckoutReady(next) ||

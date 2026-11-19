@@ -219,6 +219,7 @@ beforeAll(async () => {
   );
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0014_ota_booking_supplier.sql"), "utf8"));
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0015_ota_nuitee_hotels.sql"), "utf8"));
+  await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0016_ota_nuitee_flights.sql"), "utf8"));
   await module.db.insert(module.profilesTable).values([
     {
       id: "user",

@@ -14,6 +14,12 @@ type SupplierSettings = {
   bilalLiveToken: string;
   bilalTestTokenSet: boolean;
   bilalLiveTokenSet: boolean;
+  nuiteeFlightsEnabled: boolean;
+  nuiteeFlightSalesEnabled: boolean;
+  nuiteeFlightMode: "test" | "live";
+  nuiteeFlightMarkupPercent: number;
+  nuiteeTestTokenSet: boolean;
+  nuiteeLiveTokenSet: boolean;
 };
 
 export default function FlightSupplierSettings({
@@ -24,6 +30,8 @@ export default function FlightSupplierSettings({
   update: (patch: Partial<SupplierSettings>) => void;
 }) {
   const [checking, setChecking] = useState(false);
+  const [checkingN, setCheckingN] = useState(false);
+  const [nResult, setNResult] = useState<{ mode: string; message: string }>();
   const [result, setResult] = useState<{
     mode: SupplierSettings["mode"];
     message: string;
@@ -34,6 +42,32 @@ export default function FlightSupplierSettings({
   const hasSavedKey = sandbox
     ? settings.bilalTestTokenSet
     : settings.bilalLiveTokenSet;
+  const nMode = settings.nuiteeFlightMode;
+  const nKeySaved =
+    nMode === "live"
+      ? settings.nuiteeLiveTokenSet
+      : settings.nuiteeTestTokenSet;
+  async function checkN() {
+    setCheckingN(true);
+    setNResult(undefined);
+    try {
+      await ota("/admin/suppliers/nuitee/flights/check", { mode: nMode });
+      setNResult({
+        mode: nMode,
+        message: "N accepted a flight search in this environment.",
+      });
+    } catch (error) {
+      setNResult({
+        mode: nMode,
+        message:
+          error instanceof Error
+            ? providerDisplay(error.message, true)
+            : "Connection check failed.",
+      });
+    } finally {
+      setCheckingN(false);
+    }
+  }
   async function check() {
     setChecking(true);
     setResult(undefined);
@@ -61,7 +95,7 @@ export default function FlightSupplierSettings({
       className="scroll-mt-24 space-y-4 rounded-2xl border bg-white p-5 sm:p-6"
     >
       <h2 className="text-lg font-bold text-[#1C1F66]">Flight suppliers</h2>
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         <article className="space-y-4 rounded-xl border border-slate-200 p-4">
           <div className="flex items-start gap-3">
             <Globe2
@@ -115,7 +149,11 @@ export default function FlightSupplierSettings({
               className="mt-0.5 accent-primary"
               checked={settings.bilalFlightsEnabled}
               onChange={(event) =>
-                update({ bilalFlightsEnabled: event.target.checked })
+                update(
+                  event.target.checked
+                    ? { bilalFlightsEnabled: true }
+                    : { bilalFlightsEnabled: false, bilalSalesEnabled: false },
+                )
               }
             />
             Use domestic fares when configured
@@ -142,6 +180,7 @@ export default function FlightSupplierSettings({
               type="checkbox"
               className="mt-0.5 accent-primary"
               checked={settings.bilalSalesEnabled}
+              disabled={!settings.bilalFlightsEnabled}
               onChange={(event) =>
                 update({ bilalSalesEnabled: event.target.checked })
               }
@@ -212,6 +251,95 @@ export default function FlightSupplierSettings({
           {result?.mode === mode && (
             <p role="status" className="text-sm text-slate-700">
               {result.message}
+            </p>
+          )}
+        </article>
+        <article className="space-y-4 rounded-xl border border-slate-200 p-4">
+          <div>
+            <h3 className="font-semibold">N</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              Domestic and international flights. Its mode and sales controls
+              are independent of hotels.
+            </p>
+            <a
+              href="#ota-nuitee"
+              className="mt-1 inline-block text-sm font-medium text-indigo-700"
+            >
+              Manage N API keys
+            </a>
+          </div>
+          <label className="block text-sm font-medium">
+            N flight mode
+            <select
+              className={`${travelInput} mt-1`}
+              value={nMode}
+              onChange={(e) => {
+                setNResult(undefined);
+                update({
+                  nuiteeFlightMode: e.target
+                    .value as SupplierSettings["nuiteeFlightMode"],
+                  nuiteeFlightSalesEnabled: false,
+                });
+              }}
+            >
+              <option value="test">Sandbox</option>
+              <option value="live">Production</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-sm font-semibold">
+            <input
+              type="checkbox"
+              checked={settings.nuiteeFlightsEnabled}
+              onChange={(e) =>
+                update(
+                  e.target.checked
+                    ? { nuiteeFlightsEnabled: true }
+                    : {
+                        nuiteeFlightsEnabled: false,
+                        nuiteeFlightSalesEnabled: false,
+                      },
+                )
+              }
+            />
+            Enable N flight search
+          </label>
+          <label className="flex items-center gap-2 text-sm font-semibold">
+            <input
+              type="checkbox"
+              disabled={!settings.nuiteeFlightsEnabled}
+              checked={settings.nuiteeFlightSalesEnabled}
+              onChange={(e) =>
+                update({ nuiteeFlightSalesEnabled: e.target.checked })
+              }
+            />
+            Enable N online flight sales
+          </label>
+          <label className="block text-sm font-medium">
+            N flight markup (%)
+            <input
+              type="number"
+              min={0}
+              max={50}
+              step="0.01"
+              className={`${travelInput} mt-1`}
+              value={settings.nuiteeFlightMarkupPercent}
+              onChange={(e) =>
+                update({ nuiteeFlightMarkupPercent: Number(e.target.value) })
+              }
+            />
+          </label>
+          <button
+            type="button"
+            disabled={!nKeySaved || checkingN}
+            onClick={() => void checkN()}
+            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-indigo-200 bg-white px-3 text-sm font-semibold text-[#2D3199] disabled:opacity-50"
+          >
+            <Plug size={16} aria-hidden="true" />
+            {checkingN ? "Checking…" : "Check N flight connection"}
+          </button>
+          {nResult?.mode === nMode && (
+            <p role="status" className="text-sm text-slate-700">
+              {nResult.message}
             </p>
           )}
         </article>

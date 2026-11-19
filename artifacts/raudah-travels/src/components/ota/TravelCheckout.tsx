@@ -100,11 +100,14 @@ export default function TravelCheckout({
     data?.checkoutKey === checkoutKey ? data?.offer || data?.quote : null;
   const domestic = kind === "flight" && offerId.startsWith("bilal_");
   const nuitee = kind === "hotel" && offerId.startsWith("nqt_");
-  const salesEnabled = nuitee
-    ? config?.nuiteeCheckoutEnabled
-    : domestic
-      ? config?.bilalCheckoutEnabled
-      : config?.salesEnabled;
+  const nFlight = kind === "flight" && offerId.startsWith("nfa_");
+  const salesEnabled = nFlight
+    ? config?.nuiteeFlightCheckoutEnabled
+    : nuitee
+      ? config?.nuiteeCheckoutEnabled
+      : domestic
+        ? config?.bilalCheckoutEnabled
+        : config?.salesEnabled;
   const lastTravelDate = (offer?.slices || [])
     .flatMap((slice: any) =>
       (slice.segments || []).map((segment: any) =>
@@ -115,7 +118,7 @@ export default function TravelCheckout({
     .at(-1);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!offer || submitting.current) return;
+    if (!offer || !salesEnabled || submitting.current) return;
     const epoch = requestEpoch.current;
     submitting.current = true;
     setError("");
@@ -124,6 +127,7 @@ export default function TravelCheckout({
     const contact = {
       email: String(form.get("email")),
       phone: String(form.get("phone")),
+      ...(nFlight ? { phoneCountryCode: String(form.get("callingCode")) } : {}),
       specialRequests: String(form.get("specialRequests") || ""),
     };
     const travellers = (
@@ -139,6 +143,13 @@ export default function TravelCheckout({
             title: String(form.get(`title_${i}`)),
             email: contact.email,
             phone_number: contact.phone,
+            ...(nFlight
+              ? {
+                  nationality: String(
+                    form.get(`nationality_${i}`),
+                  ).toUpperCase(),
+                }
+              : {}),
             ...(form.get(`passport_${i}`)
               ? {
                   identity_documents: [
@@ -216,7 +227,9 @@ export default function TravelCheckout({
     <TravelShell>
       <BookingSteps step={1} />
       <h1 className="mb-7 text-3xl font-black text-slate-900">
-        Review your trip and add travellers
+        {nFlight && !salesEnabled
+          ? "Review your flight"
+          : "Review your trip and add travellers"}
       </h1>
       {error && <ErrorMessage message={error} />}
       {!offer && !error ? (
@@ -224,7 +237,28 @@ export default function TravelCheckout({
       ) : (
         offer && (
           <div className="grid items-start gap-6 lg:grid-cols-[1fr_360px]">
-            <form onSubmit={submit} className="space-y-5">
+            {nFlight && !salesEnabled && (
+              <section className="space-y-3 rounded-2xl border bg-white p-6">
+                <h2 className="text-lg font-bold">Booking assistance</h2>
+                <p className="text-sm text-slate-600">
+                  This fare is available to review. Contact our travel team for
+                  help booking it.
+                </p>
+                {config?.supportEmail && (
+                  <a
+                    className={travelButton}
+                    href={`mailto:${config.supportEmail}`}
+                  >
+                    Contact travel support
+                  </a>
+                )}
+              </section>
+            )}
+            <form
+              onSubmit={submit}
+              hidden={nFlight && !salesEnabled}
+              className="space-y-5"
+            >
               <section className="rounded-2xl border bg-white p-6">
                 <h2 className="mb-4 text-xl font-bold">Contact details</h2>
                 <p className="mb-4 text-sm text-slate-500">
@@ -254,6 +288,19 @@ export default function TravelCheckout({
                       className={`${travelInput} mt-1`}
                     />
                   </label>
+                  {nFlight && (
+                    <label className="text-sm">
+                      Phone country calling code
+                      <input
+                        name="callingCode"
+                        inputMode="numeric"
+                        defaultValue="234"
+                        pattern="[1-9][0-9]{0,2}"
+                        required
+                        className={`${travelInput} mt-1`}
+                      />
+                    </label>
+                  )}
                 </div>
               </section>
               {(kind === "flight" ? offer.passengers : offer.guests || []).map(
@@ -324,7 +371,7 @@ export default function TravelCheckout({
                               required
                               className={`${travelInput} mt-1`}
                             >
-                              {(domestic
+                              {(domestic || nFlight
                                 ? ["mr", "ms", "mrs", "miss"]
                                 : ["mr", "ms", "mrs", "miss", "dr"]
                               ).map((t) => (
@@ -356,6 +403,19 @@ export default function TravelCheckout({
                               className={`${travelInput} mt-1`}
                             />
                           </label>
+                          {nFlight && (
+                            <label className="text-sm">
+                              Nationality (2 letters)
+                              <input
+                                name={`nationality_${i}`}
+                                placeholder="NG"
+                                pattern="[a-zA-Z]{2}"
+                                maxLength={2}
+                                required
+                                className={`${travelInput} mt-1 uppercase`}
+                              />
+                            </label>
+                          )}
                           <label className="text-sm">
                             Issuing country (2 letters)
                             <input
@@ -522,7 +582,7 @@ export default function TravelCheckout({
                     <dd>{money(data.pricing.totalKobo)}</dd>
                   </div>
                 </dl>
-                {(domestic || nuitee ? offer.mode : config?.mode) ===
+                {(domestic || nuitee || nFlight ? offer.mode : config?.mode) ===
                   "test" && (
                   <p className="mt-4 rounded-lg bg-amber-100 p-3 text-xs text-amber-900">
                     Sandbox booking · test payments only

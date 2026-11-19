@@ -27,6 +27,7 @@ import {
   bilalFlightCheckoutReady,
   nuiteeHotelSearchReady,
   nuiteeHotelCheckoutReady,
+  nuiteeFlightCheckoutReady,
 } from "../services/ota/config";
 import {
   duffelRequest,
@@ -90,6 +91,7 @@ import {
   refreshDomesticQuote,
   searchFlightPlaces,
   searchFlights,
+  flightSearchReady,
 } from "../services/ota/flightSuppliers";
 import { getBilalTicket } from "../services/ota/bilalOrders";
 import { listDomesticFareIncreases } from "../services/ota/domesticFareChecks";
@@ -101,6 +103,13 @@ import {
   readNuiteeQuote,
   verifyNuiteePrebook,
 } from "../services/ota/nuitee";
+import {
+  NUITEE_FLIGHT_PREFIX,
+  checkNuiteeFlights,
+  verifyNuiteeFlight,
+  prebookNuiteeFlight,
+  verifyNuiteeFlightPrebook,
+} from "../services/ota/nuiteeFlights";
 
 // The existing mobile v1 contract exposes one supplier environment. Keep
 // mixed-mode hotel inventory on the web until the mobile contract models it.
@@ -241,9 +250,9 @@ router.get(
       mode: c.mode,
       currency: "NGN",
       features: {
-        flightSearch: c.flightsEnabled,
+        flightSearch: flightSearchReady(c),
         hotelSearch: c.hotelsEnabled,
-        onlineCheckout: c.salesEnabled,
+        onlineCheckout: c.salesEnabled || nuiteeFlightCheckoutReady(c),
         bookingHistory: true,
         bookingUpdates: true,
         supportRequests: true,
@@ -376,6 +385,10 @@ const future = date.refine(
 const contactSchema = z.object({
   email: z.string().email().max(254),
   phone: z.string().regex(/^\+[1-9]\d{6,14}$/),
+  phoneCountryCode: z
+    .string()
+    .regex(/^[1-9]\d{0,2}$/)
+    .optional(),
   specialRequests: z.string().max(1000).optional(),
 });
 const name = z.string().trim().min(1).max(100);
@@ -408,13 +421,16 @@ const passengerSchema = guestSchema.extend({
     .max(1)
     .optional(),
 });
+const nPassengerSchema = passengerSchema.extend({
+  nationality: z.string().regex(/^[A-Z]{2}$/),
+});
 
 router.get(
   "/ota/config",
   endpoint(async (req, res) => {
     const c = await getOtaConfig();
     res.json({
-      flightsEnabled: c.flightsEnabled,
+      flightsEnabled: flightSearchReady(c),
       hotelsEnabled:
         c.hotelsEnabled || (webHotelChannel(req) && nuiteeHotelSearchReady(c)),
       ...(webHotelChannel(req)
@@ -425,6 +441,7 @@ router.get(
         : {}),
       salesEnabled: c.salesEnabled,
       bilalCheckoutEnabled: bilalFlightCheckoutReady(c),
+      nuiteeFlightCheckoutEnabled: nuiteeFlightCheckoutReady(c),
       bilalMode: bilalMode(c),
       mode: c.mode,
       supportEmail: c.supportEmail,
@@ -483,6 +500,11 @@ router.get(
   endpoint(async (req, res) => {
     const c = await getOtaConfig();
     const offerId = String(req.params.id);
+    if (offerId.startsWith(NUITEE_FLIGHT_PREFIX)) {
+      const { offer, pricing } = await verifyNuiteeFlight(c, offerId);
+      res.json({ offer, pricing });
+      return;
+    }
     if (
       offerId.startsWith("bilal_") &&
       !/^\/api\/ota\/v1\//i.test(req.originalUrl)
@@ -680,22 +702,33 @@ router.post(
       input.kind === "hotel" &&
       webHotelChannel(req) &&
       input.offerId.startsWith("nqt_");
+    const nFlight =
+      input.kind === "flight" && input.offerId.startsWith(NUITEE_FLIGHT_PREFIX);
     if (
-      nuitee
-        ? !nuiteeHotelCheckoutReady(c)
-        : domestic
-          ? !bilalFlightCheckoutReady(c)
-          : !c.salesEnabled ||
-            !(input.kind === "flight"
-              ? c.flightsEnabled && c.primaryFlightsEnabled
-              : c.hotelsEnabled)
+      nFlight
+        ? !nuiteeFlightCheckoutReady(c)
+        : nuitee
+          ? !nuiteeHotelCheckoutReady(c)
+          : domestic
+            ? !bilalFlightCheckoutReady(c)
+            : !c.salesEnabled ||
+              !(input.kind === "flight"
+                ? c.flightsEnabled && c.primaryFlightsEnabled
+                : c.hotelsEnabled)
     )
       throw new OtaError(
         "Online booking is not enabled. Please contact support.",
         503,
       );
-    const mode = nuitee ? c.nuiteeMode : domestic ? bilalMode(c) : c.mode;
-    const supplier = nuitee ? "nuitee" : domestic ? "bilalsadasub" : "duffel";
+    const mode = nFlight
+      ? c.nuiteeFlightMode
+      : nuitee
+        ? c.nuiteeMode
+        : domestic
+          ? bilalMode(c)
+          : c.mode;
+    const supplier =
+      nFlight || nuitee ? "nuitee" : domestic ? "bilalsadasub" : "duffel";
     await paystackKey(mode, supplier);
     if (supplier === "duffel") requireLiveWebhook(c);
     if (!otaAppOrigin())
@@ -706,11 +739,16 @@ router.post(
     const nuiteeCheckout = nuitee
       ? await readNuiteeQuote(c, input.offerId, userId)
       : null;
-    const offerId =
+    const nFlightQuote = nFlight
+      ? await verifyNuiteeFlight(c, input.offerId)
+      : null;
+    let offerId =
+      nFlightQuote?.selection.offerId ??
       nuiteeCheckout?.checkout.prebookId ??
       domesticCheckout?.quote.fare.supplierId ??
       id(input.offerId, input.kind === "flight" ? "off" : "quo");
     const offer =
+      nFlightQuote?.offer ??
       nuiteeCheckout?.quote ??
       domesticCheckout?.offer ??
       (await duffelRequest(
@@ -722,7 +760,9 @@ router.post(
     available(offer);
     let travellers: any[];
     if (input.kind === "flight") {
-      travellers = z.array(passengerSchema).parse(input.travellers);
+      travellers = z
+        .array(nFlight ? nPassengerSchema : passengerSchema)
+        .parse(input.travellers);
       const required = offer.passengers || [];
       if (
         travellers.length !== required.length ||
@@ -796,6 +836,7 @@ router.post(
       if (!nuitee) assertHotelQuote(offer);
     }
     const pricing =
+      nFlightQuote?.pricing ??
       nuiteeCheckout?.pricing ??
       domesticCheckout?.pricing ??
       price(c, input.kind, offer.total_amount, offer.total_currency);
@@ -803,6 +844,13 @@ router.post(
       throw new OtaError(
         "The price has changed. Refresh the offer and review the new total before paying.",
         409,
+      );
+    if (nFlightQuote)
+      offerId = await prebookNuiteeFlight(
+        c,
+        nFlightQuote,
+        input.contact,
+        travellers,
       );
     const bookingId = randomUUID(),
       reference = `OTA-${randomUUID()}`;
@@ -820,28 +868,38 @@ router.post(
         supplierCurrency: offer.total_currency,
         amountKobo: pricing.totalKobo,
         pricing,
-        offer: nuiteeCheckout
+        offer: nFlightQuote
           ? {
               ...offer,
               id: undefined,
-              nuiteeStay: {
-                mode,
-                hotelId: nuiteeCheckout.checkout.hotelId,
-                checkIn: nuiteeCheckout.checkout.checkIn,
-                checkOut: nuiteeCheckout.checkout.checkOut,
-                rooms: nuiteeCheckout.checkout.rooms,
-                termsHash: nuiteeCheckout.checkout.termsHash,
-              },
+              nuiteeFlightJourneyKey: nFlightQuote.selection.journeyKey,
             }
-          : domesticCheckout
-            ? { ...offer, id: undefined, domesticQuote: domesticCheckout.quote }
-            : offer,
+          : nuiteeCheckout
+            ? {
+                ...offer,
+                id: undefined,
+                nuiteeStay: {
+                  mode,
+                  hotelId: nuiteeCheckout.checkout.hotelId,
+                  checkIn: nuiteeCheckout.checkout.checkIn,
+                  checkOut: nuiteeCheckout.checkout.checkOut,
+                  rooms: nuiteeCheckout.checkout.rooms,
+                  termsHash: nuiteeCheckout.checkout.termsHash,
+                },
+              }
+            : domesticCheckout
+              ? {
+                  ...offer,
+                  id: undefined,
+                  domesticQuote: domesticCheckout.quote,
+                }
+              : offer,
         travellers,
         contact: input.contact,
         expiresAt,
       });
       const [saved] = await (
-        nuitee ? insert.onConflictDoNothing() : insert
+        supplier === "nuitee" ? insert.onConflictDoNothing() : insert
       ).returning();
       if (!saved) {
         const existing = await tx.query.otaBookingsTable.findFirst({
@@ -884,12 +942,15 @@ router.post(
       c = await getOtaConfig();
     const domestic = row.supplier === "bilalsadasub";
     const nuitee = row.supplier === "nuitee";
+    const nFlight = nuitee && row.kind === "flight";
     if (
-      nuitee
-        ? !nuiteeHotelCheckoutReady(c) || c.nuiteeMode !== row.mode
-        : domestic
-          ? !bilalFlightCheckoutReady(c) || bilalMode(c) !== row.mode
-          : !c.salesEnabled || c.mode !== row.mode
+      nFlight
+        ? !nuiteeFlightCheckoutReady(c) || c.nuiteeFlightMode !== row.mode
+        : nuitee
+          ? !nuiteeHotelCheckoutReady(c) || c.nuiteeMode !== row.mode
+          : domestic
+            ? !bilalFlightCheckoutReady(c) || bilalMode(c) !== row.mode
+            : !c.salesEnabled || c.mode !== row.mode
     )
       throw new OtaError("Online payments are unavailable", 503);
     if (row.supplier === "duffel") requireLiveWebhook(c);
@@ -909,7 +970,9 @@ router.post(
     const appOrigin = otaAppOrigin();
     if (!appOrigin)
       throw new OtaError("Secure payment callback URL is not configured", 503);
-    if (nuitee) {
+    if (nFlight) {
+      await verifyNuiteeFlightPrebook(c, row);
+    } else if (nuitee) {
       await verifyNuiteePrebook(c, row);
     } else if (domestic) {
       if (!(await refreshDomesticQuote(c, domesticBookingQuote(row))))
@@ -1345,6 +1408,17 @@ router.put(
       fields: Object.keys(req.body).filter((k) => !/Token|Secret/.test(k)),
     });
     res.json({ settings });
+  }),
+);
+router.post(
+  "/ota/admin/suppliers/nuitee/flights/check",
+  endpoint(async (req, res) => {
+    await identity(req, true);
+    const { mode } = z
+      .object({ mode: z.enum(["test", "live"]) })
+      .parse(req.body);
+    await checkNuiteeFlights(await getOtaConfig(), mode);
+    res.json({ connected: true });
   }),
 );
 router.post(

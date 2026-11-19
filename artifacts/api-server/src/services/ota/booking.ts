@@ -8,6 +8,7 @@ import {
 import { and, eq, sql } from "drizzle-orm";
 import { getOtaConfig, duffelTokenForMode } from "./config";
 import { bookNuiteeHotel, lookupNuiteeBooking } from "./nuitee";
+import { bookNuiteeFlight, lookupNuiteeFlight } from "./nuiteeFlights";
 import { refreshDomesticQuote } from "./flightSuppliers";
 import {
   domesticFareIncrease,
@@ -116,7 +117,8 @@ function publicDomesticOffer(offer: unknown) {
   return publicOffer;
 }
 function publicNuiteeOffer(offer: unknown) {
-  const { nuiteeStay, ...publicOffer } = offer as Record<string, unknown>;
+  const { nuiteeStay, nuiteeFlightJourneyKey, ...publicOffer } =
+    offer as Record<string, unknown>;
   return publicOffer;
 }
 export async function fulfill(reference: string) {
@@ -194,7 +196,10 @@ export async function fulfill(reference: string) {
       return await saveBilalOrder(row, config, order);
     }
     if (row.supplier === "nuitee") {
-      const result = await bookNuiteeHotel(savedConfig, row);
+      const result =
+        row.kind === "flight"
+          ? await bookNuiteeFlight(savedConfig, row)
+          : await bookNuiteeHotel(savedConfig, row);
       return await saveNuiteeBooking(row, result);
     }
     const contact = row.contact as any;
@@ -510,13 +515,21 @@ async function saveBilalOrder(
 
 async function saveNuiteeBooking(
   row: OtaBooking,
-  result: NonNullable<Awaited<ReturnType<typeof lookupNuiteeBooking>>>,
+  result: NonNullable<
+    Awaited<ReturnType<typeof lookupNuiteeBooking | typeof lookupNuiteeFlight>>
+  >,
 ) {
   if (row.status === "cancelled" && result.status !== "cancelled") return row;
+  if (
+    row.status === "confirmed" &&
+    result.status !== "cancelled" &&
+    result.status !== "confirmed"
+  )
+    return row;
   const stateChanged = row.status !== result.status;
   const notice =
     result.status === "cancelled"
-      ? "The hotel reservation was cancelled. Contact support to review the cancellation terms and refund."
+      ? "The reservation was cancelled. Contact support to review the cancellation terms and refund."
       : null;
   const updated = await db.transaction(async (tx) => {
     const [saved] = await tx
@@ -526,7 +539,10 @@ async function saveNuiteeBooking(
         status: result.status,
         providerBookingId: result.id,
         providerResult: result,
-        issue: null,
+        issue:
+          result.status === "requires_review"
+            ? "The flight reservation requires supplier review."
+            : null,
         providerNotice: notice,
         ...(stateChanged
           ? { notificationSentAt: null, notificationAttemptAt: null }
@@ -550,7 +566,11 @@ async function saveNuiteeBooking(
         action:
           result.status === "cancelled"
             ? "supplier_cancellation_detected"
-            : "provider_confirmed",
+            : result.status === "confirmed"
+              ? "provider_confirmed"
+              : result.status === "processing"
+                ? "supplier_confirmation_pending"
+                : "review_required",
         details: { providerId: result.id },
       });
     return saved;
@@ -567,7 +587,11 @@ async function saveNuiteeBooking(
 export async function refreshBooking(row: OtaBooking) {
   if (row.supplier === "nuitee") {
     if (!row.paidAt || row.status === "refunded") return row;
-    const result = await lookupNuiteeBooking(await getOtaConfig(), row);
+    const config = await getOtaConfig();
+    const result =
+      row.kind === "flight"
+        ? await lookupNuiteeFlight(config, row)
+        : await lookupNuiteeBooking(config, row);
     return result ? saveNuiteeBooking(row, result) : row;
   }
   if (row.supplier === "bilalsadasub") {

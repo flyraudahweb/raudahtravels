@@ -62,7 +62,7 @@ export const otaBookingsTable = pgTable(
     check("ota_mode", sql`${t.mode} IN ('test', 'live')`),
     check(
       "ota_supplier",
-      sql`${t.supplier} = 'duffel' OR (${t.supplier} = 'bilalsadasub' AND ${t.kind} = 'flight') OR (${t.supplier} = 'nuitee' AND ${t.kind} = 'hotel')`,
+      sql`${t.supplier} IN ('duffel', 'nuitee') OR (${t.supplier} = 'bilalsadasub' AND ${t.kind} = 'flight')`,
     ),
     uniqueIndex("ota_nuitee_prebook_unique")
       .on(t.mode, t.providerOfferId)

@@ -317,7 +317,7 @@ export default function AdminOta() {
               </p>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="text-sm">
-                  Mode
+                  Api Provider mode
                   <select
                     className={`${travelInput} mt-1`}
                     value={settings.mode}
@@ -330,8 +330,7 @@ export default function AdminOta() {
                   </select>
                 </label>
                 <p className="self-center text-sm text-slate-500">
-                  Manage separate test/live keys and webhook signing secrets in
-                  the Api Provider section below.
+                  N and B have their own mode and flight search switches.
                 </p>
               </div>
               <p className="text-xs text-slate-500">

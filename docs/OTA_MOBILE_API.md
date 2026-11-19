@@ -1005,6 +1005,11 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
       "description": "E.164 contact number",
       "pattern": "^\\+[1-9]\\d{6,14}$"
     },
+    "phoneCountryCode": {
+      "type": "string",
+      "description": "Required for N flight checkout. International calling code without the +",
+      "pattern": "^[1-9]\\d{0,2}$"
+    },
     "specialRequests": {
       "type": "string",
       "description": "Optional hotel accommodation request",
@@ -1134,6 +1139,11 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "f"
       ]
     },
+    "nationality": {
+      "type": "string",
+      "description": "Required for N flight checkout. Two-letter nationality code",
+      "pattern": "^[A-Z]{2}$"
+    },
     "email": {
       "type": "string",
       "description": "Passenger email",
@@ -1256,6 +1266,11 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
       "type": "string",
       "description": "Flight number"
     },
+    "technical_stop_count": {
+      "type": "integer",
+      "description": "En-route stops on the same aircraft when reported",
+      "minimum": 0
+    },
     "stops": {
       "type": "array",
       "items": {
@@ -1364,7 +1379,15 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
   "properties": {
     "id": {
       "type": "string",
-      "description": "off_ ID"
+      "description": "Opaque offer identifier"
+    },
+    "mode": {
+      "type": "string",
+      "description": "The offer's environment when supplied",
+      "enum": [
+        "test",
+        "live"
+      ]
     },
     "total_amount": {
       "type": "string",
@@ -1445,7 +1468,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
     "id": "off_example123",
     "total_amount": "100.00",
     "total_currency": "USD",
-    "expires_at": "2026-11-19T16:00:43.907Z",
+    "expires_at": "2026-11-19T16:44:15.288Z",
     "passengers": [
       {
         "id": "pas_example123",
@@ -1868,7 +1891,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
       "id": "off_example123",
       "total_amount": "100.00",
       "total_currency": "USD",
-      "expires_at": "2026-11-19T16:00:43.907Z",
+      "expires_at": "2026-11-19T16:44:15.288Z",
       "passengers": [
         {
           "id": "pas_example123",
@@ -1938,7 +1961,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
       "email": "traveller@example.com",
       "phone": "+2348012345678"
     },
-    "expiresAt": "2026-11-19T16:00:43.907Z",
+    "expiresAt": "2026-11-19T16:44:15.288Z",
     "paidAt": null,
     "providerResult": null,
     "providerNotice": null,
@@ -1987,7 +2010,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "id": "off_example123",
         "total_amount": "100.00",
         "total_currency": "USD",
-        "expires_at": "2026-11-19T16:00:43.907Z",
+        "expires_at": "2026-11-19T16:44:15.288Z",
         "passengers": [
           {
             "id": "pas_example123",
@@ -2057,7 +2080,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "email": "traveller@example.com",
         "phone": "+2348012345678"
       },
-      "expiresAt": "2026-11-19T16:00:43.907Z",
+      "expiresAt": "2026-11-19T16:44:15.288Z",
       "paidAt": null,
       "providerResult": null,
       "providerNotice": null,
@@ -2719,7 +2742,7 @@ Successful response
         "id": "off_example123",
         "total_amount": "100.00",
         "total_currency": "USD",
-        "expires_at": "2026-11-19T16:00:43.907Z",
+        "expires_at": "2026-11-19T16:44:15.288Z",
         "passengers": [
           {
             "id": "pas_example123",
@@ -2806,7 +2829,7 @@ Successful response
       "id": "off_example123",
       "total_amount": "100.00",
       "total_currency": "USD",
-      "expires_at": "2026-11-19T16:00:43.907Z",
+      "expires_at": "2026-11-19T16:44:15.288Z",
       "passengers": [
         {
           "id": "pas_example123",
@@ -3038,7 +3061,7 @@ Successful response
             "id": "off_example123",
             "total_amount": "100.00",
             "total_currency": "USD",
-            "expires_at": "2026-11-19T16:00:43.907Z",
+            "expires_at": "2026-11-19T16:44:15.288Z",
             "passengers": [
               {
                 "id": "pas_example123",
@@ -3108,7 +3131,7 @@ Successful response
             "email": "traveller@example.com",
             "phone": "+2348012345678"
           },
-          "expiresAt": "2026-11-19T16:00:43.907Z",
+          "expiresAt": "2026-11-19T16:44:15.288Z",
           "paidAt": null,
           "providerResult": null,
           "providerNotice": null,
@@ -3165,7 +3188,7 @@ Successful response
             "email": "traveller@example.com",
             "phone": "+2348012345678"
           },
-          "expiresAt": "2026-11-19T16:00:43.907Z",
+          "expiresAt": "2026-11-19T16:44:15.288Z",
           "paidAt": null,
           "providerResult": null,
           "providerNotice": null,

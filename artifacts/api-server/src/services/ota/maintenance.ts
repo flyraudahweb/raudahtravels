@@ -36,7 +36,7 @@ async function maintainBookings() {
       and(
         eq(bookings.status, "processing"),
         or(
-          sql`${bookings.supplier} <> 'bilalsadasub'`,
+          sql`(${bookings.supplier} <> 'bilalsadasub' AND (${bookings.supplier} <> 'nuitee' OR ${bookings.kind} <> 'flight'))`,
           isNull(bookings.providerBookingId),
           sql`${bookings.paidAt} < now() - interval '1 day'`,
         ),
@@ -49,7 +49,7 @@ async function maintainBookings() {
   const syncDeadline = Date.now() + 30000;
   const syncCutoff = sql`now() - CASE
     WHEN ${bookings.supplier} = 'bilalsadasub' AND ${bookings.status} <> 'confirmed' THEN interval '30 seconds'
-    WHEN ${bookings.supplier} = 'nuitee' AND ${bookings.status} = 'requires_review' THEN interval '2 minutes'
+      WHEN ${bookings.supplier} = 'nuitee' AND ${bookings.status} IN ('processing', 'requires_review') THEN interval '2 minutes'
     ELSE interval '15 minutes' END`;
   const sync = await db.query.otaBookingsTable.findMany({
     where: and(
@@ -62,7 +62,14 @@ async function maintainBookings() {
         ),
         and(
           eq(bookings.supplier, "nuitee"),
-          eq(bookings.status, "requires_review"),
+          or(
+            eq(bookings.status, "requires_review"),
+            and(
+              eq(bookings.status, "processing"),
+              eq(bookings.kind, "flight"),
+              sql`${bookings.providerBookingId} IS NOT NULL`,
+            ),
+          ),
           sql`${bookings.paidAt} > now() - interval '1 day'`,
         ),
       ),

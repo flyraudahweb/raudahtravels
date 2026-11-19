@@ -1707,7 +1707,7 @@
                       "id": "off_example123",
                       "total_amount": "100.00",
                       "total_currency": "USD",
-                      "expires_at": "2026-11-19T16:00:43.898Z",
+                      "expires_at": "2026-11-19T16:44:15.278Z",
                       "passengers": [
                         {
                           "id": "pas_example123",
@@ -1989,7 +1989,7 @@
                     "id": "off_example123",
                     "total_amount": "100.00",
                     "total_currency": "USD",
-                    "expires_at": "2026-11-19T16:00:43.898Z",
+                    "expires_at": "2026-11-19T16:44:15.278Z",
                     "passengers": [
                       {
                         "id": "pas_example123",
@@ -3333,7 +3333,7 @@
                           "id": "off_example123",
                           "total_amount": "100.00",
                           "total_currency": "USD",
-                          "expires_at": "2026-11-19T16:00:43.898Z",
+                          "expires_at": "2026-11-19T16:44:15.278Z",
                           "passengers": [
                             {
                               "id": "pas_example123",
@@ -3403,7 +3403,7 @@
                           "email": "traveller@example.com",
                           "phone": "+2348012345678"
                         },
-                        "expiresAt": "2026-11-19T16:00:43.898Z",
+                        "expiresAt": "2026-11-19T16:44:15.279Z",
                         "paidAt": null,
                         "providerResult": null,
                         "providerNotice": null,
@@ -3460,7 +3460,7 @@
                           "email": "traveller@example.com",
                           "phone": "+2348012345678"
                         },
-                        "expiresAt": "2026-11-19T16:00:43.898Z",
+                        "expiresAt": "2026-11-19T16:44:15.279Z",
                         "paidAt": null,
                         "providerResult": null,
                         "providerNotice": null,
@@ -6054,6 +6054,11 @@
             "description": "E.164 contact number",
             "pattern": "^\\+[1-9]\\d{6,14}$"
           },
+          "phoneCountryCode": {
+            "type": "string",
+            "description": "Required for N flight checkout. International calling code without the +",
+            "pattern": "^[1-9]\\d{0,2}$"
+          },
           "specialRequests": {
             "type": "string",
             "description": "Optional hotel accommodation request",
@@ -6167,6 +6172,11 @@
               "m",
               "f"
             ]
+          },
+          "nationality": {
+            "type": "string",
+            "description": "Required for N flight checkout. Two-letter nationality code",
+            "pattern": "^[A-Z]{2}$"
           },
           "email": {
             "type": "string",
@@ -6285,6 +6295,11 @@
             "type": "string",
             "description": "Flight number"
           },
+          "technical_stop_count": {
+            "type": "integer",
+            "description": "En-route stops on the same aircraft when reported",
+            "minimum": 0
+          },
           "stops": {
             "type": "array",
             "items": {
@@ -6383,7 +6398,15 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "off_ ID"
+            "description": "Opaque offer identifier"
+          },
+          "mode": {
+            "type": "string",
+            "description": "The offer's environment when supplied",
+            "enum": [
+              "test",
+              "live"
+            ]
           },
           "total_amount": {
             "type": "string",
@@ -6464,7 +6487,7 @@
           "id": "off_example123",
           "total_amount": "100.00",
           "total_currency": "USD",
-          "expires_at": "2026-11-19T16:00:43.898Z",
+          "expires_at": "2026-11-19T16:44:15.278Z",
           "passengers": [
             {
               "id": "pas_example123",
@@ -6867,7 +6890,7 @@
             "id": "off_example123",
             "total_amount": "100.00",
             "total_currency": "USD",
-            "expires_at": "2026-11-19T16:00:43.898Z",
+            "expires_at": "2026-11-19T16:44:15.278Z",
             "passengers": [
               {
                 "id": "pas_example123",
@@ -6937,7 +6960,7 @@
             "email": "traveller@example.com",
             "phone": "+2348012345678"
           },
-          "expiresAt": "2026-11-19T16:00:43.898Z",
+          "expiresAt": "2026-11-19T16:44:15.279Z",
           "paidAt": null,
           "providerResult": null,
           "providerNotice": null,
@@ -6981,7 +7004,7 @@
               "id": "off_example123",
               "total_amount": "100.00",
               "total_currency": "USD",
-              "expires_at": "2026-11-19T16:00:43.898Z",
+              "expires_at": "2026-11-19T16:44:15.278Z",
               "passengers": [
                 {
                   "id": "pas_example123",
@@ -7051,7 +7074,7 @@
               "email": "traveller@example.com",
               "phone": "+2348012345678"
             },
-            "expiresAt": "2026-11-19T16:00:43.898Z",
+            "expiresAt": "2026-11-19T16:44:15.279Z",
             "paidAt": null,
             "providerResult": null,
             "providerNotice": null,

@@ -491,6 +491,9 @@ export function otaOpenApi() {
         phone: string("E.164 contact number", {
           pattern: "^\\+[1-9]\\d{6,14}$",
         }),
+        phoneCountryCode: string("Required for N flight checkout. International calling code without the +", {
+          pattern: "^[1-9]\\d{0,2}$",
+        }),
         specialRequests: string("Optional hotel accommodation request", {
           maxLength: 1000,
         }),
@@ -533,6 +536,9 @@ export function otaOpenApi() {
           enum: ["mr", "ms", "mrs", "miss", "dr"],
         }),
         gender: string("Provider gender code", { enum: ["m", "f"] }),
+        nationality: string("Required for N flight checkout. Two-letter nationality code", {
+          pattern: "^[A-Z]{2}$",
+        }),
         email: string("Passenger email", { format: "email" }),
         phone_number: string("E.164 phone", { pattern: "^\\+[1-9]\\d{6,14}$" }),
         identity_documents: array(ref("Passport"), {
@@ -576,6 +582,7 @@ export function otaOpenApi() {
         }),
         operating_carrier: object({ name: string("Operating carrier") }),
         marketing_carrier_flight_number: string("Flight number"),
+        technical_stop_count: integer("En-route stops on the same aircraft when reported", 0),
         stops: array(object({}, [], { additionalProperties: true })),
         passengers: array(
           object(
@@ -616,7 +623,8 @@ export function otaOpenApi() {
     ),
     FlightOffer: object(
       {
-        id: string("off_ ID"),
+        id: string("Opaque offer identifier"),
+        mode: string("The offer's environment when supplied", { enum: ["test", "live"] }),
         total_amount: string("Supplier decimal total"),
         total_currency: string("Supplier ISO currency"),
         expires_at: timestamp("Supplier offer expiry"),

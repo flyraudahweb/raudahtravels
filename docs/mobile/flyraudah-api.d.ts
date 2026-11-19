@@ -511,6 +511,8 @@ export interface components {
             email: string;
             /** @description E.164 contact number */
             phone: string;
+            /** @description Required for N flight checkout. International calling code without the + */
+            phoneCountryCode?: string;
             /** @description Optional hotel accommodation request */
             specialRequests?: string;
         };
@@ -575,6 +577,8 @@ export interface components {
              * @enum {string}
              */
             gender: "m" | "f";
+            /** @description Required for N flight checkout. Two-letter nationality code */
+            nationality?: string;
             /**
              * Format: email
              * @description Passenger email
@@ -620,6 +624,8 @@ export interface components {
             };
             /** @description Flight number */
             marketing_carrier_flight_number?: string;
+            /** @description En-route stops on the same aircraft when reported */
+            technical_stop_count?: number;
             stops?: {
                 [key: string]: unknown;
             }[];
@@ -666,7 +672,7 @@ export interface components {
          *       "id": "off_example123",
          *       "total_amount": "100.00",
          *       "total_currency": "USD",
-         *       "expires_at": "2026-11-19T16:00:43.898Z",
+         *       "expires_at": "2026-11-19T16:44:15.278Z",
          *       "passengers": [
          *         {
          *           "id": "pas_example123",
@@ -722,8 +728,13 @@ export interface components {
          *     }
          */
         FlightOffer: {
-            /** @description off_ ID */
+            /** @description Opaque offer identifier */
             id: string;
+            /**
+             * @description The offer's environment when supplied
+             * @enum {string}
+             */
+            mode?: "test" | "live";
             /** @description Supplier decimal total */
             total_amount?: string;
             /** @description Supplier ISO currency */
@@ -867,7 +878,7 @@ export interface components {
          *         "id": "off_example123",
          *         "total_amount": "100.00",
          *         "total_currency": "USD",
-         *         "expires_at": "2026-11-19T16:00:43.898Z",
+         *         "expires_at": "2026-11-19T16:44:15.278Z",
          *         "passengers": [
          *           {
          *             "id": "pas_example123",
@@ -937,7 +948,7 @@ export interface components {
          *         "email": "traveller@example.com",
          *         "phone": "+2348012345678"
          *       },
-         *       "expiresAt": "2026-11-19T16:00:43.898Z",
+         *       "expiresAt": "2026-11-19T16:44:15.279Z",
          *       "paidAt": null,
          *       "providerResult": null,
          *       "providerNotice": null,
@@ -1052,7 +1063,7 @@ export interface components {
          *           "id": "off_example123",
          *           "total_amount": "100.00",
          *           "total_currency": "USD",
-         *           "expires_at": "2026-11-19T16:00:43.898Z",
+         *           "expires_at": "2026-11-19T16:44:15.278Z",
          *           "passengers": [
          *             {
          *               "id": "pas_example123",
@@ -1122,7 +1133,7 @@ export interface components {
          *           "email": "traveller@example.com",
          *           "phone": "+2348012345678"
          *         },
-         *         "expiresAt": "2026-11-19T16:00:43.898Z",
+         *         "expiresAt": "2026-11-19T16:44:15.279Z",
          *         "paidAt": null,
          *         "providerResult": null,
          *         "providerNotice": null,
@@ -2500,7 +2511,7 @@ export interface operations {
                      *           "id": "off_example123",
                      *           "total_amount": "100.00",
                      *           "total_currency": "USD",
-                     *           "expires_at": "2026-11-19T16:00:43.898Z",
+                     *           "expires_at": "2026-11-19T16:44:15.278Z",
                      *           "passengers": [
                      *             {
                      *               "id": "pas_example123",
@@ -2766,7 +2777,7 @@ export interface operations {
                      *         "id": "off_example123",
                      *         "total_amount": "100.00",
                      *         "total_currency": "USD",
-                     *         "expires_at": "2026-11-19T16:00:43.898Z",
+                     *         "expires_at": "2026-11-19T16:44:15.278Z",
                      *         "passengers": [
                      *           {
                      *             "id": "pas_example123",

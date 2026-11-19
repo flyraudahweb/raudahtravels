@@ -46,10 +46,11 @@ type SupplierBooking = {
   offer: unknown;
 };
 type Money = { amount: string; currency: string };
-const SEARCH_API = "https://api.liteapi.travel/v3.0";
+export const NUITEE_API = "https://api.liteapi.travel/v3.0";
+const SEARCH_API = NUITEE_API;
 const BOOKING_API = "https://book.liteapi.travel/v3.0";
 
-async function nuiteeRequest(
+export async function nuiteeRequest(
   config: OtaConfig,
   mode: Mode,
   base: string,

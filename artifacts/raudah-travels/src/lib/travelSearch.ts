@@ -111,7 +111,8 @@ export function flightStops(offer: any): number {
       (slice: any) =>
         Math.max(0, (slice.segments?.length || 1) - 1) +
         (slice.segments || []).reduce(
-          (n: number, segment: any) => n + (segment.stops?.length || 0),
+          (n: number, segment: any) =>
+            n + (segment.technical_stop_count ?? segment.stops?.length ?? 0),
           0,
         ),
     ),

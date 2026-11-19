@@ -5,6 +5,7 @@ import {
   bilalMode,
   bilalTokenForMode,
   primaryFlightSearchReady,
+  nuiteeFlightSearchReady,
   type OtaConfig,
 } from "./config";
 import { duffelRequest, OtaError, price } from "./provider";
@@ -14,6 +15,7 @@ import {
   sealDomesticFare,
   type DomesticFareQuote,
 } from "./domesticFareChecks";
+import { searchNuiteeFlights, nuiteeFlightPlaces } from "./nuiteeFlights";
 
 type FlightSearch = {
   origin: string;
@@ -297,6 +299,12 @@ export async function prepareDomesticCheckout(
 
 const suppliers: FlightSupplier[] = [
   {
+    isEnabled: nuiteeFlightSearchReady,
+    covers: () => true,
+    search: searchNuiteeFlights,
+    places: nuiteeFlightPlaces,
+  },
+  {
     isEnabled: primaryFlightSearchReady,
     covers: () => true,
     async search(config, input) {
@@ -381,6 +389,13 @@ const suppliers: FlightSupplier[] = [
     places: bilalAirports,
   },
 ];
+
+export function flightSearchReady(config: OtaConfig) {
+  return (
+    config.flightsEnabled &&
+    suppliers.some((supplier) => supplier.isEnabled(config))
+  );
+}
 
 function configuredSuppliers(config: OtaConfig) {
   const enabled = suppliers.filter((supplier) => supplier.isEnabled(config));

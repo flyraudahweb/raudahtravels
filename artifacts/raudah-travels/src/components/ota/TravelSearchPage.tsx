@@ -104,7 +104,8 @@ export function FlightItinerary({
         const stops =
           Math.max(0, segments.length - 1) +
           segments.reduce(
-            (n: number, segment: any) => n + (segment.stops?.length || 0),
+            (n: number, segment: any) =>
+              n + (segment.technical_stop_count ?? segment.stops?.length ?? 0),
             0,
           );
         return (
