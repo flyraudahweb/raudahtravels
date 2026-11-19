@@ -664,12 +664,32 @@ function Counter({
     </div>
   );
 }
+const countryNames = new Intl.DisplayNames(["en"], {
+  type: "region",
+  fallback: "none",
+});
+const countryCodes = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const hotelNationalities = Array.from(countryCodes)
+  .flatMap((first) =>
+    Array.from(countryCodes, (last) => {
+      const code = first + last;
+      return { code, name: countryNames.of(code) };
+    }),
+  )
+  .filter(
+    (country) =>
+      country.name && !["ZZ", "EU", "UN", "QO"].includes(country.code),
+  )
+  .sort((first, second) => first.name!.localeCompare(second.name!));
+
 export function TravellerPicker({
   kind,
   adults,
   ages,
   rooms,
   cabin,
+  guestNationality,
+  onGuestNationalityChange,
   onChange,
 }: {
   kind: "flight" | "hotel";
@@ -677,6 +697,8 @@ export function TravellerPicker({
   ages: number[];
   rooms: number;
   cabin: string;
+  guestNationality?: string;
+  onGuestNationalityChange?: (value: string) => void;
   onChange: (value: {
     adults: number;
     ages: number[];
@@ -795,14 +817,32 @@ export function TravellerPicker({
             </div>
           )}
           {hotel ? (
-            <Counter
-              label="Rooms"
-              hint="At least one adult per room"
-              value={rooms}
-              min={1}
-              max={Math.min(8, adults)}
-              onChange={(n) => update({ rooms: n })}
-            />
+            <>
+              <Counter
+                label="Rooms"
+                hint="At least one adult per room"
+                value={rooms}
+                min={1}
+                max={Math.min(8, adults)}
+                onChange={(n) => update({ rooms: n })}
+              />
+              {onGuestNationalityChange && (
+                <label className="mb-4 block text-xs font-semibold">
+                  Lead guest nationality
+                  <select
+                    value={guestNationality}
+                    onChange={(e) => onGuestNationalityChange(e.target.value)}
+                    className="mt-2 w-full rounded-xl border bg-white px-3 py-3 text-sm"
+                  >
+                    {hotelNationalities.map(({ code, name }) => (
+                      <option key={code} value={code}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </>
           ) : (
             <>
               <p className="mb-4 rounded-xl bg-indigo-50 p-3 text-[11px] leading-relaxed text-[#2D3199]">

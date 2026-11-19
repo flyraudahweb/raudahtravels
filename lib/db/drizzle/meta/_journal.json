@@ -85,6 +85,13 @@
       "when": 1794873600000,
       "tag": "0014_ota_booking_supplier",
       "breakpoints": false
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795046400000,
+      "tag": "0015_ota_nuitee_hotels",
+      "breakpoints": false
     }
   ]
 }

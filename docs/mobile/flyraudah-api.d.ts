@@ -666,7 +666,7 @@ export interface components {
          *       "id": "off_example123",
          *       "total_amount": "100.00",
          *       "total_currency": "USD",
-         *       "expires_at": "2026-11-18T11:34:32.568Z",
+         *       "expires_at": "2026-11-19T16:00:43.898Z",
          *       "passengers": [
          *         {
          *           "id": "pas_example123",
@@ -690,8 +690,8 @@ export interface components {
          *           "duration": "PT5H30M",
          *           "segments": [
          *             {
-         *               "departing_at": "2027-01-02T10:00:00",
-         *               "arriving_at": "2027-01-02T17:30:00",
+         *               "departing_at": "2027-01-03T10:00:00",
+         *               "arriving_at": "2027-01-03T17:30:00",
          *               "origin": {
          *                 "iata_code": "LOS"
          *               },
@@ -867,7 +867,7 @@ export interface components {
          *         "id": "off_example123",
          *         "total_amount": "100.00",
          *         "total_currency": "USD",
-         *         "expires_at": "2026-11-18T11:34:32.568Z",
+         *         "expires_at": "2026-11-19T16:00:43.898Z",
          *         "passengers": [
          *           {
          *             "id": "pas_example123",
@@ -891,8 +891,8 @@ export interface components {
          *             "duration": "PT5H30M",
          *             "segments": [
          *               {
-         *                 "departing_at": "2027-01-02T10:00:00",
-         *                 "arriving_at": "2027-01-02T17:30:00",
+         *                 "departing_at": "2027-01-03T10:00:00",
+         *                 "arriving_at": "2027-01-03T17:30:00",
          *                 "origin": {
          *                   "iata_code": "LOS"
          *                 },
@@ -937,7 +937,7 @@ export interface components {
          *         "email": "traveller@example.com",
          *         "phone": "+2348012345678"
          *       },
-         *       "expiresAt": "2026-11-18T11:34:32.568Z",
+         *       "expiresAt": "2026-11-19T16:00:43.898Z",
          *       "paidAt": null,
          *       "providerResult": null,
          *       "providerNotice": null,
@@ -973,9 +973,9 @@ export interface components {
             revision: number;
             /** @description Saved total NGN minor units */
             amountKobo: number;
-            /** @description Original off_ or quo_ ID */
-            providerOfferId?: string;
-            /** @description ord_ flight reservation or bok_ hotel booking ID */
+            /** @description Original offer or quote identifier when available to the client */
+            providerOfferId?: string | null;
+            /** @description Opaque supplier booking identifier */
             providerBookingId?: string | null;
             pricing?: components["schemas"]["Pricing"];
             offer?: {
@@ -1052,7 +1052,7 @@ export interface components {
          *           "id": "off_example123",
          *           "total_amount": "100.00",
          *           "total_currency": "USD",
-         *           "expires_at": "2026-11-18T11:34:32.568Z",
+         *           "expires_at": "2026-11-19T16:00:43.898Z",
          *           "passengers": [
          *             {
          *               "id": "pas_example123",
@@ -1076,8 +1076,8 @@ export interface components {
          *               "duration": "PT5H30M",
          *               "segments": [
          *                 {
-         *                   "departing_at": "2027-01-02T10:00:00",
-         *                   "arriving_at": "2027-01-02T17:30:00",
+         *                   "departing_at": "2027-01-03T10:00:00",
+         *                   "arriving_at": "2027-01-03T17:30:00",
          *                   "origin": {
          *                     "iata_code": "LOS"
          *                   },
@@ -1122,7 +1122,7 @@ export interface components {
          *           "email": "traveller@example.com",
          *           "phone": "+2348012345678"
          *         },
-         *         "expiresAt": "2026-11-18T11:34:32.568Z",
+         *         "expiresAt": "2026-11-19T16:00:43.898Z",
          *         "paidAt": null,
          *         "providerResult": null,
          *         "providerNotice": null,
@@ -2451,8 +2451,8 @@ export interface operations {
                  * @example {
                  *       "origin": "LOS",
                  *       "destination": "JED",
-                 *       "departureDate": "2027-01-02",
-                 *       "returnDate": "2027-01-09",
+                 *       "departureDate": "2027-01-03",
+                 *       "returnDate": "2027-01-10",
                  *       "adults": 1,
                  *       "childAges": [],
                  *       "cabinClass": "economy"
@@ -2500,7 +2500,7 @@ export interface operations {
                      *           "id": "off_example123",
                      *           "total_amount": "100.00",
                      *           "total_currency": "USD",
-                     *           "expires_at": "2026-11-18T11:34:32.568Z",
+                     *           "expires_at": "2026-11-19T16:00:43.898Z",
                      *           "passengers": [
                      *             {
                      *               "id": "pas_example123",
@@ -2524,8 +2524,8 @@ export interface operations {
                      *               "duration": "PT5H30M",
                      *               "segments": [
                      *                 {
-                     *                   "departing_at": "2027-01-02T10:00:00",
-                     *                   "arriving_at": "2027-01-02T17:30:00",
+                     *                   "departing_at": "2027-01-03T10:00:00",
+                     *                   "arriving_at": "2027-01-03T17:30:00",
                      *                   "origin": {
                      *                     "iata_code": "LOS"
                      *                   },
@@ -2766,7 +2766,7 @@ export interface operations {
                      *         "id": "off_example123",
                      *         "total_amount": "100.00",
                      *         "total_currency": "USD",
-                     *         "expires_at": "2026-11-18T11:34:32.568Z",
+                     *         "expires_at": "2026-11-19T16:00:43.898Z",
                      *         "passengers": [
                      *           {
                      *             "id": "pas_example123",
@@ -2790,8 +2790,8 @@ export interface operations {
                      *             "duration": "PT5H30M",
                      *             "segments": [
                      *               {
-                     *                 "departing_at": "2027-01-02T10:00:00",
-                     *                 "arriving_at": "2027-01-02T17:30:00",
+                     *                 "departing_at": "2027-01-03T10:00:00",
+                     *                 "arriving_at": "2027-01-03T17:30:00",
                      *                 "origin": {
                      *                   "iata_code": "LOS"
                      *                 },
@@ -3001,8 +3001,8 @@ export interface operations {
                  * @example {
                  *       "latitude": 21.4225,
                  *       "longitude": 39.8262,
-                 *       "checkIn": "2027-01-02",
-                 *       "checkOut": "2027-01-09",
+                 *       "checkIn": "2027-01-03",
+                 *       "checkOut": "2027-01-10",
                  *       "rooms": 1,
                  *       "adults": 1,
                  *       "childAges": []

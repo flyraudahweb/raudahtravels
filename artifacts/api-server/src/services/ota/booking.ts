@@ -7,6 +7,7 @@ import {
 } from "@workspace/db";
 import { and, eq, sql } from "drizzle-orm";
 import { getOtaConfig, duffelTokenForMode } from "./config";
+import { bookNuiteeHotel, lookupNuiteeBooking } from "./nuitee";
 import { refreshDomesticQuote } from "./flightSuppliers";
 import {
   domesticFareIncrease,
@@ -50,7 +51,13 @@ export async function paystackKey(mode?: string, supplier = "duffel") {
         : mode === "live"
           ? process.env.BILALSADASUB_PAYSTACK_LIVE_SECRET_KEY
           : undefined
-      : undefined;
+      : supplier === "nuitee"
+        ? mode === "test"
+          ? process.env.NUITEE_PAYSTACK_TEST_SECRET_KEY
+          : mode === "live"
+            ? process.env.NUITEE_PAYSTACK_LIVE_SECRET_KEY
+            : undefined
+        : undefined;
   const value = String(
     dedicated || row?.value || process.env.PAYSTACK_SECRET_KEY || "",
   );
@@ -93,7 +100,9 @@ export function customerBooking(row: OtaBooking) {
     ...safe,
     ...(row.supplier === "bilalsadasub"
       ? { offer: publicDomesticOffer(row.offer), providerOfferId: null }
-      : {}),
+      : row.supplier === "nuitee"
+        ? { offer: publicNuiteeOffer(row.offer), providerOfferId: null }
+        : {}),
     contact,
     travellers,
     issue:
@@ -104,6 +113,10 @@ export function customerBooking(row: OtaBooking) {
 }
 function publicDomesticOffer(offer: unknown) {
   const { domesticQuote, ...publicOffer } = offer as Record<string, unknown>;
+  return publicOffer;
+}
+function publicNuiteeOffer(offer: unknown) {
+  const { nuiteeStay, ...publicOffer } = offer as Record<string, unknown>;
   return publicOffer;
 }
 export async function fulfill(reference: string) {
@@ -179,6 +192,10 @@ export async function fulfill(reference: string) {
         adults: quote.search.adults,
       });
       return await saveBilalOrder(row, config, order);
+    }
+    if (row.supplier === "nuitee") {
+      const result = await bookNuiteeHotel(savedConfig, row);
+      return await saveNuiteeBooking(row, result);
     }
     const contact = row.contact as any;
     let result: any;
@@ -449,18 +466,16 @@ async function saveBilalOrder(
       .returning();
     if (!saved) return;
     if (row.status !== status && status !== "processing")
-      await tx
-        .insert(otaEventsTable)
-        .values({
-          id: randomUUID(),
-          bookingId: row.id,
-          actor: "system",
-          action: confirmed
-            ? "provider_confirmed"
-            : cancelled
-              ? "supplier_cancellation_detected"
-              : "review_required",
-        });
+      await tx.insert(otaEventsTable).values({
+        id: randomUUID(),
+        bookingId: row.id,
+        actor: "system",
+        action: confirmed
+          ? "provider_confirmed"
+          : cancelled
+            ? "supplier_cancellation_detected"
+            : "review_required",
+      });
     if (confirmed && debit > previousDebit)
       await tx.insert(otaEventsTable).values({
         id: randomUUID(),
@@ -493,8 +508,68 @@ async function saveBilalOrder(
   );
 }
 
+async function saveNuiteeBooking(
+  row: OtaBooking,
+  result: NonNullable<Awaited<ReturnType<typeof lookupNuiteeBooking>>>,
+) {
+  if (row.status === "cancelled" && result.status !== "cancelled") return row;
+  const stateChanged = row.status !== result.status;
+  const notice =
+    result.status === "cancelled"
+      ? "The hotel reservation was cancelled. Contact support to review the cancellation terms and refund."
+      : null;
+  const updated = await db.transaction(async (tx) => {
+    const [saved] = await tx
+      .update(bookings)
+      .set({
+        revision: sql`${bookings.revision}+1`,
+        status: result.status,
+        providerBookingId: result.id,
+        providerResult: result,
+        issue: null,
+        providerNotice: notice,
+        ...(stateChanged
+          ? { notificationSentAt: null, notificationAttemptAt: null }
+          : {}),
+        syncedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(bookings.id, row.id),
+          eq(bookings.revision, row.revision),
+          eq(bookings.status, row.status),
+        ),
+      )
+      .returning();
+    if (saved && stateChanged)
+      await tx.insert(otaEventsTable).values({
+        id: randomUUID(),
+        bookingId: row.id,
+        actor: "system",
+        action:
+          result.status === "cancelled"
+            ? "supplier_cancellation_detected"
+            : "provider_confirmed",
+        details: { providerId: result.id },
+      });
+    return saved;
+  });
+  return (
+    updated ||
+    (await db.query.otaBookingsTable.findFirst({
+      where: eq(bookings.id, row.id),
+    }))!
+  );
+}
+
 // Read-only supplier refresh: never creates or retries a reservation.
 export async function refreshBooking(row: OtaBooking) {
+  if (row.supplier === "nuitee") {
+    if (!row.paidAt || row.status === "refunded") return row;
+    const result = await lookupNuiteeBooking(await getOtaConfig(), row);
+    return result ? saveNuiteeBooking(row, result) : row;
+  }
   if (row.supplier === "bilalsadasub") {
     if (!row.paidAt || row.status === "refunded") return row;
     const config = await getOtaConfig();

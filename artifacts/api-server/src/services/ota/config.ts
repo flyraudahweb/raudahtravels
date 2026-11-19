@@ -28,6 +28,8 @@ export const OTA_SECRET_FIELDS = [
   "duffelLiveToken",
   "bilalTestToken",
   "bilalLiveToken",
+  "nuiteeTestToken",
+  "nuiteeLiveToken",
   "webhookTestSecret",
   "webhookLiveSecret",
 ] as const;
@@ -47,6 +49,12 @@ export const configSchema = z
     bilalTestToken: z.string().trim().max(512).default(""),
     bilalLiveToken: z.string().trim().max(512).default(""),
     hotelsEnabled: z.boolean().default(false),
+    nuiteeHotelsEnabled: z.boolean().default(false),
+    nuiteeSalesEnabled: z.boolean().default(false),
+    nuiteeMode: z.enum(["test", "live"]).default("test"),
+    nuiteeTestToken: z.string().trim().max(512).default(""),
+    nuiteeLiveToken: z.string().trim().max(512).default(""),
+    nuiteeMarkupPercent: z.number().min(0).max(50).default(0),
     salesEnabled: z.boolean().default(false),
     mode: z.enum(["test", "live"]).default("test"),
     duffelToken: z.string().trim().max(512).default(""),
@@ -121,6 +129,24 @@ function key() {
     throw new Error("SETTINGS_ENCRYPTION_KEY must be configured");
   return Buffer.from(process.env.SETTINGS_ENCRYPTION_KEY!, "hex");
 }
+export function nuiteeTokenForMode(c: OtaConfig, mode = c.nuiteeMode) {
+  const token = mode === "test" ? c.nuiteeTestToken : c.nuiteeLiveToken;
+  return (mode === "test" ? /^(?:sand|sandbox)_[\w-]+$/ : /^prod_[\w-]+$/).test(
+    token,
+  )
+    ? token
+    : "";
+}
+export function nuiteeHotelSearchReady(c: OtaConfig) {
+  return (
+    c.nuiteeHotelsEnabled &&
+    !!nuiteeTokenForMode(c) &&
+    /^[a-f0-9]{64}$/i.test(process.env.SETTINGS_ENCRYPTION_KEY || "")
+  );
+}
+export function nuiteeHotelCheckoutReady(c: OtaConfig) {
+  return c.nuiteeSalesEnabled && nuiteeHotelSearchReady(c);
+}
 function crypt(value: string, decrypt = false) {
   if (decrypt) {
     const [version, iv, tag, body] = value.split(":");
@@ -160,6 +186,8 @@ function configFromStored(value: unknown): OtaConfig {
     duffelToken: process.env.DUFFEL_API_TOKEN || "",
     bilalTestToken: process.env.BILALSADASUB_TEST_API_TOKEN || "",
     bilalLiveToken: process.env.BILALSADASUB_LIVE_API_TOKEN || "",
+    nuiteeTestToken: process.env.NUITEE_TEST_API_KEY || "",
+    nuiteeLiveToken: process.env.NUITEE_LIVE_API_KEY || "",
     duffelTestToken:
       process.env.DUFFEL_TEST_API_TOKEN ||
       (active.startsWith("duffel_test_") ? active : ""),
@@ -283,6 +311,43 @@ export async function saveOtaConfig(patch: unknown, actor: string) {
       );
     const { paystackKey } = await import("./booking");
     await paystackKey(bilalMode(next), "bilalsadasub");
+  }
+  if (
+    (next.nuiteeTestToken && !nuiteeTokenForMode(next, "test")) ||
+    (next.nuiteeLiveToken && !nuiteeTokenForMode(next, "live"))
+  )
+    throw new OtaError(
+      "Save the Nuitee keys in their matching environments.",
+      400,
+    );
+  if (next.nuiteeHotelsEnabled && !nuiteeHotelSearchReady(next))
+    throw new OtaError(
+      "Nuitee hotel search requires a matching API key and settings encryption.",
+      400,
+    );
+  if (next.nuiteeSalesEnabled) {
+    if (
+      !nuiteeHotelCheckoutReady(next) ||
+      !next.supportEmail ||
+      !otaAppOrigin()
+    )
+      throw new OtaError(
+        "Nuitee sales require hotel search, a support email and HTTPS APP_URL.",
+        400,
+      );
+    const { paystackKey } = await import("./booking");
+    await paystackKey(next.nuiteeMode, "nuitee");
+  }
+  if (
+    next.nuiteeMode === "live" &&
+    next.nuiteeHotelsEnabled &&
+    (!current.nuiteeHotelsEnabled ||
+      current.nuiteeMode !== "live" ||
+      next.nuiteeLiveToken !== current.nuiteeLiveToken ||
+      (next.nuiteeSalesEnabled && !current.nuiteeSalesEnabled))
+  ) {
+    const { checkNuiteeConnection } = await import("./nuitee");
+    await checkNuiteeConnection(next, "live");
   }
   const stored = { ...next };
   const previousValues = (previous?.value as Record<string, unknown>) || {};

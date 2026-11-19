@@ -5,6 +5,8 @@ import {
   bilalMode,
   bilalTokenForMode,
   getOtaConfig,
+  nuiteeHotelCheckoutReady,
+  nuiteeHotelSearchReady,
 } from "./config";
 import { duffelRequest } from "./provider";
 import { paystackKey } from "./booking";
@@ -67,6 +69,24 @@ export async function checkOtaReadiness() {
   results.hotels = config.hotelsEnabled
     ? "enabled; Stays entitlement still requires a successful search"
     : "disabled; confirm Duffel Stays access before enabling";
+  if (
+    config.nuiteeHotelsEnabled ||
+    config.nuiteeTestToken ||
+    config.nuiteeLiveToken
+  ) {
+    results.nuiteeHotels = nuiteeHotelSearchReady(config)
+      ? `configured for ${config.nuiteeMode}; use Test saved connection to verify provider access`
+      : "paused or missing the selected environment’s key";
+    results.nuiteeCheckout = "paused";
+    if (nuiteeHotelCheckoutReady(config)) {
+      try {
+        await paystackKey(config.nuiteeMode, "nuitee");
+        results.nuiteeCheckout = `configured for ${config.nuiteeMode}`;
+      } catch {
+        results.nuiteeCheckout = `missing a matching Paystack ${config.nuiteeMode} key`;
+      }
+    }
+  }
   results.sales = config.salesEnabled
     ? "enabled; complete staging purchase acceptance before launch"
     : "disabled in OTA settings";

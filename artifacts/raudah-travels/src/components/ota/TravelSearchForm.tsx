@@ -40,6 +40,9 @@ export default function TravelSearchForm({
     );
   const [city, setCity] = useState(initial?.get("city") || "0"),
     [roundTrip, setRoundTrip] = useState(!!initial?.get("returnDate"));
+  const [guestNationality, setGuestNationality] = useState(
+    initial?.get("guestNationality") || "NG",
+  );
   const [originLabel, setOriginLabel] = useState(
       (initial?.get("originLabel") || "").slice(0, 80),
     ),
@@ -185,6 +188,8 @@ export default function TravelSearchForm({
             query.set("checkIn", departure);
             query.set("checkOut", returnDate);
             query.set("rooms", String(rooms));
+            if (guestNationality !== "NG")
+              query.set("guestNationality", guestNationality);
           }
           const path = `/${hotel ? "hotels" : "flights"}/search?${query}`;
           if (
@@ -280,6 +285,8 @@ export default function TravelSearchForm({
             ages={ages}
             rooms={rooms}
             cabin={cabin}
+            guestNationality={guestNationality}
+            onGuestNationalityChange={setGuestNationality}
             onChange={(value) => {
               setAdults(value.adults);
               setAges(value.ages);

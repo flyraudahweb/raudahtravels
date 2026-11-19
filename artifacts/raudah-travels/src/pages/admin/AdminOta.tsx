@@ -14,6 +14,7 @@ import { ErrorMessage, Loading } from "@/components/ota/TravelSearchPage";
 import ExchangeRates from "@/components/ota/ExchangeRates";
 import DuffelSettings from "@/components/ota/DuffelSettings";
 import FlightSupplierSettings from "@/components/ota/FlightSupplierSettings";
+import NuiteeSettings from "@/components/ota/NuiteeSettings";
 import PricingPreview from "@/components/ota/PricingPreview";
 import TravelUpdates from "@/components/ota/TravelUpdates";
 import OtaOperationsSummary from "@/components/ota/OtaOperationsSummary";
@@ -26,6 +27,8 @@ const diagnosticLabels: Record<string, string> = {
   duffel: "Api Provider",
   bilalsadasubSearch: "Bilalsadasub fare search",
   bilalsadasubCheckout: "Bilalsadasub checkout",
+  nuiteeHotels: "Nuitee hotel search",
+  nuiteeCheckout: "Nuitee hotel checkout",
 };
 
 export default function AdminOta() {
@@ -360,6 +363,10 @@ export default function AdminOta() {
               </div>
             </section>
             <FlightSupplierSettings
+              settings={settings}
+              update={(patch) => updateSettings({ ...settings, ...patch })}
+            />
+            <NuiteeSettings
               settings={settings}
               update={(patch) => updateSettings({ ...settings, ...patch })}
             />
@@ -706,9 +713,9 @@ export default function AdminOta() {
               )}
               <p className="text-sm text-slate-500">
                 For processing or uncertain bookings, locate the reservation in
-                the Api Provider dashboard using this checkout's metadata or
-                request ID. Do not create another supplier reservation. Verify
-                cancellation/refund conditions with the supplier before acting.
+                the supplier dashboard using this checkout's reference or
+                request ID. Verify cancellation/refund conditions with the
+                supplier before acting.
               </p>
               <form
                 className="flex flex-wrap gap-3"
@@ -723,14 +730,17 @@ export default function AdminOta() {
                   );
                 }}
               >
-                <input
-                  aria-label="Verified Api Provider order or booking ID"
-                  value={providerId}
-                  onChange={(e) => setProviderId(e.target.value)}
-                  placeholder="ord_… or bok_…"
-                  required
-                  className={`${travelInput} flex-1`}
-                />
+                {selected.supplier !== "nuitee" &&
+                  selected.supplier !== "bilalsadasub" && (
+                    <input
+                      aria-label="Verified Api Provider order or booking ID"
+                      value={providerId}
+                      onChange={(e) => setProviderId(e.target.value)}
+                      placeholder="ord_… or bok_…"
+                      required
+                      className={`${travelInput} flex-1`}
+                    />
+                  )}
                 <button
                   disabled={busy || !selected.paidAt}
                   className={travelButton}

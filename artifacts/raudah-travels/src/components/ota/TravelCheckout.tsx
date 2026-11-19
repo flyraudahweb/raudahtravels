@@ -99,9 +99,12 @@ export default function TravelCheckout({
   const offer =
     data?.checkoutKey === checkoutKey ? data?.offer || data?.quote : null;
   const domestic = kind === "flight" && offerId.startsWith("bilal_");
-  const salesEnabled = domestic
-    ? config?.bilalCheckoutEnabled
-    : config?.salesEnabled;
+  const nuitee = kind === "hotel" && offerId.startsWith("nqt_");
+  const salesEnabled = nuitee
+    ? config?.nuiteeCheckoutEnabled
+    : domestic
+      ? config?.bilalCheckoutEnabled
+      : config?.salesEnabled;
   const lastTravelDate = (offer?.slices || [])
     .flatMap((slice: any) =>
       (slice.segments || []).map((segment: any) =>
@@ -260,7 +263,12 @@ export default function TravelCheckout({
                     className="rounded-2xl border bg-white p-6"
                   >
                     <h2 className="mb-2 text-lg font-bold">
-                      {kind === "flight" ? "Traveller" : "Guest"} {i + 1}{" "}
+                      {kind === "flight"
+                        ? "Traveller"
+                        : nuitee
+                          ? "Lead guest for room"
+                          : "Guest"}{" "}
+                      {i + 1}{" "}
                       {passenger.age != null ? `· age ${passenger.age}` : ""}
                     </h2>
                     <p className="mb-4 text-sm text-slate-500">
@@ -474,7 +482,8 @@ export default function TravelCheckout({
                     </p>
                     <p className="my-3 text-sm">
                       {offer.check_in_date} → {offer.check_out_date} ·{" "}
-                      {offer.rooms} room(s) · {offer.guests?.length} guest(s)
+                      {offer.rooms} room(s)
+                      {!nuitee && ` · ${offer.guests?.length} guest(s)`}
                     </p>
                     <p className="mb-4 text-xs text-slate-500">
                       Check-in after{" "}
@@ -513,7 +522,8 @@ export default function TravelCheckout({
                     <dd>{money(data.pricing.totalKobo)}</dd>
                   </div>
                 </dl>
-                {(domestic ? offer.mode : config?.mode) === "test" && (
+                {(domestic || nuitee ? offer.mode : config?.mode) ===
+                  "test" && (
                   <p className="mt-4 rounded-lg bg-amber-100 p-3 text-xs text-amber-900">
                     Sandbox booking · test payments only
                   </p>

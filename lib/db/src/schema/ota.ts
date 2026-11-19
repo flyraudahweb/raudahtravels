@@ -5,6 +5,7 @@ import {
   timestamp,
   bigint,
   index,
+  uniqueIndex,
   check,
   integer,
 } from "drizzle-orm/pg-core";
@@ -61,8 +62,11 @@ export const otaBookingsTable = pgTable(
     check("ota_mode", sql`${t.mode} IN ('test', 'live')`),
     check(
       "ota_supplier",
-      sql`${t.supplier} = 'duffel' OR (${t.supplier} = 'bilalsadasub' AND ${t.kind} = 'flight')`,
+      sql`${t.supplier} = 'duffel' OR (${t.supplier} = 'bilalsadasub' AND ${t.kind} = 'flight') OR (${t.supplier} = 'nuitee' AND ${t.kind} = 'hotel')`,
     ),
+    uniqueIndex("ota_nuitee_prebook_unique")
+      .on(t.mode, t.providerOfferId)
+      .where(sql`${t.supplier} = 'nuitee'`),
     check(
       "ota_status",
       sql`${t.status} IN ('payment_pending','processing','confirmed','cancelled','requires_review','refunded')`,

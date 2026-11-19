@@ -1,5 +1,19 @@
 # Duffel OTA: deployment and operations
 
+## Nuitee Connect hotels
+
+Apply `lib/db/drizzle/0015_ota_nuitee_hotels.sql` before enabling Nuitee. It allows Nuitee hotel booking records and ensures that one prebook cannot create multiple FlyRaudah checkouts in the same environment.
+
+Open **Admin → OTA → Settings → Nuitee hotel supplier**. Save the Connect keys in their matching fields or provide `NUITEE_TEST_API_KEY` and `NUITEE_LIVE_API_KEY` through Railway. The provider setting is independent of flight supplier modes. Use **Test saved connection** for a read-only rates request. Enable website search and hotel payments separately. Nuitee becomes the website hotel supplier while its search switch is on. The mobile v1 interface continues to use its original hotel supplier for new searches.
+
+FlyRaudah collects the displayed NGN total through Paystack. The server confirms the booking using `ACC_CREDIT_CARD` on the Nuitee Connect account after verifying the customer payment. Use a matching Paystack environment. Optional `NUITEE_PAYSTACK_TEST_SECRET_KEY` and `NUITEE_PAYSTACK_LIVE_SECRET_KEY` allow separate hotel credentials without replacing the shared Paystack settings. If you use a separate Paystack account, configure its webhook to post to `/api/ota/payments/webhook`.
+
+Verify a sandbox search, a paid reservation, a duplicate callback and booking recovery before inviting guests to buy. Review room allocation and guest nationality, the final total, fees payable at the property and cancellation terms. The Nuitee markup is separate from the existing hotel markup. The price also respects Nuitee’s minimum selling price when supplied.
+
+For an uncertain booking, use **Verify supplier record** on the OTA booking. FlyRaudah looks up the original Paystack/OTA reference as Nuitee’s `clientReference`. Scheduled reconciliation also checks recent uncertain bookings. If a cancellation is needed, confirm the property’s terms in Connect and cancel from that supplier dashboard. FlyRaudah reads back the cancellation. Verify any customer refund separately in Paystack and record it in OTA admin.
+
+References [Hotel integration guide](https://docs.nuitee.com/docs/hotel-integration-guide), [Account card payment](https://docs.nuitee.com/docs/account-credit-card), [Complete a booking](https://docs.nuitee.com/reference/post_rates-book).
+
 Implemented 2026-10-29. This guide covers the new OTA purchase flow. Existing Hajj/Umrah package workflows retain their own booking/payment records.
 
 Latest verification (2026-10-30): read-only inspection found the OTA booking/event/payment/webhook tables, booking revision/sync columns and optional API-key table in the configured database. No pending OTA migration was detected for 0009–0012. The deployed `/api/readyz` and mobile capabilities endpoints return 200. Do not rerun completed migrations. See [current launch readiness](OTA_LAUNCH_READINESS.md) for remaining gates; a code push does not confirm deployment or acceptance.

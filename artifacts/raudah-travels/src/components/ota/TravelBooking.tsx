@@ -377,6 +377,9 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
               ) : (
                 <>
                   <h3 className="font-bold">{offer.accommodation?.name}</h3>
+                  {provider?.check_in_instructions && (
+                    <p className="mt-2 text-sm">{provider.check_in_instructions}</p>
+                  )}
                   <p className="text-sm">
                     {offer.accommodation?.location?.address?.line_one},{" "}
                     {offer.accommodation?.location?.address?.city_name}

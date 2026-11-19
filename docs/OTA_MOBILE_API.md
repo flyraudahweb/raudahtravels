@@ -473,8 +473,8 @@ Request schema:
   "example": {
     "origin": "LOS",
     "destination": "JED",
-    "departureDate": "2027-01-02",
-    "returnDate": "2027-01-09",
+    "departureDate": "2027-01-03",
+    "returnDate": "2027-01-10",
     "adults": 1,
     "childAges": [],
     "cabinClass": "economy"
@@ -565,8 +565,8 @@ Request schema:
   "example": {
     "latitude": 21.4225,
     "longitude": 39.8262,
-    "checkIn": "2027-01-02",
-    "checkOut": "2027-01-09",
+    "checkIn": "2027-01-03",
+    "checkOut": "2027-01-10",
     "rooms": 1,
     "adults": 1,
     "childAges": []
@@ -1445,7 +1445,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
     "id": "off_example123",
     "total_amount": "100.00",
     "total_currency": "USD",
-    "expires_at": "2026-11-18T11:34:32.584Z",
+    "expires_at": "2026-11-19T16:00:43.907Z",
     "passengers": [
       {
         "id": "pas_example123",
@@ -1469,8 +1469,8 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "duration": "PT5H30M",
         "segments": [
           {
-            "departing_at": "2027-01-02T10:00:00",
-            "arriving_at": "2027-01-02T17:30:00",
+            "departing_at": "2027-01-03T10:00:00",
+            "arriving_at": "2027-01-03T17:30:00",
             "origin": {
               "iata_code": "LOS"
             },
@@ -1744,11 +1744,12 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
     },
     "providerOfferId": {
       "type": "string",
-      "description": "Original off_ or quo_ ID"
+      "description": "Original offer or quote identifier when available to the client",
+      "nullable": true
     },
     "providerBookingId": {
       "type": "string",
-      "description": "ord_ flight reservation or bok_ hotel booking ID",
+      "description": "Opaque supplier booking identifier",
       "nullable": true
     },
     "pricing": {
@@ -1867,7 +1868,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
       "id": "off_example123",
       "total_amount": "100.00",
       "total_currency": "USD",
-      "expires_at": "2026-11-18T11:34:32.584Z",
+      "expires_at": "2026-11-19T16:00:43.907Z",
       "passengers": [
         {
           "id": "pas_example123",
@@ -1891,8 +1892,8 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
           "duration": "PT5H30M",
           "segments": [
             {
-              "departing_at": "2027-01-02T10:00:00",
-              "arriving_at": "2027-01-02T17:30:00",
+              "departing_at": "2027-01-03T10:00:00",
+              "arriving_at": "2027-01-03T17:30:00",
               "origin": {
                 "iata_code": "LOS"
               },
@@ -1937,7 +1938,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
       "email": "traveller@example.com",
       "phone": "+2348012345678"
     },
-    "expiresAt": "2026-11-18T11:34:32.584Z",
+    "expiresAt": "2026-11-19T16:00:43.907Z",
     "paidAt": null,
     "providerResult": null,
     "providerNotice": null,
@@ -1986,7 +1987,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "id": "off_example123",
         "total_amount": "100.00",
         "total_currency": "USD",
-        "expires_at": "2026-11-18T11:34:32.584Z",
+        "expires_at": "2026-11-19T16:00:43.907Z",
         "passengers": [
           {
             "id": "pas_example123",
@@ -2010,8 +2011,8 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
             "duration": "PT5H30M",
             "segments": [
               {
-                "departing_at": "2027-01-02T10:00:00",
-                "arriving_at": "2027-01-02T17:30:00",
+                "departing_at": "2027-01-03T10:00:00",
+                "arriving_at": "2027-01-03T17:30:00",
                 "origin": {
                   "iata_code": "LOS"
                 },
@@ -2056,7 +2057,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "email": "traveller@example.com",
         "phone": "+2348012345678"
       },
-      "expiresAt": "2026-11-18T11:34:32.584Z",
+      "expiresAt": "2026-11-19T16:00:43.907Z",
       "paidAt": null,
       "providerResult": null,
       "providerNotice": null,
@@ -2718,7 +2719,7 @@ Successful response
         "id": "off_example123",
         "total_amount": "100.00",
         "total_currency": "USD",
-        "expires_at": "2026-11-18T11:34:32.584Z",
+        "expires_at": "2026-11-19T16:00:43.907Z",
         "passengers": [
           {
             "id": "pas_example123",
@@ -2742,8 +2743,8 @@ Successful response
             "duration": "PT5H30M",
             "segments": [
               {
-                "departing_at": "2027-01-02T10:00:00",
-                "arriving_at": "2027-01-02T17:30:00",
+                "departing_at": "2027-01-03T10:00:00",
+                "arriving_at": "2027-01-03T17:30:00",
                 "origin": {
                   "iata_code": "LOS"
                 },
@@ -2805,7 +2806,7 @@ Successful response
       "id": "off_example123",
       "total_amount": "100.00",
       "total_currency": "USD",
-      "expires_at": "2026-11-18T11:34:32.584Z",
+      "expires_at": "2026-11-19T16:00:43.907Z",
       "passengers": [
         {
           "id": "pas_example123",
@@ -2829,8 +2830,8 @@ Successful response
           "duration": "PT5H30M",
           "segments": [
             {
-              "departing_at": "2027-01-02T10:00:00",
-              "arriving_at": "2027-01-02T17:30:00",
+              "departing_at": "2027-01-03T10:00:00",
+              "arriving_at": "2027-01-03T17:30:00",
               "origin": {
                 "iata_code": "LOS"
               },
@@ -3037,7 +3038,7 @@ Successful response
             "id": "off_example123",
             "total_amount": "100.00",
             "total_currency": "USD",
-            "expires_at": "2026-11-18T11:34:32.584Z",
+            "expires_at": "2026-11-19T16:00:43.907Z",
             "passengers": [
               {
                 "id": "pas_example123",
@@ -3061,8 +3062,8 @@ Successful response
                 "duration": "PT5H30M",
                 "segments": [
                   {
-                    "departing_at": "2027-01-02T10:00:00",
-                    "arriving_at": "2027-01-02T17:30:00",
+                    "departing_at": "2027-01-03T10:00:00",
+                    "arriving_at": "2027-01-03T17:30:00",
                     "origin": {
                       "iata_code": "LOS"
                     },
@@ -3107,7 +3108,7 @@ Successful response
             "email": "traveller@example.com",
             "phone": "+2348012345678"
           },
-          "expiresAt": "2026-11-18T11:34:32.584Z",
+          "expiresAt": "2026-11-19T16:00:43.907Z",
           "paidAt": null,
           "providerResult": null,
           "providerNotice": null,
@@ -3164,7 +3165,7 @@ Successful response
             "email": "traveller@example.com",
             "phone": "+2348012345678"
           },
-          "expiresAt": "2026-11-18T11:34:32.584Z",
+          "expiresAt": "2026-11-19T16:00:43.907Z",
           "paidAt": null,
           "providerResult": null,
           "providerNotice": null,

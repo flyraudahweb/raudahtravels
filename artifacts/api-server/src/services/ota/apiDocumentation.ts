@@ -742,9 +742,9 @@ export function otaOpenApi() {
           "Monotonic material revision; ignore lower revisions for the same booking",
         ),
         amountKobo: integer("Saved total NGN minor units", 1),
-        providerOfferId: string("Original off_ or quo_ ID"),
+        providerOfferId: nullable(string("Original offer or quote identifier when available to the client")),
         providerBookingId: nullable(
-          string("ord_ flight reservation or bok_ hotel booking ID"),
+          string("Opaque supplier booking identifier"),
         ),
         pricing: ref("Pricing"),
         offer: object({}, [], { additionalProperties: true }),

@@ -218,6 +218,7 @@ beforeAll(async () => {
     ),
   );
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0014_ota_booking_supplier.sql"), "utf8"));
+  await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0015_ota_nuitee_hotels.sql"), "utf8"));
   await module.db.insert(module.profilesTable).values([
     {
       id: "user",
@@ -598,6 +599,276 @@ async function request(
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 }
+
+describe("Nuitee hotel checkout", () => {
+  function date(days: number) {
+    return new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+  }
+  const checkin = date(20);
+  const checkout = date(22);
+  const rates = [1, 2].map((occupancyNumber) => ({
+    occupancyNumber,
+    name: "Double room",
+    boardName: "Breakfast",
+    paymentTypes: ["NUITEE_PAY"],
+    retailRate: {
+      taxesAndFees: [
+        {
+          included: false,
+          amount: 10,
+          currency: "USD",
+          description: "Resort fee",
+        },
+      ],
+    },
+    cancellationPolicies: {
+      refundableTag: "RFN",
+      cancelPolicyInfos: [
+        {
+          cancelTime: checkin + " 10:00:00",
+          amount: 50,
+          currency: "USD",
+          timezone: "GMT",
+        },
+      ],
+    },
+  }));
+  const prebook = {
+    hotelId: "lp123",
+    prebookId: "test_prehotel",
+    checkin,
+    checkout,
+    price: 100,
+    currency: "USD",
+    roomTypes: [{ rates }],
+    suggestedSellingPrice: { amount: 120, currency: "USD" },
+  };
+
+  async function setup() {
+    const { saveOtaConfig } = await import("../src/services/ota/config");
+    await saveOtaConfig(
+      {
+        salesEnabled: false,
+        hotelsEnabled: false,
+        nuiteeHotelsEnabled: true,
+        nuiteeSalesEnabled: true,
+        nuiteeTestToken: "sand_testfixture",
+        rates: { NGN: 1, GBP: 1000, USD: 1000 },
+        nuiteeMarkupPercent: 10,
+      },
+      "super",
+    );
+    const fallback = globalThis.fetch;
+    let upstream: any;
+    const state = {
+      orders: 0,
+      loseResponse: false,
+      quoteChanged: false,
+      noAvailability: false,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL, init?: RequestInit) => {
+        const url = new URL(String(input));
+        if (
+          !["api.liteapi.travel", "book.liteapi.travel"].includes(url.hostname)
+        )
+          return fallback(input, init);
+        expect(new Headers(init?.headers).get("x-api-key")).toBe(
+          "sand_testfixture",
+        );
+        switch (url.pathname) {
+          case "/v3.0/data/hotel":
+            expect(url.searchParams.get("hotelId")).toBe("lp123");
+            return Response.json({
+              data: { id: "lp123", hotelDescription: "Close to the marina." },
+            });
+          case "/v3.0/hotels/rates": {
+            const query = JSON.parse(String(init?.body));
+            expect(query.occupancies).toEqual([
+              { adults: 2, children: [4] },
+              { adults: 1, children: [] },
+            ]);
+            expect(query.guestNationality).toBe("NG");
+            if (state.noAvailability)
+              return Response.json({ error: { code: 2001 } });
+            return Response.json({
+              sandbox: true,
+              hotels: [
+                {
+                  id: "lp123",
+                  name: "Marina Suites",
+                  address: "Marina Road",
+                  rating: 4,
+                },
+              ],
+              data: [
+                {
+                  hotelId: "lp123",
+                  roomTypes: [
+                    {
+                      offerId: "supplier_rate",
+                      rates,
+                      offerRetailRate: { amount: 100, currency: "USD" },
+                      suggestedSellingPrice: { amount: 120, currency: "USD" },
+                    },
+                  ],
+                },
+              ],
+            });
+          }
+          case "/v3.0/rates/prebook":
+            expect(JSON.parse(String(init?.body))).toEqual({
+              offerId: "supplier_rate",
+              usePaymentSdk: false,
+            });
+            return Response.json({ data: prebook });
+          case "/v3.0/prebooks/test_prehotel":
+            return Response.json({
+              data: { ...prebook, price: state.quoteChanged ? 101 : 100 },
+            });
+          case "/v3.0/rates/book": {
+            state.orders++;
+            const order = JSON.parse(String(init?.body));
+            expect(order.clientReference).toBe(booking.reference);
+            expect(order.payment).toEqual({ method: "ACC_CREDIT_CARD" });
+            expect(order.guests.map((g: any) => g.occupancyNumber)).toEqual([
+              1, 2,
+            ]);
+            upstream = {
+              ...prebook,
+              bookingId: "test_booking_nuitee",
+              clientReference: order.clientReference,
+              status: "CONFIRMED",
+              hotelConfirmationCode: "HOTEL123",
+              sandbox: 1,
+            };
+            if (state.loseResponse) throw new Error("Connection lost");
+            return Response.json({ data: upstream });
+          }
+          case "/v3.0/bookings":
+            expect(url.searchParams.get("clientReference")).toBe(
+              booking.reference,
+            );
+            return Response.json({ data: upstream ? [upstream] : [] });
+          case "/v3.0/bookings/test_booking_nuitee":
+            return Response.json({ data: upstream });
+          default:
+            throw new Error("Unexpected Nuitee request");
+        }
+      }),
+    );
+    return state;
+  }
+
+  const search = () =>
+    request("/hotels/search", undefined, {
+      latitude: 6.45,
+      longitude: 3.4,
+      rooms: 2,
+      adults: 3,
+      childAges: [4],
+      checkIn: checkin,
+      checkOut: checkout,
+    });
+  async function prepare() {
+    const result = (await (await search()).json()).results[0];
+    expect(result.accommodation.name).toBe("Marina Suites");
+    const rooms = (
+      await (await request(`/hotels/rates/${result.id}`, undefined, {})).json()
+    ).result.accommodation.rooms;
+    const rate = rooms[0].rates[0];
+    expect(rate.conditions).toContainEqual({
+      title: "Pay at the property",
+      description: "Resort fee · USD 10",
+    });
+    const res = await request("/hotels/quotes", "user", { rateId: rate.id });
+    expect(res.status).toBe(200);
+    return res.json();
+  }
+
+  async function createHotel(quote: any, totalKobo: number) {
+    return request("/bookings", "user", {
+      kind: "hotel",
+      offerId: quote.id,
+      expectedTotalKobo: totalKobo,
+      acceptedTerms: true,
+      contact: { email: "user@example.test", phone: "+2348012345678" },
+      travellers: [
+        { given_name: "Room", family_name: "One" },
+        { given_name: "Room", family_name: "Two" },
+      ],
+    });
+  }
+
+  it("binds the prebook to its owner and sends just one supplier purchase after verified payment", async () => {
+    const state = await setup();
+    const { quote, pricing } = await prepare();
+    expect(pricing).toMatchObject({
+      supplierKobo: 10000000,
+      markupKobo: 2000000,
+      totalKobo: 12000000,
+    });
+    expect((await request(`/hotels/quotes/${quote.id}`, "other")).status).toBe(
+      404,
+    );
+    const checkouts = await Promise.all([
+      createHotel(quote, pricing.totalKobo),
+      createHotel(quote, pricing.totalKobo),
+    ]);
+    expect(checkouts.map((item) => item.status)).toEqual([201, 201]);
+    const [first, duplicate] = await Promise.all(
+      checkouts.map((item) => item.json()),
+    );
+    booking = first.booking;
+    expect(duplicate.booking.id).toBe(booking.id);
+    expect(booking.providerOfferId).toBeNull();
+    expect(booking.offer.nuiteeStay).toBeUndefined();
+    expect(state.orders).toBe(0);
+    expect(
+      (await request(`/bookings/${booking.id}/pay`, "user", {})).status,
+    ).toBe(200);
+    amount = pricing.totalKobo;
+    await Promise.all([
+      request(`/bookings/${booking.id}/complete`, "user", {}),
+      request(`/bookings/${booking.id}/complete`, "user", {}),
+    ]);
+    expect(state.orders).toBe(1);
+    const result = await request(`/bookings/${booking.id}`, "user");
+    expect((await result.json()).booking).toMatchObject({
+      status: "confirmed",
+      supplier: "nuitee",
+      providerResult: { booking_reference: "HOTEL123" },
+    });
+  });
+
+  it("treats HTTP 200 no-availability correctly and blocks changed prebook totals", async () => {
+    const state = await setup();
+    state.noAvailability = true;
+    expect(await (await search()).json()).toEqual({ results: [] });
+    state.noAvailability = false;
+    const { quote, pricing } = await prepare();
+    state.quoteChanged = true;
+    expect((await createHotel(quote, pricing.totalKobo)).status).toBe(409);
+    expect(state.orders).toBe(0);
+  });
+
+  it("recovers an ambiguous booking by the original client reference without a second purchase", async () => {
+    const state = await setup();
+    const { quote, pricing } = await prepare();
+    booking = (await (await createHotel(quote, pricing.totalKobo)).json())
+      .booking;
+    amount = pricing.totalKobo;
+    state.loseResponse = true;
+    const path = `/bookings/${booking.id}`;
+    const uncertain = await request(path + "/complete", "user", {});
+    expect((await uncertain.json()).booking.status).toBe("requires_review");
+    const refreshed = await request(path + "/refresh", "user", {});
+    expect((await refreshed.json()).booking.status).toBe("confirmed");
+    expect(state.orders).toBe(1);
+  });
+});
+
 async function create(native = false, expectedTotalKobo = 10000000) {
   const response = await (native ? nativeRequest : request)(
     "/bookings",

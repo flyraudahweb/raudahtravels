@@ -234,7 +234,9 @@ export function RateConditions({ rate }: { rate: any }) {
         </p>
       ))}
       <p className="font-semibold">Cancellation policy</p>
-      {(rate.cancellation_timeline || []).length ? (
+      {rate.cancellation_summary ? (
+        <p>{rate.cancellation_summary}</p>
+      ) : (rate.cancellation_timeline || []).length ? (
         rate.cancellation_timeline.map((c: any, i: number) => (
           <p key={i}>
             Before {c.before}: refund {c.currency} {c.refund_amount}
@@ -345,6 +347,7 @@ export default function TravelSearchPage({
             rooms: Number(q.get("rooms") || 1),
             adults: Number(q.get("adults") || 1),
             childAges,
+            guestNationality: q.get("guestNationality") || "NG",
           };
     ota(
       `/${kind === "flight" ? "flights" : "hotels"}/search`,

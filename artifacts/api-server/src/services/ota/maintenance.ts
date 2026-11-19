@@ -47,7 +47,10 @@ async function maintainBookings() {
   for (const row of stale)
     await audit(row.id, "system", "interrupted_fulfillment_detected");
   const syncDeadline = Date.now() + 30000;
-  const syncCutoff = sql`now() - CASE WHEN ${bookings.supplier} = 'bilalsadasub' AND ${bookings.status} <> 'confirmed' THEN interval '30 seconds' ELSE interval '15 minutes' END`;
+  const syncCutoff = sql`now() - CASE
+    WHEN ${bookings.supplier} = 'bilalsadasub' AND ${bookings.status} <> 'confirmed' THEN interval '30 seconds'
+    WHEN ${bookings.supplier} = 'nuitee' AND ${bookings.status} = 'requires_review' THEN interval '2 minutes'
+    ELSE interval '15 minutes' END`;
   const sync = await db.query.otaBookingsTable.findMany({
     where: and(
       or(
@@ -55,6 +58,11 @@ async function maintainBookings() {
         and(
           eq(bookings.supplier, "bilalsadasub"),
           inArray(bookings.status, ["processing", "requires_review"]),
+          sql`${bookings.paidAt} > now() - interval '1 day'`,
+        ),
+        and(
+          eq(bookings.supplier, "nuitee"),
+          eq(bookings.status, "requires_review"),
           sql`${bookings.paidAt} > now() - interval '1 day'`,
         ),
       ),
