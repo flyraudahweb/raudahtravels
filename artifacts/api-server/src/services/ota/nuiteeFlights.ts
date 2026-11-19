@@ -595,7 +595,7 @@ export async function lookupNuiteeFlight(config: OtaConfig, row: SavedFlight) {
     const result = await request(
       config,
       row.mode as Mode,
-      `/flights/bookings?${query}`,
+      `/flights/bookings/?${query}`,
     );
     if (!Array.isArray(result.bookings))
       throw new OtaError("The supplier booking list is unavailable.", 502);

@@ -96,7 +96,14 @@ export async function paystackRequest(
 }
 export type OtaBooking = typeof bookings.$inferSelect;
 export function customerBooking(row: OtaBooking) {
-  const { travellers, contact, providerRequestId, ...safe } = row;
+  const {
+    travellers,
+    contact,
+    providerRequestId,
+    checkoutKey,
+    paymentInitializationAt,
+    ...safe
+  } = row;
   return {
     ...safe,
     ...(row.supplier === "bilalsadasub"
@@ -200,7 +207,7 @@ export async function fulfill(reference: string) {
         row.kind === "flight"
           ? await bookNuiteeFlight(savedConfig, row)
           : await bookNuiteeHotel(savedConfig, row);
-      return await saveNuiteeBooking(row, result);
+      return await saveNuiteeBooking(row, result, true);
     }
     const contact = row.contact as any;
     let result: any;
@@ -518,6 +525,7 @@ async function saveNuiteeBooking(
   result: NonNullable<
     Awaited<ReturnType<typeof lookupNuiteeBooking | typeof lookupNuiteeFlight>>
   >,
+  completingPayment = false,
 ) {
   if (row.status === "cancelled" && result.status !== "cancelled") return row;
   if (
@@ -553,7 +561,9 @@ async function saveNuiteeBooking(
       .where(
         and(
           eq(bookings.id, row.id),
-          eq(bookings.revision, row.revision),
+          completingPayment
+            ? sql`(${bookings.providerBookingId} IS NULL OR ${bookings.providerBookingId} = ${result.id})`
+            : eq(bookings.revision, row.revision),
           eq(bookings.status, row.status),
         ),
       )

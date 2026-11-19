@@ -5,7 +5,12 @@ import {
   type NextFunction,
 } from "express";
 import { getAuth, clerkClient } from "@clerk/express";
-import { randomUUID, createHmac, timingSafeEqual } from "node:crypto";
+import {
+  randomUUID,
+  createHash,
+  createHmac,
+  timingSafeEqual,
+} from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import {
@@ -15,7 +20,7 @@ import {
   otaEventsTable,
   notificationsTable,
 } from "@workspace/db";
-import { and, eq, desc, sql, like } from "drizzle-orm";
+import { and, eq, desc, sql, like, isNull, or } from "drizzle-orm";
 import { customerTimeline } from "../services/ota/bookingUpdates";
 import {
   getOtaConfig,
@@ -94,6 +99,7 @@ import {
   flightSearchReady,
 } from "../services/ota/flightSuppliers";
 import { getBilalTicket } from "../services/ota/bilalOrders";
+import { featuredHotelAvailability } from "../services/ota/featuredHotels";
 import { listDomesticFareIncreases } from "../services/ota/domesticFareChecks";
 import {
   checkNuiteeConnection,
@@ -604,6 +610,14 @@ router.post(
     });
   }),
 );
+router.get(
+  "/ota/hotels/featured-destinations",
+  endpoint(async (_req, res) => {
+    res.json({
+      availability: await featuredHotelAvailability(await getOtaConfig()),
+    });
+  }),
+);
 router.post(
   "/ota/hotels/rates/:id",
   endpoint(async (req, res) => {
@@ -845,6 +859,56 @@ router.post(
         "The price has changed. Refresh the offer and review the new total before paying.",
         409,
       );
+    const sourceKey =
+      nFlightQuote?.selection.offerId ??
+      nuiteeCheckout?.checkout.sourceKey ??
+      nuiteeCheckout?.checkout.prebookId;
+    const checkoutKey = sourceKey
+      ? createHash("sha256")
+          .update(
+            JSON.stringify([
+              userId,
+              input.kind,
+              mode,
+              sourceKey,
+              travellers
+                .map((person) =>
+                  JSON.stringify([
+                    person.given_name.normalize("NFKC").toLowerCase(),
+                    person.family_name.normalize("NFKC").toLowerCase(),
+                    input.kind === "flight" ? person.born_on : null,
+                  ]),
+                )
+                .sort(),
+            ]),
+          )
+          .digest("hex")
+      : null;
+    function reusable(existing: typeof bookings.$inferSelect | undefined) {
+      if (
+        !existing ||
+        existing.clerkUserId !== userId ||
+        existing.status !== "payment_pending" ||
+        existing.expiresAt.getTime() <= Date.now() + 60000 ||
+        existing.amountKobo !== pricing.totalKobo ||
+        !isDeepStrictEqual(existing.travellers, travellers) ||
+        !isDeepStrictEqual(existing.contact, input.contact)
+      )
+        throw new OtaError(
+          "A checkout already exists for this selection. Check your bookings before paying.",
+          409,
+        );
+      return existing;
+    }
+    if (checkoutKey) {
+      const existing = await db.query.otaBookingsTable.findFirst({
+        where: eq(bookings.checkoutKey, checkoutKey),
+      });
+      if (existing) {
+        res.status(201).json({ booking: customerBooking(reusable(existing)) });
+        return;
+      }
+    }
     if (nFlightQuote)
       offerId = await prebookNuiteeFlight(
         c,
@@ -863,6 +927,7 @@ router.post(
         mode,
         supplier,
         reference,
+        checkoutKey,
         providerOfferId: offerId,
         supplierAmount: offer.total_amount,
         supplierCurrency: offer.total_currency,
@@ -903,25 +968,16 @@ router.post(
       ).returning();
       if (!saved) {
         const existing = await tx.query.otaBookingsTable.findFirst({
-          where: and(
-            eq(bookings.providerOfferId, offerId),
-            eq(bookings.mode, mode),
-            eq(bookings.supplier, supplier),
+          where: or(
+            checkoutKey ? eq(bookings.checkoutKey, checkoutKey) : undefined,
+            and(
+              eq(bookings.providerOfferId, offerId),
+              eq(bookings.mode, mode),
+              eq(bookings.supplier, supplier),
+            ),
           ),
         });
-        if (
-          !existing ||
-          existing.clerkUserId !== userId ||
-          existing.status !== "payment_pending" ||
-          existing.amountKobo !== pricing.totalKobo ||
-          !isDeepStrictEqual(existing.travellers, travellers) ||
-          !isDeepStrictEqual(existing.contact, input.contact)
-        )
-          throw new OtaError(
-            "A checkout already exists for this room rate. Check your bookings before paying.",
-            409,
-          );
-        return existing;
+        return reusable(existing);
       }
       await tx.insert(otaEventsTable).values({
         id: randomUUID(),
@@ -1001,7 +1057,6 @@ router.post(
     const canPreparePayment = and(
       eq(bookings.id, row.id),
       eq(bookings.status, "payment_pending"),
-      eq(bookings.revision, row.revision),
       sql`${bookings.expiresAt} > now() + interval '1 minute'`,
     );
     const current = await db.query.otaBookingsTable.findFirst({
@@ -1017,7 +1072,36 @@ router.post(
       res.json({ authorizationUrl: current.authorizationUrl });
       return;
     }
-    // Stable reference prevents concurrent initialization from creating separate charges.
+    const startedAt = new Date();
+    const [claim] = await db
+      .update(bookings)
+      .set({ paymentInitializationAt: startedAt })
+      .where(
+        and(
+          canPreparePayment,
+          isNull(bookings.authorizationUrl),
+          or(
+            isNull(bookings.paymentInitializationAt),
+            sql`${bookings.paymentInitializationAt} < now() - interval '45 seconds'`,
+          ),
+        ),
+      )
+      .returning({ id: bookings.id });
+    if (!claim) {
+      const current = await db.query.otaBookingsTable.findFirst({
+        where: canPreparePayment,
+        columns: { authorizationUrl: true },
+      });
+      if (current?.authorizationUrl) {
+        res.json({ authorizationUrl: current.authorizationUrl });
+        return;
+      }
+      throw new OtaError(
+        "A payment session is being prepared. Refresh the booking before trying again.",
+        409,
+      );
+    }
+    // Keep the same reference if a gateway call times out or is interrupted.
     const data = await paystackRequest(
       "/transaction/initialize",
       row.mode,
@@ -1041,9 +1125,16 @@ router.post(
       .set({
         revision: sql`${bookings.revision}+1`,
         authorizationUrl: data.authorization_url,
+        paymentInitializationAt: null,
         updatedAt: new Date(),
       })
-      .where(canPreparePayment)
+      .where(
+        and(
+          canPreparePayment,
+          isNull(bookings.authorizationUrl),
+          eq(bookings.paymentInitializationAt, startedAt),
+        ),
+      )
       .returning({ id: bookings.id });
     if (!initialized)
       throw new OtaError(

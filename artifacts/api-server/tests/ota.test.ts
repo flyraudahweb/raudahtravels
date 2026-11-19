@@ -220,6 +220,7 @@ beforeAll(async () => {
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0014_ota_booking_supplier.sql"), "utf8"));
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0015_ota_nuitee_hotels.sql"), "utf8"));
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0016_ota_nuitee_flights.sql"), "utf8"));
+  await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0017_ota_checkout_claims.sql"), "utf8"));
   await module.db.insert(module.profilesTable).values([
     {
       id: "user",
@@ -666,6 +667,8 @@ describe("Nuitee hotel checkout", () => {
       loseResponse: false,
       quoteChanged: false,
       noAvailability: false,
+      nextPrebook: 0,
+      concurrentRevision: false,
     };
     vi.stubGlobal(
       "fetch",
@@ -723,10 +726,20 @@ describe("Nuitee hotel checkout", () => {
               offerId: "supplier_rate",
               usePaymentSdk: false,
             });
-            return Response.json({ data: prebook });
-          case "/v3.0/prebooks/test_prehotel":
             return Response.json({
-              data: { ...prebook, price: state.quoteChanged ? 101 : 100 },
+              data: {
+                ...prebook,
+                prebookId: `test_prehotel_${++state.nextPrebook}`,
+              },
+            });
+          case "/v3.0/prebooks/test_prehotel_1":
+          case "/v3.0/prebooks/test_prehotel_2":
+            return Response.json({
+              data: {
+                ...prebook,
+                prebookId: url.pathname.split("/").at(-1),
+                price: state.quoteChanged ? 101 : 100,
+              },
             });
           case "/v3.0/rates/book": {
             state.orders++;
@@ -738,12 +751,21 @@ describe("Nuitee hotel checkout", () => {
             ]);
             upstream = {
               ...prebook,
+              prebookId: order.prebookId,
               bookingId: "test_booking_nuitee",
               clientReference: order.clientReference,
               status: "CONFIRMED",
               hotelConfirmationCode: "HOTEL123",
               sandbox: 1,
             };
+            if (state.concurrentRevision)
+              await module.db
+                .update(module.otaBookingsTable)
+                .set({
+                  revision: sql`${module.otaBookingsTable.revision} + 1`,
+                  serviceRequest: "Please confirm the check-in time.",
+                })
+                .where(eq(module.otaBookingsTable.id, booking.id));
             if (state.loseResponse) throw new Error("Connection lost");
             return Response.json({ data: upstream });
           }
@@ -805,6 +827,8 @@ describe("Nuitee hotel checkout", () => {
   it("binds the prebook to its owner and sends just one supplier purchase after verified payment", async () => {
     const state = await setup();
     const { quote, pricing } = await prepare();
+    const duplicateQuote = (await prepare()).quote;
+    expect(duplicateQuote.id).not.toBe(quote.id);
     expect(pricing).toMatchObject({
       supplierKobo: 10000000,
       markupKobo: 2000000,
@@ -815,7 +839,7 @@ describe("Nuitee hotel checkout", () => {
     );
     const checkouts = await Promise.all([
       createHotel(quote, pricing.totalKobo),
-      createHotel(quote, pricing.totalKobo),
+      createHotel(duplicateQuote, pricing.totalKobo),
     ]);
     expect(checkouts.map((item) => item.status)).toEqual([201, 201]);
     const [first, duplicate] = await Promise.all(
@@ -824,12 +848,14 @@ describe("Nuitee hotel checkout", () => {
     booking = first.booking;
     expect(duplicate.booking.id).toBe(booking.id);
     expect(booking.providerOfferId).toBeNull();
+    expect(booking.checkoutKey).toBeUndefined();
     expect(booking.offer.nuiteeStay).toBeUndefined();
     expect(state.orders).toBe(0);
     expect(
       (await request(`/bookings/${booking.id}/pay`, "user", {})).status,
     ).toBe(200);
     amount = pricing.totalKobo;
+    state.concurrentRevision = true;
     await Promise.all([
       request(`/bookings/${booking.id}/complete`, "user", {}),
       request(`/bookings/${booking.id}/complete`, "user", {}),
@@ -841,6 +867,50 @@ describe("Nuitee hotel checkout", () => {
       supplier: "nuitee",
       providerResult: { booking_reference: "HOTEL123" },
     });
+  });
+
+  it("initializes Paystack once and keeps the URL through an unrelated booking update", async () => {
+    await setup();
+    const { quote, pricing } = await prepare();
+    booking = (await (await createHotel(quote, pricing.totalKobo)).json())
+      .booking;
+    const path = `/bookings/${booking.id}/pay`;
+    const previousFetch = globalThis.fetch;
+    let calls = 0;
+    let signalStart!: () => void;
+    let finish!: () => void;
+    const started = new Promise<void>((resolve) => {
+      signalStart = resolve;
+    });
+    const blocked = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    vi.stubGlobal("fetch", async (input: string | URL, init?: RequestInit) => {
+      if (String(input).endsWith("api.paystack.co/transaction/initialize")) {
+        calls++;
+        signalStart();
+        await blocked;
+      }
+      return previousFetch(input, init);
+    });
+    const first = request(path, "user", {});
+    try {
+      await started;
+      expect((await request(path, "user", {})).status).toBe(409);
+      await module.db
+        .update(module.otaBookingsTable)
+        .set({ revision: sql`${module.otaBookingsTable.revision} + 1` })
+        .where(eq(module.otaBookingsTable.id, booking.id));
+    } finally {
+      finish();
+    }
+    const result = await first;
+    expect(result.status).toBe(200);
+    const link = (await result.json()).authorizationUrl;
+    expect(
+      (await (await request(path, "user", {})).json()).authorizationUrl,
+    ).toBe(link);
+    expect(calls).toBe(1);
   });
 
   it("treats HTTP 200 no-availability correctly and blocks changed prebook totals", async () => {
@@ -867,6 +937,165 @@ describe("Nuitee hotel checkout", () => {
     const refreshed = await request(path + "/refresh", "user", {});
     expect((await refreshed.json()).booking.status).toBe("confirmed");
     expect(state.orders).toBe(1);
+  });
+});
+
+it("runs N flight checkout through Paystack and the account card with one order for repeated submissions", async () => {
+  const date = new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10);
+  const fare = {
+    offerId: "n-flight-offer",
+    expiration: new Date(Date.now() + 600_000).toISOString(),
+    pricing: { display: { total: 100, currency: "GBP" } },
+  };
+  const journey = {
+    journeyKey: "flight-1",
+    segments: [
+      {
+        originCode: "LOS",
+        destinationCode: "ABV",
+        direction: "OUTBOUND",
+        departureTime: date + "T08:00:00",
+        arrivalTime: date + "T09:10:00",
+        carrier: { marketingCode: "P4", marketingName: "Air Peace" },
+        flight: { marketingNumber: "7001" },
+      },
+    ],
+  };
+  let prebooks = 0;
+  let purchases = 0;
+  const fallback = globalThis.fetch;
+  vi.stubGlobal("fetch", async (input: string | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.hostname !== "api.liteapi.travel") return fallback(input, init);
+    expect(new Headers(init?.headers).get("X-API-Key")).toBe(
+      "sand_testfixture",
+    );
+    const data = (record: unknown) => Response.json({ data: [record] });
+    const prebook = { price: 100, currency: "GBP", booking: { journey } };
+    switch (url.pathname) {
+      case "/v3.0/flights/rates":
+        return data({ journeys: [{ ...journey, offers: [fare] }] });
+      case "/v3.0/flights/verify":
+        return data({ journey: { ...journey, ...fare } });
+      case "/v3.0/flights/prebooks":
+        return data({
+          ...prebook,
+          prebookId: `019d0674-834d-7db7-9c8b-93fe8e46e7b${++prebooks}`,
+          paymentTypes: ["ACC_CREDIT_CARD"],
+        });
+      case "/v3.0/flights/bookings":
+        purchases++;
+        expect(JSON.parse(String(init?.body))).toMatchObject({
+          payment: { method: "ACC_CREDIT_CARD" },
+          customTags: { RAUDAH_BOOKING: booking.id },
+        });
+        return data({
+          booking: {
+            journey,
+            status: "PENDING_CONFIRMATION",
+            bookingId: "n-flight-1",
+            customTags: { RAUDAH_BOOKING: booking.id },
+          },
+        });
+      case "/v3.0/flights/bookings/n-flight-1":
+        return data({
+          booking: {
+            journey,
+            status: "CONFIRMED",
+            bookingId: "n-flight-1",
+            bookingRef: "TICKETED",
+            payment: { amount: 100, currency: "GBP" },
+            customTags: { RAUDAH_BOOKING: booking.id },
+          },
+        });
+      default:
+        if (url.pathname.startsWith("/v3.0/flights/prebooks/"))
+          return data({
+            ...prebook,
+            prebookId: url.pathname.split("/").at(-1),
+          });
+        throw new Error("Unexpected N flight request");
+    }
+  });
+  const { saveOtaConfig } = await import("../src/services/ota/config");
+  await saveOtaConfig(
+    {
+      primaryFlightsEnabled: false,
+      bilalFlightsEnabled: false,
+      hotelsEnabled: false,
+      salesEnabled: false,
+      nuiteeFlightsEnabled: true,
+      nuiteeFlightSalesEnabled: true,
+      nuiteeTestToken: "sand_testfixture",
+    },
+    "super",
+  );
+  const {
+    offers: [offer],
+  } = await (
+    await request("/flights/search", undefined, {
+      origin: "LOS",
+      destination: "ABV",
+      departureDate: date,
+      adults: 1,
+      childAges: [],
+      cabinClass: "economy",
+    })
+  ).json();
+  const payload = {
+    kind: "flight",
+    offerId: offer.id,
+    expectedTotalKobo: offer.pricing.totalKobo,
+    acceptedTerms: true,
+    contact: {
+      email: "user@example.test",
+      phone: "+2348012345678",
+      phoneCountryCode: "234",
+    },
+    travellers: [
+      {
+        id: "pas_1",
+        given_name: "Test",
+        family_name: "Traveller",
+        born_on: "1990-01-01",
+        title: "mr",
+        gender: "m",
+        nationality: "NG",
+        email: "user@example.test",
+        phone_number: "+2348012345678",
+      },
+    ],
+  };
+  const created = await Promise.all([
+    request("/bookings", "user", payload),
+    request("/bookings", "user", payload),
+  ]);
+  expect(created.map((result) => result.status)).toEqual([201, 201]);
+  const [first, repeat] = await Promise.all(
+    created.map((result) => result.json()),
+  );
+  booking = first.booking;
+  expect(repeat.booking.id).toBe(booking.id);
+  const path = `/bookings/${booking.id}`;
+  expect((await request(path + "/pay", "user", {})).status).toBe(200);
+  expect(purchases).toBe(0);
+  amount = offer.pricing.totalKobo - 1;
+  expect((await request(path + "/complete", "user", {})).status).toBe(409);
+  expect(purchases).toBe(0);
+  amount = offer.pricing.totalKobo;
+  await Promise.all([
+    request(path + "/complete", "user", {}),
+    request(path + "/complete", "user", {}),
+  ]);
+  expect(purchases).toBe(1);
+  expect((await (await request(path, "user")).json()).booking.status).toBe(
+    "processing",
+  );
+  expect(
+    (await (await request(path + "/refresh", "user", {})).json()).booking,
+  ).toMatchObject({
+    status: "confirmed",
+    providerResult: { booking_reference: "TICKETED" },
   });
 });
 

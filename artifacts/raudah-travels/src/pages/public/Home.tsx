@@ -27,6 +27,7 @@ import consultancyImg from "@/assets/images/consultancy.png";
 import heroAircraftImg from "@/assets/images/hero-aircraft.jpg";
 import PackageCard from "@/components/packages/PackageCard";
 import AppSection from "@/components/home/AppSection";
+import FeaturedHotelDestinations from "@/components/home/FeaturedHotelDestinations";
 import OtaSearchWidget from "@/components/ota/OtaSearchWidget";
 import ExchangeRates from "@/components/ota/ExchangeRates";
 const TESTIMONIALS = [
@@ -197,6 +198,7 @@ export default function Home() {
               packagesSectionId="featured-packages"
               variant="landing"
             />
+            <FeaturedHotelDestinations />
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm">
               <div>
                 <p className="font-bold text-slate-900">

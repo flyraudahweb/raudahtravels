@@ -35,6 +35,10 @@ export const otaBookingsTable = pgTable(
     providerResult: jsonb("provider_result"),
     providerNotice: text("provider_notice"),
     authorizationUrl: text("authorization_url"),
+    checkoutKey: text("checkout_key"),
+    paymentInitializationAt: timestamp("payment_initialization_at", {
+      withTimezone: true,
+    }),
     providerRequestId: text("provider_request_id"),
     issue: text("issue"),
     serviceRequest: text("service_request"),
@@ -67,6 +71,9 @@ export const otaBookingsTable = pgTable(
     uniqueIndex("ota_nuitee_prebook_unique")
       .on(t.mode, t.providerOfferId)
       .where(sql`${t.supplier} = 'nuitee'`),
+    uniqueIndex("ota_checkout_key_unique")
+      .on(t.checkoutKey)
+      .where(sql`${t.checkoutKey} IS NOT NULL`),
     check(
       "ota_status",
       sql`${t.status} IN ('payment_pending','processing','confirmed','cancelled','requires_review','refunded')`,

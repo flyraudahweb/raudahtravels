@@ -33,7 +33,12 @@ type Stay = {
   expiresAt: number;
 };
 type RateSelection = Stay & { offerId: string };
-type Checkout = Stay & { prebookId: string; owner: string; termsHash: string };
+type Checkout = Stay & {
+  prebookId: string;
+  owner: string;
+  termsHash: string;
+  sourceKey?: string;
+};
 type Guest = { given_name: string; family_name: string };
 type Contact = { email: string; specialRequests?: string };
 type SupplierBooking = {
@@ -589,6 +594,7 @@ export async function createNuiteeQuote(
     ...stay,
     prebookId,
     owner,
+    sourceKey: createHash("sha256").update(offerId).digest("hex"),
     termsHash: resource.termsHash,
     expiresAt: Date.now() + 15 * 60000,
   };
