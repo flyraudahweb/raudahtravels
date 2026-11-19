@@ -17,6 +17,13 @@ export type NuiteeFlightSearch = {
 const timestamp = z.string().datetime({ local: true, offset: true });
 const code = z.string().regex(/^[A-Z0-9]{3}$/);
 const providerId = z.string().min(1).max(4096);
+const elapsed = z
+  .string()
+  .regex(/^P(?:\d+D)?T(?=\d)(?:\d+H)?(?:\d+M)?(?:\d+(?:\.\d+)?S)?$/);
+const legDurations = z.object({
+  OUTBOUND: elapsed.optional(),
+  INBOUND: elapsed.optional(),
+});
 const selectionSchema = z.object({
   offerId: providerId,
   mode: z.enum(["test", "live"]),
@@ -24,6 +31,7 @@ const selectionSchema = z.object({
   childAges: z.array(z.number().int().min(2).max(11)).max(8),
   journeyKey: z.string().min(1).max(256),
   roundTrip: z.boolean(),
+  legDurations: legDurations.optional(),
   expiresAt: z.number().int(),
 });
 type Selection = z.infer<typeof selectionSchema>;
@@ -206,6 +214,106 @@ const segmentSchema = z.object({
   }),
 });
 
+const providerDuration = z.object({
+  direction: z.enum(["OUTBOUND", "INBOUND"]),
+  duration: z.object({ iso8601: elapsed }),
+});
+const baggageItem = z.object({
+  bagType: z.enum(["cabin", "checked", "personal", "equipment"]),
+  passengerType: z.enum(["ADT", "CHD", "INF", "ALL"]),
+  pieces: z.number().int().nonnegative().nullish(),
+  weightKg: z.number().nonnegative().nullish(),
+  description: z.string().trim().max(500).optional(),
+});
+const supplierFee = z.object({
+  pricing: z
+    .object({
+      display: z
+        .object({
+          amount: z.number().nonnegative(),
+          currency: z.string().regex(/^[A-Z]{3}$/),
+        })
+        .optional(),
+    })
+    .optional(),
+  percent: z.number().nonnegative().optional(),
+  applicability: z.string().max(50).optional(),
+  label: z.string().max(200).optional(),
+});
+
+function allowanceDetails(quote: any) {
+  const terms = quote?.terms;
+  const fee = (value: unknown) => {
+    const parsed = supplierFee.safeParse(value);
+    if (!parsed.success) return;
+    const { pricing, percent, applicability, label } = parsed.data;
+    return { ...pricing?.display, percent, applicability, label };
+  };
+  const notes = Array.isArray(terms?.summary)
+    ? terms.summary
+        .flatMap((item: any) =>
+          typeof item?.message === "string" && item.message.trim()
+            ? [item.message.trim().slice(0, 500)]
+            : [],
+        )
+        .slice(0, 20)
+    : [];
+  const baggage = Array.isArray(quote?.baggage?.included)
+    ? quote.baggage.included.slice(0, 24).flatMap((item: unknown) => {
+        const result = baggageItem.safeParse(item);
+        return result.success ? [result.data] : [];
+      })
+    : [];
+  return {
+    ...(terms
+      ? {
+          fare_terms: {
+            refundable:
+              typeof terms.refundable === "boolean"
+                ? terms.refundable
+                : undefined,
+            changeable:
+              typeof terms.changeable === "boolean"
+                ? terms.changeable
+                : undefined,
+            refund_fee: fee(terms.refundFee),
+            change_fee: fee(terms.changeFee),
+            has_refund_fee: terms.hasRefundFee === true,
+            has_change_fee: terms.hasChangeFee === true,
+            notes,
+          },
+        }
+      : {}),
+    ...(quote?.baggage
+      ? {
+          baggage_allowances: {
+            included: baggage,
+            has_carry_on:
+              typeof quote.baggage.hasCarryOnBag === "boolean"
+                ? quote.baggage.hasCarryOnBag
+                : undefined,
+            has_checked_bag:
+              typeof quote.baggage.hasCheckedBag === "boolean"
+                ? quote.baggage.hasCheckedBag
+                : undefined,
+          },
+        }
+      : {}),
+  };
+}
+
+function journeyDurations(journey: any) {
+  const durations: z.infer<typeof legDurations> = {};
+  for (const item of Array.isArray(journey?.legDurations)
+    ? journey.legDurations
+    : []) {
+    const parsed = providerDuration.safeParse(item);
+    if (parsed.success)
+      durations[parsed.data.direction] = parsed.data.duration.iso8601;
+  }
+  return durations;
+}
+
 function normalizeJourney(
   config: OtaConfig,
   journey: any,
@@ -242,6 +350,7 @@ function normalizeJourney(
     (!selection.roundTrip && inbound.length)
   )
     return;
+  const durations = { ...selection.legDurations, ...journeyDurations(journey) };
   const slices = groups.map((group) => {
     const segments = group.map((s) => ({
       origin: { iata_code: s.originCode, name: s.originName },
@@ -264,6 +373,9 @@ function normalizeJourney(
     return {
       origin: segments[0].origin,
       destination: segments.at(-1)!.destination,
+      duration:
+        durations[group[0].direction] ??
+        (group.length === 1 ? segments[0].duration : undefined),
       segments,
     };
   });
@@ -287,6 +399,7 @@ function normalizeJourney(
     },
     total_amount: pricing.supplierAmount,
     total_currency: currency,
+    ...allowanceDetails(quote),
     slices,
     passengers: [
       ...Array.from({ length: selection.adults }, () => ({ type: "adult" })),
@@ -305,6 +418,7 @@ export async function searchNuiteeFlights(
   const limit = Date.now() + 15 * 60000;
   const offers = journeys.slice(0, 200).flatMap((journey: any) => {
     if (!Array.isArray(journey?.offers)) return [];
+    const durations = journeyDurations(journey);
     const candidates = (journey.offers as any[])
       .slice(0, 20)
       .flatMap((offer) => {
@@ -317,6 +431,7 @@ export async function searchNuiteeFlights(
           childAges: input.childAges,
           journeyKey: journey.journeyKey,
           roundTrip: !!input.returnDate,
+          legDurations: durations,
           expiresAt: Math.min(expiry, limit),
         });
         if (!result.success) return [];

@@ -1,5 +1,5 @@
 import { useLayoutEffect, useState, useRef, type FormEvent } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { SignInButton, useUser } from "@clerk/react";
 import { LockKeyhole, ArrowRight } from "lucide-react";
 import {
@@ -13,6 +13,60 @@ import { money, ota, travelButton, travelInput } from "@/lib/ota";
 import { BookingSteps } from "./BookingPresentation";
 
 export function FlightConditions({ offer }: { offer: any }) {
+  const terms = offer.fare_terms;
+  if (terms) {
+    const rules = [
+      {
+        title: "Refunds",
+        allowed: terms.refundable,
+        fee: terms.refund_fee,
+        hasFee: terms.has_refund_fee,
+      },
+      {
+        title: "Changes",
+        allowed: terms.changeable,
+        fee: terms.change_fee,
+        hasFee: terms.has_change_fee,
+      },
+    ];
+    return (
+      <div className="space-y-2 text-sm text-slate-600">
+        {rules.map(({ title, allowed, fee, hasFee }) => {
+          const amount =
+            fee?.amount != null && fee.currency
+              ? `${fee.currency} ${fee.amount}`
+              : fee?.percent != null
+                ? `${fee.percent}%`
+                : undefined;
+          const feeLabel =
+            fee?.label ||
+            (fee?.applicability === "noShow" ? "No-show fee" : "Supplier fee");
+          return (
+            <p key={title}>
+              <strong>{title}:</strong>{" "}
+              {allowed == null
+                ? "Confirm the fare rules with travel support."
+                : allowed
+                  ? "Allowed subject to supplier rules."
+                  : "Not permitted by this fare."}
+              {amount
+                ? ` ${feeLabel}: ${amount}.`
+                : hasFee
+                  ? " A supplier fee applies. Ask for the amount."
+                  : ""}
+            </p>
+          );
+        })}
+        {terms.notes?.length > 0 && (
+          <ul className="list-disc space-y-1 pl-4">
+            {terms.notes.map((note: string, index: number) => (
+              <li key={index}>{note}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
   return (
     <div className="space-y-2 text-sm text-slate-600">
       {["refund_before_departure", "change_before_departure"].map((key) => {
@@ -42,6 +96,8 @@ export default function TravelCheckout({
 }) {
   const { isLoaded, isSignedIn, user } = useUser(),
     [, navigate] = useLocation();
+  const search = useSearch();
+  const editBookingId = new URLSearchParams(search).get("edit");
   const [data, setData] = useState<any>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -49,7 +105,7 @@ export default function TravelCheckout({
   const [passportNumbers, setPassportNumbers] = useState<
     Record<number, string>
   >({});
-  const checkoutKey = `${kind}:${offerId}`,
+  const checkoutKey = `${kind}:${offerId}:${editBookingId ?? ""}`,
     activeCheckout = useRef<string | null>(checkoutKey);
   const requestEpoch = useRef(0),
     submitting = useRef(false);
@@ -60,16 +116,27 @@ export default function TravelCheckout({
     setBusy(false);
     setData(null);
     setError("");
+    setConfig(null);
     setPassportNumbers({});
     if (!isLoaded || (kind === "hotel" && !isSignedIn)) return;
     const abort = new AbortController();
-    ota(
-      `/${kind === "flight" ? "flights/offers" : "hotels/quotes"}/${encodeURIComponent(offerId)}`,
-      undefined,
-      undefined,
-      abort.signal,
-    )
-      .then((result) => {
+    Promise.all([
+      ota(
+        `/${kind === "flight" ? "flights/offers" : "hotels/quotes"}/${encodeURIComponent(offerId)}`,
+        undefined,
+        undefined,
+        abort.signal,
+      ),
+      editBookingId && isSignedIn
+        ? ota(
+            `/bookings/${encodeURIComponent(editBookingId)}`,
+            undefined,
+            undefined,
+            abort.signal,
+          )
+        : Promise.resolve(null),
+    ])
+      .then(([result, saved]) => {
         if (!abort.signal.aborted && requestEpoch.current === epoch) {
           const travellers =
             kind === "flight" ? result.offer?.passengers : result.quote?.guests;
@@ -77,7 +144,33 @@ export default function TravelCheckout({
             throw new Error(
               "Traveller information is unavailable for this offer. Please choose another option.",
             );
-          setData({ ...result, checkoutKey });
+          const draft = saved?.booking;
+          if (
+            editBookingId &&
+            (draft?.editableOfferId !== offerId || draft?.kind !== kind)
+          )
+            throw new Error(
+              "This checkout can no longer be edited. Open My Trips to review it.",
+            );
+          if (draft) {
+            if (kind === "flight") {
+              const savedTravellers = new Map(
+                draft.travellers.map((person: any) => [person.id, person]),
+              );
+              draft.travellers = travellers.map((person: any) =>
+                savedTravellers.get(person.id),
+              );
+            }
+            setPassportNumbers(
+              Object.fromEntries(
+                draft.travellers.map((person: any, index: number) => [
+                  index,
+                  person?.identity_documents?.[0]?.unique_identifier || "",
+                ]),
+              ),
+            );
+          }
+          setData({ ...result, checkoutKey, draft });
         }
       })
       .catch((e) => {
@@ -95,7 +188,15 @@ export default function TravelCheckout({
       requestEpoch.current++;
       abort.abort();
     };
-  }, [offerId, kind, isLoaded, isSignedIn, user?.id]);
+  }, [
+    offerId,
+    kind,
+    checkoutKey,
+    editBookingId,
+    isLoaded,
+    isSignedIn,
+    user?.id,
+  ]);
   const offer =
     data?.checkoutKey === checkoutKey ? data?.offer || data?.quote : null;
   const domestic = kind === "flight" && offerId.startsWith("bilal_");
@@ -179,6 +280,9 @@ export default function TravelCheckout({
       const { booking } = await ota("/bookings", {
         kind,
         offerId,
+        ...(editBookingId
+          ? { editBookingId, editRevision: data.draft.revision }
+          : {}),
         contact,
         travellers,
         expectedTotalKobo: data.pricing.totalKobo,
@@ -227,9 +331,11 @@ export default function TravelCheckout({
     <TravelShell>
       <BookingSteps step={1} />
       <h1 className="mb-7 text-3xl font-black text-slate-900">
-        {nFlight && !salesEnabled
-          ? "Review your flight"
-          : "Review your trip and add travellers"}
+        {editBookingId
+          ? "Edit your checkout"
+          : nFlight && !salesEnabled
+            ? "Review your flight"
+            : "Review your trip and add travellers"}
       </h1>
       {error && <ErrorMessage message={error} />}
       {!offer && !error ? (
@@ -271,7 +377,10 @@ export default function TravelCheckout({
                     <input
                       name="email"
                       type="email"
-                      defaultValue={user?.primaryEmailAddress?.emailAddress}
+                      defaultValue={
+                        data.draft?.contact?.email ||
+                        user?.primaryEmailAddress?.emailAddress
+                      }
                       required
                       maxLength={254}
                       className={`${travelInput} mt-1`}
@@ -281,6 +390,7 @@ export default function TravelCheckout({
                     Phone
                     <input
                       name="phone"
+                      defaultValue={data.draft?.contact?.phone}
                       type="tel"
                       placeholder="+2348012345678"
                       pattern="\+[1-9][0-9]{6,14}"
@@ -294,7 +404,9 @@ export default function TravelCheckout({
                       <input
                         name="callingCode"
                         inputMode="numeric"
-                        defaultValue="234"
+                        defaultValue={
+                          data.draft?.contact?.phoneCountryCode || "234"
+                        }
                         pattern="[1-9][0-9]{0,2}"
                         required
                         className={`${travelInput} mt-1`}
@@ -304,182 +416,199 @@ export default function TravelCheckout({
                 </div>
               </section>
               {(kind === "flight" ? offer.passengers : offer.guests || []).map(
-                (passenger: any, i: number) => (
-                  <section
-                    key={passenger.id || i}
-                    className="rounded-2xl border bg-white p-6"
-                  >
-                    <h2 className="mb-2 text-lg font-bold">
-                      {kind === "flight"
-                        ? "Traveller"
-                        : nuitee
-                          ? "Lead guest for room"
-                          : "Guest"}{" "}
-                      {i + 1}{" "}
-                      {passenger.age != null ? `· age ${passenger.age}` : ""}
-                    </h2>
-                    <p className="mb-4 text-sm text-slate-500">
-                      Use names exactly as shown on the travel document.
-                    </p>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <label className="text-sm">
-                        Given names
-                        <input
-                          name={`given_${i}`}
-                          required
-                          maxLength={100}
-                          className={`${travelInput} mt-1`}
-                        />
-                      </label>
-                      <label className="text-sm">
-                        Family name
-                        <input
-                          name={`family_${i}`}
-                          required
-                          maxLength={100}
-                          className={`${travelInput} mt-1`}
-                        />
-                      </label>
-                      {kind === "flight" && (
-                        <>
-                          <label className="text-sm">
-                            Date of birth
-                            <input
-                              type="date"
-                              name={`dob_${i}`}
-                              required
-                              max={new Date().toISOString().slice(0, 10)}
-                              className={`${travelInput} mt-1`}
-                            />
-                          </label>
-                          <label className="text-sm">
-                            Gender on travel document
-                            <select
-                              name={`gender_${i}`}
-                              required
-                              className={`${travelInput} mt-1`}
-                            >
-                              <option value="">Select</option>
-                              <option value="m">Male</option>
-                              <option value="f">Female</option>
-                            </select>
-                          </label>
-                          <label className="text-sm">
-                            Title
-                            <select
-                              name={`title_${i}`}
-                              required
-                              className={`${travelInput} mt-1`}
-                            >
-                              {(domestic || nFlight
-                                ? ["mr", "ms", "mrs", "miss"]
-                                : ["mr", "ms", "mrs", "miss", "dr"]
-                              ).map((t) => (
-                                <option key={t} value={t}>
-                                  {t.toUpperCase()}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="text-sm">
-                            Passport number{" "}
-                            {offer.passenger_identity_documents_required
-                              ? ""
-                              : "(optional for this fare)"}
-                            <input
-                              name={`passport_${i}`}
-                              minLength={4}
-                              maxLength={30}
-                              required={
-                                !!offer.passenger_identity_documents_required
-                              }
-                              value={passportNumbers[i] || ""}
-                              onChange={(e) =>
-                                setPassportNumbers((previous) => ({
-                                  ...previous,
-                                  [i]: e.target.value,
-                                }))
-                              }
-                              className={`${travelInput} mt-1`}
-                            />
-                          </label>
-                          {nFlight && (
+                (passenger: any, i: number) => {
+                  const saved = data.draft?.travellers?.[i];
+                  return (
+                    <section
+                      key={passenger.id || i}
+                      className="rounded-2xl border bg-white p-6"
+                    >
+                      <h2 className="mb-2 text-lg font-bold">
+                        {kind === "flight"
+                          ? "Traveller"
+                          : nuitee
+                            ? "Lead guest for room"
+                            : "Guest"}{" "}
+                        {i + 1}{" "}
+                        {passenger.age != null ? `· age ${passenger.age}` : ""}
+                      </h2>
+                      <p className="mb-4 text-sm text-slate-500">
+                        Use names exactly as shown on the travel document.
+                      </p>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <label className="text-sm">
+                          Given names
+                          <input
+                            name={`given_${i}`}
+                            defaultValue={saved?.given_name}
+                            required
+                            maxLength={100}
+                            className={`${travelInput} mt-1`}
+                          />
+                        </label>
+                        <label className="text-sm">
+                          Family name
+                          <input
+                            name={`family_${i}`}
+                            defaultValue={saved?.family_name}
+                            required
+                            maxLength={100}
+                            className={`${travelInput} mt-1`}
+                          />
+                        </label>
+                        {kind === "flight" && (
+                          <>
                             <label className="text-sm">
-                              Nationality (2 letters)
+                              Date of birth
                               <input
-                                name={`nationality_${i}`}
-                                placeholder="NG"
-                                pattern="[a-zA-Z]{2}"
-                                maxLength={2}
+                                type="date"
+                                name={`dob_${i}`}
+                                defaultValue={saved?.born_on}
                                 required
-                                className={`${travelInput} mt-1 uppercase`}
+                                max={new Date().toISOString().slice(0, 10)}
+                                className={`${travelInput} mt-1`}
                               />
                             </label>
-                          )}
-                          <label className="text-sm">
-                            Issuing country (2 letters)
-                            <input
-                              name={`country_${i}`}
-                              placeholder="NG"
-                              pattern="[a-zA-Z]{2}"
-                              maxLength={2}
-                              required={
-                                !!offer.passenger_identity_documents_required ||
-                                !!passportNumbers[i]
-                              }
-                              className={`${travelInput} mt-1 uppercase`}
-                            />
-                          </label>
-                          <label className="text-sm">
-                            Passport expiry
-                            <input
-                              name={`expiry_${i}`}
-                              type="date"
-                              min={
-                                lastTravelDate ||
-                                new Date().toISOString().slice(0, 10)
-                              }
-                              required={
-                                !!offer.passenger_identity_documents_required ||
-                                !!passportNumbers[i]
-                              }
-                              className={`${travelInput} mt-1`}
-                            />
-                          </label>
-                          {domestic && passportNumbers[i] && (
-                            <>
-                              <label className="text-sm">
-                                Passport issue date
-                                <input
-                                  name={`issued_${i}`}
-                                  type="date"
-                                  required
-                                  className={`${travelInput} mt-1`}
-                                />
-                              </label>
+                            <label className="text-sm">
+                              Gender on travel document
+                              <select
+                                name={`gender_${i}`}
+                                defaultValue={saved?.gender}
+                                required
+                                className={`${travelInput} mt-1`}
+                              >
+                                <option value="">Select</option>
+                                <option value="m">Male</option>
+                                <option value="f">Female</option>
+                              </select>
+                            </label>
+                            <label className="text-sm">
+                              Title
+                              <select
+                                name={`title_${i}`}
+                                defaultValue={saved?.title}
+                                required
+                                className={`${travelInput} mt-1`}
+                              >
+                                {(domestic || nFlight
+                                  ? ["mr", "ms", "mrs", "miss"]
+                                  : ["mr", "ms", "mrs", "miss", "dr"]
+                                ).map((t) => (
+                                  <option key={t} value={t}>
+                                    {t.toUpperCase()}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="text-sm">
+                              Passport number{" "}
+                              {offer.passenger_identity_documents_required
+                                ? ""
+                                : "(optional for this fare)"}
+                              <input
+                                name={`passport_${i}`}
+                                minLength={4}
+                                maxLength={30}
+                                required={
+                                  !!offer.passenger_identity_documents_required
+                                }
+                                value={passportNumbers[i] || ""}
+                                onChange={(e) =>
+                                  setPassportNumbers((previous) => ({
+                                    ...previous,
+                                    [i]: e.target.value,
+                                  }))
+                                }
+                                className={`${travelInput} mt-1`}
+                              />
+                            </label>
+                            {nFlight && (
                               <label className="text-sm">
                                 Nationality (2 letters)
                                 <input
                                   name={`nationality_${i}`}
+                                  defaultValue={saved?.nationality}
+                                  placeholder="NG"
                                   pattern="[a-zA-Z]{2}"
                                   maxLength={2}
                                   required
                                   className={`${travelInput} mt-1 uppercase`}
                                 />
                               </label>
-                            </>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </section>
-                ),
+                            )}
+                            <label className="text-sm">
+                              Issuing country (2 letters)
+                              <input
+                                name={`country_${i}`}
+                                defaultValue={
+                                  saved?.identity_documents?.[0]
+                                    ?.issuing_country_code
+                                }
+                                placeholder="NG"
+                                pattern="[a-zA-Z]{2}"
+                                maxLength={2}
+                                required={
+                                  !!offer.passenger_identity_documents_required ||
+                                  !!passportNumbers[i]
+                                }
+                                className={`${travelInput} mt-1 uppercase`}
+                              />
+                            </label>
+                            <label className="text-sm">
+                              Passport expiry
+                              <input
+                                name={`expiry_${i}`}
+                                defaultValue={
+                                  saved?.identity_documents?.[0]?.expires_on
+                                }
+                                type="date"
+                                min={
+                                  lastTravelDate ||
+                                  new Date().toISOString().slice(0, 10)
+                                }
+                                required={
+                                  !!offer.passenger_identity_documents_required ||
+                                  !!passportNumbers[i]
+                                }
+                                className={`${travelInput} mt-1`}
+                              />
+                            </label>
+                            {domestic && passportNumbers[i] && (
+                              <>
+                                <label className="text-sm">
+                                  Passport issue date
+                                  <input
+                                    name={`issued_${i}`}
+                                    type="date"
+                                    required
+                                    className={`${travelInput} mt-1`}
+                                  />
+                                </label>
+                                <label className="text-sm">
+                                  Nationality (2 letters)
+                                  <input
+                                    name={`nationality_${i}`}
+                                    pattern="[a-zA-Z]{2}"
+                                    maxLength={2}
+                                    required
+                                    className={`${travelInput} mt-1 uppercase`}
+                                  />
+                                </label>
+                              </>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </section>
+                  );
+                },
               )}
               {kind === "hotel" && (
                 <label className="block rounded-2xl border bg-white p-6 text-sm">
                   Special requests (optional)
                   <textarea
                     name="specialRequests"
+                    defaultValue={data.draft?.contact?.specialRequests}
                     maxLength={1000}
                     placeholder="Requests are subject to availability. Do not include medical or sensitive information."
                     className={`${travelInput} mt-3 min-h-24`}

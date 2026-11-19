@@ -104,8 +104,18 @@ export function customerBooking(row: OtaBooking) {
     paymentInitializationAt,
     ...safe
   } = row;
+  const editableOfferId =
+    row.supplier === "nuitee" &&
+    row.status === "payment_pending" &&
+    !row.paidAt &&
+    !row.authorizationUrl &&
+    !paymentInitializationAt &&
+    row.expiresAt.getTime() > Date.now() + 60000
+      ? (row.offer as { checkoutSelectionId?: string }).checkoutSelectionId
+      : undefined;
   return {
     ...safe,
+    ...(editableOfferId ? { editableOfferId } : {}),
     ...(row.supplier === "bilalsadasub"
       ? { offer: publicDomesticOffer(row.offer), providerOfferId: null }
       : row.supplier === "nuitee"
@@ -124,8 +134,12 @@ function publicDomesticOffer(offer: unknown) {
   return publicOffer;
 }
 function publicNuiteeOffer(offer: unknown) {
-  const { nuiteeStay, nuiteeFlightJourneyKey, ...publicOffer } =
-    offer as Record<string, unknown>;
+  const {
+    nuiteeStay,
+    nuiteeFlightJourneyKey,
+    checkoutSelectionId,
+    ...publicOffer
+  } = offer as Record<string, unknown>;
   return publicOffer;
 }
 export async function fulfill(reference: string) {

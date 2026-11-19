@@ -161,12 +161,16 @@ async function maintainBookings() {
     const result = row.providerResult as any;
     const confirmationDetails: string[] = [];
     if (row.status === "confirmed" && result) {
-      const reference =
-        row.kind === "flight" ? result.booking_reference : result.reference;
+      const reference = result.booking_reference || result.reference;
       if (reference)
         confirmationDetails.push(`Supplier reference: ${reference}`);
-      if (row.kind === "flight" && Array.isArray(result.slices)) {
-        for (const slice of result.slices) {
+      const slices =
+        Array.isArray(result.slices) &&
+        result.slices.some((slice: any) => slice?.segments?.length)
+          ? result.slices
+          : (row.offer as { slices?: unknown })?.slices;
+      if (row.kind === "flight" && Array.isArray(slices)) {
+        for (const slice of slices) {
           if (!Array.isArray(slice?.segments)) continue;
           for (const segment of slice.segments) {
             const route = `${segment?.origin?.iata_code || ""} ${segment?.departing_at || ""} → ${segment?.destination?.iata_code || ""} ${segment?.arriving_at || ""}`;

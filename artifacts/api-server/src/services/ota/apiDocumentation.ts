@@ -146,7 +146,7 @@ export const mobileGuides = [
     title: "API conventions, pagination & compatibility",
     body: "All customer requests use HTTPS and JSON. Send Content-Type: application/json for POST bodies ({} for bodyless actions); GET has no JSON body. Responses use camelCase Raudah envelopes with nested supplier fields often in snake_case. Unknown v1 routes return JSON404 and wrong methods JSON405 with Allow. Administrative and supplier webhook endpoints are excluded from v1.",
     steps: [
-      "Keep supplier IDs opaque. Preserve off_, srr_, rat_, quo_, pas_ and booking IDs exactly. URL-encode each raw path ID once, including ota: update IDs; typed client params.path handles serialization. Do not concatenate an untrusted URL as an API path.",
+      "Keep IDs opaque. Preserve flight offer IDs (including nfa_), hotel IDs, passenger IDs and booking IDs exactly. URL-encode each raw path ID once, including ota: update IDs; typed client params.path handles serialization. Do not concatenate an untrusted URL as an API path.",
       "Null means explicitly absent; omitted optional properties may not be supplied by that provider. Do not assume documents, baggage, cancellation rules, property photos or all rate fields exist. Missing fields need an honest fallback, not invented inventory or terms.",
       "Money in amountKobo/pricing.totalKobo is integer NGN minor units. Supplier decimal amounts stay strings. Date-only dates stay YYYY-MM-DD; supplier local departure/arrival strings must retain airport/property timezone context. Revision is a monotonic booking snapshot version, not an HTTP ETag.",
       "GET /bookings returns 50 rows and GET /updates 20; offset defaults to0, maximum100000. Follow nextOffset until null, merge by ID and retain the newest booking.revision. Counts cover all owner records. New rows can shift offset pages, so deduplicate and refresh page0 after changes; there is no cursor or stable export snapshot.",
@@ -625,6 +625,7 @@ export function otaOpenApi() {
       {
         id: string("Opaque offer identifier"),
         mode: string("The offer's environment when supplied", { enum: ["test", "live"] }),
+        supplier: string("Supplier identifier when supplied"),
         total_amount: string("Supplier decimal total"),
         total_currency: string("Supplier ISO currency"),
         expires_at: timestamp("Supplier offer expiry"),
@@ -645,11 +646,38 @@ export function otaOpenApi() {
         ),
         slices: array(ref("Slice")),
         conditions: object({}, [], { additionalProperties: true }),
+        fare_terms: object({
+          refundable: bool("Whether the supplier permits refunds"),
+          changeable: bool("Whether the supplier permits changes"),
+          refund_fee: ref("FlightFareFee"),
+          change_fee: ref("FlightFareFee"),
+          has_refund_fee: bool("A refund fee applies"),
+          has_change_fee: bool("A change fee applies"),
+          notes: array(string("Supplier fare rule")),
+        }),
+        baggage_allowances: object({
+          has_carry_on: bool("Carry-on baggage included"),
+          has_checked_bag: bool("Checked baggage included"),
+          included: array(object({
+            bagType: string("Baggage category", { enum: ["cabin", "checked", "personal", "equipment"] }),
+            passengerType: string("Passenger category", { enum: ["ADT", "CHD", "INF", "ALL"] }),
+            pieces: nullable(integer("Number of pieces", 0)),
+            weightKg: nullable({ type: "number", minimum: 0 }),
+            description: string("Supplier baggage description"),
+          })),
+        }),
         pricing: ref("Pricing"),
       },
       ["id"],
       { additionalProperties: true, example: flightExample },
     ),
+    FlightFareFee: object({
+      amount: { type: "number", minimum: 0 },
+      currency: string("Supplier fee currency"),
+      percent: { type: "number", minimum: 0 },
+      label: string("Supplier fee label"),
+      applicability: string("Supplier-defined condition, for example noShow"),
+    }),
     HotelResult: object(
       {
         id: string("srr_ search result ID"),
@@ -751,6 +779,7 @@ export function otaOpenApi() {
         ),
         amountKobo: integer("Saved total NGN minor units", 1),
         providerOfferId: nullable(string("Original offer or quote identifier when available to the client")),
+        editableOfferId: string("Offer identifier available for an N booking before payment begins"),
         providerBookingId: nullable(
           string("Opaque supplier booking identifier"),
         ),
@@ -788,7 +817,9 @@ export function otaOpenApi() {
     BookingCreate: object(
       {
         kind: string("Product", { enum: ["flight", "hotel"] }),
-        offerId: string("Current off_ flight offer ID or quo_ hotel quote ID"),
+        offerId: string("Current opaque flight offer or hotel quote ID"),
+        editBookingId: string("Existing N flight checkout to update before payment begins. Send its editableOfferId as offerId.", { format: "uuid" }),
+        editRevision: integer("Required with editBookingId. Use the booking revision read before editing.", 0),
         acceptedTerms: {
           type: "boolean",
           enum: [true],
@@ -1011,6 +1042,8 @@ export function otaOpenApi() {
         flightsEnabled: bool("Flight search enabled"),
         hotelsEnabled: bool("Stays search enabled"),
         salesEnabled: bool("Primary supplier checkout enabled"),
+        nuiteeFlightCheckoutEnabled: bool("Nuitee flight checkout enabled"),
+        nuiteeFlightMode: string("Nuitee flight environment", { enum: ["test", "live"] }),
         bilalCheckoutEnabled: bool("Bilalsadasub web checkout enabled independently"),
         bilalMode: string("Bilalsadasub supplier mode", { enum: ["test", "live"] }),
         mode: string("Mode", { enum: ["test", "live"] }),
@@ -1021,6 +1054,8 @@ export function otaOpenApi() {
         flightsEnabled: true,
         hotelsEnabled: false,
         salesEnabled: false,
+        nuiteeFlightCheckoutEnabled: true,
+        nuiteeFlightMode: "live",
         bilalCheckoutEnabled: false,
         bilalMode: "test",
         mode: "test",
@@ -1221,7 +1256,7 @@ export function otaOpenApi() {
     "/flights/offers/{id}",
     "Refresh an offer before checkout",
     "Flights",
-    "Use a current off_ ID. Revalidates availability/expiry and returns server selling price. Keep passenger IDs and conditions from this refreshed offer.",
+    "Use the current opaque ID from flight search, including nfa_ IDs for Nuitee. Keep the refreshed passenger IDs, fare terms and server selling price. Use nuiteeFlightCheckoutEnabled from /config for Nuitee checkout.",
     {
       scope: "flights:read",
       response: object({ offer: ref("FlightOffer"), pricing: ref("Pricing") }),
@@ -1512,7 +1547,7 @@ export function otaOpenApi() {
     openapi: "3.0.3",
     info: {
       title: "FlyRaudah OTA Mobile API",
-      version: "1.0.2",
+      version: "1.0.3",
       contact: { name: "FlyRaudah support", url: `${origin}/contact` },
       termsOfService: `${origin}/terms`,
       description:
@@ -1556,6 +1591,10 @@ export function otaOpenApi() {
     },
     "x-guides": mobileGuides,
     "x-changelog": [
+      {
+        version: "1.0.3",
+        changes: ["Nuitee flight checkout availability and environment, fare terms, baggage and unpaid checkout edits"],
+      },
       {
         version: "1.0.2",
         changes: [

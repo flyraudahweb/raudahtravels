@@ -448,6 +448,7 @@ router.get(
       salesEnabled: c.salesEnabled,
       bilalCheckoutEnabled: bilalFlightCheckoutReady(c),
       nuiteeFlightCheckoutEnabled: nuiteeFlightCheckoutReady(c),
+      nuiteeFlightMode: c.nuiteeFlightMode,
       bilalMode: bilalMode(c),
       mode: c.mode,
       supportEmail: c.supportEmail,
@@ -701,11 +702,18 @@ router.post(
       .object({
         kind: z.enum(["flight", "hotel"]),
         offerId: z.string(),
+        editBookingId: z.string().uuid().optional(),
+        editRevision: z.number().int().nonnegative().optional(),
         contact: contactSchema,
         travellers: z.array(z.unknown()).min(1).max(24),
         acceptedTerms: z.literal(true),
         expectedTotalKobo: z.number().int().positive(),
       })
+      .refine(
+        (payload) =>
+          (payload.editBookingId === undefined) ===
+          (payload.editRevision === undefined),
+      )
       .parse(req.body);
     const c = await getOtaConfig();
     const domestic =
@@ -718,6 +726,8 @@ router.post(
       input.offerId.startsWith("nqt_");
     const nFlight =
       input.kind === "flight" && input.offerId.startsWith(NUITEE_FLIGHT_PREFIX);
+    if (input.editBookingId && !nuitee && !nFlight)
+      throw new OtaError("This checkout cannot be edited.", 409);
     if (
       nFlight
         ? !nuiteeFlightCheckoutReady(c)
@@ -865,6 +875,12 @@ router.post(
       nuiteeCheckout?.checkout.prebookId;
     const checkoutKey = sourceKey
       ? createHash("sha256")
+          .update(JSON.stringify([userId, input.kind, mode, sourceKey]))
+          .digest("hex")
+      : null;
+    // Previously saved drafts included traveller identity in this key.
+    const legacyCheckoutKey = sourceKey
+      ? createHash("sha256")
           .update(
             JSON.stringify([
               userId,
@@ -884,31 +900,62 @@ router.post(
           )
           .digest("hex")
       : null;
-    function reusable(existing: typeof bookings.$inferSelect | undefined) {
-      if (
-        !existing ||
-        existing.clerkUserId !== userId ||
-        existing.status !== "payment_pending" ||
-        existing.expiresAt.getTime() <= Date.now() + 60000 ||
-        existing.amountKobo !== pricing.totalKobo ||
-        !isDeepStrictEqual(existing.travellers, travellers) ||
-        !isDeepStrictEqual(existing.contact, input.contact)
-      )
-        throw new OtaError(
-          "A checkout already exists for this selection. Check your bookings before paying.",
-          409,
-        );
-      return existing;
+    const lockedCheckout = () =>
+      new OtaError(
+        "Payment may already be in progress, or this checkout changed. Open My Trips to review the saved booking.",
+        409,
+      );
+    const reusable = (existing: typeof bookings.$inferSelect | undefined) =>
+      existing?.clerkUserId === userId &&
+      existing.status === "payment_pending" &&
+      existing.supplier === supplier &&
+      existing.mode === mode &&
+      existing.kind === input.kind &&
+      existing.expiresAt.getTime() > Date.now() + 60000 &&
+      existing.amountKobo === pricing.totalKobo &&
+      isDeepStrictEqual(existing.travellers, travellers) &&
+      isDeepStrictEqual(existing.contact, input.contact);
+    const existing = input.editBookingId
+      ? await db.query.otaBookingsTable.findFirst({
+          where: and(
+            eq(bookings.id, input.editBookingId),
+            eq(bookings.clerkUserId, userId),
+          ),
+        })
+      : checkoutKey
+        ? ((await db.query.otaBookingsTable.findFirst({
+            where: eq(bookings.checkoutKey, checkoutKey),
+          })) ??
+          (legacyCheckoutKey
+            ? await db.query.otaBookingsTable.findFirst({
+                where: eq(bookings.checkoutKey, legacyCheckoutKey),
+              })
+            : undefined))
+        : undefined;
+    if (
+      input.editBookingId &&
+      (!existing ||
+        existing.kind !== input.kind ||
+        existing.supplier !== supplier ||
+        existing.mode !== mode ||
+        (existing.offer as { checkoutSelectionId?: string })
+          .checkoutSelectionId !== input.offerId)
+    )
+      throw new OtaError("Editable checkout not found.", 404);
+    if (existing && reusable(existing)) {
+      res.status(201).json({ booking: customerBooking(existing) });
+      return;
     }
-    if (checkoutKey) {
-      const existing = await db.query.otaBookingsTable.findFirst({
-        where: eq(bookings.checkoutKey, checkoutKey),
-      });
-      if (existing) {
-        res.status(201).json({ booking: customerBooking(reusable(existing)) });
-        return;
-      }
-    }
+    if (
+      existing &&
+      (existing.status !== "payment_pending" ||
+        existing.paidAt ||
+        existing.authorizationUrl ||
+        existing.paymentInitializationAt ||
+        (input.editRevision !== undefined &&
+          input.editRevision !== existing.revision))
+    )
+      throw lockedCheckout();
     if (nFlightQuote)
       offerId = await prebookNuiteeFlight(
         c,
@@ -919,75 +966,119 @@ router.post(
     const bookingId = randomUUID(),
       reference = `OTA-${randomUUID()}`;
     const expiresAt = new Date(expiration(offer));
-    const row = await db.transaction(async (tx) => {
-      const insert = tx.insert(bookings).values({
-        id: bookingId,
-        clerkUserId: userId,
-        kind: input.kind,
-        mode,
-        supplier,
-        reference,
-        checkoutKey,
-        providerOfferId: offerId,
-        supplierAmount: offer.total_amount,
-        supplierCurrency: offer.total_currency,
-        amountKobo: pricing.totalKobo,
-        pricing,
-        offer: nFlightQuote
-          ? {
-              ...offer,
-              id: undefined,
-              nuiteeFlightJourneyKey: nFlightQuote.selection.journeyKey,
-            }
-          : nuiteeCheckout
+    const row = await db
+      .transaction(async (tx) => {
+        const values = {
+          id: bookingId,
+          clerkUserId: userId,
+          kind: input.kind,
+          mode,
+          supplier,
+          reference,
+          checkoutKey,
+          providerOfferId: offerId,
+          supplierAmount: offer.total_amount,
+          supplierCurrency: offer.total_currency,
+          amountKobo: pricing.totalKobo,
+          pricing,
+          offer: nFlightQuote
             ? {
                 ...offer,
                 id: undefined,
-                nuiteeStay: {
-                  mode,
-                  hotelId: nuiteeCheckout.checkout.hotelId,
-                  checkIn: nuiteeCheckout.checkout.checkIn,
-                  checkOut: nuiteeCheckout.checkout.checkOut,
-                  rooms: nuiteeCheckout.checkout.rooms,
-                  termsHash: nuiteeCheckout.checkout.termsHash,
-                },
+                checkoutSelectionId: input.offerId,
+                nuiteeFlightJourneyKey: nFlightQuote.selection.journeyKey,
               }
-            : domesticCheckout
+            : nuiteeCheckout
               ? {
                   ...offer,
                   id: undefined,
-                  domesticQuote: domesticCheckout.quote,
+                  checkoutSelectionId: input.offerId,
+                  nuiteeStay: {
+                    mode,
+                    hotelId: nuiteeCheckout.checkout.hotelId,
+                    checkIn: nuiteeCheckout.checkout.checkIn,
+                    checkOut: nuiteeCheckout.checkout.checkOut,
+                    rooms: nuiteeCheckout.checkout.rooms,
+                    termsHash: nuiteeCheckout.checkout.termsHash,
+                  },
                 }
-              : offer,
-        travellers,
-        contact: input.contact,
-        expiresAt,
-      });
-      const [saved] = await (
-        supplier === "nuitee" ? insert.onConflictDoNothing() : insert
-      ).returning();
-      if (!saved) {
-        const existing = await tx.query.otaBookingsTable.findFirst({
-          where: or(
-            checkoutKey ? eq(bookings.checkoutKey, checkoutKey) : undefined,
-            and(
-              eq(bookings.providerOfferId, offerId),
-              eq(bookings.mode, mode),
-              eq(bookings.supplier, supplier),
+              : domesticCheckout
+                ? {
+                    ...offer,
+                    id: undefined,
+                    domesticQuote: domesticCheckout.quote,
+                  }
+                : offer,
+          travellers,
+          contact: input.contact,
+          expiresAt,
+        };
+        if (existing) {
+          const { id: _id, reference: _reference, ...details } = values;
+          const [updated] = await tx
+            .update(bookings)
+            .set({
+              ...details,
+              revision: sql`${bookings.revision} + 1`,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(bookings.id, existing.id),
+                eq(bookings.clerkUserId, userId),
+                eq(bookings.revision, existing.revision),
+                eq(bookings.status, "payment_pending"),
+                isNull(bookings.paidAt),
+                isNull(bookings.authorizationUrl),
+                isNull(bookings.paymentInitializationAt),
+              ),
+            )
+            .returning();
+          if (!updated) throw lockedCheckout();
+          await tx.insert(otaEventsTable).values({
+            id: randomUUID(),
+            bookingId: updated.id,
+            actor: userId,
+            action: "checkout_updated",
+            details: { termsAccepted: true },
+          });
+          return updated;
+        }
+        const insert = tx.insert(bookings).values(values);
+        const [saved] = await (
+          supplier === "nuitee" ? insert.onConflictDoNothing() : insert
+        ).returning();
+        if (!saved) {
+          const existing = await tx.query.otaBookingsTable.findFirst({
+            where: or(
+              checkoutKey ? eq(bookings.checkoutKey, checkoutKey) : undefined,
+              and(
+                eq(bookings.providerOfferId, offerId),
+                eq(bookings.mode, mode),
+                eq(bookings.supplier, supplier),
+              ),
             ),
-          ),
+          });
+          if (!existing || !reusable(existing)) throw lockedCheckout();
+          return existing;
+        }
+        await tx.insert(otaEventsTable).values({
+          id: randomUUID(),
+          bookingId,
+          actor: userId,
+          action: "checkout_created",
+          details: { termsAccepted: true },
         });
-        return reusable(existing);
-      }
-      await tx.insert(otaEventsTable).values({
-        id: randomUUID(),
-        bookingId,
-        actor: userId,
-        action: "checkout_created",
-        details: { termsAccepted: true },
+        return saved;
+      })
+      .catch((error) => {
+        if (
+          supplier === "nuitee" &&
+          (error.cause?.code ?? error.code) === "23505"
+        )
+          throw lockedCheckout();
+        throw error;
       });
-      return saved;
-    });
     res.status(201).json({ booking: customerBooking(row) });
   }),
 );
@@ -1057,6 +1148,12 @@ router.post(
     const canPreparePayment = and(
       eq(bookings.id, row.id),
       eq(bookings.status, "payment_pending"),
+      eq(bookings.providerOfferId, row.providerOfferId),
+      eq(bookings.amountKobo, row.amountKobo),
+      eq(bookings.supplierAmount, row.supplierAmount),
+      eq(bookings.supplierCurrency, row.supplierCurrency),
+      sql`${bookings.contact} = ${JSON.stringify(row.contact)}::jsonb`,
+      sql`${bookings.travellers} = ${JSON.stringify(row.travellers)}::jsonb`,
       sql`${bookings.expiresAt} > now() + interval '1 minute'`,
     );
     const current = await db.query.otaBookingsTable.findFirst({

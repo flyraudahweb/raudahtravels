@@ -278,6 +278,14 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
               >
                 My trips
               </Link>
+              {booking.editableOfferId && !expired && (
+                <Link
+                  href={`/${booking.kind === "flight" ? "flights" : "hotels"}/checkout/${encodeURIComponent(booking.editableOfferId)}?edit=${encodeURIComponent(booking.id)}`}
+                  className="rounded-xl border bg-white px-4 py-3 text-sm font-bold"
+                >
+                  Edit checkout
+                </Link>
+              )}
               {booking.status === "payment_pending" && expired && (
                 <Link
                   href={booking.kind === "flight" ? "/flights" : "/hotels"}
@@ -357,7 +365,15 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
               </div>
               {booking.kind === "flight" ? (
                 <>
-                  <FlightItinerary offer={provider || offer} />
+                  <FlightItinerary
+                    offer={
+                      provider?.slices?.some(
+                        (slice: any) => slice.segments?.length,
+                      )
+                        ? provider
+                        : offer
+                    }
+                  />
                   <FlightConditions offer={offer} />
                   <h3 className="font-bold">Ticket information</h3>
                   {confirmed && provider?.documents?.length ? (
@@ -378,7 +394,9 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
                 <>
                   <h3 className="font-bold">{offer.accommodation?.name}</h3>
                   {provider?.check_in_instructions && (
-                    <p className="mt-2 text-sm">{provider.check_in_instructions}</p>
+                    <p className="mt-2 text-sm">
+                      {provider.check_in_instructions}
+                    </p>
                   )}
                   <p className="text-sm">
                     {offer.accommodation?.location?.address?.line_one},{" "}

@@ -810,7 +810,7 @@ describe("Nuitee hotel checkout", () => {
     return res.json();
   }
 
-  async function createHotel(quote: any, totalKobo: number) {
+  async function createHotel(quote: any, totalKobo: number, changes = {}) {
     return request("/bookings", "user", {
       kind: "hotel",
       offerId: quote.id,
@@ -821,6 +821,7 @@ describe("Nuitee hotel checkout", () => {
         { given_name: "Room", family_name: "One" },
         { given_name: "Room", family_name: "Two" },
       ],
+      ...changes,
     });
   }
 
@@ -867,6 +868,48 @@ describe("Nuitee hotel checkout", () => {
       supplier: "nuitee",
       providerResult: { booking_reference: "HOTEL123" },
     });
+    const { sendEmail } = await import("../src/utils/email");
+    vi.mocked(sendEmail).mockClear();
+    await (await import("../src/services/ota/maintenance")).maintainOta();
+    expect(vi.mocked(sendEmail).mock.calls[0]?.[0].text).toContain(
+      "Supplier reference: HOTEL123",
+    );
+  });
+
+  it("updates an unpaid hotel draft in place and rejects stale edits", async () => {
+    await setup();
+    const { quote, pricing } = await prepare();
+    booking = (await (await createHotel(quote, pricing.totalKobo)).json())
+      .booking;
+    expect(booking.editableOfferId).toBe(quote.id);
+    const { saveOtaConfig } = await import("../src/services/ota/config");
+    await saveOtaConfig({ nuiteeMarkupPercent: 30 }, "super");
+    const edit = {
+      editBookingId: booking.id,
+      editRevision: booking.revision,
+      contact: { ...booking.contact, email: "corrected@example.test" },
+      travellers: [
+        { given_name: "Corrected", family_name: "One" },
+        booking.travellers[1],
+      ],
+    };
+    const response = await createHotel(quote, 13000000, edit);
+    expect(response.status).toBe(201);
+    const updated = (await response.json()).booking;
+    expect(updated).toMatchObject({
+      id: booking.id,
+      reference: booking.reference,
+      amountKobo: 13000000,
+      contact: { email: "corrected@example.test" },
+    });
+    expect(await module.db.select().from(module.otaBookingsTable)).toHaveLength(
+      1,
+    );
+    const stale = await createHotel(quote, 13000000, {
+      ...edit,
+      contact: { ...edit.contact, email: "stale@example.test" },
+    });
+    expect(stale.status).toBe(409);
   });
 
   it("initializes Paystack once and keeps the URL through an unrelated booking update", async () => {
@@ -897,6 +940,15 @@ describe("Nuitee hotel checkout", () => {
     try {
       await started;
       expect((await request(path, "user", {})).status).toBe(409);
+      expect(
+        (
+          await createHotel(quote, pricing.totalKobo, {
+            editBookingId: booking.id,
+            editRevision: booking.revision,
+            contact: { ...booking.contact, email: "too-late@example.test" },
+          })
+        ).status,
+      ).toBe(409);
       await module.db
         .update(module.otaBookingsTable)
         .set({ revision: sql`${module.otaBookingsTable.revision} + 1` })
@@ -1076,6 +1128,22 @@ it("runs N flight checkout through Paystack and the account card with one order 
   );
   booking = first.booking;
   expect(repeat.booking.id).toBe(booking.id);
+  expect(booking.offer.checkoutSelectionId).toBeUndefined();
+  const corrected = await request("/bookings", "user", {
+    ...payload,
+    editBookingId: booking.id,
+    editRevision: booking.revision,
+    travellers: [{ ...payload.travellers[0], given_name: "Corrected" }],
+  });
+  expect(corrected.status).toBe(201);
+  expect((await corrected.json()).booking).toMatchObject({
+    id: booking.id,
+    reference: booking.reference,
+    travellers: [{ given_name: "Corrected" }],
+  });
+  expect(await module.db.select().from(module.otaBookingsTable)).toHaveLength(
+    1,
+  );
   const path = `/bookings/${booking.id}`;
   expect((await request(path + "/pay", "user", {})).status).toBe(200);
   expect(purchases).toBe(0);
@@ -1097,6 +1165,12 @@ it("runs N flight checkout through Paystack and the account card with one order 
     status: "confirmed",
     providerResult: { booking_reference: "TICKETED" },
   });
+  const { sendEmail } = await import("../src/utils/email");
+  vi.mocked(sendEmail).mockClear();
+  await (await import("../src/services/ota/maintenance")).maintainOta();
+  expect(vi.mocked(sendEmail).mock.calls[0]?.[0].text).toContain(
+    `LOS ${date}T08:00:00 → ABV ${date}T09:10:00`,
+  );
 });
 
 async function create(native = false, expectedTotalKobo = 10000000) {

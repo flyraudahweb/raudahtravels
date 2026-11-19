@@ -148,7 +148,7 @@ export interface paths {
         };
         /**
          * Refresh an offer before checkout
-         * @description Use a current off_ ID. Revalidates availability/expiry and returns server selling price. Keep passenger IDs and conditions from this refreshed offer.
+         * @description Use the current opaque ID from flight search, including nfa_ IDs for Nuitee. Keep the refreshed passenger IDs, fare terms and server selling price. Use nuiteeFlightCheckoutEnabled from /config for Nuitee checkout.
          */
         get: operations["get_flights_offers__id_"];
         put?: never;
@@ -672,7 +672,7 @@ export interface components {
          *       "id": "off_example123",
          *       "total_amount": "100.00",
          *       "total_currency": "USD",
-         *       "expires_at": "2026-11-19T16:44:15.278Z",
+         *       "expires_at": "2026-11-19T20:48:40.338Z",
          *       "passengers": [
          *         {
          *           "id": "pas_example123",
@@ -735,6 +735,8 @@ export interface components {
              * @enum {string}
              */
             mode?: "test" | "live";
+            /** @description Supplier identifier when supplied */
+            supplier?: string;
             /** @description Supplier decimal total */
             total_amount?: string;
             /** @description Supplier ISO currency */
@@ -766,9 +768,55 @@ export interface components {
             conditions?: {
                 [key: string]: unknown;
             };
+            fare_terms?: {
+                /** @description Whether the supplier permits refunds */
+                refundable?: boolean;
+                /** @description Whether the supplier permits changes */
+                changeable?: boolean;
+                refund_fee?: components["schemas"]["FlightFareFee"];
+                change_fee?: components["schemas"]["FlightFareFee"];
+                /** @description A refund fee applies */
+                has_refund_fee?: boolean;
+                /** @description A change fee applies */
+                has_change_fee?: boolean;
+                notes?: string[];
+            };
+            baggage_allowances?: {
+                /** @description Carry-on baggage included */
+                has_carry_on?: boolean;
+                /** @description Checked baggage included */
+                has_checked_bag?: boolean;
+                included?: {
+                    /**
+                     * @description Baggage category
+                     * @enum {string}
+                     */
+                    bagType?: "cabin" | "checked" | "personal" | "equipment";
+                    /**
+                     * @description Passenger category
+                     * @enum {string}
+                     */
+                    passengerType?: "ADT" | "CHD" | "INF" | "ALL";
+                    /** @description Number of pieces */
+                    pieces?: number | null;
+                    weightKg?: number | null;
+                    /** @description Supplier baggage description */
+                    description?: string;
+                }[];
+            };
             pricing?: components["schemas"]["Pricing"];
         } & {
             [key: string]: unknown;
+        };
+        FlightFareFee: {
+            amount?: number;
+            /** @description Supplier fee currency */
+            currency?: string;
+            percent?: number;
+            /** @description Supplier fee label */
+            label?: string;
+            /** @description Supplier-defined condition, for example noShow */
+            applicability?: string;
         };
         HotelResult: {
             /** @description srr_ search result ID */
@@ -878,7 +926,7 @@ export interface components {
          *         "id": "off_example123",
          *         "total_amount": "100.00",
          *         "total_currency": "USD",
-         *         "expires_at": "2026-11-19T16:44:15.278Z",
+         *         "expires_at": "2026-11-19T20:48:40.338Z",
          *         "passengers": [
          *           {
          *             "id": "pas_example123",
@@ -948,7 +996,7 @@ export interface components {
          *         "email": "traveller@example.com",
          *         "phone": "+2348012345678"
          *       },
-         *       "expiresAt": "2026-11-19T16:44:15.279Z",
+         *       "expiresAt": "2026-11-19T20:48:40.338Z",
          *       "paidAt": null,
          *       "providerResult": null,
          *       "providerNotice": null,
@@ -986,6 +1034,8 @@ export interface components {
             amountKobo: number;
             /** @description Original offer or quote identifier when available to the client */
             providerOfferId?: string | null;
+            /** @description Offer identifier available for an N booking before payment begins */
+            editableOfferId?: string;
             /** @description Opaque supplier booking identifier */
             providerBookingId?: string | null;
             pricing?: components["schemas"]["Pricing"];
@@ -1063,7 +1113,7 @@ export interface components {
          *           "id": "off_example123",
          *           "total_amount": "100.00",
          *           "total_currency": "USD",
-         *           "expires_at": "2026-11-19T16:44:15.278Z",
+         *           "expires_at": "2026-11-19T20:48:40.338Z",
          *           "passengers": [
          *             {
          *               "id": "pas_example123",
@@ -1133,7 +1183,7 @@ export interface components {
          *           "email": "traveller@example.com",
          *           "phone": "+2348012345678"
          *         },
-         *         "expiresAt": "2026-11-19T16:44:15.279Z",
+         *         "expiresAt": "2026-11-19T20:48:40.338Z",
          *         "paidAt": null,
          *         "providerResult": null,
          *         "providerNotice": null,
@@ -1176,8 +1226,15 @@ export interface components {
              * @enum {string}
              */
             kind: "flight" | "hotel";
-            /** @description Current off_ flight offer ID or quo_ hotel quote ID */
+            /** @description Current opaque flight offer or hotel quote ID */
             offerId: string;
+            /**
+             * Format: uuid
+             * @description Existing N flight checkout to update before payment begins. Send its editableOfferId as offerId.
+             */
+            editBookingId?: string;
+            /** @description Required with editBookingId. Use the booking revision read before editing. */
+            editRevision?: number;
             /**
              * @description Explicit acceptance of the currently displayed terms
              * @enum {boolean}
@@ -1264,6 +1321,8 @@ export interface operations {
                      *       "flightsEnabled": true,
                      *       "hotelsEnabled": false,
                      *       "salesEnabled": false,
+                     *       "nuiteeFlightCheckoutEnabled": true,
+                     *       "nuiteeFlightMode": "live",
                      *       "bilalCheckoutEnabled": false,
                      *       "bilalMode": "test",
                      *       "mode": "test",
@@ -1278,6 +1337,13 @@ export interface operations {
                         hotelsEnabled: boolean;
                         /** @description Primary supplier checkout enabled */
                         salesEnabled: boolean;
+                        /** @description Nuitee flight checkout enabled */
+                        nuiteeFlightCheckoutEnabled: boolean;
+                        /**
+                         * @description Nuitee flight environment
+                         * @enum {string}
+                         */
+                        nuiteeFlightMode: "test" | "live";
                         /** @description Bilalsadasub web checkout enabled independently */
                         bilalCheckoutEnabled: boolean;
                         /**
@@ -2511,7 +2577,7 @@ export interface operations {
                      *           "id": "off_example123",
                      *           "total_amount": "100.00",
                      *           "total_currency": "USD",
-                     *           "expires_at": "2026-11-19T16:44:15.278Z",
+                     *           "expires_at": "2026-11-19T20:48:40.338Z",
                      *           "passengers": [
                      *             {
                      *               "id": "pas_example123",
@@ -2777,7 +2843,7 @@ export interface operations {
                      *         "id": "off_example123",
                      *         "total_amount": "100.00",
                      *         "total_currency": "USD",
-                     *         "expires_at": "2026-11-19T16:44:15.278Z",
+                     *         "expires_at": "2026-11-19T20:48:40.338Z",
                      *         "passengers": [
                      *           {
                      *             "id": "pas_example123",

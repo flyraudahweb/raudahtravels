@@ -2,7 +2,7 @@
   "info": {
     "name": "FlyRaudah OTA Mobile API",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Contract 1.0.2. Import the companion environment. Use local-only tokens and a separate staging host. All customer writes are skipped by default; booking writes require a second explicit flag. Importing this collection never sends requests. Current Postman supporting pm.execution.skipRequest is required. Search/quote IDs expire; retrieve fresh inventory before checkout. No provider/admin endpoints or secrets are included."
+    "description": "Contract 1.0.3. Import the companion environment. Use local-only tokens and a separate staging host. All customer writes are skipped by default; booking writes require a second explicit flag. Importing this collection never sends requests. Current Postman supporting pm.execution.skipRequest is required. Search/quote IDs expire; retrieve fresh inventory before checkout. No provider/admin endpoints or secrets are included."
   },
   "item": [
     {
@@ -451,7 +451,7 @@
               }
             ],
             "url": "{{base_url}}/flights/offers/{{offer_id}}",
-            "description": "Use a current off_ ID. Revalidates availability/expiry and returns server selling price. Keep passenger IDs and conditions from this refreshed offer.\n\nRead-only; bounded retry with backoff.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout."
+            "description": "Use the current opaque ID from flight search, including nfa_ IDs for Nuitee. Keep the refreshed passenger IDs, fare terms and server selling price. Use nuiteeFlightCheckoutEnabled from /config for Nuitee checkout.\n\nRead-only; bounded retry with backoff.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout."
           },
           "event": [
             {
@@ -517,7 +517,7 @@
             "description": "Requires enabled Duffel Stays product. Uses a 10km radius and only supported instant/prepaid inventory; supplier access errors do not imply no hotels exist.\n\nDo not automatically retry after an ambiguous timeout; recover state first.\n\nCustomer writes are disabled by default. Replace sample traveller/contact data and review the current price before any checkout.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"latitude\": 21.4225,\n  \"longitude\": 39.8262,\n  \"checkIn\": \"2027-01-02\",\n  \"checkOut\": \"2027-01-09\",\n  \"rooms\": 1,\n  \"adults\": 1,\n  \"childAges\": []\n}",
+              "raw": "{\n  \"latitude\": 21.4225,\n  \"longitude\": 39.8262,\n  \"checkIn\": \"2027-01-03\",\n  \"checkOut\": \"2027-01-10\",\n  \"rooms\": 1,\n  \"adults\": 1,\n  \"childAges\": []\n}",
               "options": {
                 "raw": {
                   "language": "json"

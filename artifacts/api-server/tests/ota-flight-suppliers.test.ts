@@ -80,6 +80,24 @@ describe("OTA flight suppliers", () => {
       pricing: { display: { total: 85000, currency: "NGN" } },
     };
     const journey = { journeyKey: "itinerary-1", segments: [segment] };
+    const terms = {
+      refundable: false,
+      changeable: true,
+      hasChangeFee: true,
+      changeFee: {
+        pricing: { display: { amount: 20, currency: "USD" } },
+        label: "Change fee",
+      },
+      summary: [{ message: "Fare difference may apply." }],
+    };
+    const baggage = {
+      hasCarryOnBag: true,
+      hasCheckedBag: true,
+      included: [
+        { bagType: "checked", passengerType: "ADT", pieces: 1, weightKg: 23 },
+        { bagType: "cabin", passengerType: "CHD", pieces: 1, weightKg: 8 },
+      ],
+    };
     const prebookId = "019d0674-834d-7db7-9c8b-93fe8e46e7b8";
     let prebookPrice = 85000;
     let bookingCalls = 0;
@@ -97,12 +115,27 @@ describe("OTA flight suppliers", () => {
             legs: [{ origin: "LOS", destination: "ABV" }],
           });
           return Response.json({
-            data: [{ journeys: [{ ...journey, offers: [fare] }] }],
+            data: [
+              {
+                journeys: [
+                  {
+                    ...journey,
+                    legDurations: [
+                      {
+                        direction: "OUTBOUND",
+                        duration: { iso8601: "PT2H5M" },
+                      },
+                    ],
+                    offers: [fare],
+                  },
+                ],
+              },
+            ],
           });
         case "/flights/verify":
           expect(body).toEqual({ offerId: fare.offerId });
           return Response.json({
-            data: [{ journey: { ...journey, ...fare } }],
+            data: [{ journey: { ...journey, ...fare, terms, baggage } }],
           });
         case "/flights/prebooks":
           expect(body).toMatchObject({
@@ -161,6 +194,7 @@ describe("OTA flight suppliers", () => {
     });
     const offers = (await searchFlights(settings, input)).offers;
     expect(offers).toHaveLength(1);
+    expect(offers[0].slices[0].duration).toBe("PT2H5M");
     const selectionId = offers[0].id;
     expect(offers[0].slices[0].segments[0].technical_stop_count).toBe(1);
     expect(offers[0].pricing.totalKobo).toBe(9_350_000);
@@ -168,6 +202,14 @@ describe("OTA flight suppliers", () => {
       verifyNuiteeFlight(settings, selectionId + "x"),
     ).rejects.toMatchObject({ status: 400 });
     const quote = await verifyNuiteeFlight(settings, selectionId);
+    expect(quote.offer.slices[0].duration).toBe("PT2H5M");
+    expect(quote.offer.fare_terms).toMatchObject({
+      refundable: false,
+      changeable: true,
+      change_fee: { amount: 20, currency: "USD" },
+      notes: ["Fare difference may apply."],
+    });
+    expect(quote.offer.baggage_allowances?.included).toEqual(baggage.included);
     const traveller = {
       given_name: "Test",
       family_name: "Guest",

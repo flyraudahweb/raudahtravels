@@ -95,6 +95,19 @@ export function FlightItinerary({
   offer: any;
   compact?: boolean;
 }) {
+  const baggage = offer.baggage_allowances;
+  const bagTypes: Record<string, string> = {
+    checked: "checked bag",
+    cabin: "carry-on bag",
+    personal: "personal item",
+    equipment: "equipment bag",
+  };
+  const passengerTypes: Record<string, string> = {
+    ADT: "Adult",
+    CHD: "Child",
+    INF: "Infant",
+    ALL: "All travellers",
+  };
   return (
     <div className="space-y-4">
       {(offer.slices || []).map((slice: any, i: number) => {
@@ -200,16 +213,18 @@ export function FlightItinerary({
                         terminal {s.destination_terminal || "to be confirmed"}
                       </p>
                     )}
-                    <p className="text-xs text-slate-500">
-                      {s.passengers?.[0]?.cabin_class?.replace("_", " ")} ·
-                      Baggage:{" "}
-                      {(s.passengers?.[0]?.baggages || [])
-                        .map(
-                          (b: any) =>
-                            `${b.quantity} ${(b.type || "bag").replace(/_/g, " ")}`,
-                        )
-                        .join(", ") || "See fare conditions"}
-                    </p>
+                    {!baggage && (
+                      <p className="text-xs text-slate-500">
+                        {s.passengers?.[0]?.cabin_class?.replace("_", " ")} ·
+                        Baggage:{" "}
+                        {(s.passengers?.[0]?.baggages || [])
+                          .map(
+                            (b: any) =>
+                              `${b.quantity} ${(b.type || "bag").replace(/_/g, " ")}`,
+                          )
+                          .join(", ") || "See fare conditions"}
+                      </p>
+                    )}
                   </div>
                 ))}
                 <p className="mt-3 text-[11px] text-slate-500">
@@ -221,6 +236,44 @@ export function FlightItinerary({
           </div>
         );
       })}
+      {baggage && (
+        <div className="rounded-xl border border-slate-100 p-3 text-sm text-slate-600">
+          <h3 className="font-semibold text-slate-900">Included baggage</h3>
+          {baggage.included?.length ? (
+            <ul className="mt-1 space-y-1">
+              {baggage.included.map((item: any, index: number) => {
+                const description =
+                  item.description ||
+                  [
+                    item.pieces,
+                    bagTypes[item.bagType],
+                    item.weightKg == null ? null : `up to ${item.weightKg} kg`,
+                  ]
+                    .filter((value) => value !== null && value !== undefined)
+                    .join(" ");
+                return (
+                  <li key={index}>
+                    {passengerTypes[item.passengerType]} · {description}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="mt-1">
+              {[
+                baggage.has_carry_on && "Carry-on included",
+                baggage.has_checked_bag && "Checked baggage included",
+              ]
+                .filter(Boolean)
+                .join(" · ") ||
+                (baggage.has_carry_on === false &&
+                baggage.has_checked_bag === false
+                  ? "No carry-on or checked baggage is listed as included."
+                  : "Check baggage allowances with travel support.")}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

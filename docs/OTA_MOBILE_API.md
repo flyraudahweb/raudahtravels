@@ -1,6 +1,6 @@
 # FlyRaudah OTA Mobile API
 
-Contract version: 1.0.2. Base URL: https://flyraudah.com.ng/api/ota/v1.
+Contract version: 1.0.3. Base URL: https://flyraudah.com.ng/api/ota/v1.
 
 ## Developer kit, environments & first request
 
@@ -24,7 +24,7 @@ Download the OpenAPI contract, TypeScript client/declarations, mobile README and
 
 All customer requests use HTTPS and JSON. Send Content-Type: application/json for POST bodies ({} for bodyless actions); GET has no JSON body. Responses use camelCase Raudah envelopes with nested supplier fields often in snake_case. Unknown v1 routes return JSON404 and wrong methods JSON405 with Allow. Administrative and supplier webhook endpoints are excluded from v1.
 
-1. Keep supplier IDs opaque. Preserve off_, srr_, rat_, quo_, pas_ and booking IDs exactly. URL-encode each raw path ID once, including ota: update IDs; typed client params.path handles serialization. Do not concatenate an untrusted URL as an API path.
+1. Keep IDs opaque. Preserve flight offer IDs (including nfa_), hotel IDs, passenger IDs and booking IDs exactly. URL-encode each raw path ID once, including ota: update IDs; typed client params.path handles serialization. Do not concatenate an untrusted URL as an API path.
 2. Null means explicitly absent; omitted optional properties may not be supplied by that provider. Do not assume documents, baggage, cancellation rules, property photos or all rate fields exist. Missing fields need an honest fallback, not invented inventory or terms.
 3. Money in amountKobo/pricing.totalKobo is integer NGN minor units. Supplier decimal amounts stay strings. Date-only dates stay YYYY-MM-DD; supplier local departure/arrival strings must retain airport/property timezone context. Revision is a monotonic booking snapshot version, not an HTTP ETag.
 4. GET /bookings returns 50 rows and GET /updates 20; offset defaults to0, maximum100000. Follow nextOffset until null, merge by ID and retain the newest booking.revision. Counts cover all owner records. New rows can shift offset pages, so deduplicate and refresh page0 after changes; there is no cursor or stable export snapshot.
@@ -485,7 +485,7 @@ Request schema:
 
 ### GET /flights/offers/{id}
 
-Refresh an offer before checkout. Use a current off_ ID. Revalidates availability/expiry and returns server selling price. Keep passenger IDs and conditions from this refreshed offer.
+Refresh an offer before checkout. Use the current opaque ID from flight search, including nfa_ IDs for Nuitee. Keep the refreshed passenger IDs, fare terms and server selling price. Use nuiteeFlightCheckoutEnabled from /config for Nuitee checkout.
 
 Authentication: Public; optional scoped server search key.
 
@@ -1389,6 +1389,10 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "live"
       ]
     },
+    "supplier": {
+      "type": "string",
+      "description": "Supplier identifier when supplied"
+    },
     "total_amount": {
       "type": "string",
       "description": "Supplier decimal total"
@@ -1456,6 +1460,96 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
       "properties": {},
       "additionalProperties": true
     },
+    "fare_terms": {
+      "type": "object",
+      "properties": {
+        "refundable": {
+          "type": "boolean",
+          "description": "Whether the supplier permits refunds"
+        },
+        "changeable": {
+          "type": "boolean",
+          "description": "Whether the supplier permits changes"
+        },
+        "refund_fee": {
+          "$ref": "#/components/schemas/FlightFareFee"
+        },
+        "change_fee": {
+          "$ref": "#/components/schemas/FlightFareFee"
+        },
+        "has_refund_fee": {
+          "type": "boolean",
+          "description": "A refund fee applies"
+        },
+        "has_change_fee": {
+          "type": "boolean",
+          "description": "A change fee applies"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "Supplier fare rule"
+          }
+        }
+      }
+    },
+    "baggage_allowances": {
+      "type": "object",
+      "properties": {
+        "has_carry_on": {
+          "type": "boolean",
+          "description": "Carry-on baggage included"
+        },
+        "has_checked_bag": {
+          "type": "boolean",
+          "description": "Checked baggage included"
+        },
+        "included": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "bagType": {
+                "type": "string",
+                "description": "Baggage category",
+                "enum": [
+                  "cabin",
+                  "checked",
+                  "personal",
+                  "equipment"
+                ]
+              },
+              "passengerType": {
+                "type": "string",
+                "description": "Passenger category",
+                "enum": [
+                  "ADT",
+                  "CHD",
+                  "INF",
+                  "ALL"
+                ]
+              },
+              "pieces": {
+                "type": "integer",
+                "description": "Number of pieces",
+                "minimum": 0,
+                "nullable": true
+              },
+              "weightKg": {
+                "type": "number",
+                "minimum": 0,
+                "nullable": true
+              },
+              "description": {
+                "type": "string",
+                "description": "Supplier baggage description"
+              }
+            }
+          }
+        }
+      }
+    },
     "pricing": {
       "$ref": "#/components/schemas/Pricing"
     }
@@ -1468,7 +1562,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
     "id": "off_example123",
     "total_amount": "100.00",
     "total_currency": "USD",
-    "expires_at": "2026-11-19T16:44:15.288Z",
+    "expires_at": "2026-11-19T20:48:40.347Z",
     "passengers": [
       {
         "id": "pas_example123",
@@ -1520,6 +1614,36 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
       "rate": 1344.79,
       "supplierCurrency": "USD",
       "supplierAmount": "100.00"
+    }
+  }
+}
+```
+
+### FlightFareFee
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "amount": {
+      "type": "number",
+      "minimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "description": "Supplier fee currency"
+    },
+    "percent": {
+      "type": "number",
+      "minimum": 0
+    },
+    "label": {
+      "type": "string",
+      "description": "Supplier fee label"
+    },
+    "applicability": {
+      "type": "string",
+      "description": "Supplier-defined condition, for example noShow"
     }
   }
 }
@@ -1770,6 +1894,10 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
       "description": "Original offer or quote identifier when available to the client",
       "nullable": true
     },
+    "editableOfferId": {
+      "type": "string",
+      "description": "Offer identifier available for an N booking before payment begins"
+    },
     "providerBookingId": {
       "type": "string",
       "description": "Opaque supplier booking identifier",
@@ -1891,7 +2019,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
       "id": "off_example123",
       "total_amount": "100.00",
       "total_currency": "USD",
-      "expires_at": "2026-11-19T16:44:15.288Z",
+      "expires_at": "2026-11-19T20:48:40.347Z",
       "passengers": [
         {
           "id": "pas_example123",
@@ -1961,7 +2089,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
       "email": "traveller@example.com",
       "phone": "+2348012345678"
     },
-    "expiresAt": "2026-11-19T16:44:15.288Z",
+    "expiresAt": "2026-11-19T20:48:40.347Z",
     "paidAt": null,
     "providerResult": null,
     "providerNotice": null,
@@ -2010,7 +2138,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "id": "off_example123",
         "total_amount": "100.00",
         "total_currency": "USD",
-        "expires_at": "2026-11-19T16:44:15.288Z",
+        "expires_at": "2026-11-19T20:48:40.347Z",
         "passengers": [
           {
             "id": "pas_example123",
@@ -2080,7 +2208,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "email": "traveller@example.com",
         "phone": "+2348012345678"
       },
-      "expiresAt": "2026-11-19T16:44:15.288Z",
+      "expiresAt": "2026-11-19T20:48:40.347Z",
       "paidAt": null,
       "providerResult": null,
       "providerNotice": null,
@@ -2108,7 +2236,17 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
     },
     "offerId": {
       "type": "string",
-      "description": "Current off_ flight offer ID or quo_ hotel quote ID"
+      "description": "Current opaque flight offer or hotel quote ID"
+    },
+    "editBookingId": {
+      "type": "string",
+      "description": "Existing N flight checkout to update before payment begins. Send its editableOfferId as offerId.",
+      "format": "uuid"
+    },
+    "editRevision": {
+      "type": "integer",
+      "description": "Required with editBookingId. Use the booking revision read before editing.",
+      "minimum": 0
     },
     "acceptedTerms": {
       "type": "boolean",
@@ -2325,6 +2463,18 @@ Successful response
         "type": "boolean",
         "description": "Primary supplier checkout enabled"
       },
+      "nuiteeFlightCheckoutEnabled": {
+        "type": "boolean",
+        "description": "Nuitee flight checkout enabled"
+      },
+      "nuiteeFlightMode": {
+        "type": "string",
+        "description": "Nuitee flight environment",
+        "enum": [
+          "test",
+          "live"
+        ]
+      },
       "bilalCheckoutEnabled": {
         "type": "boolean",
         "description": "Bilalsadasub web checkout enabled independently"
@@ -2358,6 +2508,8 @@ Successful response
       "flightsEnabled",
       "hotelsEnabled",
       "salesEnabled",
+      "nuiteeFlightCheckoutEnabled",
+      "nuiteeFlightMode",
       "bilalCheckoutEnabled",
       "bilalMode",
       "mode",
@@ -2369,6 +2521,8 @@ Successful response
     "flightsEnabled": true,
     "hotelsEnabled": false,
     "salesEnabled": false,
+    "nuiteeFlightCheckoutEnabled": true,
+    "nuiteeFlightMode": "live",
     "bilalCheckoutEnabled": false,
     "bilalMode": "test",
     "mode": "test",
@@ -2742,7 +2896,7 @@ Successful response
         "id": "off_example123",
         "total_amount": "100.00",
         "total_currency": "USD",
-        "expires_at": "2026-11-19T16:44:15.288Z",
+        "expires_at": "2026-11-19T20:48:40.347Z",
         "passengers": [
           {
             "id": "pas_example123",
@@ -2829,7 +2983,7 @@ Successful response
       "id": "off_example123",
       "total_amount": "100.00",
       "total_currency": "USD",
-      "expires_at": "2026-11-19T16:44:15.288Z",
+      "expires_at": "2026-11-19T20:48:40.347Z",
       "passengers": [
         {
           "id": "pas_example123",
@@ -3061,7 +3215,7 @@ Successful response
             "id": "off_example123",
             "total_amount": "100.00",
             "total_currency": "USD",
-            "expires_at": "2026-11-19T16:44:15.288Z",
+            "expires_at": "2026-11-19T20:48:40.347Z",
             "passengers": [
               {
                 "id": "pas_example123",
@@ -3131,7 +3285,7 @@ Successful response
             "email": "traveller@example.com",
             "phone": "+2348012345678"
           },
-          "expiresAt": "2026-11-19T16:44:15.288Z",
+          "expiresAt": "2026-11-19T20:48:40.347Z",
           "paidAt": null,
           "providerResult": null,
           "providerNotice": null,
@@ -3188,7 +3342,7 @@ Successful response
             "email": "traveller@example.com",
             "phone": "+2348012345678"
           },
-          "expiresAt": "2026-11-19T16:44:15.288Z",
+          "expiresAt": "2026-11-19T20:48:40.347Z",
           "paidAt": null,
           "providerResult": null,
           "providerNotice": null,
