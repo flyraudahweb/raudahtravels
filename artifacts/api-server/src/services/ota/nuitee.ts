@@ -371,7 +371,14 @@ function hotelRates(config: OtaConfig, stay: Stay, offers: unknown) {
             ...(rooms.length > 1 && room.board_type
               ? [{ title: `Room ${index + 1}`, description: room.board_type }]
               : []),
-            ...room.conditions,
+            ...room.conditions.map((condition) =>
+              rooms.length > 1 && condition.title.startsWith("Cancellation ")
+                ? {
+                    ...condition,
+                    description: `Room ${index + 1} · ${condition.description}`,
+                  }
+                : condition,
+            ),
           ]),
           cancellation_summary:
             rooms.length > 1

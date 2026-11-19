@@ -805,6 +805,10 @@ describe("Nuitee hotel checkout", () => {
       title: "Pay at the property",
       description: "Resort fee · USD 10",
     });
+    expect(rate.conditions).toContainEqual({
+      title: "Cancellation fee",
+      description: `Room 2 · From ${checkin} 10:00:00 (GMT) · USD 50`,
+    });
     const res = await request("/hotels/quotes", "user", { rateId: rate.id });
     expect(res.status).toBe(200);
     return res.json();

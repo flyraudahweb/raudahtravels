@@ -28,6 +28,7 @@ import {
   type FlightFilters,
 } from "@/lib/travelSearch";
 import { money, ota, travelButton } from "@/lib/ota";
+import { TravelCancellationPolicy } from "./TravelPolicies";
 
 const initialFilters: FlightFilters = {
   stops: "all",
@@ -667,12 +668,13 @@ export default function FlightResults({
                   <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-3 text-[11px] font-semibold text-[#2D3199]">
                     <span className="flex items-center gap-2">
                       <Clock3 size={13} />
-                      Flight details & baggage
+                      Flight details, baggage and cancellation policy
                     </span>
                     <ChevronDown size={14} />
                   </summary>
-                  <div className="border-t border-slate-100 p-4">
+                  <div className="space-y-4 border-t border-slate-100 p-4">
                     {details(offer)}
+                    <TravelCancellationPolicy kind="flight" offer={offer} />
                   </div>
                 </details>
               </article>

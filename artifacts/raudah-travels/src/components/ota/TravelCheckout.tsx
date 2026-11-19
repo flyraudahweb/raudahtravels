@@ -11,82 +11,8 @@ import {
 } from "./TravelSearchPage";
 import { money, ota, travelButton, travelInput } from "@/lib/ota";
 import { BookingSteps } from "./BookingPresentation";
+import { TravelCancellationPolicy } from "./TravelPolicies";
 
-export function FlightConditions({ offer }: { offer: any }) {
-  const terms = offer.fare_terms;
-  if (terms) {
-    const rules = [
-      {
-        title: "Refunds",
-        allowed: terms.refundable,
-        fee: terms.refund_fee,
-        hasFee: terms.has_refund_fee,
-      },
-      {
-        title: "Changes",
-        allowed: terms.changeable,
-        fee: terms.change_fee,
-        hasFee: terms.has_change_fee,
-      },
-    ];
-    return (
-      <div className="space-y-2 text-sm text-slate-600">
-        {rules.map(({ title, allowed, fee, hasFee }) => {
-          const amount =
-            fee?.amount != null && fee.currency
-              ? `${fee.currency} ${fee.amount}`
-              : fee?.percent != null
-                ? `${fee.percent}%`
-                : undefined;
-          const feeLabel =
-            fee?.label ||
-            (fee?.applicability === "noShow" ? "No-show fee" : "Supplier fee");
-          return (
-            <p key={title}>
-              <strong>{title}:</strong>{" "}
-              {allowed == null
-                ? "Confirm the fare rules with travel support."
-                : allowed
-                  ? "Allowed subject to supplier rules."
-                  : "Not permitted by this fare."}
-              {amount
-                ? ` ${feeLabel}: ${amount}.`
-                : hasFee
-                  ? " A supplier fee applies. Ask for the amount."
-                  : ""}
-            </p>
-          );
-        })}
-        {terms.notes?.length > 0 && (
-          <ul className="list-disc space-y-1 pl-4">
-            {terms.notes.map((note: string, index: number) => (
-              <li key={index}>{note}</li>
-            ))}
-          </ul>
-        )}
-      </div>
-    );
-  }
-  return (
-    <div className="space-y-2 text-sm text-slate-600">
-      {["refund_before_departure", "change_before_departure"].map((key) => {
-        const condition = offer.conditions?.[key];
-        return (
-          <p key={key}>
-            <strong>
-              {key === "refund_before_departure" ? "Refunds" : "Changes"}:
-            </strong>{" "}
-            {condition == null
-              ? "Ask support for the fare rules before booking."
-              : condition.allowed
-                ? `Allowed${condition.penalty_amount ? `, supplier penalty ${condition.penalty_currency} ${condition.penalty_amount}` : " subject to supplier rules"}. Fare differences and service fees may apply.`
-                : "Not permitted by this fare."}
-          </p>
-        );
-      })}
-    </div>
-  );
-}
 export default function TravelCheckout({
   kind,
   offerId,
@@ -325,6 +251,11 @@ export default function TravelCheckout({
             <button className={travelButton}>Sign in to continue</button>
           </SignInButton>
         </div>
+        {kind === "flight" && offer && (
+          <div className="mx-auto mt-5 max-w-lg">
+            <TravelCancellationPolicy kind="flight" offer={offer} />
+          </div>
+        )}
       </TravelShell>
     );
   return (
@@ -350,6 +281,7 @@ export default function TravelCheckout({
                   This fare is available to review. Contact our travel team for
                   help booking it.
                 </p>
+                <TravelCancellationPolicy kind={kind} offer={offer} />
                 {config?.supportEmail && (
                   <a
                     className={travelButton}
@@ -615,6 +547,7 @@ export default function TravelCheckout({
                   />
                 </label>
               )}
+              <TravelCancellationPolicy kind={kind} offer={offer} />
               <section className="space-y-4 rounded-2xl border bg-white p-6">
                 <label className="flex items-start gap-3 text-sm text-slate-600">
                   <input
@@ -625,10 +558,10 @@ export default function TravelCheckout({
                   />
                   <span>
                     I have checked all names, dates and travel requirements, and
-                    accept the displayed supplier fare/rate and cancellation
-                    conditions and{" "}
+                    accept the supplier’s fare or room rate, the cancellation
+                    policy above, and the{" "}
                     <a
-                      href="/terms"
+                      href="/terms#travel-cancellations"
                       target="_blank"
                       rel="noreferrer"
                       className="text-indigo-700 underline"
@@ -657,12 +590,7 @@ export default function TravelCheckout({
               <section className="rounded-2xl border bg-white p-6">
                 <h2 className="mb-5 text-lg font-bold">Your trip</h2>
                 {kind === "flight" ? (
-                  <>
-                    <FlightItinerary offer={offer} />
-                    <div className="mt-5 border-t pt-4">
-                      <FlightConditions offer={offer} />
-                    </div>
-                  </>
+                  <FlightItinerary offer={offer} />
                 ) : (
                   <>
                     <h3 className="font-bold">{offer.accommodation?.name}</h3>

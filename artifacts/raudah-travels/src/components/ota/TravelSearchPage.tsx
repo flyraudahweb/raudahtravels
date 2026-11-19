@@ -19,9 +19,14 @@ import {
 } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
+import { CancellationPolicy } from "@/components/CancellationPolicy";
 import TravelSearchForm from "./TravelSearchForm";
 import ExchangeRates from "./ExchangeRates";
 import FlightResults, { SearchLoading } from "./FlightResults";
+import {
+  HotelRateCancellation,
+  isCancellationCondition,
+} from "./TravelPolicies";
 import { moveDate } from "@/lib/travelSearch";
 import { destinations, money, ota, travelButton, travelInput } from "@/lib/ota";
 
@@ -277,30 +282,27 @@ export function FlightItinerary({
     </div>
   );
 }
-export function RateConditions({ rate }: { rate: any }) {
+export function RateConditions({
+  rate,
+  showCancellation = false,
+}: {
+  rate: any;
+  showCancellation?: boolean;
+}) {
+  const conditions = (rate.conditions || []).filter(
+    (condition: { title: string; description: string }) =>
+      !isCancellationCondition(condition),
+  );
   return (
     <div className="space-y-2 text-sm text-slate-600">
       {rate.board_type && <p>Board: {rate.board_type.replace(/_/g, " ")}</p>}
-      <p>{rate.description}</p>
-      {(rate.conditions || []).map((c: any, i: number) => (
-        <p key={i}>
-          <strong>{c.title}</strong> {c.description}
-        </p>
-      ))}
-      <p className="font-semibold">Cancellation policy</p>
-      {rate.cancellation_summary ? (
-        <p>{rate.cancellation_summary}</p>
-      ) : (rate.cancellation_timeline || []).length ? (
-        rate.cancellation_timeline.map((c: any, i: number) => (
+      {rate.description && <p>{rate.description}</p>}
+      {conditions.map(
+        (c: { title: string; description: string }, i: number) => (
           <p key={i}>
-            Before {c.before}: refund {c.currency} {c.refund_amount}
+            <strong>{c.title}</strong> {c.description}
           </p>
-        ))
-      ) : (
-        <p>
-          No free cancellation is indicated. Contact support to confirm the
-          policy before booking.
-        </p>
+        ),
       )}
       {rate.due_at_accommodation_amount &&
         Number(rate.due_at_accommodation_amount) > 0 && (
@@ -310,6 +312,11 @@ export function RateConditions({ rate }: { rate: any }) {
             online total.
           </p>
         )}
+      {showCancellation && (
+        <CancellationPolicy>
+          <HotelRateCancellation rate={rate} />
+        </CancellationPolicy>
+      )}
     </div>
   );
 }
@@ -728,7 +735,7 @@ export default function TravelSearchPage({
                 >
                   <div>
                     <h4 className="mb-2 font-bold">{rate.name || room.name}</h4>
-                    <RateConditions rate={rate} />
+                    <RateConditions rate={rate} showCancellation />
                   </div>
                   <div>
                     <p className="mb-3 text-xl font-black">

@@ -20,7 +20,7 @@ import {
   RateConditions,
   TravelShell,
 } from "./TravelSearchPage";
-import { FlightConditions } from "./TravelCheckout";
+import { TravelCancellationPolicy } from "./TravelPolicies";
 import { money, ota, travelButton, travelInput } from "@/lib/ota";
 
 export default function TravelBooking({ bookingId }: { bookingId: string }) {
@@ -267,6 +267,11 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
                 </div>
               </dl>
             </section>
+            {booking.status === "payment_pending" && (
+              <div className="mb-5">
+                <TravelCancellationPolicy kind={booking.kind} offer={offer} />
+              </div>
+            )}
             <div className="mb-5 flex flex-wrap gap-3 print:hidden">
               <Link
                 href={
@@ -374,7 +379,6 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
                         : offer
                     }
                   />
-                  <FlightConditions offer={offer} />
                   <h3 className="font-bold">Ticket information</h3>
                   {confirmed && provider?.documents?.length ? (
                     provider.documents.map((d: any, i: number) => (
@@ -427,6 +431,13 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
                     </div>
                   ))}
                 </>
+              )}
+              {booking.status !== "payment_pending" && (
+                <TravelCancellationPolicy
+                  kind={booking.kind}
+                  offer={offer}
+                  requestMode={confirmed ? "booking" : "none"}
+                />
               )}
               <div className="border-t pt-4">
                 <h3 className="mb-2 font-bold">Travellers</h3>
@@ -488,8 +499,8 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
               )}
             </section>
             <section
-              className="rounded-2xl border bg-white p-6 print:hidden"
               id="booking-help"
+              className="scroll-mt-28 rounded-2xl border bg-white p-6 print:hidden"
             >
               <h2 className="mb-2 text-lg font-bold">
                 Changes, cancellation or booking help

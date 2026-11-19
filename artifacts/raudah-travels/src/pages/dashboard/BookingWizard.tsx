@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { PackageAvailability } from "@/components/PackageAvailability";
+import { PackageCancellationPolicy } from "@/components/CancellationPolicy";
 import { useQuery } from "@tanstack/react-query";
 import { useFormFieldConfig, validateRequiredFields } from "@/hooks/useFormFieldConfig";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -814,6 +815,7 @@ export default function BookingWizard() {
                   </div>
                 </div>
               </div>
+              <PackageCancellationPolicy />
               <div>
                 <Label htmlFor="pilgrimCount">Number of Pilgrims</Label>
                 <Select value={String(payForm.pilgrimCount)} onValueChange={(v) => setPayForm((f) => ({ ...f, pilgrimCount: Number(v) }))}>
@@ -1411,6 +1413,8 @@ export default function BookingWizard() {
                   {isFetching ? <Skeleton className="h-5 w-28" /> : <span className="text-primary">₦{fullAmount.toLocaleString()}</span>}
                 </div>
               </div>
+
+              <PackageCancellationPolicy />
 
               <div>
                 <Label className="mb-3 block">Select Payment Method</Label>

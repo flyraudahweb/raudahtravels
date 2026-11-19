@@ -17,6 +17,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { PackageAvailability } from "@/components/PackageAvailability";
+import { PackageCancellationPolicy } from "@/components/CancellationPolicy";
 
 import { getPackageImage, packageBookingHref } from "@/lib/packagePresentation";
 
@@ -146,6 +147,8 @@ export default function PackageDetail() {
                   {pkg.description}
                 </div>
               </section>
+
+              <PackageCancellationPolicy />
 
               {/* Inclusions */}
               <section>
