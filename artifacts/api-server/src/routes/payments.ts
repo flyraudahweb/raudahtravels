@@ -4,8 +4,6 @@ import {
   paymentsTable,
   profilesTable,
   bookingsTable,
-  visaApplicationsTable,
-  siteSettingsTable,
   userActivityTable,
   packagesTable,
   agentsTable,
@@ -19,9 +17,14 @@ import { randomUUID, createHmac, timingSafeEqual } from "crypto";
 import { sendPaymentReceipt } from "../utils/email";
 import { logger } from "../lib/logger";
 import {
+  expiredUnpaidPaystackSession,
+  getPaystackSessionTimeout,
   lookupPaystackTransaction,
   matchesPaystackProof,
 } from "../services/payments/paystackProof";
+import { canPayPackage, getPackagePaystackKeys as getPaystackKeys } from "../services/payments/packagePaystack";
+import { confirmPaidGroup } from "../services/payments/packageConfirmation";
+import { otaAppOrigin } from "../services/ota/appOrigin";
 
 const router = Router();
 
@@ -56,30 +59,6 @@ router.use((req, res, next) => {
   }
   next();
 });
-
-async function getPaystackKeys(): Promise<{
-  publicKey: string;
-  secretKey: string;
-}> {
-  const [pkRow, skRow] = await Promise.all([
-    db.query.siteSettingsTable.findFirst({
-      where: eq(siteSettingsTable.key, "paystack_public_key"),
-    }),
-    db.query.siteSettingsTable.findFirst({
-      where: eq(siteSettingsTable.key, "paystack_secret_key"),
-    }),
-  ]);
-  return {
-    publicKey:
-      (pkRow?.value as string | undefined) ??
-      process.env.PAYSTACK_PUBLIC_KEY ??
-      "",
-    secretKey:
-      (skRow?.value as string | undefined) ??
-      process.env.PAYSTACK_SECRET_KEY ??
-      "",
-  };
-}
 
 async function getProfileByClerkId(clerkUserId: string) {
   return db.query.profilesTable.findFirst({
@@ -142,68 +121,6 @@ async function sendBookingReceipt(
     });
   } catch (err) {
     logger.warn({ err, bookingId }, "Receipt email failed (non-blocking)");
-  }
-}
-
-type PaymentTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
-async function ensureVisaApplication(
-  bookingId: string,
-  pilgrimName?: string | null,
-  passportNumber?: string | null,
-  isFullyPaid?: boolean,
-  executor: PaymentTx | typeof db = db,
-) {
-  const existing = await executor.query.visaApplicationsTable.findFirst({
-    where: eq(visaApplicationsTable.bookingId, bookingId),
-  });
-  if (!existing) {
-    await executor.insert(visaApplicationsTable).values({
-      id: randomUUID(),
-      bookingId,
-      pilgrimName: pilgrimName ?? null,
-      passportNumber: passportNumber ?? null,
-      status: isFullyPaid ? "pending" : "awaiting_payment",
-    });
-  } else if (isFullyPaid && existing.status === "awaiting_payment") {
-    await executor
-      .update(visaApplicationsTable)
-      .set({ status: "pending" })
-      .where(eq(visaApplicationsTable.id, existing.id));
-  }
-}
-
-async function confirmPaidGroup(
-  tx: PaymentTx,
-  booking: typeof bookingsTable.$inferSelect,
-) {
-  if (
-    booking.status !== "confirmed" ||
-    booking.isArchived ||
-    Number(booking.amountPaid) < Number(booking.totalPrice)
-  )
-    return;
-  const children = await tx
-    .update(bookingsTable)
-    .set({ status: "confirmed", updatedAt: new Date() })
-    .where(
-      and(
-        eq(bookingsTable.parentBookingId, booking.id),
-        eq(bookingsTable.packageId, booking.packageId),
-        eq(bookingsTable.status, "pending"),
-      ),
-    )
-    .returning();
-  for (const traveller of [booking, ...children]) {
-    await tx.execute(
-      sql`UPDATE bookings SET id_number = nextval('bookings_id_number_seq') WHERE id = ${traveller.id} AND id_number IS NULL`,
-    );
-    await ensureVisaApplication(
-      traveller.id,
-      traveller.fullName,
-      traveller.passportNumber,
-      true,
-      tx,
-    );
   }
 }
 
@@ -584,6 +501,8 @@ router.put("/payments/:id/verify", async (req, res) => {
   const candidate = await db.query.paymentsTable.findFirst({
     where: eq(paymentsTable.id, req.params.id),
   });
+  if (!candidate)
+    return res.status(404).json({ error: "Payment not found" });
   if (
     status === "verified" &&
     ["paystack", "wallet"].includes(candidate?.method ?? "")
@@ -598,6 +517,8 @@ router.put("/payments/:id/verify", async (req, res) => {
   let confirmedBooking: typeof bookingsTable.$inferSelect | undefined;
 
   await db.transaction(async (tx) => {
+    if (candidate.bookingId)
+      await tx.execute(sql`SELECT id FROM bookings WHERE id = ${candidate.bookingId} FOR UPDATE`);
     const [p] = await tx
       .update(paymentsTable)
       .set({ status, notes })
@@ -605,6 +526,7 @@ router.put("/payments/:id/verify", async (req, res) => {
         and(
           eq(paymentsTable.id, req.params.id),
           eq(paymentsTable.status, "pending"),
+          eq(paymentsTable.isArchived, false),
         ),
       )
       .returning();
@@ -612,9 +534,6 @@ router.put("/payments/:id/verify", async (req, res) => {
     payment = p;
 
     if (status === "verified" && p.bookingId) {
-      await tx.execute(
-        sql`SELECT id FROM bookings WHERE id = ${p.bookingId} FOR UPDATE`,
-      );
       // BUG FIX: Recalculate amountPaid from SUM of all verified payments instead of
       // accumulating. This prevents double-counting when the booking's amountPaid was
       // pre-populated during registration (the root cause of the double-count bug).
@@ -836,11 +755,7 @@ router.post("/payments/paystack/initialize", async (req, res) => {
         if (!agent || agent.id !== booking.agentId)
           throw new OnlinePaymentError("Forbidden", 403);
       }
-      if (
-        booking.status !== "pending" ||
-        booking.isArchived ||
-        booking.parentBookingId
-      )
+      if (!canPayPackage(booking))
         throw new OnlinePaymentError("This booking cannot accept payment");
       const balance =
         Math.round(Number(booking.totalPrice) * 100) -
@@ -863,23 +778,24 @@ router.post("/payments/paystack/initialize", async (req, res) => {
         );
       const current = existing[0];
       if (current) {
-        if (
-          current.userId !== profile.id ||
-          Math.round(Number(current.amount) * 100) !== balance
-        )
-          throw new OnlinePaymentError(
-            "A payment already exists for this booking. Ask support to reconcile it.",
-          );
-        if (
-          current.checkoutUrl &&
-          current.checkoutAccessCode &&
-          !current.isArchived
-        )
-          return { payment: current, initialize: false };
-        if (!current.checkoutInitializedAt || current.isArchived)
+        const samePayerAndAmount = current.userId === profile.id &&
+          Math.round(Number(current.amount) * 100) === balance;
+        if (current.isArchived)
           throw new OnlinePaymentError(
             "An earlier payment attempt needs reconciliation. Contact support before paying again.",
           );
+        if (current.checkoutUrl && current.checkoutAccessCode) {
+          return {
+            payment: current,
+            balance,
+            samePayerAndAmount,
+            action: samePayerAndAmount && current.checkoutExpiresAt && current.checkoutExpiresAt.getTime() > Date.now()
+              ? "reuse" as const
+              : "check_published" as const,
+          };
+        }
+        if (!current.checkoutInitializedAt)
+          return { payment: current, balance, samePayerAndAmount, action: "check_legacy" as const };
         if (Date.now() - current.checkoutInitializedAt.getTime() < 45000)
           throw new OnlinePaymentError(
             "Payment is being prepared. Check the booking before trying again.",
@@ -889,7 +805,7 @@ router.post("/payments/paystack/initialize", async (req, res) => {
           .set({ checkoutInitializedAt: new Date() })
           .where(eq(paymentsTable.id, current.id))
           .returning();
-        return { payment, initialize: true, resume: true };
+        return { payment, balance, samePayerAndAmount, action: "resume" as const };
       }
       const [payment] = await tx
         .insert(paymentsTable)
@@ -904,7 +820,7 @@ router.post("/payments/paystack/initialize", async (req, res) => {
           checkoutInitializedAt: new Date(),
         })
         .returning();
-      return { payment, initialize: true, resume: false };
+      return { payment, balance, samePayerAndAmount: true, action: "initialize" as const };
     });
 
     const send = (payment: typeof paymentsTable.$inferSelect) =>
@@ -915,8 +831,9 @@ router.post("/payments/paystack/initialize", async (req, res) => {
         reference: payment.reference,
       });
     let payment = attempt.payment;
-    if (!attempt.initialize) return send(payment);
-    if (attempt.resume) {
+    if (attempt.action === "reuse") return send(payment);
+    const timeout = await getPaystackSessionTimeout(secretKey);
+    if (attempt.action !== "initialize") {
       const gateway = await lookupPaystackTransaction(
         payment.reference!,
         secretKey,
@@ -930,9 +847,35 @@ router.post("/payments/paystack/initialize", async (req, res) => {
           reference: payment.reference,
         });
       }
-      if (gateway) {
-        // The earlier session was never published. Keep its reference verifiable
-        // and rotate the claim while holding the booking lock.
+      const wasPublished = attempt.action === "check_published";
+      const legacyAttempt = attempt.action === "check_legacy";
+      const canReplace = expiredUnpaidPaystackSession(
+        gateway, mode, timeout, payment.checkoutExpiresAt, payment.createdAt,
+      );
+      if (wasPublished && !canReplace) {
+        if (attempt.samePayerAndAmount && gateway && !payment.checkoutExpiresAt && !timeout &&
+            ["abandoned", "failed"].includes(gateway.status) && gateway.domain === mode)
+          return send(payment);
+        if (attempt.samePayerAndAmount && gateway && !payment.checkoutExpiresAt && timeout && gateway.domain === mode) {
+          const created = Date.parse(gateway.created_at ?? gateway.createdAt);
+          if (Number.isFinite(created) && created + timeout * 1000 > Date.now())
+            return send(payment);
+        }
+        throw new OnlinePaymentError(
+          "The previous payment may still be processing. Check this booking before trying again.",
+        );
+      }
+      if (legacyAttempt && !canReplace)
+        throw new OnlinePaymentError(
+          "An earlier payment attempt needs reconciliation. Contact support before paying again.",
+        );
+      if (attempt.action === "resume" && gateway &&
+          (gateway.domain !== mode || !["abandoned", "failed", "timeout"].includes(gateway.status)))
+        throw new OnlinePaymentError(
+          "The previous payment may still be processing. Check this booking before trying again.",
+        );
+      if (gateway || !attempt.samePayerAndAmount) {
+        // Keep the original reference available for reconciling late payments.
         const previous = payment;
         payment = await db.transaction(async (tx) => {
           const [booking] = await tx
@@ -942,11 +885,9 @@ router.post("/payments/paystack/initialize", async (req, res) => {
             .for("update");
           if (
             !booking ||
-            booking.status !== "pending" ||
-            booking.isArchived ||
-            Math.round(
-              (Number(booking.totalPrice) - Number(booking.amountPaid)) * 100,
-            ) !== Math.round(Number(previous.amount) * 100)
+            !canPayPackage(booking) ||
+            Math.round(Number(booking.totalPrice) * 100) -
+              Math.round(Number(booking.amountPaid) * 100) !== attempt.balance
           )
             throw new OnlinePaymentError(
               "The booking balance changed. Refresh the booking.",
@@ -957,13 +898,15 @@ router.post("/payments/paystack/initialize", async (req, res) => {
             .where(
               and(
                 eq(paymentsTable.id, previous.id),
-                eq(paymentsTable.status, "pending"),
-                isNull(paymentsTable.checkoutUrl),
+                eq(paymentsTable.status, previous.status),
+                eq(paymentsTable.isArchived, false),
+                previous.checkoutUrl === null
+                  ? isNull(paymentsTable.checkoutUrl)
+                  : eq(paymentsTable.checkoutUrl, previous.checkoutUrl),
                 isNull(paymentsTable.checkoutRetiredAt),
-                eq(
-                  paymentsTable.checkoutInitializedAt,
-                  previous.checkoutInitializedAt!,
-                ),
+                previous.checkoutInitializedAt
+                  ? eq(paymentsTable.checkoutInitializedAt, previous.checkoutInitializedAt)
+                  : isNull(paymentsTable.checkoutInitializedAt),
               ),
             )
             .returning();
@@ -977,9 +920,10 @@ router.post("/payments/paystack/initialize", async (req, res) => {
               id: randomUUID(),
               bookingId,
               userId: profile.id,
-              amount: previous.amount,
+              amount: (attempt.balance / 100).toFixed(2),
               method: "paystack",
               reference: "RDH-" + randomUUID(),
+              status: "pending",
               checkoutInitializedAt: new Date(),
             })
             .returning();
@@ -1004,6 +948,8 @@ router.post("/payments/paystack/initialize", async (req, res) => {
           currency: "NGN",
           reference: payment.reference,
           metadata: { bookingId, userId: profile.id, type: "package_booking" },
+          ...(profile.role === "agent" && otaAppOrigin()
+            ? { callback_url: `${otaAppOrigin()}/agent/bookings` } : {}),
         }),
       },
     );
@@ -1026,11 +972,15 @@ router.post("/payments/paystack/initialize", async (req, res) => {
     const saved = await db.transaction(async (tx) => {
       const [booking] = await tx.select().from(bookingsTable)
         .where(eq(bookingsTable.id, bookingId)).for("update");
-      if (!booking || booking.status !== "pending" || booking.isArchived ||
-          Math.round((Number(booking.totalPrice) - Number(booking.amountPaid)) * 100) !== Math.round(Number(payment.amount) * 100))
+      if (!booking || !canPayPackage(booking) ||
+          Math.round(Number(booking.totalPrice) * 100) - Math.round(Number(booking.amountPaid) * 100) !== Math.round(Number(payment.amount) * 100))
         return;
       const [ready] = await tx.update(paymentsTable)
-        .set({ checkoutUrl: data.authorization_url, checkoutAccessCode: data.access_code })
+        .set({
+          checkoutUrl: data.authorization_url,
+          checkoutAccessCode: data.access_code,
+          checkoutExpiresAt: timeout ? new Date(Date.now() + timeout * 1000) : null,
+        })
         .where(and(eq(paymentsTable.id, payment.id), eq(paymentsTable.status, "pending"),
           isNull(paymentsTable.checkoutRetiredAt), eq(paymentsTable.checkoutInitializedAt, payment.checkoutInitializedAt!)))
         .returning();
@@ -1407,8 +1357,7 @@ router.post("/payments/admin-record", async (req, res) => {
         .for("update");
       if (
         !lockedBooking ||
-        lockedBooking.status !== "pending" ||
-        lockedBooking.isArchived ||
+        !canPayPackage(lockedBooking) ||
         parsedAmount >
           Number(lockedBooking.totalPrice) -
             Number(lockedBooking.amountPaid) +

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { BookOpen, CalendarDays, Users, UserPlus, ChevronLeft, ChevronRight, Plus, History, CreditCard, Upload, Wallet, FileText, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { uploadFile } from "@/lib/upload";
+import { openAgentPackagePayment, verifyAgentPackagePayment } from "@/lib/package-payment";
 
 
 
@@ -113,6 +114,47 @@ export default function AgentBookings() {
   const pageSize = 100;
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [openingOnline, setOpeningOnline] = useState<string | null>(null);
+  const onlinePaymentInFlight = useRef(false);
+  const checkedReturn = useRef(false);
+
+  useEffect(() => {
+    if (checkedReturn.current) return;
+    const url = new URL(window.location.href);
+    const reference = url.searchParams.get("reference") || url.searchParams.get("trxref");
+    if (!reference) return;
+    checkedReturn.current = true;
+    void verifyAgentPackagePayment(reference).then(async (verified) => {
+      if (verified) {
+        toast({ title: "Payment verified" });
+        await queryClient.invalidateQueries({ queryKey: ["agent-clients-bookings"] });
+      }
+    }).catch(() => {
+      toast({ title: "Payment confirmation pending", description: "Check the balance on this booking before paying again." });
+    }).finally(() => {
+      if (window.location.pathname !== url.pathname) return;
+      url.searchParams.delete("reference");
+      url.searchParams.delete("trxref");
+      window.history.replaceState(window.history.state, "", url);
+    });
+  }, [queryClient, toast]);
+
+  async function payOnline(bookingId: string) {
+    if (onlinePaymentInFlight.current) return;
+    onlinePaymentInFlight.current = true;
+    setOpeningOnline(bookingId);
+    try {
+      if (await openAgentPackagePayment(bookingId)) {
+        toast({ title: "Payment verified" });
+        await queryClient.invalidateQueries({ queryKey: ["agent-clients-bookings"] });
+      }
+    } catch (error) {
+      toast({ title: "Checkout unavailable", description: error instanceof Error ? error.message : "Check the booking before trying again.", variant: "destructive" });
+    } finally {
+      onlinePaymentInFlight.current = false;
+      setOpeningOnline(null);
+    }
+  }
   // Record Payment state
   const [recordPayBooking, setRecordPayBooking] = useState<AgentClient | null>(null);
   const [recordPayAmount, setRecordPayAmount] = useState("");
@@ -320,8 +362,14 @@ export default function AgentBookings() {
                           <p className="text-[10px] text-[#94A3B8]">Paid: ₦{b.amountPaid.toLocaleString()}</p>
                           <p className="text-[10px] text-[#94A3B8]">Total: ₦{b.totalPrice.toLocaleString()}</p>
                         </div>
-                        {b.totalPrice > b.amountPaid && (
-                          <div className="flex items-center gap-2 mt-2">
+                        {(b.status === "pending" || b.status === "confirmed") && b.totalPrice > b.amountPaid && (
+                          <div className="flex flex-wrap items-center gap-2 mt-2">
+                            <Button variant="outline" size="sm" disabled={!!openingOnline}
+                              className="rounded-lg text-[11px] font-bold h-7 px-2.5 gap-1"
+                              onClick={() => void payOnline(b.id)}>
+                              <CreditCard className="w-3.5 h-3.5" />
+                              {openingOnline === b.id ? "Opening…" : "Pay online"}
+                            </Button>
                             <Button
                               size="sm"
                               className="bg-[#FF3B00] hover:bg-[#D63200] text-white rounded-lg text-[11px] font-bold h-7 px-2.5 gap-1"

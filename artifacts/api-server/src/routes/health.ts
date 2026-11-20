@@ -13,7 +13,7 @@ const router: IRouter = Router();
 
 router.get("/readyz", async (_req, res) => {
   try {
-    await db.execute(sql`SELECT 1`);
+    await db.execute(sql`SELECT checkout_expires_at FROM payments LIMIT 0`);
     const ota = await getOtaConfig();
     const stored = await db.execute(
       sql`SELECT to_regclass('public.ota_bookings') AS bookings`,
@@ -28,7 +28,7 @@ router.get("/readyz", async (_req, res) => {
       ota.webhookLiveSecret
     ) {
       await db.execute(
-        sql`SELECT notification_sent_at, refund, provider_notice, revision, sync_attempt_at FROM ota_bookings LIMIT 0`,
+        sql`SELECT notification_sent_at, refund, provider_notice, revision, sync_attempt_at, payment_session_expires_at FROM ota_bookings LIMIT 0`,
       );
       await db.execute(sql`SELECT reference FROM ota_payment_jobs LIMIT 0`);
       await db.execute(sql`SELECT dedupe_key FROM ota_duffel_events LIMIT 0`);

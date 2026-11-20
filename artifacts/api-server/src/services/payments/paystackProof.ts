@@ -7,6 +7,43 @@ type Binding = {
   userId?: string | null;
 };
 
+export async function getPaystackSessionTimeout(secret: string) {
+  const response = await fetch("https://api.paystack.co/integration/payment_session_timeout", {
+    redirect: "error",
+    signal: AbortSignal.timeout(20000),
+    headers: { Authorization: `Bearer ${secret}` },
+  });
+  const result = (await response.json()) as {
+    status?: boolean;
+    data?: { payment_session_timeout?: number };
+  } | null;
+  const seconds = result?.data?.payment_session_timeout;
+  if (!response.ok || result?.status !== true || typeof seconds !== "number" ||
+      !Number.isSafeInteger(seconds) || seconds < 0)
+    throw new Error("Paystack could not verify the payment session timeout");
+  return seconds;
+}
+
+export function expiredUnpaidPaystackSession(
+  payment: any,
+  mode: string,
+  timeout: number,
+  savedExpiry?: Date | null,
+  initializedAt?: Date | null,
+) {
+  if (payment?.domain !== mode || !["abandoned", "failed", "timeout"].includes(payment.status))
+    return false;
+  if (payment.status === "timeout" ||
+      /session timeout exceeded|payment has exceeded the time to pay/i.test(payment.gateway_response ?? ""))
+    return true;
+  if (!timeout) return false;
+  const created = Date.parse(payment.created_at ?? payment.createdAt);
+  const startedAt = Math.max(Number.isFinite(created) ? created : 0, initializedAt?.getTime() ?? 0);
+  const expires = Math.max(savedExpiry?.getTime() ?? 0, startedAt ? startedAt + timeout * 1000 : 0);
+  // Paystack may report an untouched, still-payable session as abandoned.
+  return expires > 0 && Date.now() >= expires;
+}
+
 export async function lookupPaystackTransaction(
   reference: string,
   secret: string,

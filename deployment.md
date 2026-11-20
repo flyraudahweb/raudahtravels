@@ -198,6 +198,8 @@ Before deploying the booking consistency update, apply [migration 0018](lib/db/d
 
 Check the Paystack payment session timeout on each integration used by flight and hotel checkout. Set a finite timeout that leaves time to complete supplier fulfillment before the shortest offer expires. A timeout of `0` permits indefinite payment sessions, so the updated API declines to open those checkouts. Changing the timeout also affects other payment flows that use the same Paystack integration. [Paystack Integration API](https://paystack.com/docs/api/integration/)
 
+Before deploying checkout recovery, apply [migration 0019](lib/db/drizzle/0019_checkout_recovery.sql) in one transaction after 0018. It records session expiries, removes unverified legacy upload grants, repairs confirmed group records, and recounts package capacity. Staff-issued documents follow their current booking. Older customer uploads whose ownership cannot be confirmed require an authorized reupload.
+
 After release, verify the payment flow in a test environment and confirm that authenticated travellers and assigned agents can still open their historical documents. Purge any CDN caches that stored earlier public file responses.
 
 ---

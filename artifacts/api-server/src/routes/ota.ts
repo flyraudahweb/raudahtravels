@@ -52,7 +52,7 @@ import {
   customerBooking,
   activeOtaPaymentReference,
   otaPaymentReferenceMatches,
-  otaPaymentWindowSeconds,
+  otaPaystackTimeoutSeconds,
   fulfill,
   paystackKey,
   paystackRequest,
@@ -75,6 +75,7 @@ import {
 } from "../services/ota/duffelWebhooks";
 import { DUFFEL_EVENTS } from "../services/ota/duffelWebhookProtocol";
 import {
+  expiredUnpaidPaystackSession,
   lookupPaystackTransaction,
   providerTransactionId,
 } from "../services/payments/paystackProof";
@@ -1151,13 +1152,7 @@ router.post(
           409,
         );
     }
-    const paymentWindow = await otaPaymentWindowSeconds(row.mode, row.supplier);
-    if (row.expiresAt.getTime() <= Date.now() + paymentWindow * 1000)
-      throw new OtaError(
-        "There is not enough time left to pay for this offer. Please search again.",
-        409,
-      );
-    const canPreparePayment = and(
+    const sameCheckout = and(
       eq(bookings.id, row.id),
       eq(bookings.status, "payment_pending"),
       eq(bookings.providerOfferId, row.providerOfferId),
@@ -1166,97 +1161,107 @@ router.post(
       eq(bookings.supplierCurrency, row.supplierCurrency),
       sql`${bookings.contact} = ${JSON.stringify(row.contact)}::jsonb`,
       sql`${bookings.travellers} = ${JSON.stringify(row.travellers)}::jsonb`,
-      sql`${bookings.expiresAt} > now() + ${paymentWindow} * interval '1 second'`,
+      sql`${bookings.expiresAt} > now()`,
     );
-    const current = await db.query.otaBookingsTable.findFirst({
-      where: canPreparePayment,
-      columns: { authorizationUrl: true },
-    });
-    if (!current)
-      throw new OtaError(
-        "Booking changed while preparing payment. Refresh to see its current status.",
-        409,
-      );
-    if (current.authorizationUrl) {
+    const readCheckout = () => db.query.otaBookingsTable.findFirst({ where: sameCheckout });
+    const current = await readCheckout();
+    if (!current) throw new OtaError("Checkout changed. Refresh before paying.", 409);
+
+    if (current.authorizationUrl && current.paymentSessionExpiresAt &&
+        current.paymentSessionExpiresAt.getTime() > Date.now()) {
       res.json({ authorizationUrl: current.authorizationUrl });
       return;
     }
+
+    const timeout = await otaPaystackTimeoutSeconds(current.mode, current.supplier);
+    const existingReference = activeOtaPaymentReference(current);
+    const publishedUrl = current.authorizationUrl;
+    if (publishedUrl) {
+      const gateway = await lookupPaystackTransaction(existingReference, await paystackKey(current.mode, current.supplier));
+      if (gateway?.status === "success") {
+        await enqueuePayment(existingReference, current.id);
+        throw new OtaError("Payment is being verified. Check the booking status before paying again.", 409);
+      }
+      if (!expiredUnpaidPaystackSession(gateway, current.mode, timeout, current.paymentSessionExpiresAt)) {
+        const createdAt = Date.parse(gateway?.created_at ?? gateway?.createdAt);
+        if (!current.paymentSessionExpiresAt && gateway?.domain === current.mode &&
+            Number.isFinite(createdAt) && createdAt + timeout * 1000 > Date.now()) {
+          const latest = await readCheckout();
+          if (latest?.authorizationUrl === publishedUrl &&
+              activeOtaPaymentReference(latest) === existingReference) {
+            res.json({ authorizationUrl: publishedUrl });
+            return;
+          }
+        }
+        throw new OtaError("The previous payment may still be processing. Check this booking before paying again.", 409);
+      }
+    }
+
+    // A new session must leave time for both initialization and fulfillment.
+    const paymentWindow = timeout + 90;
+    if (current.expiresAt.getTime() <= Date.now() + paymentWindow * 1000)
+      throw new OtaError("There is not enough time left to pay for this offer. Please search again.", 409);
+
+    const canPreparePayment = and(
+      sameCheckout,
+      sql`${bookings.expiresAt} > now() + ${paymentWindow} * interval '1 second'`,
+    );
     const startedAt = new Date();
-    const [claim] = await db
-      .update(bookings)
-      .set({ paymentInitializationAt: startedAt })
-      .where(
-        and(
-          canPreparePayment,
-          isNull(bookings.authorizationUrl),
-          row.paymentInitializationAt
-            ? eq(bookings.paymentInitializationAt, row.paymentInitializationAt)
-            : isNull(bookings.paymentInitializationAt),
-          or(
-            isNull(bookings.paymentInitializationAt),
-            sql`${bookings.paymentInitializationAt} < now() - interval '45 seconds'`,
-          ),
-        ),
-      )
-      .returning({
-        paymentReference: bookings.paymentReference,
-        previousPaymentReferences: bookings.previousPaymentReferences,
-      });
+    let reference = publishedUrl ? "OTA-" + randomUUID() : existingReference;
+    const [claim] = await db.update(bookings)
+      .set({
+        paymentInitializationAt: startedAt,
+        ...(publishedUrl ? {
+          paymentReference: reference,
+          previousPaymentReferences: [...current.previousPaymentReferences, existingReference],
+          authorizationUrl: null,
+          paymentSessionExpiresAt: null,
+        } : {}),
+      })
+      .where(and(
+        canPreparePayment,
+        publishedUrl ? eq(bookings.authorizationUrl, publishedUrl) : isNull(bookings.authorizationUrl),
+        current.paymentReference ? eq(bookings.paymentReference, current.paymentReference) : isNull(bookings.paymentReference),
+        current.paymentInitializationAt
+          ? and(
+              eq(bookings.paymentInitializationAt, current.paymentInitializationAt),
+              sql`${bookings.paymentInitializationAt} < now() - interval '45 seconds'`,
+            )
+          : isNull(bookings.paymentInitializationAt),
+      ))
+      .returning({ id: bookings.id });
     if (!claim) {
-      const current = await db.query.otaBookingsTable.findFirst({
-        where: canPreparePayment,
-        columns: { authorizationUrl: true },
-      });
-      if (current?.authorizationUrl) {
-        res.json({ authorizationUrl: current.authorizationUrl });
+      const latest = await readCheckout();
+      if (latest?.authorizationUrl && latest.paymentSessionExpiresAt &&
+          latest.paymentSessionExpiresAt.getTime() > Date.now()) {
+        res.json({ authorizationUrl: latest.authorizationUrl });
         return;
       }
-      throw new OtaError(
-        "A payment session is being prepared. Refresh the booking before trying again.",
-        409,
-      );
+      throw new OtaError("A payment session is being prepared. Refresh the booking before trying again.", 409);
     }
-    let reference = activeOtaPaymentReference({
-      reference: row.reference,
-      paymentReference: claim.paymentReference,
-    });
-    if (row.paymentInitializationAt) {
-      const gateway = await lookupPaystackTransaction(
-        reference,
-        await paystackKey(row.mode, row.supplier),
-      );
+    if (!publishedUrl && current.paymentInitializationAt) {
+      const gateway = await lookupPaystackTransaction(reference, await paystackKey(current.mode, current.supplier));
       if (gateway?.status === "success") {
-        await enqueuePayment(reference, row.id);
-        throw new OtaError(
-          "Payment is being verified. Check the booking status before paying again.",
-          409,
-        );
+        await enqueuePayment(reference, current.id);
+        throw new OtaError("Payment is being verified. Check the booking status before paying again.", 409);
       }
       if (gateway) {
-        // The prior link was never exposed. Keep its reference for late callbacks.
-        const nextReference = `OTA-${randomUUID()}`;
-        const [rotated] = await db
-          .update(bookings)
+        if (gateway.domain !== current.mode || !["failed", "abandoned", "timeout"].includes(gateway.status))
+          throw new OtaError("The previous payment may still be processing. Check this booking before paying again.", 409);
+        // This link was never published. Keep its reference for late callbacks.
+        const nextReference = "OTA-" + randomUUID();
+        const [rotated] = await db.update(bookings)
           .set({
             paymentReference: nextReference,
-            previousPaymentReferences: [
-              ...claim.previousPaymentReferences,
-              reference,
-            ],
-          })
-          .where(
-            and(
-              canPreparePayment,
-              isNull(bookings.authorizationUrl),
-              eq(bookings.paymentInitializationAt, startedAt),
-            ),
-          )
+            previousPaymentReferences: [...current.previousPaymentReferences, reference],
+          }).where(and(canPreparePayment, isNull(bookings.authorizationUrl),
+            eq(bookings.paymentInitializationAt, startedAt)))
           .returning({ id: bookings.id });
-        if (!rotated)
-          throw new OtaError("Booking changed while preparing payment.", 409);
+        if (!rotated) throw new OtaError("Booking changed while preparing payment.", 409);
         reference = nextReference;
       }
     }
+
     const data = await paystackRequest(
       "/transaction/initialize",
       row.mode,
@@ -1280,6 +1285,7 @@ router.post(
       .set({
         revision: sql`${bookings.revision}+1`,
         authorizationUrl: data.authorization_url,
+        paymentSessionExpiresAt: new Date(Date.now() + timeout * 1000),
         paymentInitializationAt: null,
         updatedAt: new Date(),
       })
@@ -1465,7 +1471,8 @@ router.post(
   endpoint(async (req, res) => {
     const row = await owned(req);
     res.json({
-      booking: customerBooking(await fulfill(activeOtaPaymentReference(row))),
+      booking: customerBooking(row.status === "payment_pending"
+        ? await fulfill(activeOtaPaymentReference(row)) : row),
     });
   }),
 );
@@ -2047,7 +2054,8 @@ router.post(
       where: eq(bookings.id, String(req.params.id)),
     });
     if (!row) throw new OtaError("Booking not found", 404);
-    const updated = await fulfill(activeOtaPaymentReference(row));
+    const updated = row.status === "payment_pending"
+      ? await fulfill(activeOtaPaymentReference(row)) : row;
     await audit(row.id, userId, "operator_payment_checked");
     res.json({ booking: updated });
   }),

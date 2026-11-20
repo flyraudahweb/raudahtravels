@@ -42,6 +42,7 @@ export const paymentsTable = pgTable("payments", {
     withTimezone: true,
   }),
   checkoutRetiredAt: timestamp("checkout_retired_at", { withTimezone: true }),
+  checkoutExpiresAt: timestamp("checkout_expires_at", { withTimezone: true }),
   proofUrl: text("proof_url"),
   proofOfPaymentUrl: text("proof_of_payment_url"),
   verifiedBy: text("verified_by").references(() => profilesTable.id),

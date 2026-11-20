@@ -29,6 +29,7 @@ interface Props {
   onExtracted: (data: PassportScanResult) => void;
   onProfilePhoto?: (dataUrl: string) => void;
   compact?: boolean;
+  requirePrivateUpload?: boolean;
 }
 
 type Status = "idle" | "loading" | "done" | "error" | "dismissed";
@@ -230,7 +231,7 @@ function calculateInitialCrop(bbox: BBox | null | undefined, W: number, H: numbe
   };
 }
 
-export default function PassportScanner({ onExtracted, onProfilePhoto, compact }: Props) {
+export default function PassportScanner({ onExtracted, onProfilePhoto, compact, requirePrivateUpload = false }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [errorInfo, setErrorInfo] = useState<ErrorInfo | null>(null);
@@ -238,6 +239,8 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
   const [extractedName, setExtractedName] = useState<string | null>(null);
   const [lastPassportImage, setLastPassportImage] = useState<string | null>(null);
   const [aiExtractionFailed, setAiExtractionFailed] = useState(false);
+  const [passportUploadError, setPassportUploadError] = useState(false);
+  const [photoUploadError, setPhotoUploadError] = useState(false);
 
   // Manual Crop State
   // cropOrigin tracks where the crop dialog was opened from:
@@ -257,6 +260,8 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
     setExtractedName(null);
     setLastPassportImage(null);
     setAiExtractionFailed(false);
+    setPassportUploadError(false);
+    setPhotoUploadError(false);
     if (inputRef.current) inputRef.current.value = "";
   };
 
@@ -282,6 +287,7 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
     if (!file) return;
 
     setStatus("loading");
+    setPassportUploadError(false);
     setErrorInfo(null);
     setProfilePicUrl(null);
     setExtractedName(null);
@@ -309,8 +315,9 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
         const passportFile = new File([file], `passport-${Date.now()}.${file.type.split('/')[1] || 'jpg'}`, { type: file.type });
         passportImageUrl = await uploadFile(passportFile, "passports");
       } catch (uploadErr) {
-        console.warn("Passport image upload failed, using data URL fallback", uploadErr);
-        passportImageUrl = passportDataUrl;
+        console.warn("Passport image upload failed", uploadErr);
+        passportImageUrl = requirePrivateUpload ? "" : passportDataUrl;
+        if (requirePrivateUpload) setPassportUploadError(true);
       }
 
       // Try AI extraction (non-blocking — failure still proceeds with crop)
@@ -426,20 +433,36 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
         </div>
 
         <DialogFooter className="p-4 bg-white flex items-center justify-end">
+          {photoUploadError && (
+            <p role="alert" className="mr-auto text-sm text-destructive">Could not save the photo. Retry the upload or close this window and upload it manually.</p>
+          )}
+          {requirePrivateUpload && (
+            <Button type="button" variant="outline" disabled={isUploadingCrop} onClick={() => {
+              if (cropOrigin === "ai" && pendingCrop) onExtracted(pendingCrop.result);
+              setStatus(cropOrigin === "error" ? "idle" : "done");
+              setPhotoUploadError(false);
+              setPendingCrop(null);
+            }}>
+              Upload photo separately
+            </Button>
+          )}
           <Button
             type="button"
             disabled={isUploadingCrop}
             onClick={async () => {
               if (pendingCrop && imgRef.current && crop) {
+                let keepCropOpen = false;
                 try {
                   setIsUploadingCrop(true);
+                  setPhotoUploadError(false);
                   const b64 = generateCroppedImage(imgRef.current, crop);
                   const file = dataUrlToFile(b64, "profile.jpg");
                   let url: string;
                   try {
                     url = await uploadFile(file, "photos");
                   } catch (uploadErr) {
-                    console.warn("Profile photo upload to R2 failed, using data URL fallback", uploadErr);
+                    if (requirePrivateUpload) throw uploadErr;
+                    console.warn("Profile photo upload failed", uploadErr);
                     url = b64;
                   }
                   
@@ -447,9 +470,13 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
                   onProfilePhoto?.(url);
                 } catch (err) {
                   console.error("Crop/upload error", err);
+                  if (requirePrivateUpload) {
+                    keepCropOpen = true;
+                    setPhotoUploadError(true);
+                  }
                 } finally {
                   setIsUploadingCrop(false);
-                  if (cropOrigin === 'ai') {
+                  if (!keepCropOpen && cropOrigin === 'ai') {
                     onExtracted(pendingCrop.result);
                     setExtractedName(
                       aiExtractionFailed
@@ -457,11 +484,11 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
                         : (`${pendingCrop.result.firstName} ${pendingCrop.result.lastName}`.trim() || "Passport scanned")
                     );
                     setStatus("done");
-                  } else if (cropOrigin === 'error') {
+                  } else if (!keepCropOpen && cropOrigin === 'error') {
                     setStatus("idle");
                   }
                   // recrop: just update photo, don't change status
-                  setPendingCrop(null);
+                  if (!keepCropOpen) setPendingCrop(null);
                 }
               }
             }}
@@ -474,10 +501,15 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
     </Dialog>
   );
 
+  const uploadWarning = passportUploadError && (
+    <p role="alert" className="text-xs font-medium text-destructive">The passport file could not be saved. Use the passport upload field to try again.</p>
+  );
+
   // ── Compact mode (used in inline toolbar contexts) ─────────────────────────
   if (compact) {
     return (
       <>
+      {uploadWarning}
       <div className="flex flex-wrap items-center gap-2">
         <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
 
@@ -685,6 +717,7 @@ export default function PassportScanner({ onExtracted, onProfilePhoto, compact }
 
       {/* Manual Cropping Dialog moved to renderCropDialog */}
     </div>
+    {uploadWarning}
     {renderCropDialog()}
     </>
   );

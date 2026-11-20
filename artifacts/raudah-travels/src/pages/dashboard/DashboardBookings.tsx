@@ -190,7 +190,7 @@ export default function DashboardBookings() {
                 </div>
 
                 {/* Action footer */}
-                {booking.status === "pending" && balance > 0 && (
+                {(booking.status === "pending" || booking.status === "confirmed") && balance > 0 && (
                   <div className="px-5 pb-4">
                     <Link href={`/dashboard/bookings/${booking.id}/pay`}>
                       <button className="flex items-center justify-center gap-2 w-full bg-[#FF3B00] hover:bg-[#D63200] text-white py-2.5 rounded-xl font-bold text-sm transition-colors">

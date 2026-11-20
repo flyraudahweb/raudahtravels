@@ -177,7 +177,7 @@ export default function DashboardPayExisting() {
     <div className="text-center py-12 text-muted-foreground">Booking not found.</div>
   );
 
-  if (booking.status === "confirmed") return (
+  if (booking.status === "confirmed" && amountDue <= 0 && !done) return (
     <div className="max-w-xl mx-auto text-center py-16 space-y-4">
       <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto" />
       <h2 className="text-2xl font-bold font-serif text-primary">Already Confirmed</h2>

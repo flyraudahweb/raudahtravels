@@ -28,6 +28,8 @@ import multer from "multer";
 import path from "path";
 import { mkdirSync } from "fs";
 import { landingHeroSchema } from "../services/landingHero";
+import { retireExpiredPackageCheckouts } from "../services/payments/packagePaystack";
+import { confirmPaidGroup } from "../services/payments/packageConfirmation";
 
 ["uploads/visa", "uploads/tickets"].forEach(d => { try { mkdirSync(d, { recursive: true }); } catch {} });
 
@@ -589,192 +591,196 @@ router.put("/admin/bookings/:id", async (req, res) => {
 
 // ── Package Upgrade / Switch ──────────────────────────────────────────────────
 
+class PackageUpgradeError extends Error {
+  constructor(message: string, readonly status = 409) { super(message); }
+}
+
 router.post("/admin/bookings/:id/upgrade-package", async (req, res) => {
+  const { userId: clerkUserId } = getAuth(req);
+  if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
+  const caller = await db.query.profilesTable.findFirst({
+    where: eq(profilesTable.clerkUserId, clerkUserId),
+  });
+  if (!caller) return res.status(404).json({ error: "Caller profile not found" });
+
+  const bookingId = req.params.id;
+  const { newPackageId, newPackageDateId } = req.body;
+  if (typeof newPackageId !== "string" || !newPackageId ||
+      (newPackageDateId != null && typeof newPackageDateId !== "string"))
+    return res.status(400).json({ error: "Choose a valid package and departure" });
+
   try {
-    const { userId: callerClerkId } = getAuth(req);
-    if (!callerClerkId) return res.status(401).json({ error: "Unauthorized" });
-    const caller = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, callerClerkId) });
-    if (!caller) return res.status(404).json({ error: "Caller profile not found" });
+    const result = await db.transaction(async (tx) => {
+      // All booking and payment operations lock the primary booking first.
+      const [booking] = await tx.select().from(bookingsTable)
+        .where(eq(bookingsTable.id, bookingId)).for("update");
+      if (!booking) throw new PackageUpgradeError("Booking not found", 404);
+      if (booking.parentBookingId)
+        throw new PackageUpgradeError("Change the package from the main booking.");
+      if (booking.isArchived || !["pending", "confirmed"].includes(booking.status))
+        throw new PackageUpgradeError("This booking cannot be moved to another package.");
 
-    const bookingId = req.params.id;
-    const { newPackageId, newPackageDateId } = req.body as { newPackageId: string; newPackageDateId?: string | null };
+      const children = await tx.select().from(bookingsTable)
+        .where(eq(bookingsTable.parentBookingId, booking.id)).orderBy(bookingsTable.id).for("update");
+      const group = [booking, ...children];
+      const changingPackage = booking.packageId !== newPackageId;
+      const moving = group.some((traveller) => traveller.packageId !== newPackageId);
+      if (moving && !await retireExpiredPackageCheckouts(tx, group.map(({ id }) => id)))
+        throw new PackageUpgradeError("Resolve the open Paystack payment before changing packages.");
+      const selectedDate = newPackageDateId === undefined
+        ? changingPackage ? null : booking.packageDateId
+        : newPackageDateId || null;
+      const packageIds = [...new Set([...group.map((traveller) => traveller.packageId), newPackageId])];
+      const packages = await tx.select().from(packagesTable).where(inArray(packagesTable.id, packageIds))
+        .orderBy(packagesTable.id).for("update");
+      const nextPackage = packages.find((pkg) => pkg.id === newPackageId);
+      if (!nextPackage) throw new PackageUpgradeError("New package not found", 404);
+      const oldPackage = packages.find((pkg) => pkg.id === booking.packageId);
+      if (moving && (!nextPackage.isActive || nextPackage.status !== "active" ||
+          (nextPackage.countdownEnabled && nextPackage.countdownExpiry && Date.parse(nextPackage.countdownExpiry) <= Date.now())))
+        throw new PackageUpgradeError("The selected package is closed.");
 
-    if (!newPackageId) return res.status(400).json({ error: "newPackageId is required" });
-
-    const booking = await db.query.bookingsTable.findFirst({ where: eq(bookingsTable.id, bookingId) });
-    if (!booking) return res.status(404).json({ error: "Booking not found" });
-
-    const newPackage = await db.query.packagesTable.findFirst({ where: eq(packagesTable.id, newPackageId) });
-    if (!newPackage) return res.status(404).json({ error: "New package not found" });
-
-    // Get old package for logging
-    const oldPackage = booking.packageId
-      ? await db.query.packagesTable.findFirst({ where: eq(packagesTable.id, booking.packageId) })
-      : null;
-
-    if (booking.packageId === newPackageId) {
-      // Same package — just update packageDateId if provided
-      if (newPackageDateId !== undefined) {
-        await db.update(bookingsTable)
-          .set({ packageDateId: newPackageDateId || null, updatedAt: new Date() })
-          .where(eq(bookingsTable.id, bookingId));
-      }
-      const updatedBooking = await db.query.bookingsTable.findFirst({ where: eq(bookingsTable.id, bookingId) });
-      return res.json({
-        success: true,
-        booking: updatedBooking ? { ...updatedBooking, totalPrice: Number(updatedBooking.totalPrice), amountPaid: Number(updatedBooking.amountPaid) } : null,
-        payment: null,
-        priceDifference: 0,
-      });
-    }
-
-    const oldPrice = Number(booking.totalPrice);
-    const currentPaid = Number(booking.amountPaid);
-
-    // BUG FIX: Recalculate new price with agent discounts and commissions
-    let newPrice = Number(newPackage.price);
-    // Preserve the existing room surcharge from the booking
-    const existingSurcharge = Number(booking.roomSurcharge) || 0;
-    newPrice += existingSurcharge;
-
-    let newCommissionAmount = 0;
-
-    let paymentRecord: any = null;
-    let updatedBooking: typeof bookingsTable.$inferSelect | undefined;
-
-    await db.transaction(async (tx) => {
-      // If booking has an agent, apply agent pricing logic (same as register-client)
-      if (booking.agentId) {
-        const agent = await tx.query.agentsTable.findFirst({
-          where: eq(agentsTable.id, booking.agentId),
+      if (selectedDate && (moving || selectedDate !== booking.packageDateId)) {
+        const departure = await tx.query.packageDatesTable.findFirst({
+          where: eq(packageDatesTable.id, selectedDate),
         });
+        if (!departure || departure.status !== "open" ||
+            (departure.packageId !== newPackageId && !(departure.packageId === null && nextPackage.type === "umrah")))
+          throw new PackageUpgradeError("The selected departure is unavailable.");
+      }
 
-        if (agent) {
-          // Check for per-package discount
-          const agentDiscount = await tx.query.agentPackageDiscountsTable.findFirst({
-            where: and(
-              eq(agentPackageDiscountsTable.agentId, agent.id),
-              eq(agentPackageDiscountsTable.packageId, newPackageId),
-            ),
+      const seatDelta = new Map<string, number>();
+      for (const traveller of group) {
+        if (traveller.status === "cancelled" || traveller.packageId === newPackageId) continue;
+        seatDelta.set(traveller.packageId, (seatDelta.get(traveller.packageId) ?? 0) - traveller.pilgrimCount);
+        seatDelta.set(newPackageId, (seatDelta.get(newPackageId) ?? 0) + traveller.pilgrimCount);
+      }
+      const incomingSeats = seatDelta.get(newPackageId) ?? 0;
+      if (incomingSeats > 0 && nextPackage.capacity > 0 && nextPackage.currentBookings + incomingSeats > nextPackage.capacity)
+        throw new PackageUpgradeError("There is insufficient capacity for this booking group.");
+
+      const oldPrice = Math.round(Number(booking.totalPrice) * 100);
+      const amountPaid = Math.round(Number(booking.amountPaid) * 100);
+      let nextPrice = oldPrice;
+      let commission = 0;
+      let bundledDependantsPrice = 0;
+      if (changingPackage) {
+        const settings = await tx.query.siteSettingsTable.findFirst({
+          where: eq(siteSettingsTable.key, "child_infant_pricing"),
+        });
+        const catalogChildPrice = (type: string) => {
+          const field = type === "infant" ? "infantPrice" : "childPrice";
+          const overrides = (nextPackage.pricingOverrides ?? {}) as Record<string, unknown>;
+          const defaults = (settings?.value ?? {}) as Record<string, unknown>;
+          const amount = Number(overrides[field] ?? defaults[field] ?? 1200000);
+          return Math.round((Number.isFinite(amount) && amount >= 0 ? amount : 1200000) * 100);
+        };
+        let unitPrice = Math.round((Number(nextPackage.price) + Number(booking.roomSurcharge ?? 0)) * 100);
+        if (booking.pilgrimType === "child" || booking.pilgrimType === "infant")
+          unitPrice = catalogChildPrice(booking.pilgrimType);
+
+        if (booking.agentId) {
+          const agent = await tx.query.agentsTable.findFirst({ where: eq(agentsTable.id, booking.agentId) });
+          const discount = await tx.query.agentPackageDiscountsTable.findFirst({
+            where: and(eq(agentPackageDiscountsTable.agentId, booking.agentId),
+              eq(agentPackageDiscountsTable.packageId, newPackageId)),
           });
-
-          if (agentDiscount) {
-            const dv = Number(agentDiscount.discountValue);
-            if (agentDiscount.discountType === "percentage") {
-              newPrice = Math.round((newPrice - (newPrice * dv / 100)) * 100) / 100;
-            } else {
-              newPrice = Math.max(0, newPrice - dv);
-            }
+          if (discount) {
+            const value = Number(discount.discountValue);
+            unitPrice = Math.max(0, unitPrice - Math.round(discount.discountType === "percentage" ? unitPrice * value / 100 : value * 100));
+          } else if (agent && Number(agent.commissionRate) > 0) {
+            const rate = Number(agent.commissionRate);
+            const perTraveller = Math.min(unitPrice, Math.round(agent.commissionType === "percentage" ? unitPrice * rate / 100 : rate * 100));
+            unitPrice -= perTraveller;
+            commission = perTraveller * booking.pilgrimCount;
           }
-
-          // Apply agent commission as price reduction (only when no package discount)
-          const commRate = Number(agent.commissionRate);
-          if (commRate > 0 && !agentDiscount) {
-            newCommissionAmount = agent.commissionType === "percentage"
-              ? Math.round(newPrice * commRate / 100 * 100) / 100
-              : Math.min(commRate, newPrice);
-            newPrice = Math.max(0, newPrice - newCommissionAmount);
-          }
-
-          // Delete old commission and insert recalculated one
-          await tx.delete(commissionsTable).where(eq(commissionsTable.bookingId, bookingId));
-          if (newCommissionAmount > 0) {
-            await tx.insert(commissionsTable).values({
-              id: randomUUID(),
-              agentId: agent.id,
-              bookingId,
-              amount: String(newCommissionAmount),
-              status: "pending",
-            });
-          }
+          await tx.delete(commissionsTable).where(and(eq(commissionsTable.bookingId, bookingId), eq(commissionsTable.status, "pending")));
+          if (commission > 0) await tx.insert(commissionsTable).values({
+            id: randomUUID(), bookingId, agentId: booking.agentId,
+            amount: (commission / 100).toFixed(2), status: "pending",
+          });
         }
+
+        // Older staff-created dependants can have their own balances. Move
+        // those bookings with the group while keeping their separate ledgers.
+        for (const child of children) {
+          if (child.status === "cancelled" || Number(child.totalPrice) !== 0) continue;
+          const childUnitPrice = child.pilgrimType === "child" || child.pilgrimType === "infant"
+            ? catalogChildPrice(child.pilgrimType) : unitPrice;
+          bundledDependantsPrice += childUnitPrice * child.pilgrimCount;
+        }
+        nextPrice = unitPrice * booking.pilgrimCount + bundledDependantsPrice;
       }
 
-      const priceDifference = newPrice - oldPrice;
+      for (const [packageId, delta] of seatDelta) {
+        await tx.update(packagesTable)
+          .set({ currentBookings: sql`greatest(0, ${packagesTable.currentBookings} + ${delta})` })
+          .where(eq(packagesTable.id, packageId));
+      }
+      const travel = { packageId: newPackageId, packageDateId: selectedDate, updatedAt: new Date() };
+      if (children.length)
+        await tx.update(bookingsTable).set(travel).where(inArray(bookingsTable.id, children.map(({ id }) => id)));
+      const [saved] = await tx.update(bookingsTable).set({
+        ...travel,
+        totalPrice: (nextPrice / 100).toFixed(2),
+        ...(changingPackage ? {
+          customData: { ...(booking.customData as Record<string, unknown> ?? {}),
+            childrenExtra: bundledDependantsPrice / 100 },
+        } : {}),
+        ...(changingPackage && amountPaid >= nextPrice && nextPrice > 0 ? { status: "confirmed" as const } : {}),
+      }).where(eq(bookingsTable.id, bookingId)).returning();
 
-      // Update booking to new package
-      const bookingUpdate: Record<string, any> = {
-        packageId: newPackageId,
-        packageDateId: newPackageDateId !== undefined ? (newPackageDateId || null) : booking.packageDateId,
-        totalPrice: String(newPrice),
-        updatedAt: new Date(),
-      };
-
-      // If downgrade and already overpaid, auto-confirm
-      if (currentPaid >= newPrice && newPrice > 0) {
-        bookingUpdate.status = "confirmed";
+      const priceDifference = (nextPrice - oldPrice) / 100;
+      let payment: typeof paymentsTable.$inferSelect | undefined;
+      if (changingPackage) {
+        await tx.update(paymentsTable).set({ status: "rejected" }).where(and(
+          eq(paymentsTable.bookingId, bookingId), eq(paymentsTable.status, "pending"),
+          eq(paymentsTable.method, "cash"), ilike(paymentsTable.reference, "UPGRADE-%"),
+        ));
+        const extraBalance = Math.min(nextPrice - oldPrice, nextPrice - amountPaid);
+        if (extraBalance > 0) {
+          [payment] = await tx.insert(paymentsTable).values({
+            id: randomUUID(), bookingId, userId: booking.userId,
+            amount: (extraBalance / 100).toFixed(2), method: "cash", status: "pending",
+            reference: "UPGRADE-" + randomUUID(),
+            notes: `Package upgrade: ${oldPackage?.name || "Previous package"} → ${nextPackage.name}`,
+          }).returning();
+        }
+        await confirmPaidGroup(tx, saved);
       }
 
-      const [b] = await tx.update(bookingsTable)
-        .set(bookingUpdate)
-        .where(eq(bookingsTable.id, bookingId))
-        .returning();
-      updatedBooking = b;
-
-      // If upgrade (price increase), create a pending payment record for the difference
-      if (priceDifference > 0) {
-        const [p] = await tx.insert(paymentsTable).values({
-          id: randomUUID(),
-          bookingId,
-          userId: booking.userId,
-          amount: String(priceDifference),
-          method: "cash",
-          status: "pending",
-          reference: `UPGRADE-${randomUUID().slice(0, 8).toUpperCase()}`,
-          notes: `Package upgrade: ${oldPackage?.name || "Previous package"} → ${newPackage.name}`,
-        }).returning();
-        paymentRecord = { ...p, amount: Number(p.amount) };
-      }
+      return { saved, payment, priceDifference, commission, oldPackage, nextPackage,
+        changed: moving || selectedDate !== booking.packageDateId };
     });
 
-    // Activity log
-    try {
-      const priceDiff = updatedBooking ? Number(updatedBooking.totalPrice) - oldPrice : 0;
+    const { saved, payment, priceDifference, commission, oldPackage, nextPackage, changed } = result;
+    if (changed) {
       await db.insert(userActivityTable).values({
-        id: randomUUID(),
-        userId: caller.id,
-        eventType: "package_changed",
-        bookingId,
-        metadata: {
-          actorName: caller.fullName,
-          actorRole: caller.role,
-          targetName: booking.fullName,
-          oldPackage: oldPackage?.name,
-          newPackage: newPackage.name,
-          oldPrice,
-          newPrice: updatedBooking ? Number(updatedBooking.totalPrice) : newPrice,
-          priceDifference: priceDiff,
-          commissionRecalculated: newCommissionAmount > 0,
-          newCommissionAmount,
-          isAgentBooking: !!booking.agentId,
-        },
-      });
-    } catch (_) { /* non-blocking */ }
-
-    // Notify pilgrim
-    if (booking.userId && updatedBooking) {
-      const fmt = (n: number) => `₦${n.toLocaleString()}`;
-      const actualNewPrice = Number(updatedBooking.totalPrice);
-      const actualDiff = actualNewPrice - oldPrice;
-      const msg = actualDiff > 0
-        ? `Your package has been upgraded to "${newPackage.name}". Additional payment of ${fmt(actualDiff)} is required.`
-        : actualDiff < 0
-          ? `Your package has been changed to "${newPackage.name}". Your new total is ${fmt(actualNewPrice)}.`
-          : `Your package has been changed to "${newPackage.name}".`;
-      setImmediate(() => createNotification(booking.userId!, "Package Changed", msg, "booking"));
+        id: randomUUID(), userId: caller.id, eventType: "package_changed", bookingId,
+        metadata: { actorName: caller.fullName, actorRole: caller.role, targetName: saved.fullName,
+          oldPackage: oldPackage?.name, newPackage: nextPackage.name, newPrice: Number(saved.totalPrice),
+          priceDifference, newCommissionAmount: commission / 100, isAgentBooking: !!saved.agentId },
+      }).catch(() => {});
+      if (saved.userId) {
+        const balance = Math.max(0, Number(saved.totalPrice) - Number(saved.amountPaid));
+        const message = balance
+          ? `Your package is now "${nextPackage.name}". The outstanding balance is ₦${balance.toLocaleString()}.`
+          : `Your package is now "${nextPackage.name}".`;
+        setImmediate(() => createNotification(saved.userId!, "Package Changed", message, "booking"));
+      }
     }
 
-    return res.json({
-      success: true,
-      booking: updatedBooking ? { ...updatedBooking, totalPrice: Number(updatedBooking.totalPrice), amountPaid: Number(updatedBooking.amountPaid) } : null,
-      payment: paymentRecord,
-      priceDifference: updatedBooking ? Number(updatedBooking.totalPrice) - oldPrice : 0,
-    });
-  } catch (err: any) {
-    console.error("[package-upgrade] Error:", err);
-    return res.status(500).json({ error: err.message || "Failed to upgrade package" });
+    return res.json({ success: true, booking: {
+      ...saved, totalPrice: Number(saved.totalPrice), amountPaid: Number(saved.amountPaid),
+    }, payment: payment ? { ...payment, amount: Number(payment.amount) } : null, priceDifference });
+  } catch (error) {
+    if (error instanceof PackageUpgradeError)
+      return res.status(error.status).json({ error: error.message });
+    console.error("[package-upgrade] Error:", error);
+    return res.status(500).json({ error: "Failed to change the booking package" });
   }
 });
+
 
 // ── Passports ─────────────────────────────────────────────────────────────────
 

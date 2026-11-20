@@ -47,8 +47,8 @@ async function fileProfile(clerkUserId: string) {
   });
 }
 
-// Existing uploads retain their URLs. Access follows the traveller, their assigned
-// agent, or authorized staff even when the original upload predates owner metadata.
+// Staff-issued documents follow the current booking. Customer-supplied links
+// alone cannot establish ownership of an older object.
 async function canReadLinkedFile(
   profileId: string,
   url: string,
@@ -74,29 +74,20 @@ async function canReadLinkedFile(
         ),
       ),
     );
-  const result = await db.execute(
-    ownerId
-      ? sql`
-    SELECT 1 FROM bookings b WHERE b.id IN (${ownedBookings})
-      AND ${url} IN (b.passport_copy_url, b.profile_photo_url, b.ticket_document_url)
-      AND (b.user_id = ${ownerId} OR b.registered_by_staff_id = ${ownerId}
-        OR b.agent_id IN (SELECT id FROM agents WHERE user_id = ${ownerId}))
-    LIMIT 1
-  `
-      : url.startsWith("/api/uploads/")
-        ? sql`
+  const result = await db.execute(sql`
     SELECT 1 FROM visa_applications WHERE booking_id IN (${ownedBookings})
       AND ${url} IN (visa_document_url, ticket_document_url)
     UNION ALL
     SELECT 1 FROM bookings WHERE id IN (${ownedBookings}) AND ticket_document_url = ${url}
+    ${ownerId ? sql`
+    UNION ALL
+    SELECT 1 FROM bookings b WHERE b.id IN (${ownedBookings})
+      AND ${url} IN (b.passport_copy_url, b.profile_photo_url)
+      AND (b.user_id = ${ownerId} OR b.registered_by_staff_id = ${ownerId}
+        OR b.agent_id IN (SELECT id FROM agents WHERE user_id = ${ownerId}))
+    ` : sql``}
     LIMIT 1
-  `
-        : sql`
-    SELECT 1 FROM legacy_upload_grants WHERE url = ${url}
-      AND (user_id = ${profileId} OR booking_id IN (${ownedBookings}))
-    LIMIT 1
-  `,
-  );
+  `);
   return result.rows.length > 0;
 }
 

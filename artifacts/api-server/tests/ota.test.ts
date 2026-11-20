@@ -196,9 +196,6 @@ beforeAll(async () => {
   await module.pool.query(
     await readFile(path.join(root, "lib/db/drizzle/0013_ehajj.sql"), "utf8"),
   );
-  await module.pool.query(
-    "CREATE SEQUENCE IF NOT EXISTS bookings_id_number_seq",
-  );
   setupTrace("applying checked-in migrations");
   // Verify the checked-in migration, including its database constraints.
   await module.pool.query(
@@ -224,6 +221,7 @@ beforeAll(async () => {
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0016_ota_nuitee_flights.sql"), "utf8"));
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0017_ota_checkout_claims.sql"), "utf8"));
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0018_booking_consistency.sql"), "utf8"));
+  await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0019_checkout_recovery.sql"), "utf8"));
   await module.db.insert(module.profilesTable).values([
     {
       id: "user",
@@ -274,6 +272,7 @@ beforeAll(async () => {
   app.use("/api", (await import("../src/routes/notifications")).default);
   app.use("/api", (await import("../src/routes/payments")).default);
   app.use("/api", (await import("../src/routes/bookings")).default);
+  app.use("/api", (await import("../src/routes/agents")).default);
   app.use("/api", (await import("../src/routes/ehajj")).default);
   app.use("/api", (await import("../src/routes/documents")).default);
   app.use("/api", (await import("../src/routes/upload")).default);
@@ -1882,6 +1881,113 @@ describe("package checkout consistency", () => {
     expect((await legacyRequest("/bookings/" + booking.id, "user", undefined, "DELETE")).status).toBe(409);
     expect((await module.db.select().from(module.paymentsTable).where(eq(module.paymentsTable.bookingId, booking.id)))).toHaveLength(1);
   });
+
+  it("again accepts payment or cancellation after an expired package session is verified unpaid", async () => {
+    const packageId = await packageWithCapacity(2);
+    const [renewal, cancellation] = await Promise.all(["Renew", "Cancel"].map(async (fullName) =>
+      (await legacyRequest("/bookings", "user", { packageId, fullName })).json(),
+    ));
+    await module.db.insert(module.paymentsTable).values([renewal, cancellation].map((booking) => ({
+      id: randomUUID(), bookingId: booking.id, userId: "user", amount: "200000",
+      method: "paystack", reference: "RDH-EXPIRED-" + booking.id, checkoutAccessCode: "expired",
+      checkoutUrl: "https://checkout.paystack.com/expired",
+      createdAt: new Date(Date.now() - 300000), checkoutExpiresAt: new Date(Date.now() - 1000),
+    })));
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", (url: string | URL, options?: RequestInit) => {
+      if (!String(url).endsWith("api.paystack.co/transaction/initialize")) return originalFetch(url, options);
+      const { reference } = JSON.parse(String(options?.body));
+      return Response.json({ status: true, data: {
+        reference, authorization_url: "https://checkout.paystack.com/replacement", access_code: "replacement",
+      } });
+    });
+    const initialize = () => legacyRequest("/payments/paystack/initialize", "user", { bookingId: renewal.id });
+    gatewayPatch = { status: "ongoing" };
+    expect((await initialize()).status).toBe(409);
+    gatewayPatch = { status: "abandoned" };
+    const replaced = await initialize();
+    expect(replaced.status).toBe(201);
+    expect((await replaced.json()).accessCode).toBe("replacement");
+    const cancelled = await legacyRequest("/bookings/" + cancellation.id, "user", undefined, "DELETE");
+    expect(cancelled.status).toBe(200);
+    const oldPayments = (await module.db.query.paymentsTable.findMany())
+      .filter(({ reference }) => reference?.startsWith("RDH-EXPIRED-"));
+    expect(oldPayments).toHaveLength(2);
+    expect(oldPayments.every(({ checkoutRetiredAt }) => checkoutRetiredAt)).toBe(true);
+  });
+
+  it("moves a group and its seats together and accepts a top-up on the confirmed upgrade", async () => {
+    const oldPackage = await packageWithCapacity(2);
+    const destination = await packageWithCapacity(1);
+    const birthday = new Date();
+    birthday.setUTCFullYear(birthday.getUTCFullYear() - 5);
+    const creation = await legacyRequest("/bookings", "user", { packageId: oldPackage, fullName: "Parent",
+      children: [{ firstName: "Child", lastName: "Guest", dateOfBirth: birthday.toISOString().slice(0, 10) }] });
+    const booking = await creation.json();
+    const confirm = await legacyRequest("/bookings/" + booking.id, "admin", { status: "confirmed" }, "PUT");
+    expect(confirm.status).toBe(200);
+    const [child] = await module.db.select().from(module.bookingsTable)
+      .where(eq(module.bookingsTable.parentBookingId, booking.id));
+    expect(child.status).toBe("confirmed");
+    expect(child.idNumber).toBeTruthy();
+    const visa = await module.db.query.visaApplicationsTable.findFirst({
+      where: eq(module.visaApplicationsTable.bookingId, child.id),
+    });
+    expect(visa?.status).toBe("pending");
+
+    const upgrade = () => legacyRequest("/admin/bookings/" + booking.id + "/upgrade-package", "admin", { newPackageId: destination });
+    expect((await upgrade()).status).toBe(409);
+    await module.db.update(module.packagesTable).set({ capacity: 2, price: "300000" })
+      .where(eq(module.packagesTable.id, destination));
+    await module.db.insert(module.paymentsTable).values({
+      id: randomUUID(), bookingId: booking.id, userId: "user", amount: "375000", status: "verified", method: "cash",
+    });
+    await module.db.update(module.bookingsTable).set({ amountPaid: "375000" }).where(eq(module.bookingsTable.id, booking.id));
+    const upgraded = await upgrade();
+    expect(upgraded.status).toBe(200);
+    expect((await upgraded.json()).booking.totalPrice).toBe(475000);
+    const members = await module.db.query.bookingsTable.findMany();
+    expect(members.every(({ packageId }) => packageId === destination)).toBe(true);
+    const packages = await module.db.query.packagesTable.findMany();
+    expect(packages.find(({ id }) => id === oldPackage)?.currentBookings).toBe(0);
+    expect(packages.find(({ id }) => id === destination)?.currentBookings).toBe(2);
+
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", (url: string | URL, options?: RequestInit) => {
+      if (!String(url).endsWith("api.paystack.co/transaction/initialize")) return originalFetch(url, options);
+      const { reference, amount } = JSON.parse(String(options?.body));
+      expect(amount).toBe(10000000);
+      return Response.json({ status: true, data: {
+        reference, authorization_url: "https://checkout.paystack.com/upgrade", access_code: "upgrade",
+      } });
+    });
+    expect((await legacyRequest("/payments/paystack/initialize", "user", { bookingId: booking.id })).status).toBe(201);
+  });
+
+  it("replays agent registration under a single reservation and rejects reuse with changed details", async () => {
+    const packageId = await packageWithCapacity(1);
+    await module.db.insert(module.agentsTable).values({
+      id: randomUUID(), userId: "user", businessName: "Fixture Travel", status: "active",
+    });
+    const request = { checkoutId: randomUUID(), packageId, firstName: "Example", lastName: "Client",
+      paymentMethod: "paystack" };
+    const register = (payload = request) => legacyRequest("/agent/register-client", "user", payload);
+    const [first, second] = await Promise.all([register(), register()]);
+    expect([first.status, second.status]).toEqual([201, 201]);
+    expect((await first.json()).id).toBe((await second.json()).id);
+    expect((await register({ ...request, firstName: "Changed" })).status).toBe(409);
+    expect(await module.db.query.bookingsTable.findMany()).toHaveLength(1);
+    expect((await module.db.query.packagesTable.findFirst())?.currentBookings).toBe(1);
+  });
+
+  it("asks for a file reupload when a scan supplied inline document data", async () => {
+    const packageId = await packageWithCapacity(1);
+    const response = await legacyRequest("/bookings", "user", {
+      packageId, fullName: "Guest", passportCopyUrl: "data:image/jpeg;base64," + "A".repeat(3000),
+    });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("Upload the passport copy again");
+  });
 });
 
 it("requires private upload ownership and prevents shared caching", async () => {
@@ -1895,6 +2001,25 @@ it("requires private upload ownership and prevents shared caching", async () => 
   expect(owned.status).toBe(200);
   expect(owned.headers.get("cache-control")).toBe("private, no-store");
   expect(await owned.text()).toBe("fixture");
+});
+
+it("allows an ownerless historical file only when staff links it to a booking", async () => {
+  const bookingId = await packageFixture([]);
+  const { uploadToR2 } = await import("../src/lib/r2");
+  const key = "documents/" + randomUUID() + ".pdf";
+  await uploadToR2(key, Buffer.from("fixture"), "application/pdf");
+  const url = "/api/files/" + key;
+  const path = "/files/" + key;
+  await module.pool.query(
+    "INSERT INTO legacy_upload_grants (url, booking_id, user_id) VALUES ($1, $2, 'user')",
+    [url, bookingId],
+  );
+  expect((await legacyRequest(path, "user", undefined, "GET")).status).toBe(404);
+  await module.db.insert(module.visaApplicationsTable).values({
+    id: randomUUID(), bookingId, visaDocumentUrl: url, status: "approved",
+  });
+  expect((await legacyRequest(path, "user", undefined, "GET")).status).toBe(200);
+  expect((await legacyRequest(path, "other", undefined, "GET")).status).toBe(404);
 });
 
 async function packageFixture(references = ["RDH-package"]) {
@@ -1919,7 +2044,7 @@ async function packageFixture(references = ["RDH-package"]) {
     totalPrice: "200000",
     fullName: "Test User",
   });
-  await module.db.insert(module.paymentsTable).values(
+  if (references.length) await module.db.insert(module.paymentsTable).values(
     references.map((reference) => ({
       id: randomUUID(),
       userId: "user",
@@ -3317,6 +3442,62 @@ describe("OTA authorization and payments", () => {
     expect(response.status).toBe(409);
     expect(fetch).not.toHaveBeenCalledWith("https://api.paystack.co/transaction/initialize", expect.anything());
   });
+  it("reuses an active OTA session with a short offer window and replaces an expired unpaid session once", async () => {
+    await create();
+    const url = "https://checkout.paystack.com/current-session";
+    await module.db.update(module.otaBookingsTable).set({
+      authorizationUrl: url,
+      paymentSessionExpiresAt: new Date(Date.now() + 65000),
+      expiresAt: new Date(Date.now() + 180000),
+    }).where(eq(module.otaBookingsTable.id, booking.id));
+    const start = () => request(`/bookings/${booking.id}/pay`, "user", {});
+    expect((await (await start()).json()).authorizationUrl).toBe(url);
+
+    await module.db.update(module.otaBookingsTable).set({
+      paymentSessionExpiresAt: new Date(Date.now() - 1000),
+      expiresAt: new Date(Date.now() + 600000),
+    }).where(eq(module.otaBookingsTable.id, booking.id));
+    gatewayPatch = { status: "processing" };
+    expect((await start()).status).toBe(409);
+    gatewayPatch = { status: "abandoned" };
+    const originalFetch = globalThis.fetch;
+    let calls = 0;
+    vi.stubGlobal("fetch", (input: string | URL, options?: RequestInit) => {
+      if (!String(input).endsWith("api.paystack.co/transaction/initialize")) return originalFetch(input, options);
+      calls++;
+      const { reference } = JSON.parse(String(options?.body));
+      return Response.json({ status: true, data: {
+        reference, authorization_url: "https://checkout.paystack.com/new-session",
+      } });
+    });
+    const responses = await Promise.all([start(), start()]);
+    expect(responses.some((response) => response.ok)).toBe(true);
+    expect(calls).toBe(1);
+    const saved = await module.db.query.otaBookingsTable.findFirst();
+    expect(saved?.authorizationUrl).toBe("https://checkout.paystack.com/new-session");
+    expect(saved?.previousPaymentReferences).toContain(booking.reference);
+    expect(saved?.paymentReference).not.toBe(booking.reference);
+  });
+  it("records a second verified Paystack reference for reconciliation without purchasing twice", async () => {
+    await create();
+    const original = booking.reference;
+    const replacement = "OTA-" + randomUUID();
+    await module.db.update(module.otaBookingsTable).set({
+      paymentReference: replacement,
+      previousPaymentReferences: [original],
+    }).where(eq(module.otaBookingsTable.id, booking.id));
+    const { fulfill } = await import("../src/services/ota/booking");
+    const confirmed = await fulfill(replacement);
+    expect(confirmed.status).toBe("confirmed");
+    await Promise.all([fulfill(original), fulfill(original)]);
+    expect(supplierCalls).toBe(1);
+    const events = await module.db.query.otaEventsTable.findMany({
+      where: eq(module.otaEventsTable.action, "additional_payment_verified"),
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0].details).toMatchObject({ reference: original });
+    expect((await module.db.query.otaBookingsTable.findFirst())?.paidPaymentReference).toBe(replacement);
+  });
   it("serializes simultaneous payment redirect updates", async () => {
     await create();
     const responses = await Promise.all(
@@ -3336,7 +3517,7 @@ describe("OTA authorization and payments", () => {
     await create();
     await module.db.update(module.otaBookingsTable).set({ paymentInitializationAt: new Date(Date.now() - 90000) })
       .where(eq(module.otaBookingsTable.id, booking.id));
-    gatewayPatch = { status: "ongoing" };
+    gatewayPatch = { status: "abandoned" };
     const originalFetch = globalThis.fetch;
     vi.stubGlobal("fetch", async (url: string | URL, options?: RequestInit) => {
       if (!String(url).endsWith("api.paystack.co/transaction/initialize")) return originalFetch(url, options);

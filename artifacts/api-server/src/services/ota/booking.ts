@@ -95,7 +95,7 @@ export async function paystackRequest(
   return result.data;
 }
 
-export async function otaPaymentWindowSeconds(mode: string, supplier: string) {
+export async function otaPaystackTimeoutSeconds(mode: string, supplier: string) {
   const data = await paystackRequest(
     "/integration/payment_session_timeout",
     mode,
@@ -108,8 +108,7 @@ export async function otaPaymentWindowSeconds(mode: string, supplier: string) {
       "Online payment is unavailable until the payment session timeout is configured.",
       503,
     );
-  // Leave time for initialization and the durable fulfillment worker.
-  return timeout + 90;
+  return timeout;
 }
 export type OtaBooking = typeof bookings.$inferSelect;
 export function activeOtaPaymentReference(
@@ -131,6 +130,7 @@ export function customerBooking(row: OtaBooking) {
     providerRequestId,
     checkoutKey,
     paymentInitializationAt,
+    paymentSessionExpiresAt,
     paymentReference,
     previousPaymentReferences,
     paidPaymentReference,
@@ -174,12 +174,31 @@ function publicNuiteeOffer(offer: unknown) {
   } = offer as Record<string, unknown>;
   return publicOffer;
 }
+
+async function recordAdditionalPayment(row: OtaBooking, reference: string) {
+  if (!row.paidAt || reference === (row.paidPaymentReference || row.reference)) return;
+  await db.transaction(async (tx) => {
+    const [event] = await tx.insert(otaEventsTable).values({
+      id: `${row.id}:additional-payment:${reference}`,
+      bookingId: row.id,
+      actor: "system",
+      action: "additional_payment_verified",
+      details: { reference, amountKobo: row.amountKobo },
+    }).onConflictDoNothing().returning({ id: otaEventsTable.id });
+    if (event) await tx.update(bookings).set({
+      issue: sql`COALESCE(${bookings.issue}, 'Additional Paystack payment needs reconciliation')`,
+      revision: sql`${bookings.revision} + 1`,
+    }).where(eq(bookings.id, row.id));
+  });
+}
+
 export async function fulfill(reference: string) {
   let row = await db.query.otaBookingsTable.findFirst({
     where: otaPaymentReferenceMatches(reference),
   });
   if (!row) throw new OtaError("Booking not found", 404);
-  if (row.status !== "payment_pending") return row;
+  if (row.status !== "payment_pending" &&
+      (!row.paidAt || reference === (row.paidPaymentReference || row.reference))) return row;
   // Fetch the authoritative transaction, never accept browser flags or amounts.
   const payment = await paystackRequest(
     `/transaction/verify/${encodeURIComponent(reference)}`,
@@ -188,6 +207,10 @@ export async function fulfill(reference: string) {
     row.supplier,
   );
   validatePayment(payment, { ...row, reference });
+  if (row.status !== "payment_pending") {
+    await recordAdditionalPayment(row, reference);
+    return row;
+  }
   const paidAt = new Date(payment.paid_at ?? payment.paidAt ?? Date.now());
   const bookingId = row.id;
   const claimed = await db.transaction(async (tx) => {
@@ -213,10 +236,13 @@ export async function fulfill(reference: string) {
       });
     return saved;
   });
-  if (!claimed)
-    return (await db.query.otaBookingsTable.findFirst({
+  if (!claimed) {
+    const current = (await db.query.otaBookingsTable.findFirst({
       where: eq(bookings.id, row.id),
     }))!;
+    await recordAdditionalPayment(current, reference);
+    return current;
+  }
   row = claimed;
   let verifiedSupplier: any;
   // A process crash after this claim must be reconciled, never blindly retried.

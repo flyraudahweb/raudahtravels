@@ -41,6 +41,9 @@ export const otaBookingsTable = pgTable(
     providerResult: jsonb("provider_result"),
     providerNotice: text("provider_notice"),
     authorizationUrl: text("authorization_url"),
+    paymentSessionExpiresAt: timestamp("payment_session_expires_at", {
+      withTimezone: true,
+    }),
     checkoutKey: text("checkout_key"),
     paymentInitializationAt: timestamp("payment_initialization_at", {
       withTimezone: true,

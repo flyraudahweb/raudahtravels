@@ -22,6 +22,7 @@ import BatchPassportUpload, { type BatchPilgrim } from "@/components/BatchPasspo
 import { useFormFieldConfig, validateRequiredFields } from "@/hooks/useFormFieldConfig";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { uploadFile } from "@/lib/upload";
+import { openAgentPackagePayment } from "@/lib/package-payment";
 
 function FileUploadBox({ label, accept, value, onChange, previewType = "image", folder = "documents" }: {
   label: string; accept: string; value: string; onChange: (v: string) => void; previewType?: "image" | "file";
@@ -176,6 +177,10 @@ export default function AgentClients() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [regStep, setRegStep] = useState(1);
+  const registrationCheckout = useRef<string | undefined>(undefined);
+  const [savedOnlineBooking, setSavedOnlineBooking] = useState<string | null>(null);
+  const openingPayment = useRef(false);
+  const [isOpeningPayment, setIsOpeningPayment] = useState(false);
   const [sessionCount, setSessionCount] = useState(0);
   const [form, setForm] = useState({ ...BLANK_FORM });
   const [phoneCode, setPhoneCode] = useState("+234");
@@ -252,17 +257,7 @@ export default function AgentClients() {
   });
   const walletBalance = walletData?.balance ?? 0;
 
-  const paystackScriptLoaded = useRef(false);
   const { isOnline, wasOffline } = useOnlineStatus();
-  useEffect(() => {
-    if (!paystackScriptLoaded.current) {
-      const script = document.createElement("script");
-      script.src = "https://js.paystack.co/v2/inline.js";
-      script.async = true;
-      document.body.appendChild(script);
-      paystackScriptLoaded.current = true;
-    }
-  }, []);
 
   const { data: bankAccountsData } = useQuery<{ accounts: any[] }>({
     queryKey: ["public-bank-accounts"],
@@ -327,6 +322,24 @@ export default function AgentClients() {
     return p;
   })() : 0;
 
+  async function resumeOnlinePayment(bookingId: string) {
+    if (openingPayment.current) return;
+    openingPayment.current = true;
+    setIsOpeningPayment(true);
+    try {
+      if (await openAgentPackagePayment(bookingId)) {
+        setSavedOnlineBooking(null);
+        await qc.invalidateQueries({ queryKey: ["agent-clients"] });
+        toast({ title: "Payment verified" });
+      }
+    } catch (error) {
+      toast({ title: "Booking saved", description: error instanceof Error ? error.message : "Resume payment from your bookings.", variant: "destructive" });
+    } finally {
+      openingPayment.current = false;
+      setIsOpeningPayment(false);
+    }
+  }
+
   const registerMutation = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       fetch("/api/agent/register-client", {
@@ -350,43 +363,10 @@ export default function AgentClients() {
         setRegStep(6);
       };
 
-      if (form.paymentMethod === "online") {
-        try {
-          const amount = effectivePrice;
-          const res = await fetch("/api/payments/paystack/initialize", {
-            method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
-            body: JSON.stringify({ bookingId: data.id, amount, email: form.email || "admin@raudah.com" }),
-          });
-          if (!res.ok) {
-            const errBody = await res.json().catch(() => ({}));
-            throw new Error((errBody as any).error || "Initialize failed");
-          }
-          const pdata = await res.json() as { reference?: string; accessCode?: string; verified?: boolean };
-          if (pdata.verified) return finishLocal();
-          if (!pdata.accessCode) throw new Error("Open the saved booking to check its payment status.");
-          if (!(window as any).PaystackPop) throw new Error("Paystack script not loaded");
-          
-          const popup = new (window as any).PaystackPop();
-          popup.resumeTransaction(pdata.accessCode, {
-            onSuccess: async ({ reference }: { reference: string }) => {
-              const verification = await fetch("/api/payments/paystack/verify", {
-                method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ reference }),
-              }).catch(() => null);
-              if (!verification?.ok)
-                toast({ title: "Payment verification pending", description: "Check the saved booking before making another payment." });
-              finishLocal();
-            },
-            onCancel: () => {
-              toast({ title: "Payment cancelled", description: "The booking is saved. Check its payment status before retrying." });
-            },
-            onError: (err: Error) => {
-              toast({ title: "Payment error", description: err.message || "The booking is saved. Check its payment status before retrying.", variant: "destructive" });
-            }
-          });
-        } catch (err: any) {
-          toast({ title: "Payment error", description: err.message || "The booking is saved. Check its payment status before retrying.", variant: "destructive" });
-        }
+      if (form.paymentMethod === "online" && data.status === "pending") {
+        setSavedOnlineBooking(data.id);
+        finishLocal();
+        await resumeOnlinePayment(data.id);
       } else {
         finishLocal();
       }
@@ -408,7 +388,9 @@ export default function AgentClients() {
     if (req("phone") && !form.phone.trim()) { submittingRef.current = false; toast({ title: "Phone number is required", variant: "destructive" }); return; }
     const warn = passportWarn(form.passportExpiry);
     if (warn === "expired") { submittingRef.current = false; toast({ title: "Passport expired", description: "Cannot register with expired passport.", variant: "destructive" }); return; }
+    if (form.paymentMethod === "online") registrationCheckout.current ??= crypto.randomUUID();
     registerMutation.mutate({
+      checkoutId: form.paymentMethod === "online" ? registrationCheckout.current : undefined,
       packageId: form.packageId,
       packageDateId: form.packageDateId || undefined,
       civility: form.civility || undefined,
@@ -1905,7 +1887,7 @@ export default function AgentClients() {
                   {form.paymentMethod === "online" && (
                     <div className="bg-[#FFF4F0] border border-[#FF3B00]/20 rounded-xl p-4 text-sm">
                       <p className="font-bold text-[#FF3B00] mb-1">💳 Paystack Online Payment</p>
-                      <p className="text-[#64748B]">The pilgrim's email will be used for payment. A Paystack popup will open after you click Complete Registration.</p>
+                      <p className="text-[#64748B]">Paystack opens after the booking is saved. You can resume payment from Agent Bookings.</p>
                       {!form.email && (
                         <p className="text-amber-600 font-semibold mt-1 text-xs">⚠ Add pilgrim email in Contact step for best results.</p>
                       )}
@@ -1971,9 +1953,16 @@ export default function AgentClients() {
                   <Button type="button" variant="ghost" onClick={() => setDialogOpen(false)} className="w-full sm:w-auto rounded-xl text-[#94A3B8] hover:bg-[#E2E8F0] font-bold h-12 px-6">
                     Close
                   </Button>
-                  {form.paymentMethod !== "online" && (
+                  {savedOnlineBooking && (
+                    <Button type="button" disabled={isOpeningPayment} onClick={() => void resumeOnlinePayment(savedOnlineBooking)}>
+                      {isOpeningPayment ? "Opening Paystack…" : "Resume payment"}
+                    </Button>
+                  )}
+                  {!isOpeningPayment && (
                     <Button type="button" onClick={() => {
                       setResult(null);
+                      registrationCheckout.current = undefined;
+                      setSavedOnlineBooking(null);
                       setForm(f => ({ ...BLANK_FORM, packageId: f.packageId, packageDateId: f.packageDateId, paymentMethod: f.paymentMethod }));
                       setPilgrimType("adult");
                       setBatchMode(false); setBatchPilgrims([]); setBatchStep("upload"); setBatchActiveIndex(0); setBatchPayments([]); setBatchCropTarget(null); setBatchCropState(null);

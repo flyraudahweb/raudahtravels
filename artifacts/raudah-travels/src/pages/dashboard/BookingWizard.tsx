@@ -337,23 +337,12 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
   }, [paystackEnabled]);
 
   // ── Child/Infant helpers ──────────────────────────────────────────
-  function getAgeFromDOB(dob: string): { years: number; months: number } | null {
-    if (!dob) return null;
-    const birth = new Date(dob);
-    const now = new Date();
-    let years = now.getFullYear() - birth.getFullYear();
-    let months = now.getMonth() - birth.getMonth();
-    if (months < 0) { years--; months += 12; }
-    if (now.getDate() < birth.getDate()) months--;
-    return { years, months: years * 12 + months };
-  }
-
-  function detectPilgrimType(dob: string): "adult" | "child" | "infant" {
-    const age = getAgeFromDOB(dob);
-    if (!age) return "adult";
-    if (age.months <= 23) return "infant";
-    if (age.years <= 11) return "child";
-    return "adult";
+  function childCategory(dob: string): "child" | "infant" | undefined {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || !Number.isFinite(Date.parse(dob))) return undefined;
+    const today = new Date().toISOString().slice(0, 10);
+    const age = Number(today.slice(0, 4)) - Number(dob.slice(0, 4))
+      - (today.slice(5) < dob.slice(5) ? 1 : 0);
+    return age >= 0 && age < 12 ? (age < 2 ? "infant" : "child") : undefined;
   }
 
   const getChildPrice = (type: "child" | "infant") => {
@@ -383,7 +372,7 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
   // ── Price calculations ────────────────────────────────────────────
   const roomSurcharge = roomSurcharges[contactForm.roomType?.toLowerCase() || "quad"] || 0;
   const adultPrice = pkg ? (pkg.price + roomSurcharge) : 0;
-  const childrenTotal = childEntries.reduce((sum, c) => sum + getChildPrice(c.type), 0);
+  const childrenTotal = childEntries.reduce((sum, c) => sum + getChildPrice(childCategory(c.dateOfBirth) ?? c.type), 0);
   const fullAmount = (adultPrice * payForm.pilgrimCount) + childrenTotal;
   const fullName = [personalForm.firstName, personalForm.lastName].filter(Boolean).join(" ") || user?.fullName || "";
 
@@ -450,6 +439,10 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
       const invalidChild = childEntries.find(c => !c.firstName || !c.lastName || !c.dateOfBirth || !c.gender || !c.passportNumber || !c.passportCopyUrl);
       if (invalidChild) {
         toast({ title: "Child details missing", description: "Please ensure all added children/infants have their names, date of birth, gender, and passport details (including uploaded passport copy) filled.", variant: "destructive" });
+        return;
+      }
+      if (childEntries.some((child) => !childCategory(child.dateOfBirth))) {
+        toast({ title: "Check the dates of birth", description: "Children and infants must be under 12 and have a date of birth in the past.", variant: "destructive" });
         return;
       }
     }
@@ -836,6 +829,7 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
               <PassportExpiryAlert expiry={passportForm.passportExpiry} />
               {/* AI Passport Scanner — auto-fills all fields below */}
               <PassportScanner
+                requirePrivateUpload
                 onExtracted={(data) => {
                   const extracted: string[] = [];
                   if (data.firstName) extracted.push("firstName");
@@ -1211,10 +1205,9 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
                     </Button>
                   </div>
                 </div>
-                <p className="text-xs text-muted-foreground mb-3">Child (≤11 years): ₦{(childInfantPricing.childPrice || 1200000).toLocaleString()} · Infant (0-23 months): ₦{(childInfantPricing.infantPrice || 1200000).toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground mb-3">Child (2–11 years): ₦{getChildPrice("child").toLocaleString()} · Infant (0–23 months): ₦{getChildPrice("infant").toLocaleString()}</p>
                 {childEntries.map((child, idx) => {
-                  const detectedType = child.dateOfBirth ? detectPilgrimType(child.dateOfBirth) : child.type;
-                  const actualType = detectedType === "adult" ? child.type : detectedType;
+                  const actualType = childCategory(child.dateOfBirth) ?? child.type;
                   return (
                     <div key={child.id} className="bg-muted/30 rounded-lg border p-4 mb-3">
                       <div className="flex items-center justify-between mb-3">
@@ -1230,6 +1223,7 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
                       </div>
                       <PassportScanner
                         compact
+                        requirePrivateUpload
                         onExtracted={(data) => {
                           const extracted: string[] = [];
                           if (data.firstName) extracted.push("firstName");
@@ -1258,6 +1252,10 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
                         onProfilePhoto={(url) => updateChildEntry(child.id, { profilePhotoUrl: url })}
                       />
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                        <FileUploadBox label="Passport copy" accept="image/*,application/pdf" folder="passports"
+                          value={child.passportCopyUrl} onChange={(value) => updateChildEntry(child.id, { passportCopyUrl: value })} />
+                        <FileUploadBox label="Profile photo" accept="image/*" folder="photos"
+                          value={child.profilePhotoUrl} onChange={(value) => updateChildEntry(child.id, { profilePhotoUrl: value })} />
                         <div>
                           <Label className="text-xs">First Name *</Label>
                           <Input value={child.firstName} onChange={e => {
@@ -1276,9 +1274,8 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
                           <Label className="text-xs">Date of Birth *</Label>
                           <Input type="date" value={child.dateOfBirth} onChange={e => {
                             const newDob = e.target.value;
-                            const detected = detectPilgrimType(newDob);
                             const aiFields = child.aiFields?.filter(f => f !== "dateOfBirth") || [];
-                            updateChildEntry(child.id, { dateOfBirth: newDob, type: detected === "adult" ? child.type : detected as "child" | "infant", aiFields });
+                            updateChildEntry(child.id, { dateOfBirth: newDob, aiFields });
                           }} className={childAiClass(child, "dateOfBirth")} />
                         </div>
                         <div>

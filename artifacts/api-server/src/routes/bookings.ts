@@ -6,6 +6,8 @@ import { getAuth } from "@clerk/express";
 import { eq, and, sql, desc, or, inArray } from "drizzle-orm";
 import { createHash, randomUUID } from "crypto";
 import { z } from "zod";
+import { confirmTravellerRecords } from "../services/payments/packageConfirmation";
+import { retireExpiredPackageCheckouts } from "../services/payments/packagePaystack";
 
 const router = Router();
 
@@ -21,9 +23,13 @@ const pilgrimFields = [
   "phone", "email", "country", "city", "address", "roomPreference", "departureCity",
   "specialRequests", "emergencyContactName", "emergencyContactPhone", "emergencyContactRelationship",
 ] as const;
+const uploadedDocument = z.string().trim().max(2048).refine((value) => !/^data:/i.test(value)).optional();
 const pilgrimSchema = z.object(Object.fromEntries(pilgrimFields.map((field) => [
   field, z.string().trim().max(2048).optional(),
-])) as Record<(typeof pilgrimFields)[number], z.ZodOptional<z.ZodString>>);
+])) as Record<(typeof pilgrimFields)[number], z.ZodOptional<z.ZodString>>).extend({
+  passportCopyUrl: uploadedDocument,
+  profilePhotoUrl: uploadedDocument,
+});
 const childSchema = pilgrimSchema.extend({
   firstName: z.string().trim().min(1).max(200),
   lastName: z.string().trim().min(1).max(200),
@@ -55,25 +61,6 @@ function moneyKobo(value: unknown, fallback = 0) {
 
 async function getProfileByClerkId(clerkUserId: string) {
   return db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, clerkUserId) });
-}
-
-async function ensureVisaApplication(bookingId: string, pilgrimName?: string, passportNumber?: string, isFullyPaid?: boolean) {
-  const existing = await db.query.visaApplicationsTable.findFirst({
-    where: eq(visaApplicationsTable.bookingId, bookingId),
-  });
-  if (!existing) {
-    await db.insert(visaApplicationsTable).values({
-      id: randomUUID(),
-      bookingId,
-      pilgrimName: pilgrimName ?? null,
-      passportNumber: passportNumber ?? null,
-      status: isFullyPaid ? "pending" : "awaiting_payment",
-    });
-  } else if (isFullyPaid && existing.status === "awaiting_payment") {
-    await db.update(visaApplicationsTable)
-      .set({ status: "pending" })
-      .where(eq(visaApplicationsTable.id, existing.id));
-  }
 }
 
 function toBookingResponse(b: typeof bookingsTable.$inferSelect, pkg?: any, user?: any, packageDate?: any) {
@@ -224,8 +211,15 @@ router.post("/bookings", async (req, res) => {
     return res.status(403).json({ error: "Account access is unavailable" });
 
   const parsed = packageCheckout.safeParse(req.body);
-  if (!parsed.success)
+  if (!parsed.success) {
+    const uploadIssue = parsed.error.issues.find(({ path }) =>
+      path.at(-1) === "passportCopyUrl" || path.at(-1) === "profilePhotoUrl");
+    if (uploadIssue) {
+      const field = uploadIssue.path.at(-1) === "passportCopyUrl" ? "passport copy" : "profile photo";
+      return res.status(400).json({ error: `Upload the ${field} again using the file upload field.` });
+    }
     return res.status(400).json({ error: "Review the package and traveller details." });
+  }
   const { packageId, packageDateId, pilgrimCount, pilgrimDetails, notes, children, checkoutId, expectedTotal, ...person } = parsed.data;
   const checkoutKey = checkoutId
     ? createHash("sha256").update(JSON.stringify([profile.id, packageId, checkoutId])).digest("hex")
@@ -388,6 +382,16 @@ router.put("/bookings/:id", async (req, res) => {
     }
     const [saved] = await tx.update(bookingsTable).set(updateData)
       .where(eq(bookingsTable.id, req.params.id)).returning();
+    if (status === "confirmed") {
+      const children = await tx.select().from(bookingsTable)
+        .where(and(
+          eq(bookingsTable.parentBookingId, saved.id),
+          eq(bookingsTable.packageId, saved.packageId),
+          eq(bookingsTable.status, "confirmed"),
+          eq(bookingsTable.isArchived, false),
+        )).for("update");
+      await confirmTravellerRecords(tx, [saved, ...children]);
+    }
     return saved;
   }).catch((error: unknown) => {
     if (error instanceof PackageBookingError) return error;
@@ -396,16 +400,6 @@ router.put("/bookings/:id", async (req, res) => {
   if (booking instanceof PackageBookingError)
     return res.status(booking.status).json({ error: booking.message });
   if (!booking) return res.status(404).json({ error: "Booking not found" });
-
-  if (updateData.status === "confirmed") {
-    // Generate an idNumber if the booking doesn't have one
-    await db.execute(sql`
-      UPDATE bookings 
-      SET id_number = nextval('bookings_id_number_seq') 
-      WHERE id = ${booking.id} AND id_number IS NULL
-    `);
-    await ensureVisaApplication(booking.id, booking.fullName ?? undefined, booking.passportNumber ?? undefined, true);
-  }
 
   // Notify pilgrim when admin changes booking status
   if (updateData.status && booking.userId) {
@@ -469,13 +463,13 @@ router.delete("/bookings/:id", async (req, res) => {
       if (pending.some((traveller) => traveller.status !== "pending" || Number(traveller.amountPaid) > 0))
         throw new PackageBookingError("Only unpaid pending bookings can be cancelled here");
       const ids = pending.map((traveller) => traveller.id);
-      const attempts = await tx.query.paymentsTable.findFirst({
-        where: and(inArray(paymentsTable.bookingId, ids), or(
-          eq(paymentsTable.method, "paystack"), eq(paymentsTable.status, "verified"),
-        )),
+      const paidPayment = await tx.query.paymentsTable.findFirst({
+        where: and(inArray(paymentsTable.bookingId, ids), eq(paymentsTable.status, "verified")),
       });
-      if (attempts)
-        throw new PackageBookingError("A payment attempt is on record. Ask support to reconcile it before cancelling.");
+      if (paidPayment)
+        throw new PackageBookingError("A payment has been recorded. Contact support to cancel.");
+      if (!await retireExpiredPackageCheckouts(tx, ids))
+        throw new PackageBookingError("This booking has an open or unresolved payment. Check its payment status before cancelling.");
       const seats = pending.reduce((total, traveller) => total + traveller.pilgrimCount, 0);
       await tx.update(bookingsTable).set({ status: "cancelled", updatedAt: new Date() })
         .where(inArray(bookingsTable.id, ids));

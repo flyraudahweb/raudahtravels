@@ -8,7 +8,8 @@ import {
 } from "@workspace/db";
 import { getAuth } from "@clerk/express";
 import { eq, and, sql, desc } from "drizzle-orm";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
+import { z } from "zod";
 
 
 const router = Router();
@@ -452,12 +453,33 @@ router.post("/agent/register-client", async (req, res) => {
     emergencyContactName, emergencyContactPhone, emergencyContactRelationship,
     fathersName, mothersName, mahramName, mahramRelationship, mahramPassport,
     paymentMethod, amountPaid, paymentReference, paymentProofUrl,
+    checkoutId,
     // New: room surcharge, pilgrim type, batch support
     roomSurcharge: clientRoomSurcharge, pilgrimType, parentBookingId, batchId,
   } = req.body;
 
   if (!packageId) return res.status(400).json({ error: "packageId is required" });
   if (!firstName && !lastName) return res.status(400).json({ error: "At least a first or last name is required" });
+  if (checkoutId !== undefined && !z.string().uuid().safeParse(checkoutId).success)
+    return res.status(400).json({ error: "Invalid registration checkout" });
+  const checkoutKey = checkoutId && ["paystack", "online"].includes(paymentMethod)
+    ? createHash("sha256").update(JSON.stringify(["agent", agent.id, checkoutId])).digest("hex")
+    : undefined;
+  const fingerprint = checkoutKey
+    ? createHash("sha256").update(JSON.stringify(Object.entries(req.body).sort(([a], [b]) => a.localeCompare(b)))).digest("hex")
+    : undefined;
+  const previous = checkoutKey ? await db.query.bookingsTable.findFirst({
+    where: and(eq(bookingsTable.checkoutKey, checkoutKey), eq(bookingsTable.agentId, agent.id)),
+  }) : undefined;
+  const replay = async (saved: typeof bookingsTable.$inferSelect) => {
+    if ((saved.customData as { checkoutFingerprint?: string } | null)?.checkoutFingerprint !== fingerprint)
+      return res.status(409).json({ error: "This registration was saved already. Resume the payment from Agent Bookings." });
+    const pkg = await db.query.packagesTable.findFirst({ where: eq(packagesTable.id, saved.packageId) });
+    return res.status(201).json({
+      id: saved.id, reference: saved.reference, status: saved.status, fullName: saved.fullName, packageName: pkg?.name,
+    });
+  };
+  if (previous) return replay(previous);
 
   // Validate proof size: R2 URLs are short paths, but legacy base64 could be huge
   if (paymentProofUrl && typeof paymentProofUrl === "string" && paymentProofUrl.startsWith("data:") && paymentProofUrl.length > 300_000) {
@@ -466,10 +488,10 @@ router.post("/agent/register-client", async (req, res) => {
 
   const pkg = await db.query.packagesTable.findFirst({ where: eq(packagesTable.id, packageId) });
   if (!pkg) return res.status(404).json({ error: "Package not found" });
-  if (pkg.status && pkg.status !== "active") return res.status(400).json({ error: "Package is not currently available" });
+  if (!checkoutKey && pkg.status && pkg.status !== "active") return res.status(400).json({ error: "Package is not currently available" });
 
   // Capacity check — prevent overbooking
-  if (pkg.capacity && (pkg.currentBookings || 0) >= pkg.capacity) {
+  if (!checkoutKey && pkg.capacity && (pkg.currentBookings || 0) >= pkg.capacity) {
     return res.status(409).json({ error: "Package is fully booked — no more capacity available" });
   }
 
@@ -703,12 +725,17 @@ router.post("/agent/register-client", async (req, res) => {
 
   try {
     await db.transaction(async (tx) => {
-      // BUG FIX #4: Row-level lock on package to prevent overbooking race condition
-      const pkgLock = await tx.execute(
-        sql`SELECT capacity, current_bookings FROM packages WHERE id = ${packageId} FOR UPDATE`
-      );
-      const pkgRow = (pkgLock as any).rows?.[0] ?? (Array.isArray(pkgLock) ? pkgLock[0] : null);
-      if (pkgRow?.capacity && (pkgRow.current_bookings || 0) >= pkgRow.capacity) {
+      const [pkg] = await tx.select().from(packagesTable)
+        .where(eq(packagesTable.id, packageId)).for("update");
+      if (checkoutKey) {
+        const saved = await tx.query.bookingsTable.findFirst({
+          where: and(eq(bookingsTable.checkoutKey, checkoutKey), eq(bookingsTable.agentId, agent.id)),
+        });
+        if (saved) { booking = saved; return; }
+      }
+      if (!pkg || !pkg.isActive || pkg.status !== "active")
+        throw new Error("Package is not currently available");
+      if (pkg.capacity && pkg.currentBookings >= pkg.capacity) {
         throw new Error("Package is fully booked — no more capacity available");
       }
 
@@ -783,6 +810,8 @@ router.post("/agent/register-client", async (req, res) => {
       [booking] = await tx.insert(bookingsTable).values({
         id: randomUUID(),
         reference: bookingReference,
+        checkoutKey,
+        customData: checkoutKey ? { checkoutFingerprint: fingerprint } : undefined,
         userId: walkInUser.id,
         packageId,
         packageDateId: nullify(packageDateId),
@@ -896,9 +925,16 @@ router.post("/agent/register-client", async (req, res) => {
       }
     });
   } catch (err: any) {
+    if (checkoutKey && (err.cause?.code ?? err.code) === "23505") {
+      const saved = await db.query.bookingsTable.findFirst({
+        where: and(eq(bookingsTable.checkoutKey, checkoutKey), eq(bookingsTable.agentId, agent.id)),
+      });
+      if (saved) return replay(saved);
+    }
     return res.status(400).json({ error: err.message || "Registration failed" });
   }
 
+  if (checkoutKey) return replay(booking);
   return res.status(201).json({
     id: booking.id,
     reference: booking.reference,
