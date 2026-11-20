@@ -5,7 +5,7 @@ import {
   otaEventsTable,
   siteSettingsTable,
 } from "@workspace/db";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { getOtaConfig, duffelTokenForMode } from "./config";
 import { bookNuiteeHotel, lookupNuiteeBooking } from "./nuitee";
 import { bookNuiteeFlight, lookupNuiteeFlight } from "./nuiteeFlights";
@@ -94,7 +94,36 @@ export async function paystackRequest(
     );
   return result.data;
 }
+
+export async function otaPaymentWindowSeconds(mode: string, supplier: string) {
+  const data = await paystackRequest(
+    "/integration/payment_session_timeout",
+    mode,
+    undefined,
+    supplier,
+  );
+  const timeout = Number(data?.payment_session_timeout);
+  if (!Number.isSafeInteger(timeout) || timeout <= 0)
+    throw new OtaError(
+      "Online payment is unavailable until the payment session timeout is configured.",
+      503,
+    );
+  // Leave time for initialization and the durable fulfillment worker.
+  return timeout + 90;
+}
 export type OtaBooking = typeof bookings.$inferSelect;
+export function activeOtaPaymentReference(
+  row: Pick<OtaBooking, "reference" | "paymentReference">,
+) {
+  return row.paymentReference ?? row.reference;
+}
+export function otaPaymentReferenceMatches(reference: string) {
+  return or(
+    eq(bookings.reference, reference),
+    eq(bookings.paymentReference, reference),
+    sql`${bookings.previousPaymentReferences} ? ${reference}`,
+  );
+}
 export function customerBooking(row: OtaBooking) {
   const {
     travellers,
@@ -102,6 +131,9 @@ export function customerBooking(row: OtaBooking) {
     providerRequestId,
     checkoutKey,
     paymentInitializationAt,
+    paymentReference,
+    previousPaymentReferences,
+    paidPaymentReference,
     ...safe
   } = row;
   const editableOfferId =
@@ -144,7 +176,7 @@ function publicNuiteeOffer(offer: unknown) {
 }
 export async function fulfill(reference: string) {
   let row = await db.query.otaBookingsTable.findFirst({
-    where: eq(bookings.reference, reference),
+    where: otaPaymentReferenceMatches(reference),
   });
   if (!row) throw new OtaError("Booking not found", 404);
   if (row.status !== "payment_pending") return row;
@@ -155,7 +187,8 @@ export async function fulfill(reference: string) {
     undefined,
     row.supplier,
   );
-  validatePayment(payment, row);
+  validatePayment(payment, { ...row, reference });
+  const paidAt = new Date(payment.paid_at ?? payment.paidAt ?? Date.now());
   const bookingId = row.id;
   const claimed = await db.transaction(async (tx) => {
     const [saved] = await tx
@@ -163,7 +196,8 @@ export async function fulfill(reference: string) {
       .set({
         revision: sql`${bookings.revision}+1`,
         status: "processing",
-        paidAt: new Date(),
+        paidAt: Number.isFinite(paidAt.getTime()) ? paidAt : new Date(),
+        paidPaymentReference: reference,
         updatedAt: new Date(),
       })
       .where(

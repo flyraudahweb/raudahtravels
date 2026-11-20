@@ -106,6 +106,13 @@
       "when": 1795046402000,
       "tag": "0017_ota_checkout_claims",
       "breakpoints": false
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1795046403000,
+      "tag": "0018_booking_consistency",
+      "breakpoints": false
     }
   ]
 }

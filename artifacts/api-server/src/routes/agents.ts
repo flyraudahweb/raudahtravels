@@ -698,12 +698,7 @@ router.post("/agent/register-client", async (req, res) => {
     });
   }
 
-  // ── Standard (non-wallet) Payment Flow (atomic) ────────────────────────
-  // BUG FIX: Wrap in a transaction for atomicity — if any step fails, all
-  // are rolled back. For online (Paystack) payments, capacity is NOT
-  // incremented here (it is incremented when payment is confirmed via
-  // webhook/verify) to prevent phantom inflation on cancelled payments.
-  const isOnlinePayment = paymentMethod === "online" || paymentMethod === "paystack";
+  // Reserve capacity in the same transaction for every payment method.
   let booking: any;
 
   try {
@@ -843,13 +838,9 @@ router.post("/agent/register-client", async (req, res) => {
         batchId: nullify(batchId),
       }).returning();
 
-      // Only increment capacity for non-online payments (online payments
-      // increment when confirmed via Paystack webhook/verify)
-      if (!isOnlinePayment) {
-        await tx.update(packagesTable)
-          .set({ currentBookings: sql`${packagesTable.currentBookings} + 1` })
-          .where(eq(packagesTable.id, packageId));
-      }
+      await tx.update(packagesTable)
+        .set({ currentBookings: sql`${packagesTable.currentBookings} + 1` })
+        .where(eq(packagesTable.id, packageId));
 
       await tx.insert(visaApplicationsTable).values({
         id: randomUUID(),
@@ -859,7 +850,7 @@ router.post("/agent/register-client", async (req, res) => {
         status: "awaiting_payment",
       });
 
-      if (clampedPaid > 0) {
+      if (clampedPaid > 0 && !["online", "paystack"].includes(paymentMethod ?? "")) {
         await tx.insert(paymentsTable).values({
           id: randomUUID(),
           bookingId: booking.id,

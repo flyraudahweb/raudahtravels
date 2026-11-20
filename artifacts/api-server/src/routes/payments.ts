@@ -14,11 +14,14 @@ import {
 } from "@workspace/db";
 import { createNotification } from "../utils/notify.js";
 import { getAuth } from "@clerk/express";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { eq, and, sql, desc, inArray, isNotNull, isNull } from "drizzle-orm";
 import { randomUUID, createHmac, timingSafeEqual } from "crypto";
 import { sendPaymentReceipt } from "../utils/email";
 import { logger } from "../lib/logger";
-import { matchesPaystackProof } from "../services/payments/paystackProof";
+import {
+  lookupPaystackTransaction,
+  matchesPaystackProof,
+} from "../services/payments/paystackProof";
 
 const router = Router();
 
@@ -166,6 +169,41 @@ async function ensureVisaApplication(
       .update(visaApplicationsTable)
       .set({ status: "pending" })
       .where(eq(visaApplicationsTable.id, existing.id));
+  }
+}
+
+async function confirmPaidGroup(
+  tx: PaymentTx,
+  booking: typeof bookingsTable.$inferSelect,
+) {
+  if (
+    booking.status !== "confirmed" ||
+    booking.isArchived ||
+    Number(booking.amountPaid) < Number(booking.totalPrice)
+  )
+    return;
+  const children = await tx
+    .update(bookingsTable)
+    .set({ status: "confirmed", updatedAt: new Date() })
+    .where(
+      and(
+        eq(bookingsTable.parentBookingId, booking.id),
+        eq(bookingsTable.packageId, booking.packageId),
+        eq(bookingsTable.status, "pending"),
+      ),
+    )
+    .returning();
+  for (const traveller of [booking, ...children]) {
+    await tx.execute(
+      sql`UPDATE bookings SET id_number = nextval('bookings_id_number_seq') WHERE id = ${traveller.id} AND id_number IS NULL`,
+    );
+    await ensureVisaApplication(
+      traveller.id,
+      traveller.fullName,
+      traveller.passportNumber,
+      true,
+      tx,
+    );
   }
 }
 
@@ -585,12 +623,15 @@ router.put("/payments/:id/verify", async (req, res) => {
         .update(bookingsTable)
         .set({
           amountPaid: sql`COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${p.bookingId} AND status = 'verified' AND is_archived = false), 0)`,
-          status: sql`CASE WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${p.bookingId} AND status = 'verified' AND is_archived = false), 0) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed' ELSE ${bookingsTable.status} END`,
+          status: sql`CASE WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${p.bookingId} AND status = 'verified' AND is_archived = false), 0) >= ${bookingsTable.totalPrice}::numeric AND ${bookingsTable.status} = 'pending' AND ${bookingsTable.isArchived} = false THEN 'confirmed' ELSE ${bookingsTable.status} END`,
           updatedAt: new Date(),
         })
         .where(eq(bookingsTable.id, p.bookingId))
         .returning();
-      if (booking) confirmedBooking = booking;
+      if (booking) {
+        await confirmPaidGroup(tx, booking);
+        confirmedBooking = booking;
+      }
     }
   });
 
@@ -600,24 +641,6 @@ router.put("/payments/:id/verify", async (req, res) => {
       .json({ error: "Payment not found or already processed" });
 
   if (confirmedBooking) {
-    // Only create visa application when booking becomes fully paid
-    const isFullyPaid =
-      Number(confirmedBooking.amountPaid) >=
-      Number(confirmedBooking.totalPrice);
-    if (isFullyPaid) {
-      // Generate an idNumber for fully paid bookings
-      await db.execute(sql`
-        UPDATE bookings 
-        SET id_number = nextval('bookings_id_number_seq') 
-        WHERE id = ${confirmedBooking.id} AND id_number IS NULL
-      `);
-      await ensureVisaApplication(
-        confirmedBooking.id,
-        confirmedBooking.fullName,
-        confirmedBooking.passportNumber,
-        true,
-      );
-    }
     setImmediate(() =>
       sendBookingReceipt(
         confirmedBooking!.id,
@@ -782,115 +805,252 @@ router.put("/payments/:id/reinstate", async (req, res) => {
 router.post("/payments/paystack/initialize", async (req, res) => {
   const { userId: clerkUserId } = getAuth(req);
   if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
-
   const profile = await getProfileByClerkId(clerkUserId);
-  if (!profile) return res.status(404).json({ error: "Profile not found" });
-
+  if (profile?.accountStatus !== "active")
+    return res.status(403).json({ error: "Account access is unavailable" });
   const { bookingId, email: bodyEmail } = req.body;
-  if (!bookingId) return res.status(400).json({ error: "bookingId required" });
-  // Prefer the authenticated user's email from their profile; fallback to body email
   const email = profile.email || bodyEmail;
-  if (!email)
-    return res.status(400).json({
-      error: "email required (no email on file — please update your profile)",
-    });
-
-  // Fetch booking server-side — NEVER trust a client-supplied amount
-  const initBooking = await db.query.bookingsTable.findFirst({
-    where: eq(bookingsTable.id, bookingId),
-  });
-  if (!initBooking) return res.status(404).json({ error: "Booking not found" });
-
-  // Allow initialization if the caller owns the booking, is admin/staff, or is the booking's agent
-  const isCallerAdmin = ["admin", "super_admin", "staff"].includes(
-    profile.role,
-  );
-  const isBookingAgent = initBooking.agentId
-    ? await (async () => {
-        const agent = await db.query.agentsTable.findFirst({
-          where: eq(agentsTable.userId, profile.id),
-        });
-        return agent?.id === initBooking.agentId;
-      })()
-    : false;
-  if (!isCallerAdmin && !isBookingAgent && initBooking.userId !== profile.id) {
-    return res.status(403).json({ error: "Forbidden" });
-  }
-  if (initBooking.status === "confirmed")
-    return res.status(409).json({ error: "Booking is already confirmed" });
-
-  const amount =
-    Number(initBooking.totalPrice) - Number(initBooking.amountPaid);
-  if (amount <= 0)
+  if (typeof bookingId !== "string" || typeof email !== "string" || !email)
     return res
       .status(400)
-      .json({ error: "No outstanding balance on this booking" });
+      .json({ error: "A booking and valid email are required" });
 
-  // Cancel any prior pending Paystack attempt for this booking to avoid duplicate records
-  await db
-    .update(paymentsTable)
-    .set({ status: "rejected" })
-    .where(
-      and(
-        eq(paymentsTable.bookingId, bookingId),
-        eq(paymentsTable.status, "pending"),
-        eq(paymentsTable.method, "paystack"),
-      ),
-    );
+  try {
+    const { secretKey } = await getPaystackKeys();
+    const mode = paymentMode(secretKey);
+    const attempt = await db.transaction(async (tx) => {
+      const [booking] = await tx
+        .select()
+        .from(bookingsTable)
+        .where(eq(bookingsTable.id, bookingId))
+        .for("update");
+      if (!booking) throw new OnlinePaymentError("Booking not found", 404);
+      const isStaff = ["admin", "super_admin", "staff"].includes(profile.role);
+      if (!isStaff && booking.userId !== profile.id) {
+        const agent = await tx.query.agentsTable.findFirst({
+          where: and(
+            eq(agentsTable.userId, profile.id),
+            eq(agentsTable.status, "active"),
+          ),
+        });
+        if (!agent || agent.id !== booking.agentId)
+          throw new OnlinePaymentError("Forbidden", 403);
+      }
+      if (
+        booking.status !== "pending" ||
+        booking.isArchived ||
+        booking.parentBookingId
+      )
+        throw new OnlinePaymentError("This booking cannot accept payment");
+      const balance =
+        Math.round(Number(booking.totalPrice) * 100) -
+        Math.round(Number(booking.amountPaid) * 100);
+      if (balance <= 0)
+        throw new OnlinePaymentError("No outstanding balance on this booking");
+      const existing = await tx.query.paymentsTable.findMany({
+        where: and(
+          eq(paymentsTable.bookingId, bookingId),
+          eq(paymentsTable.method, "paystack"),
+          inArray(paymentsTable.status, ["pending", "rejected"]),
+          isNotNull(paymentsTable.reference),
+          isNull(paymentsTable.checkoutRetiredAt),
+        ),
+        limit: 2,
+      });
+      if (existing.length > 1)
+        throw new OnlinePaymentError(
+          "Earlier payment attempts need reconciliation. Contact support before paying again.",
+        );
+      const current = existing[0];
+      if (current) {
+        if (
+          current.userId !== profile.id ||
+          Math.round(Number(current.amount) * 100) !== balance
+        )
+          throw new OnlinePaymentError(
+            "A payment already exists for this booking. Ask support to reconcile it.",
+          );
+        if (
+          current.checkoutUrl &&
+          current.checkoutAccessCode &&
+          !current.isArchived
+        )
+          return { payment: current, initialize: false };
+        if (!current.checkoutInitializedAt || current.isArchived)
+          throw new OnlinePaymentError(
+            "An earlier payment attempt needs reconciliation. Contact support before paying again.",
+          );
+        if (Date.now() - current.checkoutInitializedAt.getTime() < 45000)
+          throw new OnlinePaymentError(
+            "Payment is being prepared. Check the booking before trying again.",
+          );
+        const [payment] = await tx
+          .update(paymentsTable)
+          .set({ checkoutInitializedAt: new Date() })
+          .where(eq(paymentsTable.id, current.id))
+          .returning();
+        return { payment, initialize: true, resume: true };
+      }
+      const [payment] = await tx
+        .insert(paymentsTable)
+        .values({
+          id: randomUUID(),
+          bookingId,
+          userId: profile.id,
+          amount: (balance / 100).toFixed(2),
+          method: "paystack",
+          status: "pending",
+          reference: "RDH-" + randomUUID(),
+          checkoutInitializedAt: new Date(),
+        })
+        .returning();
+      return { payment, initialize: true, resume: false };
+    });
 
-  const paystackRef = `RDH-${randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
+    const send = (payment: typeof paymentsTable.$inferSelect) =>
+      res.status(201).json({
+        payment: toPaymentResponse(payment),
+        authorizationUrl: payment.checkoutUrl,
+        accessCode: payment.checkoutAccessCode,
+        reference: payment.reference,
+      });
+    let payment = attempt.payment;
+    if (!attempt.initialize) return send(payment);
+    if (attempt.resume) {
+      const gateway = await lookupPaystackTransaction(
+        payment.reference!,
+        secretKey,
+      );
+      if (gateway?.status === "success") {
+        const result = await settleOnlinePayment(payment, gateway, mode);
+        notifyOnlinePayment(result, payment.reference!);
+        return res.json({
+          verified: true,
+          bookingConfirmed: result.booking?.status === "confirmed",
+          reference: payment.reference,
+        });
+      }
+      if (gateway) {
+        // The earlier session was never published. Keep its reference verifiable
+        // and rotate the claim while holding the booking lock.
+        const previous = payment;
+        payment = await db.transaction(async (tx) => {
+          const [booking] = await tx
+            .select()
+            .from(bookingsTable)
+            .where(eq(bookingsTable.id, bookingId))
+            .for("update");
+          if (
+            !booking ||
+            booking.status !== "pending" ||
+            booking.isArchived ||
+            Math.round(
+              (Number(booking.totalPrice) - Number(booking.amountPaid)) * 100,
+            ) !== Math.round(Number(previous.amount) * 100)
+          )
+            throw new OnlinePaymentError(
+              "The booking balance changed. Refresh the booking.",
+            );
+          const [retired] = await tx
+            .update(paymentsTable)
+            .set({ checkoutRetiredAt: new Date() })
+            .where(
+              and(
+                eq(paymentsTable.id, previous.id),
+                eq(paymentsTable.status, "pending"),
+                isNull(paymentsTable.checkoutUrl),
+                isNull(paymentsTable.checkoutRetiredAt),
+                eq(
+                  paymentsTable.checkoutInitializedAt,
+                  previous.checkoutInitializedAt!,
+                ),
+              ),
+            )
+            .returning();
+          if (!retired)
+            throw new OnlinePaymentError(
+              "The payment status changed. Refresh the booking.",
+            );
+          const [replacement] = await tx
+            .insert(paymentsTable)
+            .values({
+              id: randomUUID(),
+              bookingId,
+              userId: profile.id,
+              amount: previous.amount,
+              method: "paystack",
+              reference: "RDH-" + randomUUID(),
+              checkoutInitializedAt: new Date(),
+            })
+            .returning();
+          return replacement;
+        });
+      }
+    }
 
-  const { secretKey: paystackSecret } = await getPaystackKeys();
-  if (!/^sk_(test|live)_/.test(paystackSecret))
-    return res.status(503).json({ error: "Paystack is not configured" });
-  const paystackRes = await fetch(
-    "https://api.paystack.co/transaction/initialize",
-    {
-      method: "POST",
-      redirect: "error",
-      signal: AbortSignal.timeout(20000),
-      headers: {
-        Authorization: `Bearer ${paystackSecret}`,
-        "Content-Type": "application/json",
+    const upstream = await fetch(
+      "https://api.paystack.co/transaction/initialize",
+      {
+        method: "POST",
+        redirect: "error",
+        signal: AbortSignal.timeout(20000),
+        headers: {
+          Authorization: "Bearer " + secretKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          amount: Math.round(Number(payment.amount) * 100),
+          currency: "NGN",
+          reference: payment.reference,
+          metadata: { bookingId, userId: profile.id, type: "package_booking" },
+        }),
       },
-      body: JSON.stringify({
-        email,
-        amount: Math.round(amount * 100),
-        currency: "NGN",
-        reference: paystackRef,
-        metadata: { bookingId, userId: profile.id, type: "package_booking" },
-      }),
-    },
-  );
-
-  if (!paystackRes.ok) {
-    const err = (await paystackRes.json()) as { message?: string };
-    return res.status(502).json({ error: err.message ?? "Paystack error" });
+    );
+    const reply = (await upstream.json()) as any;
+    const data = reply.data;
+    if (
+      !upstream.ok ||
+      !reply.status ||
+      data?.reference !== payment.reference ||
+      !/^https:\/\/checkout\.paystack\.com\//.test(
+        data.authorization_url || "",
+      ) ||
+      typeof data.access_code !== "string" ||
+      !data.access_code
+    )
+      throw new OnlinePaymentError(
+        "Payment service could not prepare checkout. Check your booking before retrying.",
+        502,
+      );
+    const saved = await db.transaction(async (tx) => {
+      const [booking] = await tx.select().from(bookingsTable)
+        .where(eq(bookingsTable.id, bookingId)).for("update");
+      if (!booking || booking.status !== "pending" || booking.isArchived ||
+          Math.round((Number(booking.totalPrice) - Number(booking.amountPaid)) * 100) !== Math.round(Number(payment.amount) * 100))
+        return;
+      const [ready] = await tx.update(paymentsTable)
+        .set({ checkoutUrl: data.authorization_url, checkoutAccessCode: data.access_code })
+        .where(and(eq(paymentsTable.id, payment.id), eq(paymentsTable.status, "pending"),
+          isNull(paymentsTable.checkoutRetiredAt), eq(paymentsTable.checkoutInitializedAt, payment.checkoutInitializedAt!)))
+        .returning();
+      return ready;
+    });
+    if (!saved)
+      throw new OnlinePaymentError(
+        "The payment status changed. Refresh the booking.",
+      );
+    return send(saved);
+  } catch (error) {
+    return res
+      .status(error instanceof OnlinePaymentError ? error.status : 503)
+      .json({
+        error:
+          error instanceof OnlinePaymentError
+            ? error.message
+            : "Payment preparation is temporarily unavailable",
+      });
   }
-
-  const data = (await paystackRes.json()) as {
-    data: { authorization_url: string; reference: string; access_code: string };
-  };
-
-  const [payment] = await db
-    .insert(paymentsTable)
-    .values({
-      id: randomUUID(),
-      bookingId,
-      userId: profile.id,
-      amount: String(amount),
-      method: "paystack",
-      status: "pending",
-      reference: paystackRef,
-    })
-    .returning();
-
-  return res.status(201).json({
-    payment: toPaymentResponse(payment),
-    authorizationUrl: data.data.authorization_url,
-    accessCode: data.data.access_code,
-    reference: paystackRef,
-  });
 });
 
 class OnlinePaymentError extends Error {
@@ -950,6 +1110,10 @@ async function settleOnlinePayment(
   mode: string,
 ) {
   return db.transaction(async (tx) => {
+    // Initialization, cancellation and settlement share the booking lock order.
+    await tx.execute(
+      sql`SELECT id FROM bookings WHERE id = ${record.bookingId} FOR UPDATE`,
+    );
     const [current] = await tx
       .select()
       .from(paymentsTable)
@@ -958,7 +1122,6 @@ async function settleOnlinePayment(
     if (
       !current ||
       current.method !== "paystack" ||
-      current.isArchived ||
       !matchesPaystackProof(gateway, {
         reference: current.reference || "",
         amountKobo: Math.round(Number(current.amount) * 100),
@@ -989,31 +1152,36 @@ async function settleOnlinePayment(
       .set({ status: "verified" })
       .where(eq(paymentsTable.id, current.id))
       .returning();
-    await tx.execute(
-      sql`SELECT id FROM bookings WHERE id = ${current.bookingId} FOR UPDATE`,
-    );
     const [booking] = await tx
       .update(bookingsTable)
       .set({
         amountPaid: sql`COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${current.bookingId} AND status = 'verified' AND is_archived = false), 0)`,
-        status: sql`CASE WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${current.bookingId} AND status = 'verified' AND is_archived = false), 0) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed' ELSE ${bookingsTable.status} END`,
+        status: sql`CASE WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${current.bookingId} AND status = 'verified' AND is_archived = false), 0) >= ${bookingsTable.totalPrice}::numeric AND ${bookingsTable.status} = 'pending' AND ${bookingsTable.isArchived} = false THEN 'confirmed' ELSE ${bookingsTable.status} END`,
         updatedAt: new Date(),
       })
       .where(eq(bookingsTable.id, current.bookingId))
       .returning();
     if (!booking)
       throw new OnlinePaymentError("Package booking not found", 404);
-    if (Number(booking.amountPaid) >= Number(booking.totalPrice)) {
-      await tx.execute(
-        sql`UPDATE bookings SET id_number = nextval('bookings_id_number_seq') WHERE id = ${booking.id} AND id_number IS NULL`,
-      );
-      await ensureVisaApplication(
-        booking.id,
-        booking.fullName,
-        booking.passportNumber,
-        true,
-        tx,
-      );
+    await confirmPaidGroup(tx, booking);
+    if (
+      payment.userId &&
+      (booking.status === "cancelled" ||
+        booking.isArchived ||
+        payment.isArchived ||
+        Number(booking.amountPaid) > Number(booking.totalPrice))
+    ) {
+      await tx.insert(userActivityTable).values({
+        id: randomUUID(),
+        userId: payment.userId,
+        bookingId: booking.id,
+        eventType: "payment_reconciliation_required",
+        metadata: {
+          reference: payment.reference,
+          bookingStatus: booking.status,
+          amountPaid: booking.amountPaid,
+        },
+      });
     }
     return { payment, booking, changed: true };
   });
@@ -1239,6 +1407,8 @@ router.post("/payments/admin-record", async (req, res) => {
         .for("update");
       if (
         !lockedBooking ||
+        lockedBooking.status !== "pending" ||
+        lockedBooking.isArchived ||
         parsedAmount >
           Number(lockedBooking.totalPrice) -
             Number(lockedBooking.amountPaid) +
@@ -1310,23 +1480,14 @@ router.post("/payments/admin-record", async (req, res) => {
           .update(bookingsTable)
           .set({
             amountPaid: sql`COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${bookingId} AND status = 'verified' AND is_archived = false), 0)`,
-            status: sql`CASE WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${bookingId} AND status = 'verified' AND is_archived = false), 0) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed' ELSE ${bookingsTable.status} END`,
+            status: sql`CASE WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${bookingId} AND status = 'verified' AND is_archived = false), 0) >= ${bookingsTable.totalPrice}::numeric AND ${bookingsTable.status} = 'pending' AND ${bookingsTable.isArchived} = false THEN 'confirmed' ELSE ${bookingsTable.status} END`,
             updatedAt: new Date(),
           })
           .where(eq(bookingsTable.id, bookingId))
           .returning();
         if (b) {
           updatedBooking = b;
-          const isFullyPaid = Number(b.amountPaid) >= Number(b.totalPrice);
-          if (isFullyPaid) {
-            await ensureVisaApplication(
-              b.id,
-              b.fullName,
-              b.passportNumber,
-              true,
-              tx,
-            );
-          }
+          await confirmPaidGroup(tx, b);
         }
       }
     });
@@ -1520,6 +1681,9 @@ router.put("/payments/:id/archive", async (req, res) => {
   let updatedPayment: typeof paymentsTable.$inferSelect | undefined;
 
   await db.transaction(async (tx) => {
+    const record = await tx.query.paymentsTable.findFirst({ where: eq(paymentsTable.id, req.params.id) });
+    if (!record) return;
+    await tx.execute(sql`SELECT id FROM bookings WHERE id = ${record.bookingId} FOR UPDATE`);
     const [payment] = await tx
       .update(paymentsTable)
       .set({ isArchived: true, archiveReason: archiveReason || null })
@@ -1531,14 +1695,11 @@ router.put("/payments/:id/archive", async (req, res) => {
 
     // BUG FIX: Recalculate amountPaid from SUM of non-archived verified payments (idempotent).
     if (payment.status === "verified" && payment.bookingId) {
-      await tx.execute(
-        sql`SELECT id FROM bookings WHERE id = ${payment.bookingId} FOR UPDATE`,
-      );
       await tx
         .update(bookingsTable)
         .set({
           amountPaid: sql`COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${payment.bookingId} AND status = 'verified' AND is_archived = false), 0)`,
-          status: sql`CASE WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${payment.bookingId} AND status = 'verified' AND is_archived = false), 0) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed'::booking_status ELSE 'pending'::booking_status END`,
+          status: sql`CASE WHEN ${bookingsTable.status} IN ('cancelled', 'completed') OR ${bookingsTable.isArchived} THEN ${bookingsTable.status} WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${payment.bookingId} AND status = 'verified' AND is_archived = false), 0) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed'::booking_status ELSE 'pending'::booking_status END`,
           updatedAt: new Date(),
         })
         .where(eq(bookingsTable.id, payment.bookingId));
@@ -1562,6 +1723,9 @@ router.put("/payments/:id/restore", async (req, res) => {
   let updatedPayment: typeof paymentsTable.$inferSelect | undefined;
 
   await db.transaction(async (tx) => {
+    const record = await tx.query.paymentsTable.findFirst({ where: eq(paymentsTable.id, req.params.id) });
+    if (!record) return;
+    await tx.execute(sql`SELECT id FROM bookings WHERE id = ${record.bookingId} FOR UPDATE`);
     const [payment] = await tx
       .update(paymentsTable)
       .set({ isArchived: false, archiveReason: null })
@@ -1573,14 +1737,11 @@ router.put("/payments/:id/restore", async (req, res) => {
 
     // BUG FIX: Recalculate amountPaid from SUM of non-archived verified payments (idempotent).
     if (payment.status === "verified" && payment.bookingId) {
-      await tx.execute(
-        sql`SELECT id FROM bookings WHERE id = ${payment.bookingId} FOR UPDATE`,
-      );
       await tx
         .update(bookingsTable)
         .set({
           amountPaid: sql`COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${payment.bookingId} AND status = 'verified' AND is_archived = false), 0)`,
-          status: sql`CASE WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${payment.bookingId} AND status = 'verified' AND is_archived = false), 0) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed'::booking_status ELSE 'pending'::booking_status END`,
+          status: sql`CASE WHEN ${bookingsTable.status} IN ('cancelled', 'completed') OR ${bookingsTable.isArchived} THEN ${bookingsTable.status} WHEN COALESCE((SELECT SUM(amount::numeric) FROM payments WHERE booking_id = ${payment.bookingId} AND status = 'verified' AND is_archived = false), 0) >= ${bookingsTable.totalPrice}::numeric THEN 'confirmed'::booking_status ELSE 'pending'::booking_status END`,
           updatedAt: new Date(),
         })
         .where(eq(bookingsTable.id, payment.bookingId));

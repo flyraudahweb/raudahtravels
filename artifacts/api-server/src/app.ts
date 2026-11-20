@@ -94,7 +94,6 @@ app.use(
   })),
 );
 
-app.use("/api/uploads", express.static(path.resolve("uploads")));
 app.use("/api/ota/v1", mobileOtaRouter(otaRouter));
 app.use("/api", otaRouter);
 // Retired demo/unsafe contracts fail closed instead of reaching the SPA fallback.

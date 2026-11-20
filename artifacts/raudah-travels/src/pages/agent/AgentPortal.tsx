@@ -288,7 +288,9 @@ export default function AgentPortal() {
         <div className="p-6 md:p-8 max-w-5xl mx-auto">
           <Switch>
             <Route path="/agent" component={AgentOverview} />
-            <Route path="/agent/clients" component={AgentClients} />
+            <Route path="/agent/clients">
+              <AgentClients key={user?.id} />
+            </Route>
             <Route path="/agent/packages" component={AgentPackages} />
             <Route path="/agent/bookings" component={AgentBookings} />
             <Route path="/agent/my-trips" component={MyTravelTrips} />

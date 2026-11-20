@@ -534,23 +534,32 @@ export default function AdminBookPilgrim() {
         const errBody = await res.json().catch(() => ({}));
         throw new Error((errBody as any).error || "Initialize failed");
       }
-      const data = await res.json() as { reference: string; accessCode: string };
+      const data = await res.json() as { reference?: string; accessCode?: string; verified?: boolean };
+      if (data.verified) { setResult({ reference: data.reference || bookingId }); setStep(6); return; }
+      if (!data.accessCode) throw new Error("Open the saved booking to check its payment status.");
       if (!window.PaystackPop) throw new Error("Paystack script not loaded");
       const popup = new window.PaystackPop();
       popup.resumeTransaction(data.accessCode, {
-        onSuccess: (transaction) => { setResult({ reference: transaction.reference }); setStep(6); },
+        onSuccess: async ({ reference }) => {
+          const verification = await fetch("/api/payments/paystack/verify", {
+            method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reference }),
+          }).catch(() => null);
+          if (!verification?.ok) {
+            toast({ title: "Payment verification pending", description: "Check the saved booking before making another payment." });
+            return;
+          }
+          setResult({ reference }); setStep(6);
+        },
         onCancel: () => {
-          fetch(`/api/bookings/${bookingId}`, { method: "DELETE", credentials: "include" }).catch(() => {});
-          toast({ title: "Payment cancelled", description: "The payment window was closed and the pending booking has been discarded." });
+          toast({ title: "Payment cancelled", description: "The booking is saved. Check its payment status before retrying." });
         },
         onError: (err) => {
-          fetch(`/api/bookings/${bookingId}`, { method: "DELETE", credentials: "include" }).catch(() => {});
-          toast({ title: "Payment error", description: err.message || "Could not launch Paystack. The pending booking was discarded.", variant: "destructive" });
+          toast({ title: "Payment error", description: err.message || "The booking is saved. Check its payment status before retrying.", variant: "destructive" });
         }
       });
     } catch (err: any) {
-      fetch(`/api/bookings/${bookingId}`, { method: "DELETE", credentials: "include" }).catch(() => {});
-      toast({ title: "Payment error", description: err.message || "Could not launch Paystack. The pending booking was discarded.", variant: "destructive" });
+      toast({ title: "Payment error", description: err.message || "The booking is saved. Check its payment status before retrying.", variant: "destructive" });
     }
   };
 

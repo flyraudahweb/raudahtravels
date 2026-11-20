@@ -30,13 +30,18 @@ export const paymentsTable = pgTable("payments", {
   bookingId: text("booking_id")
     .notNull()
     .references(() => bookingsTable.id),
-  userId: text("user_id")
-    .references(() => profilesTable.id),
+  userId: text("user_id").references(() => profilesTable.id),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   method: paymentMethodEnum("method").notNull(),
   status: paymentStatusEnum("status").notNull().default("pending"),
   reference: text("reference"),
   paystackReference: text("paystack_reference"),
+  checkoutUrl: text("checkout_url"),
+  checkoutAccessCode: text("checkout_access_code"),
+  checkoutInitializedAt: timestamp("checkout_initialized_at", {
+    withTimezone: true,
+  }),
+  checkoutRetiredAt: timestamp("checkout_retired_at", { withTimezone: true }),
   proofUrl: text("proof_url"),
   proofOfPaymentUrl: text("proof_of_payment_url"),
   verifiedBy: text("verified_by").references(() => profilesTable.id),

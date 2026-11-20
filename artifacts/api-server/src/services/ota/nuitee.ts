@@ -712,9 +712,12 @@ function normalizeBooking(row: SupplierBooking, data: any) {
       "Nuitee’s booking record does not match the paid checkout. Reconciliation is required.",
       502,
     );
-  const cancelled = ["CANCELLED", "CANCELLED_WITH_CHARGES"].includes(
-    data.status,
-  );
+  const cancelled = [
+    "CANCELED",
+    "CANCELLED",
+    "CANCELED_WITH_CHARGES",
+    "CANCELLED_WITH_CHARGES",
+  ].includes(data.status);
   if (
     !cancelled &&
     (data.status !== "CONFIRMED" ||

@@ -25,6 +25,12 @@ export const otaBookingsTable = pgTable(
     providerOfferId: text("provider_offer_id").notNull(),
     providerBookingId: text("provider_booking_id").unique(),
     reference: text("reference").notNull().unique(),
+    paymentReference: text("payment_reference").unique(),
+    previousPaymentReferences: jsonb("previous_payment_references")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    paidPaymentReference: text("paid_payment_reference"),
     amountKobo: bigint("amount_kobo", { mode: "number" }).notNull(),
     supplierAmount: text("supplier_amount").notNull(),
     supplierCurrency: text("supplier_currency").notNull(),
@@ -62,6 +68,7 @@ export const otaBookingsTable = pgTable(
   },
   (t) => [
     index("ota_bookings_owner_created").on(t.clerkUserId, t.createdAt),
+    index("ota_bookings_previous_payment_references_gin").using("gin", t.previousPaymentReferences),
     check("ota_kind", sql`${t.kind} IN ('flight', 'hotel')`),
     check("ota_mode", sql`${t.mode} IN ('test', 'live')`),
     check(

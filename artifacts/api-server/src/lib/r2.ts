@@ -61,6 +61,7 @@ export async function uploadToR2(
   key: string,
   buffer: Buffer,
   contentType: string,
+  metadata?: Record<string, string>,
 ): Promise<string> {
   await r2Client.send(
     new PutObjectCommand({
@@ -68,6 +69,7 @@ export async function uploadToR2(
       Key: key,
       Body: buffer,
       ContentType: contentType,
+      Metadata: metadata,
     }),
   );
   return key;
@@ -87,5 +89,6 @@ export async function getFromR2(key: string) {
     body: response.Body,
     contentType: response.ContentType || "application/octet-stream",
     contentLength: response.ContentLength,
+    ownerId: response.Metadata?.owner,
   };
 }

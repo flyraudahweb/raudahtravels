@@ -83,13 +83,18 @@ function openRequest(row: Registration): Input {
   }
 }
 export function registrationView(row: Registration) {
+  const interrupted =
+    row.state === "submitting" &&
+    Date.now() - row.updatedAt.getTime() >= 2 * 60 * 1000;
   return {
     id: row.id,
     version: row.version,
-    state: row.state,
+    state: interrupted ? ("requires_review" as const) : row.state,
     request: openRequest(row),
     result: row.result,
-    issue: row.issue,
+    issue: interrupted
+      ? "The submission was interrupted. Reconcile the pilgrim registration and initial payment in EHajj before taking further action."
+      : row.issue,
     updatedAt: row.updatedAt,
   };
 }

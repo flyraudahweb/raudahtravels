@@ -7,6 +7,38 @@ type Binding = {
   userId?: string | null;
 };
 
+export async function lookupPaystackTransaction(
+  reference: string,
+  secret: string,
+) {
+  const response = await fetch(
+    `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
+    {
+      redirect: "error",
+      signal: AbortSignal.timeout(20000),
+      headers: { Authorization: `Bearer ${secret}` },
+    },
+  );
+  const result = (await response.json()) as {
+    status?: boolean;
+    message?: string;
+    data?: any;
+  };
+  if (
+    [400, 404].includes(response.status) &&
+    /^transaction reference not found\.?$/i.test(result.message ?? "")
+  )
+    return null;
+  if (
+    !response.ok ||
+    result.status !== true ||
+    result.data?.reference !== reference ||
+    typeof result.data.status !== "string"
+  )
+    throw new Error("Paystack could not verify the saved payment reference");
+  return result.data;
+}
+
 export function matchesPaystackProof(
   payment: any,
   expected: Binding,

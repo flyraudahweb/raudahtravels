@@ -4,11 +4,14 @@ import {
   otaBookingsTable as bookings,
 } from "@workspace/db";
 import { and, eq, isNull, lt, lte, or, asc, sql } from "drizzle-orm";
-import { fulfill, audit } from "./booking";
+import { fulfill, audit, otaPaymentReferenceMatches } from "./booking";
 
 export async function enqueuePayment(reference: string, bookingId: string) {
   const row = await db.query.otaBookingsTable.findFirst({
-    where: and(eq(bookings.id, bookingId), eq(bookings.reference, reference)),
+    where: and(
+      eq(bookings.id, bookingId),
+      otaPaymentReferenceMatches(reference),
+    ),
   });
   if (!row) return; // Unrelated provider notifications cannot create jobs.
   await db.insert(jobs).values({ reference, bookingId }).onConflictDoNothing();

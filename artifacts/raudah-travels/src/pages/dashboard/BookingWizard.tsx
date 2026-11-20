@@ -183,9 +183,16 @@ function FileUploadBox({
 export default function BookingWizard() {
   const [, params] = useRoute("/dashboard/book/:id");
   const packageId = params?.id || "";
+  const { user } = useUser();
+  if (!user) return null;
+  return <PackageBookingForm key={user.id + ":" + packageId} packageId={packageId} />;
+}
+
+function PackageBookingForm({ packageId }: { packageId: string }) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { user } = useUser();
+  const checkoutStorageKey = "package-checkout:" + user?.id + ":" + packageId;
 
   const formatDate = (dateStr: string) => {
     try {
@@ -241,6 +248,9 @@ export default function BookingWizard() {
 
   // Track a created booking ID so retrying Paystack reuses the same booking (no duplicates)
   const createdBookingIdRef = useRef<string | null>(null);
+  const checkoutIdRef = useRef<string | null>(null);
+  const submitting = useRef(false);
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
 
   // Step 1: Passport
   const [passportForm, setPassportForm] = useState({
@@ -275,7 +285,6 @@ export default function BookingWizard() {
   const [doneMethod, setDoneMethod] = useState<PayMethod>("bank_transfer");
   const [processing, setProcessing] = useState(false);
   const [phoneCode, setPhoneCode] = useState("+234");
-  const [isRestored, setIsRestored] = useState(false);
   const paystackScriptLoaded = useRef(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -310,37 +319,6 @@ export default function BookingWizard() {
   
   const [packageDateId, setPackageDateId] = useState<string>("");
   const [departureCityFilter, setDepartureCityFilter] = useState<string>("");
-
-  useEffect(() => {
-    try {
-      const draft = localStorage.getItem("user_booking_draft");
-      if (draft) {
-        const parsed = JSON.parse(draft);
-        if (parsed.passportForm) setPassportForm(parsed.passportForm);
-        if (parsed.personalForm) setPersonalForm(parsed.personalForm);
-        if (parsed.contactForm) setContactForm(parsed.contactForm);
-        if (parsed.payForm) setPayForm(parsed.payForm);
-        if (parsed.step) setStep(parsed.step);
-        if (parsed.childEntries) setChildEntries(parsed.childEntries);
-        if (parsed.paymentOption) setPaymentOption(parsed.paymentOption);
-        if (parsed.customPaymentAmount) setCustomPaymentAmount(parsed.customPaymentAmount);
-        if (parsed.packageDateId) setPackageDateId(parsed.packageDateId);
-      }
-    } catch (e) {}
-    setIsRestored(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isRestored) return;
-    if (done) {
-      localStorage.removeItem("user_booking_draft");
-      return;
-    }
-    localStorage.setItem("user_booking_draft", JSON.stringify({
-      passportForm, personalForm, contactForm, payForm, step,
-      childEntries, paymentOption, customPaymentAmount, packageDateId,
-    }));
-  }, [passportForm, personalForm, contactForm, payForm, step, done, isRestored, childEntries, paymentOption, customPaymentAmount, packageDateId]);
 
   useEffect(() => {
     if (!paystackScriptLoaded.current) {
@@ -378,7 +356,12 @@ export default function BookingWizard() {
     return "adult";
   }
 
-  const getChildPrice = (type: "child" | "infant") => type === "infant" ? (childInfantPricing.infantPrice || 1200000) : (childInfantPricing.childPrice || 1200000);
+  const getChildPrice = (type: "child" | "infant") => {
+    const key = type === "infant" ? "infantPrice" : "childPrice";
+    const overrides = pkg?.pricingOverrides as Record<string, unknown> | undefined;
+    const value = Number(overrides?.[key] ?? childInfantPricing[key] ?? 1200000);
+    return Number.isFinite(value) && value >= 0 ? value : 1200000;
+  };
 
   const addChildEntry = (type: "child" | "infant") => {
     setChildEntries(prev => [...prev, {
@@ -475,141 +458,100 @@ export default function BookingWizard() {
   };
 
   const handleSubmit = async () => {
-    if (processing) return;
+    if (processing || submitting.current) return;
+    submitting.current = true;
     setProcessing(true);
-
-    const pilgrimDetails = JSON.stringify({
-      ...passportForm, ...personalForm, ...contactForm, fullName,
-    });
-
-    // If we already created a booking (e.g. user cancelled Paystack and is retrying),
-    // skip booking creation and go straight to payment
-    if (createdBookingIdRef.current) {
+    const pilgrimDetails = JSON.stringify({ ...passportForm, ...personalForm, ...contactForm, fullName });
+    try {
+      let bookingId = createdBookingIdRef.current;
+      if (!bookingId) {
+        if (!checkoutIdRef.current) {
+          try {
+            const stored = JSON.parse(sessionStorage.getItem(checkoutStorageKey) ?? "null");
+            if (stored?.expiresAt > Date.now() && typeof stored.id === "string")
+              checkoutIdRef.current = stored.id;
+          } catch { /* Storage is optional. */ }
+          checkoutIdRef.current ||= crypto.randomUUID();
+          try {
+            sessionStorage.setItem(checkoutStorageKey, JSON.stringify({
+              id: checkoutIdRef.current,
+              expiresAt: Date.now() + 2 * 60 * 60 * 1000,
+            }));
+          } catch { /* The server can still deduplicate retries on this screen. */ }
+        }
+        const booking = await createBooking.mutateAsync({
+          data: {
+            packageId: pkg!.id,
+            packageDateId: packageDateId || undefined,
+            pilgrimCount: payForm.pilgrimCount,
+            pilgrimDetails,
+            notes: contactForm.specialRequests,
+            fullName,
+            // Passport fields (from passportForm)
+            passportNumber: passportForm.passportNumber || undefined,
+            passportIssueDate: passportForm.passportIssueDate || undefined,
+            passportExpiry: passportForm.passportExpiry || undefined,
+            passportIssuingAuthority: passportForm.passportIssuingAuthority || undefined,
+            passportCopyUrl: passportForm.passportCopyUrl || undefined,
+            visaNumber: passportForm.visaNumber || undefined,
+            // Personal fields (from personalForm)
+            civility: personalForm.civility || undefined,
+            firstName: personalForm.firstName || undefined,
+            lastName: personalForm.lastName || undefined,
+            dateOfBirth: personalForm.dateOfBirth || undefined,
+            gender: personalForm.gender || undefined,
+            nationality: personalForm.nationality || undefined,
+            placeOfBirth: personalForm.placeOfBirth || undefined,
+            ethnicGroup: personalForm.ethnicGroup || undefined,
+            maritalStatus: personalForm.maritalStatus || undefined,
+            levelOfStudy: personalForm.levelOfStudy || undefined,
+            observation: personalForm.observation || undefined,
+            profilePhotoUrl: personalForm.profilePhotoUrl || undefined,
+            partner: personalForm.partner || undefined,
+            underCover: personalForm.underCover || undefined,
+            // Contact fields (from contactForm)
+            phone: contactForm.phone ? `${phoneCode}${contactForm.phone}` : "",
+            email: contactForm.email || undefined,
+            country: contactForm.country || undefined,
+            city: contactForm.city || undefined,
+            address: contactForm.address || undefined,
+            roomPreference: contactForm.roomType || "quad",
+            departureCity: contactForm.departureCity || undefined,
+            checkoutId: checkoutIdRef.current,
+            expectedTotal: fullAmount,
+            children: childEntries.map(({ id, type, ...child }) => ({
+              ...child, phone: contactForm.phone ? phoneCode + contactForm.phone : undefined,
+              email: contactForm.email, country: contactForm.country, city: contactForm.city,
+              roomPreference: contactForm.roomType || "quad",
+            })),
+          } as Parameters<typeof createBooking.mutateAsync>[0]["data"],
+        });
+        bookingId = booking.id;
+        createdBookingIdRef.current = bookingId;
+      }
       if (payForm.method === "online") {
-        await handlePaystackPayment(createdBookingIdRef.current);
+        await handlePaystackPayment(bookingId);
       } else {
-        createPayment.mutate(
-          { data: { bookingId: createdBookingIdRef.current, amount: paymentAmount, method: payForm.method, reference: payForm.reference, proofUrl: payForm.paymentProofUrl } },
-          {
-            onSuccess: () => { setDoneMethod(payForm.method); setDone(true); setProcessing(false); },
-            onError: () => { setDoneMethod(payForm.method); setDone(true); setProcessing(false); },
-          }
-        );
+        await createPayment.mutateAsync({
+          data: { bookingId, amount: paymentAmount, method: payForm.method, reference: payForm.reference, proofUrl: payForm.paymentProofUrl },
+        });
+        setDoneMethod(payForm.method);
+        setDone(true);
+        setProcessing(false);
       }
-      return;
+    } catch (error) {
+      toast({ title: "Booking needs attention", description: error instanceof Error ? error.message : "Open My Bookings before trying again.", variant: "destructive" });
+      setProcessing(false);
+    } finally {
+      submitting.current = false;
     }
-
-    // Auto-detect pilgrimType from DOB
-    const mainPilgrimType = personalForm.dateOfBirth ? detectPilgrimType(personalForm.dateOfBirth) : "adult";
-
-    createBooking.mutate(
-      {
-        data: {
-          packageId: pkg!.id,
-          packageDateId: packageDateId || undefined,
-          pilgrimCount: payForm.pilgrimCount,
-          pilgrimDetails,
-          notes: contactForm.specialRequests,
-          fullName,
-          // Passport fields (from passportForm)
-          passportNumber: passportForm.passportNumber || undefined,
-          passportIssueDate: passportForm.passportIssueDate || undefined,
-          passportExpiry: passportForm.passportExpiry || undefined,
-          passportIssuingAuthority: passportForm.passportIssuingAuthority || undefined,
-          passportCopyUrl: passportForm.passportCopyUrl || undefined,
-          visaNumber: passportForm.visaNumber || undefined,
-          // Personal fields (from personalForm)
-          civility: personalForm.civility || undefined,
-          firstName: personalForm.firstName || undefined,
-          lastName: personalForm.lastName || undefined,
-          dateOfBirth: personalForm.dateOfBirth || undefined,
-          gender: personalForm.gender || undefined,
-          nationality: personalForm.nationality || undefined,
-          placeOfBirth: personalForm.placeOfBirth || undefined,
-          ethnicGroup: personalForm.ethnicGroup || undefined,
-          maritalStatus: personalForm.maritalStatus || undefined,
-          levelOfStudy: personalForm.levelOfStudy || undefined,
-          observation: personalForm.observation || undefined,
-          profilePhotoUrl: personalForm.profilePhotoUrl || undefined,
-          partner: personalForm.partner || undefined,
-          underCover: personalForm.underCover || undefined,
-          // Contact fields (from contactForm)
-          phone: contactForm.phone ? `${phoneCode}${contactForm.phone}` : "",
-          email: contactForm.email || undefined,
-          country: contactForm.country || undefined,
-          city: contactForm.city || undefined,
-          address: contactForm.address || undefined,
-          roomPreference: contactForm.roomType || "quad",
-          departureCity: contactForm.departureCity || undefined,
-          // Room surcharge & pilgrim type
-          roomSurcharge: roomSurcharge || 0,
-          pilgrimType: mainPilgrimType,
-          customData: {
-            childrenExtra: childrenTotal,
-            childrenCount: childEntries.length,
-          },
-        },
-      } as any,
-      {
-        onSuccess: async (booking) => {
-          createdBookingIdRef.current = booking.id;
-
-          // Create separate bookings for each child/infant
-          if (childEntries.length > 0) {
-            const batchId = crypto.randomUUID();
-            for (const child of childEntries) {
-              try {
-                await createBooking.mutateAsync({
-                  data: {
-                    packageId: pkg!.id,
-                    packageDateId: packageDateId || undefined,
-                    pilgrimCount: 1,
-                    fullName: `${child.firstName} ${child.lastName}`.trim(),
-                    firstName: child.firstName || undefined,
-                    lastName: child.lastName || undefined,
-                    dateOfBirth: child.dateOfBirth || undefined,
-                    gender: child.gender || undefined,
-                    nationality: child.nationality || undefined,
-                    passportNumber: child.passportNumber || undefined,
-                    passportIssueDate: child.passportIssueDate || undefined,
-                    passportExpiry: child.passportExpiry || undefined,
-                    passportCopyUrl: child.passportCopyUrl || undefined,
-                    profilePhotoUrl: child.profilePhotoUrl || undefined,
-                    phone: contactForm.phone ? `${phoneCode}${contactForm.phone}` : "",
-                    email: contactForm.email || undefined,
-                    country: contactForm.country || undefined,
-                    city: contactForm.city || undefined,
-                    roomPreference: contactForm.roomType || "quad",
-                    pilgrimType: child.type,
-                    parentBookingId: booking.id,
-                    batchId,
-                  } as any,
-                });
-              } catch (err) {
-                console.error(`Failed to create booking for child: ${child.firstName}`, err);
-              }
-            }
-          }
-
-          if (payForm.method === "online") {
-            await handlePaystackPayment(booking.id);
-          } else {
-            createPayment.mutate(
-              { data: { bookingId: booking.id, amount: paymentAmount, method: payForm.method, reference: payForm.reference, proofUrl: payForm.paymentProofUrl } },
-              {
-                onSuccess: () => { setDoneMethod(payForm.method); setDone(true); setProcessing(false); },
-                onError: () => { setDoneMethod(payForm.method); setDone(true); setProcessing(false); },
-              }
-            );
-          }
-        },
-        onError: () => {
-          toast({ title: "Booking failed", description: "Could not create your booking. Please try again.", variant: "destructive" });
-          setProcessing(false);
-        },
-      }
-    );
   };
+
+  useEffect(() => {
+    if (done && (doneMethod !== "online" || paymentConfirmed)) {
+      try { sessionStorage.removeItem(checkoutStorageKey); } catch { /* Storage is optional. */ }
+    }
+  }, [done, doneMethod, paymentConfirmed, checkoutStorageKey]);
 
   const handlePaystackPayment = async (bookingId: string) => {
     try {
@@ -622,8 +564,16 @@ export default function BookingWizard() {
           email: contactForm.email || user?.primaryEmailAddress?.emailAddress || fullName,
         }),
       });
-      if (!res.ok) throw new Error("Failed to initialize payment");
-      const data = await res.json() as { accessCode: string; reference: string };
+      const data = await res.json() as { accessCode?: string; reference?: string; verified?: boolean; bookingConfirmed?: boolean; error?: string };
+      if (!res.ok) throw new Error(data.error || "Payment could not be prepared");
+      if (data.verified) {
+        setPaymentConfirmed(data.bookingConfirmed === true);
+        setDoneMethod("online");
+        setDone(true);
+        setProcessing(false);
+        return;
+      }
+      if (!data.accessCode) throw new Error("Checkout is not available. Check My Bookings.");
       if (!window.PaystackPop) throw new Error("Paystack script not loaded");
 
       // Paystack Popup v2: use resumeTransaction with the access_code from the server
@@ -642,10 +592,12 @@ export default function BookingWizard() {
               const err = await verifyRes.json() as { error?: string };
               throw new Error(err.error ?? "Verification failed");
             }
+            const result = await verifyRes.json() as { bookingConfirmed?: boolean };
+            setPaymentConfirmed(result.bookingConfirmed === true);
           } catch (verifyErr) {
             toast({
               title: "Payment received but unconfirmed",
-              description: "We received your payment but could not confirm it immediately. Our team will verify it shortly.",
+              description: "Check My Bookings for the verified status before paying again.",
             });
           }
           setDoneMethod("online");
@@ -656,18 +608,18 @@ export default function BookingWizard() {
           // User closed Paystack popup — keep them on the wizard so they can retry or choose another method
           toast({
             title: "Payment not completed",
-            description: "No payment was taken. You can try again or choose a different payment method.",
+            description: "Check the payment status before making another payment.",
           });
           setProcessing(false);
           // Do NOT set done=true here — booking exists but no payment yet
         },
         onError: (_err) => {
-          toast({ title: "Payment error", description: "Something went wrong with your payment. Please try again or choose bank transfer.", variant: "destructive" });
+          toast({ title: "Payment status unavailable", description: "Check the booking before making another payment.", variant: "destructive" });
           setProcessing(false);
         },
       });
-    } catch {
-      toast({ title: "Payment error", description: "Could not launch payment. Please try bank transfer instead.", variant: "destructive" });
+    } catch (error) {
+      toast({ title: "Payment unavailable", description: error instanceof Error ? error.message : "Check My Bookings before trying again.", variant: "destructive" });
       setProcessing(false);
     }
   };
@@ -684,14 +636,14 @@ export default function BookingWizard() {
   const spacesLeft = pkg.maxCapacity - pkg.currentBookings;
 
   if (done) {
-    const isPaid = doneMethod === "online";
+    const isPaid = doneMethod === "online" && paymentConfirmed;
     return (
       <div className="max-w-lg mx-auto text-center py-16">
         <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${isPaid ? "bg-green-100" : "bg-amber-100"}`}>
           <CheckCircle2 className={`w-10 h-10 ${isPaid ? "text-green-600" : "text-amber-600"}`} />
         </div>
         <h1 className="text-3xl font-serif font-bold text-primary mb-4">
-          {isPaid ? "Booking Confirmed!" : "Booking Submitted!"}
+          {isPaid ? "Booking Confirmed!" : doneMethod === "online" ? "Payment verification pending" : "Booking Submitted!"}
         </h1>
         <p className="text-muted-foreground mb-2">
           Your booking for <strong>{pkg.name}</strong> has been submitted.
@@ -699,9 +651,9 @@ export default function BookingWizard() {
         <p className="text-muted-foreground mb-8">
           {isPaid
             ? "Your payment was received. Your visa application is now in progress."
-            : "Our team will confirm your booking once payment is verified."}
+            : "Check My Bookings for the latest payment and reservation status."}
         </p>
-        {!isPaid && (
+        {doneMethod !== "online" && (
           <div className="bg-muted/50 rounded-lg p-4 text-sm mb-8 border text-left">
             <p className="font-semibold mb-2">
               {doneMethod === "bank_transfer" ? "Bank Transfer Details" : "Cash Payment"}

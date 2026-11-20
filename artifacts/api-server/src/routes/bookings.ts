@@ -1,12 +1,57 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { bookingsTable, packagesTable, packageDatesTable, profilesTable, visaApplicationsTable, userActivityTable, siteSettingsTable } from "@workspace/db";
+import { bookingsTable, packagesTable, packageDatesTable, paymentsTable, profilesTable, visaApplicationsTable, userActivityTable, siteSettingsTable } from "@workspace/db";
 import { createNotification } from "../utils/notify.js";
 import { getAuth } from "@clerk/express";
-import { eq, and, sql, desc } from "drizzle-orm";
-import { randomUUID } from "crypto";
+import { eq, and, sql, desc, or, inArray } from "drizzle-orm";
+import { createHash, randomUUID } from "crypto";
+import { z } from "zod";
 
 const router = Router();
+
+class PackageBookingError extends Error {
+  constructor(message: string, readonly status = 409) { super(message); }
+}
+
+const pilgrimFields = [
+  "fullName", "civility", "firstName", "lastName", "passportNumber", "passportIssueDate",
+  "passportExpiry", "passportIssuingAuthority", "passportCopyUrl", "profilePhotoUrl",
+  "dateOfBirth", "gender", "nationality", "placeOfBirth", "ethnicGroup", "maritalStatus",
+  "levelOfStudy", "occupation", "observation", "partner", "underCover", "visaNumber",
+  "phone", "email", "country", "city", "address", "roomPreference", "departureCity",
+  "specialRequests", "emergencyContactName", "emergencyContactPhone", "emergencyContactRelationship",
+] as const;
+const pilgrimSchema = z.object(Object.fromEntries(pilgrimFields.map((field) => [
+  field, z.string().trim().max(2048).optional(),
+])) as Record<(typeof pilgrimFields)[number], z.ZodOptional<z.ZodString>>);
+const childSchema = pilgrimSchema.extend({
+  firstName: z.string().trim().min(1).max(200),
+  lastName: z.string().trim().min(1).max(200),
+  dateOfBirth: z.string().date(),
+});
+const packageCheckout = pilgrimSchema.extend({
+  packageId: z.string().min(1).max(128),
+  packageDateId: z.string().min(1).max(128).optional(),
+  pilgrimCount: z.number().int().min(1).max(10).default(1),
+  pilgrimDetails: z.string().max(60000).optional(),
+  notes: z.string().max(4000).optional(),
+  checkoutId: z.string().uuid().optional(),
+  expectedTotal: z.number().finite().nonnegative().optional(),
+  children: z.array(childSchema).max(10).default([]),
+});
+
+function bookingPricing(value: unknown): Record<string, unknown> {
+  if (typeof value === "string") {
+    try { value = JSON.parse(value); } catch { return {}; }
+  }
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+
+function moneyKobo(value: unknown, fallback = 0) {
+  if (value == null || value === "") return fallback;
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount >= 0 ? Math.round(amount * 100) : fallback;
+}
 
 async function getProfileByClerkId(clerkUserId: string) {
   return db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, clerkUserId) });
@@ -174,86 +219,101 @@ router.get("/bookings", async (req, res) => {
 router.post("/bookings", async (req, res) => {
   const { userId: clerkUserId } = getAuth(req);
   if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
-
   const profile = await getProfileByClerkId(clerkUserId);
-  if (!profile) return res.status(404).json({ error: "Profile not found" });
+  if (profile?.accountStatus !== "active")
+    return res.status(403).json({ error: "Account access is unavailable" });
 
-  // Destructure fields explicitly — strip any server-controlled fields from the
-  // remaining spread so a client cannot override totalPrice, amountPaid, status, etc.
-  const {
-    packageId, packageDateId, pilgrimCount, pilgrimDetails, notes, agentId,
-    // Room surcharge and pilgrim type (client-provided, validated server-side)
-    roomSurcharge: clientRoomSurcharge, pilgrimType, parentBookingId, batchId,
-    // These must never come from the client — explicitly consumed & discarded:
-    totalPrice: _tp, amountPaid: _ap, status: _st,
-    id: _id, reference: _ref, userId: _uid,
-    createdAt: _ca, updatedAt: _ua,
-    ...safePilgrimFields
-  } = req.body;
+  const parsed = packageCheckout.safeParse(req.body);
+  if (!parsed.success)
+    return res.status(400).json({ error: "Review the package and traveller details." });
+  const { packageId, packageDateId, pilgrimCount, pilgrimDetails, notes, children, checkoutId, expectedTotal, ...person } = parsed.data;
+  const checkoutKey = checkoutId
+    ? createHash("sha256").update(JSON.stringify([profile.id, packageId, checkoutId])).digest("hex")
+    : undefined;
+  const checkoutFingerprint = createHash("sha256")
+    .update(JSON.stringify({ packageId, packageDateId, pilgrimCount, person, children, expectedTotal }))
+    .digest("hex");
+  try {
+    const result = await db.transaction(async (tx) => {
+      // Customer, agent and staff bookings serialize on the same package row.
+      const [pkg] = await tx.select().from(packagesTable).where(eq(packagesTable.id, packageId)).for("update");
+      if (!pkg) throw new PackageBookingError("Package not found", 404);
+      if (checkoutKey) {
+        const existing = await tx.query.bookingsTable.findFirst({ where: eq(bookingsTable.checkoutKey, checkoutKey) });
+        if (existing) {
+          const saved = bookingPricing(existing.customData);
+          if (saved.checkoutFingerprint !== checkoutFingerprint)
+            throw new PackageBookingError("A checkout was already saved. Open My Bookings to review it before paying");
+          return existing;
+        }
+      }
+      if (pkg.status !== "active" || !pkg.isActive ||
+          (pkg.countdownEnabled && pkg.countdownExpiry && new Date(pkg.countdownExpiry) <= new Date()))
+        throw new PackageBookingError("Package registration is closed");
 
-  if (!packageId) return res.status(400).json({ error: "packageId is required" });
+      const departure = packageDateId
+        ? await tx.query.packageDatesTable.findFirst({ where: eq(packageDatesTable.id, packageDateId) })
+        : undefined;
+      if (packageDateId && (!departure || departure.status !== "open" ||
+          (departure.packageId !== packageId && !(departure.packageId == null && pkg.type === "umrah"))))
+        throw new PackageBookingError("The selected departure is unavailable");
 
-  const pkg = await db.query.packagesTable.findFirst({ where: eq(packagesTable.id, packageId) });
-  if (!pkg) return res.status(404).json({ error: "Package not found" });
-  if (pkg.status && pkg.status !== "active") return res.status(400).json({ error: "Package is not currently available" });
+      const seats = pilgrimCount + children.length;
+      if (pkg.capacity > 0 && pkg.currentBookings + seats > pkg.capacity)
+        throw new PackageBookingError("There is insufficient capacity for this group");
 
-  const count = Math.max(1, Number(pilgrimCount) || 1);
+      const rows = await tx.query.siteSettingsTable.findMany({
+        where: inArray(siteSettingsTable.key, ["room_surcharges", "child_infant_pricing"]),
+      });
+      const settings = Object.fromEntries(rows.map((row) => [row.key, bookingPricing(row.value)]));
+      const surcharge = moneyKobo(settings.room_surcharges?.[person.roomPreference?.toLowerCase() || "quad"]);
+      const overrides = bookingPricing(pkg.pricingOverrides);
+      const today = new Date().toISOString().slice(0, 10);
+      const childRecords = children.map(({ dateOfBirth, ...child }) => {
+        const age = Number(today.slice(0, 4)) - Number(dateOfBirth.slice(0, 4)) -
+          (today.slice(5) < dateOfBirth.slice(5) ? 1 : 0);
+        if (age < 0 || age >= 12)
+          throw new PackageBookingError("A child or infant date of birth is invalid", 400);
+        const type = age < 2 ? "infant" as const : "child" as const;
+        const field = type === "infant" ? "infantPrice" : "childPrice";
+        return {
+          person: { ...child, dateOfBirth, fullName: child.firstName + " " + child.lastName },
+          type,
+          price: moneyKobo(overrides[field] ?? settings.child_infant_pricing?.[field], 120000000),
+        };
+      });
+      const childrenTotal = childRecords.reduce((total, child) => total + child.price, 0);
+      const total = (moneyKobo(pkg.price) + surcharge) * pilgrimCount + childrenTotal;
+      if (expectedTotal !== undefined && Math.round(expectedTotal * 100) !== total)
+        throw new PackageBookingError("Package pricing changed. Refresh and review the total before paying");
 
-  // Capacity check — prevent overbooking
-  if (pkg.capacity && ((pkg.currentBookings || 0) + count) > pkg.capacity) {
-    return res.status(409).json({ error: "Package is fully booked — no more capacity available" });
+      const reference = () => "RDH-" + randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase();
+      const common = { userId: profile.id, packageId, packageDateId, status: "pending" as const, amountPaid: "0" };
+      const [booking] = await tx.insert(bookingsTable).values({
+        ...person, ...common, id: randomUUID(), reference: reference(), checkoutKey,
+        pilgrimCount, pilgrimDetails, notes, totalPrice: (total / 100).toFixed(2),
+        roomSurcharge: (surcharge / 100).toFixed(2), pilgrimType: "adult",
+        customData: { childrenCount: children.length, childrenExtra: childrenTotal / 100, checkoutFingerprint },
+      }).returning();
+      const linked = childRecords.length ? await tx.insert(bookingsTable).values(childRecords.map((child) => ({
+        ...child.person, ...common, id: randomUUID(), reference: reference(), parentBookingId: booking.id,
+        pilgrimCount: 1, pilgrimType: child.type, totalPrice: "0", batchId: booking.id,
+      }))).returning() : [];
+      await tx.insert(visaApplicationsTable).values([booking, ...linked].map((traveller) => ({
+        id: randomUUID(), bookingId: traveller.id, pilgrimName: traveller.fullName,
+        passportNumber: traveller.passportNumber, status: "awaiting_payment",
+      })));
+      await tx.update(packagesTable).set({ currentBookings: sql`${packagesTable.currentBookings} + ${seats}` })
+        .where(eq(packagesTable.id, packageId));
+      return booking;
+    });
+    return res.status(201).json(toBookingResponse(result));
+  } catch (error) {
+    if (error instanceof PackageBookingError) return res.status(error.status).json({ error: error.message });
+    throw error;
   }
-
-  // Fetch settings for accurate server-side pricing
-  const roomSettings = await db.query.siteSettingsTable.findFirst({ where: eq(siteSettingsTable.key, "room_surcharges") });
-  const roomSurcharges = (roomSettings?.value as any) || {};
-
-  // Compute pricing
-  let finalTotalPrice = 0;
-  const surcharge = Number(roomSurcharges[(safePilgrimFields.roomPreference || "quad").toLowerCase()]) || 0;
-  
-  if (parentBookingId) {
-    // Child bookings are paid for by the parent booking
-    finalTotalPrice = 0;
-  } else {
-    // Parent booking: Base + Room Surcharge + Children
-    const basePerPerson = Number(pkg.price) + surcharge;
-    const childrenExtra = Number((safePilgrimFields.customData as any)?.childrenExtra) || 0;
-    finalTotalPrice = (basePerPerson * count) + childrenExtra;
-  }
-
-  const reference = `RDH-${randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
-
-  const [booking] = await db.insert(bookingsTable).values({
-    id: randomUUID(),
-    reference,
-    userId: profile.id,
-    packageId,
-    packageDateId: packageDateId || undefined,
-    agentId,
-    status: "pending",     // always starts pending — never trust client
-    totalPrice: String(finalTotalPrice),
-    amountPaid: "0",       // always zero at creation
-    pilgrimCount: count,
-    pilgrimDetails,
-    notes,
-    roomSurcharge: String(surcharge),
-    pilgrimType: pilgrimType || "adult",
-    parentBookingId: parentBookingId || undefined,
-    batchId: batchId || undefined,
-    ...safePilgrimFields,  // only safe pilgrim-detail fields (name, passport, etc.)
-  }).returning();
-
-  // Increment package currentBookings
-  await db.update(packagesTable)
-    .set({ currentBookings: sql`${packagesTable.currentBookings} + ${count}` })
-    .where(eq(packagesTable.id, packageId));
-
-  // Always create an awaiting_payment visa application for new bookings
-  await ensureVisaApplication(booking.id, booking.fullName ?? undefined, booking.passportNumber ?? undefined, false);
-
-  return res.status(201).json(toBookingResponse(booking));
 });
+
 
 router.get("/bookings/:id", async (req, res) => {
   const { userId: clerkUserId } = getAuth(req);
@@ -302,10 +362,39 @@ router.put("/bookings/:id", async (req, res) => {
   if (visaDeliveryMessage !== undefined) updateData.visaDeliveryMessage = visaDeliveryMessage;
   if (ticketDocumentUrl !== undefined) updateData.ticketDocumentUrl = ticketDocumentUrl;
 
-  const [booking] = await db.update(bookingsTable)
-    .set(updateData)
-    .where(eq(bookingsTable.id, req.params.id))
-    .returning();
+  const booking = await db.transaction(async (tx) => {
+    const [current] = await tx.select().from(bookingsTable)
+      .where(eq(bookingsTable.id, req.params.id)).for("update");
+    if (!current) return;
+    if (status && status !== current.status) {
+      if (current.parentBookingId)
+        throw new PackageBookingError("Manage the group status from the main booking");
+      const linked = await tx.select().from(bookingsTable)
+        .where(and(eq(bookingsTable.parentBookingId, current.id), eq(bookingsTable.packageId, current.packageId))).for("update");
+      if (status === "cancelled" || current.status === "cancelled") {
+        const [pkg] = await tx.select().from(packagesTable)
+          .where(eq(packagesTable.id, current.packageId)).for("update");
+        const seats = [current, ...linked]
+          .filter((item) => (item.status === "cancelled") !== (status === "cancelled"))
+          .reduce((sum, item) => sum + item.pilgrimCount, 0);
+        const next = pkg.currentBookings + (status === "cancelled" ? -seats : seats);
+        if (status !== "cancelled" && pkg.capacity > 0 && next > pkg.capacity)
+          throw new PackageBookingError("There is insufficient capacity to restore this booking");
+        await tx.update(packagesTable).set({ currentBookings: Math.max(0, next) })
+          .where(eq(packagesTable.id, pkg.id));
+      }
+      if (linked.length) await tx.update(bookingsTable).set({ status, updatedAt: new Date() })
+        .where(inArray(bookingsTable.id, linked.map((item) => item.id)));
+    }
+    const [saved] = await tx.update(bookingsTable).set(updateData)
+      .where(eq(bookingsTable.id, req.params.id)).returning();
+    return saved;
+  }).catch((error: unknown) => {
+    if (error instanceof PackageBookingError) return error;
+    throw error;
+  });
+  if (booking instanceof PackageBookingError)
+    return res.status(booking.status).json({ error: booking.message });
   if (!booking) return res.status(404).json({ error: "Booking not found" });
 
   if (updateData.status === "confirmed") {
@@ -361,38 +450,46 @@ router.put("/bookings/:id", async (req, res) => {
 router.delete("/bookings/:id", async (req, res) => {
   const { userId: clerkUserId } = getAuth(req);
   if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
-
   const profile = await getProfileByClerkId(clerkUserId);
-  if (!profile) return res.status(404).json({ error: "Profile not found" });
+  if (profile?.accountStatus !== "active")
+    return res.status(403).json({ error: "Account access is unavailable" });
 
-  const booking = await db.query.bookingsTable.findFirst({
-    where: eq(bookingsTable.id, req.params.id),
-  });
-  if (!booking) return res.status(404).json({ error: "Booking not found" });
-
-  const isAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
-  if (!isAdmin && booking.userId !== profile.id) return res.status(403).json({ error: "Forbidden" });
-
-  // Only allow deleting pending bookings that have no payments
-  if (booking.status !== "pending" || Number(booking.amountPaid) > 0) {
-    return res.status(400).json({ error: "Can only delete pending bookings with no payments" });
+  try {
+    await db.transaction(async (tx) => {
+      const [booking] = await tx.select().from(bookingsTable)
+        .where(eq(bookingsTable.id, req.params.id)).for("update");
+      if (!booking) throw new PackageBookingError("Booking not found", 404);
+      if (!["admin", "super_admin", "staff"].includes(profile.role) && booking.userId !== profile.id)
+        throw new PackageBookingError("Forbidden", 403);
+      if (booking.status === "cancelled") return;
+      if (booking.parentBookingId) throw new PackageBookingError("Manage the travellers from the main booking");
+      const group = [booking, ...await tx.select().from(bookingsTable)
+        .where(and(eq(bookingsTable.parentBookingId, booking.id), eq(bookingsTable.packageId, booking.packageId))).for("update")];
+      const pending = group.filter((traveller) => traveller.status !== "cancelled");
+      if (pending.some((traveller) => traveller.status !== "pending" || Number(traveller.amountPaid) > 0))
+        throw new PackageBookingError("Only unpaid pending bookings can be cancelled here");
+      const ids = pending.map((traveller) => traveller.id);
+      const attempts = await tx.query.paymentsTable.findFirst({
+        where: and(inArray(paymentsTable.bookingId, ids), or(
+          eq(paymentsTable.method, "paystack"), eq(paymentsTable.status, "verified"),
+        )),
+      });
+      if (attempts)
+        throw new PackageBookingError("A payment attempt is on record. Ask support to reconcile it before cancelling.");
+      const seats = pending.reduce((total, traveller) => total + traveller.pilgrimCount, 0);
+      await tx.update(bookingsTable).set({ status: "cancelled", updatedAt: new Date() })
+        .where(inArray(bookingsTable.id, ids));
+      await tx.update(packagesTable)
+        .set({ currentBookings: sql`greatest(0, ${packagesTable.currentBookings} - ${seats})` })
+        .where(eq(packagesTable.id, booking.packageId));
+    });
+    return res.json({ success: true });
+  } catch (error) {
+    if (error instanceof PackageBookingError) return res.status(error.status).json({ error: error.message });
+    throw error;
   }
-
-  // Decrement package stock
-  if (booking.packageId) {
-    await db.update(packagesTable)
-      .set({ currentBookings: sql`${packagesTable.currentBookings} - ${booking.pilgrimCount || 1}` })
-      .where(eq(packagesTable.id, booking.packageId));
-  }
-
-  // Clean up related records
-  await db.delete(visaApplicationsTable).where(eq(visaApplicationsTable.bookingId, booking.id));
-  const { paymentsTable } = await import("@workspace/db");
-  await db.delete(paymentsTable).where(eq(paymentsTable.bookingId, booking.id));
-  await db.delete(bookingsTable).where(eq(bookingsTable.id, booking.id));
-
-  return res.json({ success: true });
 });
+
 
 router.put("/bookings/:id/archive", async (req, res) => {
   const { userId: clerkUserId } = getAuth(req);

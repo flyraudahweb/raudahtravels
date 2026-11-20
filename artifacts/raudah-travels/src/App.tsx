@@ -90,6 +90,11 @@ function ClerkQueryClientCacheInvalidator() {
   const prevUserIdRef = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
+    // Remove sensitive drafts saved under browser-wide keys by older releases.
+    try {
+      localStorage.removeItem("user_booking_draft");
+      localStorage.removeItem("agent_client_draft");
+    } catch { /* Storage is optional. */ }
     const unsubscribe = addListener(({ user }) => {
       const userId = user?.id ?? null;
       if (

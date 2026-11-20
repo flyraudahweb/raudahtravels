@@ -13,6 +13,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { createServer } from "node:net";
 import { randomUUID, createHmac } from "node:crypto";
+import { Readable } from "node:stream";
 import express from "express";
 import { validateOtaResponse } from "./helpers/ota-contract";
 import EmbeddedPostgres from "embedded-postgres";
@@ -48,17 +49,17 @@ vi.mock("../src/utils/email", () => ({
 }));
 vi.mock("../src/lib/r2", async (importOriginal) => {
   const original = await importOriginal<typeof import("../src/lib/r2")>();
-  const files = new Map<string, Buffer>();
+  const files = new Map<string, { buffer: Buffer; contentType: string; ownerId?: string }>();
   return {
     ...original,
-    uploadToR2: vi.fn(async (key: string, buffer: Buffer) => {
-      files.set(key, buffer);
+    uploadToR2: vi.fn(async (key: string, buffer: Buffer, contentType: string, metadata?: Record<string, string>) => {
+      files.set(key, { buffer, contentType, ownerId: metadata?.owner });
       return key;
     }),
     getFromR2: vi.fn(async (key: string) => {
-      const buffer = files.get(key);
-      if (!buffer) throw new Error("Object not found");
-      return { body: (async function* () { yield buffer; })(), contentLength: buffer.length };
+      const file = files.get(key);
+      if (!file) throw new Error("Object not found");
+      return { body: Readable.from([file.buffer]), contentLength: file.buffer.length, contentType: file.contentType, ownerId: file.ownerId };
     }),
   };
 });
@@ -182,6 +183,7 @@ beforeAll(async () => {
       maxBuffer: 4 * 1024 * 1024,
     },
   );
+  setupTrace("applying exported schema");
   await module.pool.query(schema);
   await module.pool.query("DROP TABLE ota_api_keys");
   await module.pool.query(
@@ -221,6 +223,7 @@ beforeAll(async () => {
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0015_ota_nuitee_hotels.sql"), "utf8"));
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0016_ota_nuitee_flights.sql"), "utf8"));
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0017_ota_checkout_claims.sql"), "utf8"));
+  await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0018_booking_consistency.sql"), "utf8"));
   await module.db.insert(module.profilesTable).values([
     {
       id: "user",
@@ -270,6 +273,7 @@ beforeAll(async () => {
   app.use("/api", otaRouter);
   app.use("/api", (await import("../src/routes/notifications")).default);
   app.use("/api", (await import("../src/routes/payments")).default);
+  app.use("/api", (await import("../src/routes/bookings")).default);
   app.use("/api", (await import("../src/routes/ehajj")).default);
   app.use("/api", (await import("../src/routes/documents")).default);
   app.use("/api", (await import("../src/routes/upload")).default);
@@ -278,7 +282,7 @@ beforeAll(async () => {
   server = app.listen(0, "127.0.0.1");
   await new Promise<void>((r) => server.on("listening", r));
   baseUrl = `http://127.0.0.1:${(server.address() as any).port}/api/ota`;
-}, 120000);
+}, Number(process.env.OTA_TEST_SETUP_TIMEOUT_MS ?? 120000));
 afterAll(async () => {
   vi.unstubAllGlobals();
   await new Promise<void>((r) => server?.close(() => r()) || r());
@@ -341,6 +345,8 @@ beforeEach(async () => {
     vi.fn(async (input: string | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.startsWith(baseUrl)) return httpFetch(input, init);
+      if (url.endsWith("api.paystack.co/integration/payment_session_timeout"))
+        return Response.json({ status: true, data: { payment_session_timeout: 120 } });
       if (url.endsWith("api.paystack.co/transaction/initialize")) {
         if (changeDuringInitialization)
           await module.db
@@ -1812,6 +1818,85 @@ async function legacyRequest(
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 }
+
+describe("package checkout consistency", () => {
+  async function packageWithCapacity(capacity: number) {
+    const id = randomUUID();
+    await module.db.insert(module.packagesTable).values({
+      id, name: "Group fixture", type: "umrah", description: "Test",
+      price: "200000", durationDays: 5, capacity, maxCapacity: capacity,
+      departureDate: "2027-01-01", returnDate: "2027-01-06",
+      pricingOverrides: { childPrice: 175000 },
+    });
+    return id;
+  }
+
+  it("reserves the last place only once and releases a cancelled reservation once", async () => {
+    const packageId = await packageWithCapacity(1);
+    const responses = await Promise.all(["user", "other"].map((owner) => legacyRequest("/bookings", owner, { packageId, fullName: "Guest" })));
+    expect(responses.map((r) => r.status).sort()).toEqual([201, 409]);
+    const booking = await responses.find((r) => r.ok)!.json();
+    const winner = booking.userId;
+    const cancelled = await Promise.all([1, 2].map(() => legacyRequest("/bookings/" + booking.id, winner, undefined, "DELETE")));
+    expect(cancelled.map((r) => r.status)).toEqual([200, 200]);
+    const [pkg] = await module.db.select().from(module.packagesTable).where(eq(module.packagesTable.id, packageId));
+    expect(pkg.currentBookings).toBe(0);
+  });
+
+  it("saves an entire group once using configured prices, and refuses an incomplete group", async () => {
+    const packageId = await packageWithCapacity(2);
+    const birth = new Date();
+    birth.setUTCFullYear(birth.getUTCFullYear() - 8);
+    const input = {
+      packageId, checkoutId: randomUUID(), fullName: "Adult Guest", expectedTotal: 375000,
+      children: [{ firstName: "Child", lastName: "Guest", dateOfBirth: birth.toISOString().slice(0, 10) }],
+    };
+    expect((await legacyRequest("/bookings", "user", { ...input, children: [{ firstName: "Child" }] })).status).toBe(400);
+    const responses = await Promise.all([1, 2].map(() => legacyRequest("/bookings", "user", input)));
+    expect(responses.map((r) => r.status)).toEqual([201, 201]);
+    const [first, replay] = await Promise.all(responses.map((r) => r.json()));
+    expect(first.id).toEqual(replay.id);
+    expect(first.totalPrice).toBe(375000);
+    const rows = await module.db.select().from(module.bookingsTable).where(eq(module.bookingsTable.packageId, packageId));
+    expect(rows).toHaveLength(2);
+    expect(rows.find((row) => row.parentBookingId === first.id)?.pilgrimType).toBe("child");
+  });
+
+  it("reuses one Paystack checkout while retaining the records needed for settlement", async () => {
+    const packageId = await packageWithCapacity(1);
+    const booking = await (await legacyRequest("/bookings", "user", { packageId, fullName: "Guest" })).json();
+    const originalFetch = globalThis.fetch;
+    let initializations = 0;
+    vi.stubGlobal("fetch", async (url: string | URL, options?: RequestInit) => {
+      if (!String(url).endsWith("api.paystack.co/transaction/initialize")) return originalFetch(url, options);
+      initializations++;
+      const { reference } = JSON.parse(String(options?.body));
+      return Response.json({ status: true, data: { reference, authorization_url: "https://checkout.paystack.com/package-session", access_code: "package-session" } });
+    });
+    const initialize = () => legacyRequest("/payments/paystack/initialize", "user", { bookingId: booking.id });
+    const responses = await Promise.all([initialize(), initialize()]);
+    expect(responses.some((r) => r.ok)).toBe(true);
+    const first = await responses.find((r) => r.ok)!.json();
+    expect((await (await initialize()).json()).reference).toBe(first.reference);
+    expect(initializations).toBe(1);
+    expect((await legacyRequest("/bookings/" + booking.id, "user", undefined, "DELETE")).status).toBe(409);
+    expect((await module.db.select().from(module.paymentsTable).where(eq(module.paymentsTable.bookingId, booking.id)))).toHaveLength(1);
+  });
+});
+
+it("requires private upload ownership and prevents shared caching", async () => {
+  const { uploadToR2 } = await import("../src/lib/r2");
+  const key = "passports/" + randomUUID() + ".pdf";
+  await uploadToR2(key, Buffer.from("fixture"), "application/pdf", { owner: "user" });
+  const file = "/files/" + key;
+  expect((await legacyRequest(file, undefined, undefined, "GET")).status).toBe(401);
+  expect((await legacyRequest(file, "other", undefined, "GET")).status).toBe(404);
+  const owned = await legacyRequest(file, "user", undefined, "GET");
+  expect(owned.status).toBe(200);
+  expect(owned.headers.get("cache-control")).toBe("private, no-store");
+  expect(await owned.text()).toBe("fixture");
+});
+
 async function packageFixture(references = ["RDH-package"]) {
   const packageId = randomUUID(),
     bookingId = randomUUID();
@@ -2152,6 +2237,8 @@ describe("OTA authorization and payments", () => {
               expect(init?.headers).toMatchObject({
                 Authorization: `Bearer ${livePaymentKey}`,
               });
+              if (url.pathname === "/integration/payment_session_timeout")
+                return fallback(input, init);
               if (url.pathname.endsWith("initialize")) {
                 expect(JSON.parse(String(init.body))).toMatchObject({
                   reference: booking.reference,
@@ -3222,6 +3309,14 @@ describe("OTA authorization and payments", () => {
     ).toBeNull();
     expect(supplierCalls).toBe(0);
   });
+  it("does not open checkout when the Paystack session could outlive the offer", async () => {
+    await create();
+    await module.db.update(module.otaBookingsTable).set({ expiresAt: new Date(Date.now() + 120000) })
+      .where(eq(module.otaBookingsTable.id, booking.id));
+    const response = await request(`/bookings/${booking.id}/pay`, "user", {});
+    expect(response.status).toBe(409);
+    expect(fetch).not.toHaveBeenCalledWith("https://api.paystack.co/transaction/initialize", expect.anything());
+  });
   it("serializes simultaneous payment redirect updates", async () => {
     await create();
     const responses = await Promise.all(
@@ -3236,6 +3331,24 @@ describe("OTA authorization and payments", () => {
     );
     expect(saved?.status).toBe("payment_pending");
     expect(supplierCalls).toBe(0);
+  });
+  it("rotates an interrupted unpublished payment session and keeps its original reference", async () => {
+    await create();
+    await module.db.update(module.otaBookingsTable).set({ paymentInitializationAt: new Date(Date.now() - 90000) })
+      .where(eq(module.otaBookingsTable.id, booking.id));
+    gatewayPatch = { status: "ongoing" };
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", async (url: string | URL, options?: RequestInit) => {
+      if (!String(url).endsWith("api.paystack.co/transaction/initialize")) return originalFetch(url, options);
+      const { reference } = JSON.parse(String(options?.body));
+      return Response.json({ status: true, data: { reference, authorization_url: "https://checkout.paystack.com/recovered" } });
+    });
+    const response = await request(`/bookings/${booking.id}/pay`, "user", {});
+    expect(response.status).toBe(200);
+    const saved = await module.db.query.otaBookingsTable.findFirst();
+    expect(saved?.reference).toBe(booking.reference);
+    expect(saved?.paymentReference).not.toBe(booking.reference);
+    expect(saved?.previousPaymentReferences).toContain(booking.reference);
   });
   it("rejects refund transaction IDs that collide when converted to JavaScript numbers", async () => {
     await create();

@@ -43,6 +43,7 @@ export default function DashboardPayExisting() {
   const [reference, setReference] = useState("");
   const [processing, setProcessing] = useState(false);
   const [done, setDone] = useState(false);
+  const [paymentVerified, setPaymentVerified] = useState(false);
   const [doneMethod, setDoneMethod] = useState<PayMethod>("online");
   const [donePaymentRef, setDonePaymentRef] = useState<string | undefined>();
   const [donePaymentId, setDonePaymentId] = useState<string | undefined>();
@@ -80,8 +81,17 @@ export default function DashboardPayExisting() {
         credentials: "include",
         body: JSON.stringify({ bookingId, email }),
       });
-      if (!res.ok) throw new Error("Failed to initialize payment");
-      const data = await res.json() as { accessCode: string; reference: string };
+      const data = await res.json() as { accessCode?: string; reference?: string; verified?: boolean; error?: string };
+      if (!res.ok) throw new Error(data.error || "Failed to initialize payment");
+      if (data.verified) {
+        setPaymentVerified(true);
+        setDonePaymentRef(data.reference || "");
+        setDoneMethod("online");
+        setDone(true);
+        setProcessing(false);
+        return;
+      }
+      if (!data.accessCode) throw new Error("Open the booking to check its payment status.");
       if (!window.PaystackPop) throw new Error("Paystack script not loaded");
 
       const popup = new window.PaystackPop();
@@ -98,6 +108,8 @@ export default function DashboardPayExisting() {
               const err = await verifyRes.json() as { error?: string };
               throw new Error(err.error ?? "Verification failed");
             }
+            const result = await verifyRes.json() as { verified?: boolean };
+            setPaymentVerified(result.verified === true);
           } catch {
             toast({
               title: "Payment received but unconfirmed",
@@ -117,12 +129,12 @@ export default function DashboardPayExisting() {
           setProcessing(false);
         },
         onError: () => {
-          toast({ title: "Payment error", description: "Something went wrong. Please try again or choose bank transfer.", variant: "destructive" });
+          toast({ title: "Payment status unavailable", description: "Check the booking before making another payment.", variant: "destructive" });
           setProcessing(false);
         },
       });
-    } catch {
-      toast({ title: "Payment error", description: "Could not launch payment. Please try bank transfer.", variant: "destructive" });
+    } catch (error) {
+      toast({ title: "Payment unavailable", description: error instanceof Error ? error.message : "Check the booking status before trying again.", variant: "destructive" });
       setProcessing(false);
     }
   };
@@ -180,7 +192,7 @@ export default function DashboardPayExisting() {
         id: donePaymentId ?? bookingId,
         amount: amountDue,
         method: doneMethod,
-        status: doneMethod === "online" ? "verified" : "pending",
+        status: doneMethod === "online" && paymentVerified ? "verified" : "pending",
         reference: donePaymentRef,
         createdAt: new Date().toISOString(),
         pilgrimName: user?.fullName ?? undefined,
@@ -202,15 +214,15 @@ export default function DashboardPayExisting() {
         {/* Success card */}
         <div className="bg-white rounded-3xl border border-[#DCE3F0] shadow-[0_8px_40px_rgba(45,49,153,0.08)] overflow-hidden">
           {/* Green header */}
-          <div className={`px-8 pt-10 pb-8 text-center ${doneMethod === "online" ? "bg-gradient-to-br from-emerald-500 to-emerald-600" : "bg-gradient-to-br from-[#2D3199] to-[#4C56B8]"}`}>
+          <div className={`px-8 pt-10 pb-8 text-center ${doneMethod === "online" && paymentVerified ? "bg-gradient-to-br from-emerald-500 to-emerald-600" : "bg-gradient-to-br from-[#2D3199] to-[#4C56B8]"}`}>
             <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-4">
               <CheckCircle2 className="w-9 h-9 text-white" />
             </div>
             <h2 className="text-2xl font-black text-white">
-              {doneMethod === "online" ? "Payment Confirmed!" : "Payment Submitted!"}
+              {doneMethod === "online" ? (paymentVerified ? "Payment Confirmed!" : "Payment verification pending") : "Payment Submitted!"}
             </h2>
             <p className="text-white/80 text-sm mt-2">
-              {doneMethod === "online"
+              {doneMethod === "online" && paymentVerified
                 ? "Your payment was processed successfully via Paystack."
                 : "Our team will verify your payment within 24 hours."}
             </p>
@@ -243,7 +255,7 @@ export default function DashboardPayExisting() {
           {/* Islamic message */}
           <div className="px-8 py-5 bg-[#FAFBFF] text-center">
             <p className="text-[#64748B] text-xs mt-1.5">
-              {doneMethod === "online"
+              {doneMethod === "online" && paymentVerified
                 ? "May Allah accept your Hajj/Umrah and grant you a blessed journey."
                 : "We've received your submission. Our team will confirm shortly, insha'Allah."}
             </p>

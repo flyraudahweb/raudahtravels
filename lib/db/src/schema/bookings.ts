@@ -32,6 +32,7 @@ export const pilgrimTypeEnum = pgEnum("pilgrim_type", [
 export const bookingsTable = pgTable("bookings", {
   id: text("id").primaryKey().default("gen_random_uuid()"),
   reference: text("reference").unique(),
+  checkoutKey: text("checkout_key").unique(),
   userId: text("user_id")
     .references(() => profilesTable.id),
   packageId: text("package_id")

@@ -202,38 +202,7 @@ export default function AgentClients() {
   const pageSize = 20;
   const lastPkgRef = useRef("");
   const autoOpenedRef = useRef(false);
-  const [isRestored, setIsRestored] = useState(false);
   const [result, setResult] = useState<{ reference: string } | null>(null);
-
-  // Restore draft on mount
-  useEffect(() => {
-    try {
-      const draft = localStorage.getItem("agent_client_draft");
-      if (draft) {
-        const parsed = JSON.parse(draft);
-        if (parsed.form) {
-          setForm(parsed.form);
-          if (parsed.form.amountPaid && !["", "500000", "1000000"].includes(String(parsed.form.amountPaid))) {
-            setIsCustomAmount(true);
-          }
-        }
-        if (parsed.regStep) setRegStep(parsed.regStep);
-        if (parsed.phoneCode) setPhoneCode(parsed.phoneCode);
-        if (parsed.pilgrimType) setPilgrimType(parsed.pilgrimType);
-      }
-    } catch (e) {}
-    setIsRestored(true);
-  }, []);
-
-  // Save draft on changes (includes phoneCode)
-  useEffect(() => {
-    if (!isRestored) return;
-    if (regStep === 6 || !dialogOpen) {
-      localStorage.removeItem("agent_client_draft");
-      return;
-    }
-    localStorage.setItem("agent_client_draft", JSON.stringify({ form, regStep, phoneCode, pilgrimType }));
-  }, [form, regStep, phoneCode, isRestored, dialogOpen, pilgrimType]);
 
   const cfg = useFormFieldConfig();
   const show = (name: string) => cfg(name).visible;
@@ -378,7 +347,6 @@ export default function AgentClients() {
         // Invalidate packages cache so capacity bar updates immediately
         qc.invalidateQueries({ queryKey: ["packages-active"] });
         setResult({ reference: data.reference });
-        localStorage.removeItem("agent_client_draft");
         setRegStep(6);
       };
 
@@ -393,24 +361,31 @@ export default function AgentClients() {
             const errBody = await res.json().catch(() => ({}));
             throw new Error((errBody as any).error || "Initialize failed");
           }
-          const pdata = await res.json() as { reference: string; accessCode: string };
+          const pdata = await res.json() as { reference?: string; accessCode?: string; verified?: boolean };
+          if (pdata.verified) return finishLocal();
+          if (!pdata.accessCode) throw new Error("Open the saved booking to check its payment status.");
           if (!(window as any).PaystackPop) throw new Error("Paystack script not loaded");
           
           const popup = new (window as any).PaystackPop();
           popup.resumeTransaction(pdata.accessCode, {
-            onSuccess: (transaction: any) => finishLocal(),
+            onSuccess: async ({ reference }: { reference: string }) => {
+              const verification = await fetch("/api/payments/paystack/verify", {
+                method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ reference }),
+              }).catch(() => null);
+              if (!verification?.ok)
+                toast({ title: "Payment verification pending", description: "Check the saved booking before making another payment." });
+              finishLocal();
+            },
             onCancel: () => {
-              fetch(`/api/bookings/${data.id}`, { method: "DELETE", credentials: "include" }).catch(() => {});
-              toast({ title: "Payment cancelled", description: "The payment window was closed and the pending booking has been discarded." });
+              toast({ title: "Payment cancelled", description: "The booking is saved. Check its payment status before retrying." });
             },
             onError: (err: Error) => {
-              fetch(`/api/bookings/${data.id}`, { method: "DELETE", credentials: "include" }).catch(() => {});
-              toast({ title: "Payment error", description: err.message || "Could not launch Paystack. The pending booking was discarded.", variant: "destructive" });
+              toast({ title: "Payment error", description: err.message || "The booking is saved. Check its payment status before retrying.", variant: "destructive" });
             }
           });
         } catch (err: any) {
-          fetch(`/api/bookings/${data.id}`, { method: "DELETE", credentials: "include" }).catch(() => {});
-          toast({ title: "Payment error", description: err.message || "Could not launch Paystack. The pending booking was discarded.", variant: "destructive" });
+          toast({ title: "Payment error", description: err.message || "The booking is saved. Check its payment status before retrying.", variant: "destructive" });
         }
       } else {
         finishLocal();
@@ -1412,7 +1387,6 @@ export default function AgentClients() {
                       setIsBatchSubmitting(false);
                       const successes = results.filter(r => r.success);
                       if (successes.length > 0) { 
-                        localStorage.removeItem("agent_client_draft"); 
                         setBatchResults(results); 
                         qc.invalidateQueries({ queryKey: ["agent-clients"] });
                         qc.invalidateQueries({ queryKey: ["agent-wallet"] });

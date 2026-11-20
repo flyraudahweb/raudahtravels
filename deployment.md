@@ -192,6 +192,14 @@ Railway is the simplest option for a monorepo with both services.
 - Copy the `DATABASE_URL` and set it on the API service
 - Railway auto-injects `DATABASE_URL` if you link the database to the service
 
+### Booking consistency rollout
+
+Before deploying the booking consistency update, apply [migration 0018](lib/db/drizzle/0018_booking_consistency.sql) in one transaction on the production PostgreSQL database. Run it during the release window with booking writes paused. It adds the durable checkout fields, records existing document access grants, and counts pending, confirmed, and completed bookings toward package capacity.
+
+Check the Paystack payment session timeout on each integration used by flight and hotel checkout. Set a finite timeout that leaves time to complete supplier fulfillment before the shortest offer expires. A timeout of `0` permits indefinite payment sessions, so the updated API declines to open those checkouts. Changing the timeout also affects other payment flows that use the same Paystack integration. [Paystack Integration API](https://paystack.com/docs/api/integration/)
+
+After release, verify the payment flow in a test environment and confirm that authenticated travellers and assigned agents can still open their historical documents. Purge any CDN caches that stored earlier public file responses.
+
 ---
 
 ## Step 4C — Deploy on Fly.io (API) + Cloudflare Pages (Frontend)
