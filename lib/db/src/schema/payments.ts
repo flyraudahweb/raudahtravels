@@ -5,7 +5,12 @@ import {
   numeric,
   pgEnum,
   boolean,
+  bigint,
+  unique,
+  check,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { profilesTable } from "./profiles";
@@ -43,6 +48,8 @@ export const paymentsTable = pgTable("payments", {
   }),
   checkoutRetiredAt: timestamp("checkout_retired_at", { withTimezone: true }),
   checkoutExpiresAt: timestamp("checkout_expires_at", { withTimezone: true }),
+  checkoutMode: text("checkout_mode"),
+  checkoutKeyFingerprint: text("checkout_key_fingerprint"),
   proofUrl: text("proof_url"),
   proofOfPaymentUrl: text("proof_of_payment_url"),
   verifiedBy: text("verified_by").references(() => profilesTable.id),
@@ -51,7 +58,29 @@ export const paymentsTable = pgTable("payments", {
   isArchived: boolean("is_archived").default(false).notNull(),
   archiveReason: text("archive_reason"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  check("payments_checkout_mode", sql`${table.checkoutMode} IS NULL OR ${table.checkoutMode} IN ('test', 'live')`),
+  uniqueIndex("payments_active_online_checkout")
+    .on(table.bookingId)
+    .where(sql`${table.method} = 'paystack' AND ${table.checkoutMode} IS NOT NULL AND ${table.checkoutRetiredAt} IS NULL AND ${table.status} IN ('pending', 'rejected')`),
+]);
+
+export const paystackSettlementsTable = pgTable("paystack_settlements", {
+  mode: text("mode").notNull(),
+  providerId: text("provider_id").notNull(),
+  reference: text("reference").notNull(),
+  kind: text("kind").notNull(),
+  bookingId: text("booking_id").notNull(),
+  packagePaymentId: text("package_payment_id"),
+  amountKobo: bigint("amount_kobo", { mode: "number" }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  unique("paystack_settlements_transaction").on(table.mode, table.providerId),
+  unique("paystack_settlements_reference").on(table.mode, table.reference),
+  check("paystack_settlements_mode", sql`${table.mode} IN ('test', 'live')`),
+  check("paystack_settlements_kind", sql`(${table.kind} = 'package') = (${table.packagePaymentId} IS NOT NULL) AND ${table.kind} IN ('package', 'ota')`),
+  check("paystack_settlements_amount", sql`${table.amountKobo} > 0`),
+]);
 
 export const insertPaymentSchema = createInsertSchema(paymentsTable).omit({
   id: true,

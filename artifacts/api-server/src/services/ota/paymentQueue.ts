@@ -48,7 +48,7 @@ export async function processOtaPayments() {
       isNull(jobs.completedAt),
     );
     try {
-      await fulfill(job.reference);
+      await fulfill(job.reference, job.bookingId);
       await db
         .update(jobs)
         .set({ completedAt: new Date(), lockedUntil: null, lastError: null })

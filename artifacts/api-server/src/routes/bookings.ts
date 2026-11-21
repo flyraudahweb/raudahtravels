@@ -6,7 +6,7 @@ import { getAuth } from "@clerk/express";
 import { eq, and, sql, desc, or, inArray } from "drizzle-orm";
 import { createHash, randomUUID } from "crypto";
 import { z } from "zod";
-import { confirmTravellerRecords } from "../services/payments/packageConfirmation";
+import { confirmPaidGroup, confirmTravellerRecords } from "../services/payments/packageConfirmation";
 import { retireExpiredPackageCheckouts } from "../services/payments/packagePaystack";
 
 const router = Router();
@@ -336,7 +336,7 @@ router.put("/bookings/:id", async (req, res) => {
   const { userId: clerkUserId } = getAuth(req);
   if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
   const actorProfile = await getProfileByClerkId(clerkUserId);
-  if (!actorProfile) return res.status(404).json({ error: "Profile not found" });
+  if (actorProfile?.accountStatus !== "active") return res.status(403).json({ error: "Account access is unavailable" });
   const isAdmin = ["admin", "super_admin", "staff"].includes(actorProfile.role);
   if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
 
@@ -360,11 +360,27 @@ router.put("/bookings/:id", async (req, res) => {
     const [current] = await tx.select().from(bookingsTable)
       .where(eq(bookingsTable.id, req.params.id)).for("update");
     if (!current) return;
+    if (status && status !== current.status && current.parentBookingId)
+      throw new PackageBookingError("Manage the group status from the main booking");
+    const linked = status && (status !== current.status || status === "confirmed" || status === "completed")
+      ? await tx.select().from(bookingsTable)
+        .where(and(eq(bookingsTable.parentBookingId, current.id), eq(bookingsTable.packageId, current.packageId),
+          eq(bookingsTable.isArchived, false))).for("update")
+      : [];
+    if (status === "confirmed" || status === "completed") {
+      if (current.isArchived) throw new PackageBookingError("Restore the booking before changing its status.");
+      const members = [current, ...linked];
+      const totals = await tx.select({
+        id: paymentsTable.bookingId, amount: sql<string>`SUM(${paymentsTable.amount})`,
+      }).from(paymentsTable).where(and(
+        inArray(paymentsTable.bookingId, members.map(({ id }) => id)),
+        eq(paymentsTable.status, "verified"), eq(paymentsTable.isArchived, false),
+      )).groupBy(paymentsTable.bookingId);
+      const paid = new Map(totals.map(({ id, amount }) => [id, Number(amount)]));
+      if (members.some(({ id, totalPrice }) => (paid.get(id) ?? 0) < Number(totalPrice)))
+        throw new PackageBookingError("Verify the full payment for this booking before confirming or completing it.");
+    }
     if (status && status !== current.status) {
-      if (current.parentBookingId)
-        throw new PackageBookingError("Manage the group status from the main booking");
-      const linked = await tx.select().from(bookingsTable)
-        .where(and(eq(bookingsTable.parentBookingId, current.id), eq(bookingsTable.packageId, current.packageId))).for("update");
       if (status === "cancelled" || current.status === "cancelled") {
         const [pkg] = await tx.select().from(packagesTable)
           .where(eq(packagesTable.id, current.packageId)).for("update");
@@ -495,18 +511,18 @@ router.put("/bookings/:id/archive", async (req, res) => {
 
   const { archiveReason } = req.body;
 
-  const [booking] = await db.update(bookingsTable)
-    .set({ isArchived: true, archiveReason: archiveReason || null, updatedAt: new Date() })
-    .where(eq(bookingsTable.id, req.params.id))
-    .returning();
+  const booking = await db.transaction(async (tx) => {
+    const [current] = await tx.update(bookingsTable)
+      .set({ isArchived: true, archiveReason: archiveReason || null, updatedAt: new Date() })
+      .where(eq(bookingsTable.id, req.params.id)).returning();
+    if (!current) return;
+    await tx.update(paymentsTable)
+      .set({ isArchived: true, archiveReason: archiveReason || "Archived with booking" })
+      .where(eq(paymentsTable.bookingId, current.id));
+    return current;
+  });
 
   if (!booking) return res.status(404).json({ error: "Booking not found" });
-
-  // Cascade archive to payments
-  const { paymentsTable } = await import("@workspace/db");
-  await db.update(paymentsTable)
-    .set({ isArchived: true, archiveReason: archiveReason || "Archived with booking" })
-    .where(eq(paymentsTable.bookingId, booking.id));
 
   return res.json(toBookingResponse(booking));
 });
@@ -519,18 +535,27 @@ router.put("/bookings/:id/restore", async (req, res) => {
   const isAdmin = ["admin", "super_admin", "staff"].includes(actorProfile.role);
   if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
 
-  const [booking] = await db.update(bookingsTable)
-    .set({ isArchived: false, archiveReason: null, updatedAt: new Date() })
-    .where(eq(bookingsTable.id, req.params.id))
-    .returning();
+  const booking = await db.transaction(async (tx) => {
+    // Package settlement serializes on this booking row, including late payments on archived bookings.
+    const [current] = await tx.update(bookingsTable)
+      .set({ isArchived: false, archiveReason: null, updatedAt: new Date() })
+      .where(eq(bookingsTable.id, req.params.id)).returning();
+    if (!current) return;
+    await tx.update(paymentsTable)
+      .set({ isArchived: false, archiveReason: null })
+      .where(eq(paymentsTable.bookingId, current.id));
+    const paid = sql`COALESCE((SELECT SUM(amount) FROM payments WHERE booking_id = ${current.id} AND status = 'verified' AND is_archived = false), 0)`;
+    const [updated] = await tx.update(bookingsTable).set({
+      amountPaid: paid,
+      status: sql`CASE WHEN ${bookingsTable.status} = 'pending' AND ${paid} >= ${bookingsTable.totalPrice}
+        THEN 'confirmed' ELSE ${bookingsTable.status} END`,
+    }).where(eq(bookingsTable.id, current.id)).returning();
+    if (updated && current.status === "pending" && updated.status === "confirmed")
+      await confirmPaidGroup(tx, updated);
+    return updated;
+  });
 
   if (!booking) return res.status(404).json({ error: "Booking not found" });
-
-  // Cascade restore to payments
-  const { paymentsTable } = await import("@workspace/db");
-  await db.update(paymentsTable)
-    .set({ isArchived: false, archiveReason: null })
-    .where(eq(paymentsTable.bookingId, booking.id));
 
   return res.json(toBookingResponse(booking));
 });

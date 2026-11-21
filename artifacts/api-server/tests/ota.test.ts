@@ -222,6 +222,7 @@ beforeAll(async () => {
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0017_ota_checkout_claims.sql"), "utf8"));
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0018_booking_consistency.sql"), "utf8"));
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0019_checkout_recovery.sql"), "utf8"));
+  await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0020_paystack_settlement_guards.sql"), "utf8"));
   await module.db.insert(module.profilesTable).values([
     {
       id: "user",
@@ -322,6 +323,7 @@ beforeEach(async () => {
   hotelQuotePayNow = true;
   paystackReferenceMismatch = false;
   await module.db.delete(module.otaDuffelEventsTable);
+  await module.db.delete(module.paystackSettlementsTable);
   await module.db.delete(module.otaPaymentJobsTable);
   await module.db.delete(module.otaEventsTable);
   await module.db.delete(module.otaBookingsTable);
@@ -368,7 +370,7 @@ beforeEach(async () => {
         return Response.json({
           status: true,
           data: {
-            id: 101,
+            id: url.endsWith("/part-two") ? 102 : 101,
             status: "success",
             currency: "NGN",
             amount,
@@ -968,6 +970,7 @@ describe("Nuitee hotel checkout", () => {
     const result = await first;
     expect(result.status).toBe(200);
     const link = (await result.json()).authorizationUrl;
+    gatewayPatch = { status: "abandoned", amount: pricing.totalKobo };
     expect(
       (await (await request(path, "user", {})).json()).authorizationUrl,
     ).toBe(link);
@@ -1876,6 +1879,10 @@ describe("package checkout consistency", () => {
     const responses = await Promise.all([initialize(), initialize()]);
     expect(responses.some((r) => r.ok)).toBe(true);
     const first = await responses.find((r) => r.ok)!.json();
+    gatewayPatch = {
+      status: "abandoned", amount: 20000000,
+      metadata: { type: "package_booking", bookingId: booking.id, userId: "user", packagePaymentId: first.payment.id },
+    };
     expect((await (await initialize()).json()).reference).toBe(first.reference);
     expect(initializations).toBe(1);
     expect((await legacyRequest("/bookings/" + booking.id, "user", undefined, "DELETE")).status).toBe(409);
@@ -1902,12 +1909,13 @@ describe("package checkout consistency", () => {
       } });
     });
     const initialize = () => legacyRequest("/payments/paystack/initialize", "user", { bookingId: renewal.id });
-    gatewayPatch = { status: "ongoing" };
+    gatewayPatch = { status: "ongoing", amount: 20000000, metadata: { bookingId: renewal.id, userId: "user" } };
     expect((await initialize()).status).toBe(409);
-    gatewayPatch = { status: "abandoned" };
+    gatewayPatch.status = "abandoned";
     const replaced = await initialize();
     expect(replaced.status).toBe(201);
     expect((await replaced.json()).accessCode).toBe("replacement");
+    gatewayPatch.metadata = { bookingId: cancellation.id, userId: "user" };
     const cancelled = await legacyRequest("/bookings/" + cancellation.id, "user", undefined, "DELETE");
     expect(cancelled.status).toBe(200);
     const oldPayments = (await module.db.query.paymentsTable.findMany())
@@ -1916,7 +1924,7 @@ describe("package checkout consistency", () => {
     expect(oldPayments.every(({ checkoutRetiredAt }) => checkoutRetiredAt)).toBe(true);
   });
 
-  it("moves a group and its seats together and accepts a top-up on the confirmed upgrade", async () => {
+  it("requires verified payment to confirm a group and accepts a top-up after an upgrade", async () => {
     const oldPackage = await packageWithCapacity(2);
     const destination = await packageWithCapacity(1);
     const birthday = new Date();
@@ -1924,6 +1932,11 @@ describe("package checkout consistency", () => {
     const creation = await legacyRequest("/bookings", "user", { packageId: oldPackage, fullName: "Parent",
       children: [{ firstName: "Child", lastName: "Guest", dateOfBirth: birthday.toISOString().slice(0, 10) }] });
     const booking = await creation.json();
+    expect((await legacyRequest("/bookings/" + booking.id, "admin", { status: "confirmed" }, "PUT")).status).toBe(409);
+    await module.db.insert(module.paymentsTable).values({
+      id: randomUUID(), bookingId: booking.id, userId: "user", amount: "375000", status: "verified", method: "cash",
+    });
+    await module.db.update(module.bookingsTable).set({ amountPaid: "375000" }).where(eq(module.bookingsTable.id, booking.id));
     const confirm = await legacyRequest("/bookings/" + booking.id, "admin", { status: "confirmed" }, "PUT");
     expect(confirm.status).toBe(200);
     const [child] = await module.db.select().from(module.bookingsTable)
@@ -1939,15 +1952,12 @@ describe("package checkout consistency", () => {
     expect((await upgrade()).status).toBe(409);
     await module.db.update(module.packagesTable).set({ capacity: 2, price: "300000" })
       .where(eq(module.packagesTable.id, destination));
-    await module.db.insert(module.paymentsTable).values({
-      id: randomUUID(), bookingId: booking.id, userId: "user", amount: "375000", status: "verified", method: "cash",
-    });
-    await module.db.update(module.bookingsTable).set({ amountPaid: "375000" }).where(eq(module.bookingsTable.id, booking.id));
     const upgraded = await upgrade();
     expect(upgraded.status).toBe(200);
     expect((await upgraded.json()).booking.totalPrice).toBe(475000);
     const members = await module.db.query.bookingsTable.findMany();
     expect(members.every(({ packageId }) => packageId === destination)).toBe(true);
+    expect(members.every(({ status }) => status === "pending")).toBe(true);
     const packages = await module.db.query.packagesTable.findMany();
     expect(packages.find(({ id }) => id === oldPackage)?.currentBookings).toBe(0);
     expect(packages.find(({ id }) => id === destination)?.currentBookings).toBe(2);
@@ -2061,6 +2071,41 @@ async function packageFixture(references = ["RDH-package"]) {
   return bookingId;
 }
 describe("shared Paystack payment isolation", () => {
+  it("binds a gateway transaction ID across OTA and package settlement", async () => {
+    await create();
+    const { fulfill } = await import("../src/services/ota/booking");
+    expect((await fulfill(booking.reference)).status).toBe("confirmed");
+
+    const bookingId = await packageFixture();
+    const response = await legacyRequest("/payments/paystack/verify", "user", { reference: "RDH-package" });
+    expect(response.status).toBe(409);
+    const saved = await module.db.query.bookingsTable.findFirst({ where: eq(module.bookingsTable.id, bookingId) });
+    expect(Number(saved?.amountPaid)).toBe(0);
+    expect(await module.db.query.paystackSettlementsTable.findMany()).toHaveLength(1);
+  });
+  it("disables new package checkouts while allowing an existing payment to settle", async () => {
+    await packageFixture();
+    const newBooking = await packageFixture([]);
+    await module.db.insert(module.siteSettingsTable).values({ id: randomUUID(), key: "paystack_enabled", value: false });
+    const start = await legacyRequest("/payments/paystack/initialize", "user", { bookingId: newBooking });
+    expect(start.status).toBe(503);
+    const fixture = await module.db.query.paymentsTable.findFirst();
+    gatewayPatch.metadata = { type: "package_booking", bookingId: fixture!.bookingId, userId: "user" };
+    expect((await legacyRequest("/payments/paystack/verify", "user", { reference: "RDH-package" })).status).toBe(200);
+  });
+  it("defers a manual package credit while a Paystack checkout can still settle", async () => {
+    const bookingId = await packageFixture();
+    const checkout = await module.db.query.paymentsTable.findFirst();
+    await module.db.update(module.paymentsTable).set({
+      checkoutUrl: "https://checkout.paystack.com/active",
+      checkoutExpiresAt: new Date(Date.now() + 100000),
+    }).where(eq(module.paymentsTable.id, checkout!.id));
+    const response = await legacyRequest("/payments/admin-record", "admin", {
+      bookingId, amount: 100000, method: "cash", markVerified: true,
+    });
+    expect(response.status).toBe(409);
+    expect(await module.db.query.paymentsTable.findMany()).toHaveLength(1);
+  });
   it("rejects customer-created online and wallet credits", async () => {
     const bookingId = await packageFixture();
     for (const method of ["paystack", "wallet"])
@@ -2115,7 +2160,7 @@ describe("shared Paystack payment isolation", () => {
             reference: "RDH-package",
           })
         ).status,
-      ).toBe(402);
+      ).toBe("reference" in patch ? 503 : 402);
     }
     expect(
       Number((await module.db.query.bookingsTable.findFirst())?.amountPaid),
@@ -2204,7 +2249,7 @@ describe("shared Paystack payment isolation", () => {
       .values({ id: randomUUID(), key: "paystack_secret_key", value: "" });
     expect(
       (await send(createHmac("sha512", "").update(body).digest("hex"))).status,
-    ).toBe(503);
+    ).toBe(401);
     expect(
       Number((await module.db.query.bookingsTable.findFirst())?.amountPaid),
     ).toBe(0);
@@ -2254,8 +2299,8 @@ describe("shared Paystack payment isolation", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
   });
   it("rolls back a competing wallet debit without overdrawing or crediting the losing booking", async () => {
-    const first = await packageFixture(["pending-one"]),
-      second = await packageFixture(["pending-two"]);
+    const first = await packageFixture([]),
+      second = await packageFixture([]);
     const agentId = randomUUID();
     await module.db.insert(module.agentsTable).values({
       id: agentId,
@@ -3451,6 +3496,7 @@ describe("OTA authorization and payments", () => {
       expiresAt: new Date(Date.now() + 180000),
     }).where(eq(module.otaBookingsTable.id, booking.id));
     const start = () => request(`/bookings/${booking.id}/pay`, "user", {});
+    gatewayPatch = { status: "abandoned" };
     expect((await (await start()).json()).authorizationUrl).toBe(url);
 
     await module.db.update(module.otaBookingsTable).set({
@@ -3489,6 +3535,7 @@ describe("OTA authorization and payments", () => {
     const { fulfill } = await import("../src/services/ota/booking");
     const confirmed = await fulfill(replacement);
     expect(confirmed.status).toBe("confirmed");
+    gatewayPatch = { id: 102 };
     await Promise.all([fulfill(original), fulfill(original)]);
     expect(supplierCalls).toBe(1);
     const events = await module.db.query.otaEventsTable.findMany({
@@ -3497,6 +3544,16 @@ describe("OTA authorization and payments", () => {
     expect(events).toHaveLength(1);
     expect(events[0].details).toMatchObject({ reference: original });
     expect((await module.db.query.otaBookingsTable.findFirst())?.paidPaymentReference).toBe(replacement);
+  });
+  it("records payment arriving after a checkout has closed without placing a supplier order", async () => {
+    await create();
+    await module.db.update(module.otaBookingsTable).set({ status: "cancelled" })
+      .where(eq(module.otaBookingsTable.id, booking.id));
+    const { fulfill } = await import("../src/services/ota/booking");
+    const result = await fulfill(booking.reference, booking.id);
+    expect(result.status).toBe("requires_review");
+    expect(result.paidPaymentReference).toBe(booking.reference);
+    expect(supplierCalls).toBe(0);
   });
   it("serializes simultaneous payment redirect updates", async () => {
     await create();
@@ -3515,9 +3572,10 @@ describe("OTA authorization and payments", () => {
   });
   it("rotates an interrupted unpublished payment session and keeps its original reference", async () => {
     await create();
-    await module.db.update(module.otaBookingsTable).set({ paymentInitializationAt: new Date(Date.now() - 90000) })
+    const startedAt = new Date(Date.now() - 180000);
+    await module.db.update(module.otaBookingsTable).set({ paymentInitializationAt: startedAt })
       .where(eq(module.otaBookingsTable.id, booking.id));
-    gatewayPatch = { status: "abandoned" };
+    gatewayPatch = { status: "abandoned", created_at: startedAt.toISOString() };
     const originalFetch = globalThis.fetch;
     vi.stubGlobal("fetch", async (url: string | URL, options?: RequestInit) => {
       if (!String(url).endsWith("api.paystack.co/transaction/initialize")) return originalFetch(url, options);

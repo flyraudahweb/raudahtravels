@@ -28,7 +28,7 @@ import multer from "multer";
 import path from "path";
 import { mkdirSync } from "fs";
 import { landingHeroSchema } from "../services/landingHero";
-import { retireExpiredPackageCheckouts } from "../services/payments/packagePaystack";
+import { packagePaystackMode, packageSalesModeAllowed, retireExpiredPackageCheckouts } from "../services/payments/packagePaystack";
 import { confirmPaidGroup } from "../services/payments/packageConfirmation";
 
 ["uploads/visa", "uploads/tickets"].forEach(d => { try { mkdirSync(d, { recursive: true }); } catch {} });
@@ -718,8 +718,13 @@ router.post("/admin/bookings/:id/upgrade-package", async (req, res) => {
           .where(eq(packagesTable.id, packageId));
       }
       const travel = { packageId: newPackageId, packageDateId: selectedDate, updatedAt: new Date() };
+      const balanceDue = changingPackage && amountPaid < nextPrice;
       if (children.length)
         await tx.update(bookingsTable).set(travel).where(inArray(bookingsTable.id, children.map(({ id }) => id)));
+      if (balanceDue) {
+        await tx.update(bookingsTable).set({ status: "pending" })
+          .where(and(eq(bookingsTable.parentBookingId, booking.id), eq(bookingsTable.status, "confirmed")));
+      }
       const [saved] = await tx.update(bookingsTable).set({
         ...travel,
         totalPrice: (nextPrice / 100).toFixed(2),
@@ -727,7 +732,8 @@ router.post("/admin/bookings/:id/upgrade-package", async (req, res) => {
           customData: { ...(booking.customData as Record<string, unknown> ?? {}),
             childrenExtra: bundledDependantsPrice / 100 },
         } : {}),
-        ...(changingPackage && amountPaid >= nextPrice && nextPrice > 0 ? { status: "confirmed" as const } : {}),
+        ...(balanceDue ? { status: "pending" as const }
+          : changingPackage && nextPrice > 0 ? { status: "confirmed" as const } : {}),
       }).where(eq(bookingsTable.id, bookingId)).returning();
 
       const priceDifference = (nextPrice - oldPrice) / 100;
@@ -1690,6 +1696,7 @@ router.post("/admin/registration-settings/test-connections", requireAccountAdmin
 });
 
 router.get("/admin/settings", async (_req, res) => {
+  res.set("Cache-Control", "no-store");
   const settings = await db.query.siteSettingsTable.findMany();
   const map: Record<string, any> = {};
   settings.forEach(s => { if (s.key !== "ota_config") map[s.key] = s.value; });
@@ -1711,6 +1718,8 @@ router.get("/admin/settings", async (_req, res) => {
     map.paystack_public_key = process.env.PAYSTACK_PUBLIC_KEY;
     map.paystack_public_key_source = "env";
   }
+  if (typeof map.paystack_public_key !== "string" || !/^pk_(test|live)_[A-Za-z0-9]+$/.test(map.paystack_public_key))
+    delete map.paystack_public_key;
   if (map.gemini_api_key) {
     const raw = String(map.gemini_api_key);
     map.gemini_api_key = raw.slice(0, 6) + "••••••••" + raw.slice(-4);
@@ -1822,6 +1831,17 @@ router.put("/admin/settings/:key", requireAccountAdmin, async (req, res) => {
   if (key === CONFIG_KEY || /^(whatsapp_|telegram_)/.test(key)) return res.status(400).json({ error: "Use Registration Agent settings to manage channel credentials securely" });
   if (!req.body || typeof req.body !== "object" || Array.isArray(req.body) || !Object.hasOwn(req.body, "value")) return res.status(400).json({ error: "A setting value is required" });
   const { value } = req.body;
+  const paymentSetting = ["paystack_public_key", "paystack_secret_key", "paystack_enabled"].includes(key);
+  if (paymentSetting && (req as any).adminProfile.role !== "super_admin")
+    return res.status(403).json({ error: "Only super admins can change payment settings" });
+  if (key === "paystack_public_key" && (typeof value !== "string" || (value !== "" && !/^pk_(test|live)_[A-Za-z0-9]+$/.test(value))))
+    return res.status(400).json({ error: "Enter a Paystack publishable key" });
+  if (key === "paystack_secret_key" && (typeof value !== "string" ||
+      (value !== "" && (!/^sk_(test|live)_[A-Za-z0-9]+$/.test(value) || !packageSalesModeAllowed(packagePaystackMode(value)))))) {
+    return res.status(400).json({ error: "Enter a Paystack secret key for the configured package payment mode" });
+  }
+  if (key === "paystack_enabled" && typeof value !== "boolean")
+    return res.status(400).json({ error: "Choose true or false for package online payments" });
   if (key === "landing_hero" && !landingHeroSchema.safeParse(value).success) {
     return res.status(400).json({ error: "Choose true or false for both slideshowEnabled and aircraftEnabled" });
   }
@@ -1833,7 +1853,7 @@ router.put("/admin/settings/:key", requireAccountAdmin, async (req, res) => {
   // Activity log
   try { const { userId: _clk } = getAuth(req); if (_clk) { const _c = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, _clk) }); if (_c) await db.insert(userActivityTable).values({ id: randomUUID(), userId: _c.id, eventType: "settings_updated", metadata: { actorName: _c.fullName, actorRole: _c.role, settingKey: key } }); } } catch (_) { /* non-blocking */ }
 
-  return res.status(200).json(result);
+  return res.status(200).json(key === "paystack_secret_key" ? { ...result, value: undefined, configured: !!value } : result);
 });
 
 // ── Booking Form Fields ───────────────────────────────────────────────────────

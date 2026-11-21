@@ -21,6 +21,7 @@ import uploadRouter from "./upload";
 import whatsappRouter from "./whatsapp";
 import telegramRouter from "./telegram";
 import aiRegistrationRouter from "./ai-registration";
+import { getPackagePaystackKeys, packagePaystackMode, packageSalesModeAllowed } from "../services/payments/packagePaystack";
 
 const router: IRouter = Router();
 
@@ -30,12 +31,10 @@ function getWebhookUrl(): string {
 }
 
 router.get("/config", async (_req, res) => {
-  const [pkSetting, enabledSetting] = await Promise.all([
-    db.query.siteSettingsTable.findFirst({ where: eq(siteSettingsTable.key, "paystack_public_key") }),
-    db.query.siteSettingsTable.findFirst({ where: eq(siteSettingsTable.key, "paystack_enabled") }),
-  ]);
-  const paystackPublicKey = (pkSetting?.value as string | undefined) ?? process.env.PAYSTACK_PUBLIC_KEY ?? "";
-  const paystackEnabled = enabledSetting ? Boolean(enabledSetting.value) : true;
+  const { enabled, publicKey, secretKey } = await getPackagePaystackKeys();
+  const mode = packagePaystackMode(secretKey);
+  const paystackPublicKey = typeof publicKey === "string" && /^pk_(test|live)_[A-Za-z0-9]+$/.test(publicKey) ? publicKey : "";
+  const paystackEnabled = enabled && packageSalesModeAllowed(mode);
   return res.json({ paystackPublicKey, webhookUrl: getWebhookUrl(), paystackEnabled });
 });
 

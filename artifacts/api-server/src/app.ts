@@ -77,6 +77,12 @@ app.use(cors({
   origin: corsOrigins.length > 0 ? corsOrigins : true,
 }));
 
+app.use([
+  "/api/payments/paystack/webhook", "/api/ota/payments/webhook",
+], express.json({
+  limit: "128kb",
+  verify: (req, _res, buf) => { (req as any).rawBody = buf; },
+}));
 app.use(express.json({
   limit: "10mb",
   verify: (req, _res, buf) => {

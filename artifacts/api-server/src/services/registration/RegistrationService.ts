@@ -165,8 +165,15 @@ export async function createBooking(input: CreateBookingInput): Promise<{ bookin
       userId = newProfile.id;
     }
 
-    const markVerified = Boolean(input.markVerified);
-    const amountPaidInput = Number(input.amountPaid) || 0;
+    const paymentMethod = input.paymentMethod || "cash";
+    if (!["cash", "bank_transfer", "ussd", "paystack"].includes(paymentMethod))
+      throw new RegistrationError("Choose a supported payment method", 400);
+    const amountPaidInput = Number(input.amountPaid ?? 0);
+    if (!Number.isFinite(amountPaidInput) || amountPaidInput < 0 || amountPaidInput > price)
+      throw new RegistrationError("The recorded payment amount is outside the booking balance", 400);
+    const markVerified = input.markVerified === true;
+    if (markVerified && (paymentMethod === "paystack" || amountPaidInput <= 0))
+      throw new RegistrationError("Only explicitly recorded offline payments can be verified during registration", 400);
 
     [booking] = await tx.insert(bookingsTable).values({
       id: randomUUID(),
@@ -176,9 +183,9 @@ export async function createBooking(input: CreateBookingInput): Promise<{ bookin
       packageDateId: nullify(input.packageDateId) as string | undefined,
       agentId: nullify(input.agentId) as string | undefined,
       registeredByStaffId: input.registeredByStaffId || undefined,
-      status: markVerified && (amountPaidInput || price) >= price ? "confirmed" : "pending",
+      status: markVerified && amountPaidInput >= price ? "confirmed" : "pending",
       totalPrice: String(price),
-      amountPaid: markVerified ? String(amountPaidInput || price) : "0",
+      amountPaid: markVerified ? String(amountPaidInput) : "0",
       pilgrimCount: 1,
       civility: nullify(input.civility) as string | undefined,
       firstName: nullify(input.firstName) as string | undefined,
@@ -257,14 +264,14 @@ export async function createBooking(input: CreateBookingInput): Promise<{ bookin
       });
     }
 
-    const initialAmountPaid = Number(booking.amountPaid);
+    const initialAmountPaid = paymentMethod === "paystack" ? 0 : amountPaidInput;
     if (initialAmountPaid > 0) {
       await tx.insert(paymentsTable).values({
         id: randomUUID(),
         bookingId: booking.id,
         userId: booking.userId,
         amount: String(initialAmountPaid),
-        method: (input.paymentMethod || "cash") as "paystack" | "bank_transfer" | "ussd" | "cash" | "wallet",
+        method: paymentMethod as "bank_transfer" | "ussd" | "cash",
         status: markVerified ? "verified" : "pending",
         reference: input.paymentReference || `INIT-${booking.reference}`,
         proofUrl: input.paymentProofUrl || null,

@@ -8,8 +8,6 @@ import { getAuth, clerkClient } from "@clerk/express";
 import {
   randomUUID,
   createHash,
-  createHmac,
-  timingSafeEqual,
 } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
@@ -76,7 +74,10 @@ import {
 import { DUFFEL_EVENTS } from "../services/ota/duffelWebhookProtocol";
 import {
   expiredUnpaidPaystackSession,
+  isPaystackReference,
   lookupPaystackTransaction,
+  matchesPaystackBinding,
+  matchesPaystackSignature,
   providerTransactionId,
 } from "../services/payments/paystackProof";
 import {
@@ -1167,25 +1168,29 @@ router.post(
     const current = await readCheckout();
     if (!current) throw new OtaError("Checkout changed. Refresh before paying.", 409);
 
-    if (current.authorizationUrl && current.paymentSessionExpiresAt &&
-        current.paymentSessionExpiresAt.getTime() > Date.now()) {
-      res.json({ authorizationUrl: current.authorizationUrl });
-      return;
-    }
-
     const timeout = await otaPaystackTimeoutSeconds(current.mode, current.supplier);
     const existingReference = activeOtaPaymentReference(current);
     const publishedUrl = current.authorizationUrl;
-    if (publishedUrl) {
+    const checkPreviousPayment = async () => {
       const gateway = await lookupPaystackTransaction(existingReference, await paystackKey(current.mode, current.supplier));
+      if (!gateway) return null;
+      if (!matchesPaystackBinding(gateway, {
+        mode: current.mode, amountKobo: current.amountKobo, reference: existingReference,
+        purpose: "ota", bookingId: current.id,
+      })) throw new OtaError("The previous payment could not be verified. Check this booking before paying again.", 409);
       if (gateway?.status === "success") {
         await enqueuePayment(existingReference, current.id);
         throw new OtaError("Payment is being verified. Check the booking status before paying again.", 409);
       }
+      return gateway;
+    };
+    if (publishedUrl) {
+      const gateway = await checkPreviousPayment();
+      if (!gateway) throw new OtaError("The previous payment could not be verified. Check this booking before paying again.", 409);
       if (!expiredUnpaidPaystackSession(gateway, current.mode, timeout, current.paymentSessionExpiresAt)) {
         const createdAt = Date.parse(gateway?.created_at ?? gateway?.createdAt);
-        if (!current.paymentSessionExpiresAt && gateway?.domain === current.mode &&
-            Number.isFinite(createdAt) && createdAt + timeout * 1000 > Date.now()) {
+        const deadline = current.paymentSessionExpiresAt?.getTime() ?? createdAt + timeout * 1000;
+        if (deadline > Date.now() && ["abandoned", "failed"].includes(gateway.status)) {
           const latest = await readCheckout();
           if (latest?.authorizationUrl === publishedUrl &&
               activeOtaPaymentReference(latest) === existingReference) {
@@ -1230,23 +1235,12 @@ router.post(
           : isNull(bookings.paymentInitializationAt),
       ))
       .returning({ id: bookings.id });
-    if (!claim) {
-      const latest = await readCheckout();
-      if (latest?.authorizationUrl && latest.paymentSessionExpiresAt &&
-          latest.paymentSessionExpiresAt.getTime() > Date.now()) {
-        res.json({ authorizationUrl: latest.authorizationUrl });
-        return;
-      }
+    if (!claim)
       throw new OtaError("A payment session is being prepared. Refresh the booking before trying again.", 409);
-    }
     if (!publishedUrl && current.paymentInitializationAt) {
-      const gateway = await lookupPaystackTransaction(reference, await paystackKey(current.mode, current.supplier));
-      if (gateway?.status === "success") {
-        await enqueuePayment(reference, current.id);
-        throw new OtaError("Payment is being verified. Check the booking status before paying again.", 409);
-      }
+      const gateway = await checkPreviousPayment();
       if (gateway) {
-        if (gateway.domain !== current.mode || !["failed", "abandoned", "timeout"].includes(gateway.status))
+        if (!expiredUnpaidPaystackSession(gateway, current.mode, timeout, null, current.paymentInitializationAt))
           throw new OtaError("The previous payment may still be processing. Check this booking before paying again.", 409);
         // This link was never published. Keep its reference for late callbacks.
         const nextReference = "OTA-" + randomUUID();
@@ -1472,7 +1466,7 @@ router.post(
     const row = await owned(req);
     res.json({
       booking: customerBooking(row.status === "payment_pending"
-        ? await fulfill(activeOtaPaymentReference(row)) : row),
+        ? await fulfill(activeOtaPaymentReference(row), row.id) : row),
     });
   }),
 );
@@ -1517,12 +1511,12 @@ export async function otaPaymentWebhook(req: Request, res: Response) {
   try {
     const raw = (req as any).rawBody as Buffer;
     const signature = req.get("x-paystack-signature") || "";
-    if (!raw || !/^[a-fA-F0-9]{128}$/.test(signature))
+    if (!raw || raw.length > 131072 || !/^[a-fA-F0-9]{128}$/.test(signature))
       return res.status(401).json({ error: "Invalid signature" });
     const reference = req.body?.data?.reference;
     const bookingId = req.body?.data?.metadata?.otaBookingId;
     const booking =
-      typeof reference === "string" && typeof bookingId === "string"
+      isPaystackReference(reference) && z.string().uuid().safeParse(bookingId).success
         ? await db.query.otaBookingsTable.findFirst({
             columns: { mode: true, supplier: true },
             where: and(
@@ -1531,18 +1525,10 @@ export async function otaPaymentWebhook(req: Request, res: Response) {
             ),
           })
         : undefined;
-    const hash = createHmac(
-      "sha512",
-      await paystackKey(booking?.mode, booking?.supplier),
-    )
-      .update(raw || Buffer.alloc(0))
-      .digest();
-    const sig = Buffer.from(signature, "hex");
-    if (sig.length !== hash.length || !timingSafeEqual(hash, sig))
+    if (!matchesPaystackSignature(raw, signature, await paystackKey(booking?.mode, booking?.supplier)))
       return res.status(401).json({ error: "Invalid signature" });
     if (
-      req.body.event === "charge.success" &&
-      req.body.data?.metadata?.otaBookingId
+      req.body.event === "charge.success" && booking
     )
       await enqueuePayment(
         String(req.body.data.reference),
@@ -2055,7 +2041,7 @@ router.post(
     });
     if (!row) throw new OtaError("Booking not found", 404);
     const updated = row.status === "payment_pending"
-      ? await fulfill(activeOtaPaymentReference(row)) : row;
+      ? await fulfill(activeOtaPaymentReference(row), row.id) : row;
     await audit(row.id, userId, "operator_payment_checked");
     res.json({ booking: updated });
   }),

@@ -13,16 +13,23 @@ import {
 import { createNotification } from "../utils/notify.js";
 import { getAuth } from "@clerk/express";
 import { eq, and, sql, desc, inArray, isNotNull, isNull } from "drizzle-orm";
-import { randomUUID, createHmac, timingSafeEqual } from "crypto";
+import { randomUUID } from "crypto";
 import { sendPaymentReceipt } from "../utils/email";
 import { logger } from "../lib/logger";
 import {
   expiredUnpaidPaystackSession,
   getPaystackSessionTimeout,
+  isPaystackReference,
   lookupPaystackTransaction,
+  matchesPaystackBinding,
   matchesPaystackProof,
+  matchesPaystackSignature,
 } from "../services/payments/paystackProof";
-import { canPayPackage, getPackagePaystackKeys as getPaystackKeys } from "../services/payments/packagePaystack";
+import {
+  canPayPackage, getPackagePaystackKeys as getPaystackKeys, packageBalanceKobo, packagePaystackMode,
+  packageSalesModeAllowed, packageVerificationKey, paystackKeyFingerprint, retireExpiredPackageCheckouts,
+} from "../services/payments/packagePaystack";
+import { claimPaystackSettlement } from "../services/payments/paystackSettlement";
 import { confirmPaidGroup } from "../services/payments/packageConfirmation";
 import { otaAppOrigin } from "../services/ota/appOrigin";
 
@@ -516,12 +523,23 @@ router.put("/payments/:id/verify", async (req, res) => {
   let payment: typeof paymentsTable.$inferSelect | undefined;
   let confirmedBooking: typeof bookingsTable.$inferSelect | undefined;
 
-  await db.transaction(async (tx) => {
-    if (candidate.bookingId)
-      await tx.execute(sql`SELECT id FROM bookings WHERE id = ${candidate.bookingId} FOR UPDATE`);
+  const blocked = await db.transaction(async (tx) => {
+    const [currentBooking] = await tx.select().from(bookingsTable)
+      .where(eq(bookingsTable.id, candidate.bookingId)).for("update");
+    const current = await tx.query.paymentsTable.findFirst({
+      where: eq(paymentsTable.id, candidate.id),
+    });
+    if (!current || current.status !== "pending" || current.isArchived) return undefined;
+    if (status === "verified") {
+      if (!currentBooking || !canPayPackage(currentBooking) ||
+          Math.round(Number(current.amount) * 100) > packageBalanceKobo(currentBooking))
+        return "This payment exceeds the available balance or the booking can no longer accept payment.";
+      if (!await retireExpiredPackageCheckouts(tx, [candidate.bookingId]))
+        return "Resolve the open Paystack payment before verifying another payment.";
+    }
     const [p] = await tx
       .update(paymentsTable)
-      .set({ status, notes })
+      .set({ status, notes, ...(status === "verified" ? { verifiedBy: actorProfile.id, verifiedAt: new Date() } : {}) })
       .where(
         and(
           eq(paymentsTable.id, req.params.id),
@@ -530,7 +548,7 @@ router.put("/payments/:id/verify", async (req, res) => {
         ),
       )
       .returning();
-    if (!p) return; // already processed or not found
+    if (!p) return undefined;
     payment = p;
 
     if (status === "verified" && p.bookingId) {
@@ -552,7 +570,9 @@ router.put("/payments/:id/verify", async (req, res) => {
         confirmedBooking = booking;
       }
     }
+    return undefined;
   });
+  if (blocked) return res.status(409).json({ error: blocked });
 
   if (!payment)
     return res
@@ -735,8 +755,13 @@ router.post("/payments/paystack/initialize", async (req, res) => {
       .json({ error: "A booking and valid email are required" });
 
   try {
-    const { secretKey } = await getPaystackKeys();
+    const { secretKey, enabled } = await getPaystackKeys();
     const mode = paymentMode(secretKey);
+    const allowNewCheckout = enabled && packageSalesModeAllowed(mode);
+    const fingerprint = paystackKeyFingerprint(secretKey);
+    function requireNewCheckout() {
+      if (!allowNewCheckout) throw new OnlinePaymentError("Online package checkout is currently unavailable", 503);
+    }
     const attempt = await db.transaction(async (tx) => {
       const [booking] = await tx
         .select()
@@ -757,9 +782,7 @@ router.post("/payments/paystack/initialize", async (req, res) => {
       }
       if (!canPayPackage(booking))
         throw new OnlinePaymentError("This booking cannot accept payment");
-      const balance =
-        Math.round(Number(booking.totalPrice) * 100) -
-        Math.round(Number(booking.amountPaid) * 100);
+      const balance = packageBalanceKobo(booking);
       if (balance <= 0)
         throw new OnlinePaymentError("No outstanding balance on this booking");
       const existing = await tx.query.paymentsTable.findMany({
@@ -789,9 +812,7 @@ router.post("/payments/paystack/initialize", async (req, res) => {
             payment: current,
             balance,
             samePayerAndAmount,
-            action: samePayerAndAmount && current.checkoutExpiresAt && current.checkoutExpiresAt.getTime() > Date.now()
-              ? "reuse" as const
-              : "check_published" as const,
+            action: "check_published" as const,
           };
         }
         if (!current.checkoutInitializedAt)
@@ -807,6 +828,7 @@ router.post("/payments/paystack/initialize", async (req, res) => {
           .returning();
         return { payment, balance, samePayerAndAmount, action: "resume" as const };
       }
+      requireNewCheckout();
       const [payment] = await tx
         .insert(paymentsTable)
         .values({
@@ -818,6 +840,8 @@ router.post("/payments/paystack/initialize", async (req, res) => {
           status: "pending",
           reference: "RDH-" + randomUUID(),
           checkoutInitializedAt: new Date(),
+          checkoutMode: mode,
+          checkoutKeyFingerprint: fingerprint,
         })
         .returning();
       return { payment, balance, samePayerAndAmount: true, action: "initialize" as const };
@@ -831,15 +855,15 @@ router.post("/payments/paystack/initialize", async (req, res) => {
         reference: payment.reference,
       });
     let payment = attempt.payment;
-    if (attempt.action === "reuse") return send(payment);
-    const timeout = await getPaystackSessionTimeout(secretKey);
     if (attempt.action !== "initialize") {
+      const verificationKey = packageVerificationKey(payment, secretKey);
+      const verificationMode = paymentMode(verificationKey);
       const gateway = await lookupPaystackTransaction(
         payment.reference!,
-        secretKey,
+        verificationKey,
       );
       if (gateway?.status === "success") {
-        const result = await settleOnlinePayment(payment, gateway, mode);
+        const result = await settleOnlinePayment(payment, gateway, verificationMode);
         notifyOnlinePayment(result, payment.reference!);
         return res.json({
           verified: true,
@@ -847,19 +871,26 @@ router.post("/payments/paystack/initialize", async (req, res) => {
           reference: payment.reference,
         });
       }
+      if (gateway && !matchesPaystackBinding(gateway, packageBinding(payment, verificationMode)))
+        throw new OnlinePaymentError("The previous payment does not match this package booking.");
+      const previousTimeout = await getPaystackSessionTimeout(verificationKey);
       const wasPublished = attempt.action === "check_published";
       const legacyAttempt = attempt.action === "check_legacy";
       const canReplace = expiredUnpaidPaystackSession(
-        gateway, mode, timeout, payment.checkoutExpiresAt, payment.createdAt,
+        gateway, verificationMode, previousTimeout, payment.checkoutExpiresAt, payment.createdAt,
       );
       if (wasPublished && !canReplace) {
-        if (attempt.samePayerAndAmount && gateway && !payment.checkoutExpiresAt && !timeout &&
-            ["abandoned", "failed"].includes(gateway.status) && gateway.domain === mode)
-          return send(payment);
-        if (attempt.samePayerAndAmount && gateway && !payment.checkoutExpiresAt && timeout && gateway.domain === mode) {
-          const created = Date.parse(gateway.created_at ?? gateway.createdAt);
-          if (Number.isFinite(created) && created + timeout * 1000 > Date.now())
-            return send(payment);
+        const startedAt = Date.parse(gateway?.created_at ?? gateway?.createdAt);
+        const sessionActive = payment.checkoutExpiresAt
+          ? payment.checkoutExpiresAt.getTime() > Date.now()
+          : previousTimeout === 0 || startedAt + previousTimeout * 1000 > Date.now();
+        if (attempt.samePayerAndAmount && gateway && sessionActive &&
+            packageSalesModeAllowed(verificationMode) && ["abandoned", "failed"].includes(gateway.status)) {
+          const current = await db.query.paymentsTable.findFirst({
+            where: and(eq(paymentsTable.id, payment.id), eq(paymentsTable.status, payment.status),
+              eq(paymentsTable.isArchived, false), isNull(paymentsTable.checkoutRetiredAt)),
+          });
+          if (current) return send(current);
         }
         throw new OnlinePaymentError(
           "The previous payment may still be processing. Check this booking before trying again.",
@@ -869,12 +900,15 @@ router.post("/payments/paystack/initialize", async (req, res) => {
         throw new OnlinePaymentError(
           "An earlier payment attempt needs reconciliation. Contact support before paying again.",
         );
-      if (attempt.action === "resume" && gateway &&
-          (gateway.domain !== mode || !["abandoned", "failed", "timeout"].includes(gateway.status)))
+      if (attempt.action === "resume" && gateway && !canReplace)
         throw new OnlinePaymentError(
           "The previous payment may still be processing. Check this booking before trying again.",
         );
-      if (gateway || !attempt.samePayerAndAmount) {
+      if (!gateway && payment.checkoutKeyFingerprint && payment.checkoutKeyFingerprint !== paystackKeyFingerprint(verificationKey))
+        throw new OnlinePaymentError("The original Paystack account must be reconciled before paying again.");
+      requireNewCheckout();
+      if (gateway || !attempt.samePayerAndAmount || (payment.checkoutMode && payment.checkoutMode !== mode) ||
+          (payment.checkoutKeyFingerprint && payment.checkoutKeyFingerprint !== fingerprint)) {
         // Keep the original reference available for reconciling late payments.
         const previous = payment;
         payment = await db.transaction(async (tx) => {
@@ -886,8 +920,7 @@ router.post("/payments/paystack/initialize", async (req, res) => {
           if (
             !booking ||
             !canPayPackage(booking) ||
-            Math.round(Number(booking.totalPrice) * 100) -
-              Math.round(Number(booking.amountPaid) * 100) !== attempt.balance
+            packageBalanceKobo(booking) !== attempt.balance
           )
             throw new OnlinePaymentError(
               "The booking balance changed. Refresh the booking.",
@@ -925,6 +958,8 @@ router.post("/payments/paystack/initialize", async (req, res) => {
               reference: "RDH-" + randomUUID(),
               status: "pending",
               checkoutInitializedAt: new Date(),
+              checkoutMode: mode,
+              checkoutKeyFingerprint: fingerprint,
             })
             .returning();
           return replacement;
@@ -932,6 +967,9 @@ router.post("/payments/paystack/initialize", async (req, res) => {
       }
     }
 
+    const timeout = await getPaystackSessionTimeout(secretKey);
+    if (timeout === 0)
+      throw new OnlinePaymentError("Online package checkout is unavailable until the payment session timeout is configured", 503);
     const upstream = await fetch(
       "https://api.paystack.co/transaction/initialize",
       {
@@ -947,7 +985,10 @@ router.post("/payments/paystack/initialize", async (req, res) => {
           amount: Math.round(Number(payment.amount) * 100),
           currency: "NGN",
           reference: payment.reference,
-          metadata: { bookingId, userId: profile.id, type: "package_booking" },
+          metadata: {
+            bookingId, userId: profile.id, type: "package_booking",
+            ...(payment.checkoutMode ? { packagePaymentId: payment.id } : {}),
+          },
           ...(profile.role === "agent" && otaAppOrigin()
             ? { callback_url: `${otaAppOrigin()}/agent/bookings` } : {}),
         }),
@@ -973,7 +1014,7 @@ router.post("/payments/paystack/initialize", async (req, res) => {
       const [booking] = await tx.select().from(bookingsTable)
         .where(eq(bookingsTable.id, bookingId)).for("update");
       if (!booking || !canPayPackage(booking) ||
-          Math.round(Number(booking.totalPrice) * 100) - Math.round(Number(booking.amountPaid) * 100) !== Math.round(Number(payment.amount) * 100))
+          packageBalanceKobo(booking) !== Math.round(Number(payment.amount) * 100))
         return;
       const [ready] = await tx.update(paymentsTable)
         .set({
@@ -1012,15 +1053,12 @@ class OnlinePaymentError extends Error {
   }
 }
 function paymentMode(secret: string): "test" | "live" {
-  const match = /^sk_(test|live)_/.exec(secret);
-  if (!match) throw new OnlinePaymentError("Paystack is not configured", 503);
-  return match[1] as "test" | "live";
+  const mode = packagePaystackMode(secret);
+  if (mode !== "test" && mode !== "live") throw new OnlinePaymentError("Paystack is not configured", 503);
+  return mode;
 }
 async function registeredOnlinePayment(reference: unknown) {
-  if (
-    typeof reference !== "string" ||
-    !/^[A-Za-z0-9_.=-]{1,128}$/.test(reference)
-  )
+  if (!isPaystackReference(reference))
     throw new OnlinePaymentError("Invalid payment reference", 400);
   const matches = await db.query.paymentsTable.findMany({
     where: and(
@@ -1036,23 +1074,22 @@ async function registeredOnlinePayment(reference: unknown) {
   return matches[0];
 }
 async function canonicalOnlinePayment(reference: string, secret: string) {
-  paymentMode(secret);
-  const response = await fetch(
-    "https://api.paystack.co/transaction/verify/" +
-      encodeURIComponent(reference),
-    {
-      redirect: "error",
-      signal: AbortSignal.timeout(20000),
-      headers: { Authorization: "Bearer " + secret },
-    },
-  );
-  const result = (await response.json()) as any;
-  if (!response.ok || result.status !== true || !result.data)
+  const result = await lookupPaystackTransaction(reference, secret);
+  if (!result)
     throw new OnlinePaymentError(
       "Payment verification is temporarily unavailable",
       502,
     );
-  return result.data;
+  return result;
+}
+
+function packageBinding(payment: typeof paymentsTable.$inferSelect, mode: string) {
+  return {
+    reference: payment.reference || "",
+    amountKobo: Math.round(Number(payment.amount) * 100),
+    mode, purpose: "package" as const, bookingId: payment.bookingId, userId: payment.userId,
+    ...(payment.checkoutMode ? { packagePaymentId: payment.id } : {}),
+  };
 }
 async function settleOnlinePayment(
   record: typeof paymentsTable.$inferSelect,
@@ -1072,19 +1109,18 @@ async function settleOnlinePayment(
     if (
       !current ||
       current.method !== "paystack" ||
-      !matchesPaystackProof(gateway, {
-        reference: current.reference || "",
-        amountKobo: Math.round(Number(current.amount) * 100),
-        mode,
-        bookingId: current.bookingId,
-        purpose: "package",
-        userId: current.userId,
-      })
+      !packageSalesModeAllowed(mode) ||
+      (current.checkoutMode !== null && current.checkoutMode !== mode) ||
+      !matchesPaystackProof(gateway, packageBinding(current, mode))
     )
       throw new OnlinePaymentError(
         "Payment does not match this package booking",
         402,
       );
+    const { reference, bookingId, amountKobo } = packageBinding(current, mode);
+    if (!await claimPaystackSettlement(tx, gateway.id, {
+      mode, reference, bookingId, amountKobo, kind: "package", packagePaymentId: current.id,
+    })) throw new OnlinePaymentError("Payment is already bound to another transaction or booking.");
     if (current.status === "verified")
       return {
         payment: current,
@@ -1099,7 +1135,7 @@ async function settleOnlinePayment(
     // but only this immutable payment record and its original booking can be credited.
     const [payment] = await tx
       .update(paymentsTable)
-      .set({ status: "verified" })
+      .set({ status: "verified", verifiedAt: new Date() })
       .where(eq(paymentsTable.id, current.id))
       .returning();
     const [booking] = await tx
@@ -1174,11 +1210,13 @@ router.post("/payments/paystack/verify", async (req, res) => {
     )
       return res.status(403).json({ error: "Forbidden" });
     const { secretKey } = await getPaystackKeys();
-    const gateway = await canonicalOnlinePayment(payment.reference!, secretKey);
+    const verificationKey = packageVerificationKey(payment, secretKey);
+    const mode = paymentMode(verificationKey);
+    const gateway = await canonicalOnlinePayment(payment.reference!, verificationKey);
     const result = await settleOnlinePayment(
       payment,
       gateway,
-      paymentMode(secretKey),
+      mode,
     );
     notifyOnlinePayment(result, payment.reference!);
     return res.json({
@@ -1206,18 +1244,21 @@ router.post("/payments/paystack/webhook", async (req, res) => {
   try {
     const raw = (req as any).rawBody as Buffer | undefined;
     const signature = req.get("x-paystack-signature") || "";
-    if (!raw || !/^[a-f0-9]{128}$/i.test(signature))
+    if (!raw || raw.length > 131072 || !/^[a-f0-9]{128}$/i.test(signature))
       return res.status(401).json({ error: "Invalid signature" });
     const { secretKey } = await getPaystackKeys();
-    const mode = paymentMode(secretKey);
-    const expected = createHmac("sha512", secretKey).update(raw).digest();
-    if (!timingSafeEqual(expected, Buffer.from(signature, "hex")))
+    const previous = process.env.PACKAGE_PAYSTACK_PREVIOUS_SECRET_KEY || "";
+    if (!matchesPaystackSignature(raw, signature, secretKey) &&
+        !matchesPaystackSignature(raw, signature, previous))
       return res.status(401).json({ error: "Invalid signature" });
     const event = JSON.parse(raw.toString("utf8"));
     if (event.event !== "charge.success") return res.json({ received: true });
+    if (!isPaystackReference(event.data?.reference)) return res.status(400).json({ error: "Invalid payment reference" });
     const payment = await registeredOnlinePayment(event.data?.reference);
     if (!payment) return res.json({ received: true });
-    const gateway = await canonicalOnlinePayment(payment.reference!, secretKey);
+    const verificationKey = packageVerificationKey(payment, secretKey);
+    const mode = paymentMode(verificationKey);
+    const gateway = await canonicalOnlinePayment(payment.reference!, verificationKey);
     const result = await settleOnlinePayment(payment, gateway, mode);
     notifyOnlinePayment(result, payment.reference!);
     // Acknowledge only after durable, idempotent crediting. A failure is retried by Paystack.
@@ -1358,15 +1399,16 @@ router.post("/payments/admin-record", async (req, res) => {
       if (
         !lockedBooking ||
         !canPayPackage(lockedBooking) ||
-        parsedAmount >
-          Number(lockedBooking.totalPrice) -
-            Number(lockedBooking.amountPaid) +
-            0.001
+        Math.round(parsedAmount * 100) > packageBalanceKobo(lockedBooking)
       ) {
         throw new OnlinePaymentError(
           "The outstanding balance changed. Refresh before paying.",
         );
       }
+      if (actorAgent && lockedBooking.agentId !== actorAgent.id)
+        throw new OnlinePaymentError("You can only record payments for your own client bookings", 403);
+      if (shouldVerify && !await retireExpiredPackageCheckouts(tx, [bookingId]))
+        throw new OnlinePaymentError("Resolve the open Paystack payment before recording another credit.");
       // For wallet payments, lock the wallet row to prevent race conditions
       if (isWalletPayment && actorAgent) {
         const lockResult = await tx.execute(
@@ -1628,11 +1670,19 @@ router.put("/payments/:id/archive", async (req, res) => {
   const { archiveReason } = req.body;
 
   let updatedPayment: typeof paymentsTable.$inferSelect | undefined;
+  let paymentBlocked = false;
 
   await db.transaction(async (tx) => {
     const record = await tx.query.paymentsTable.findFirst({ where: eq(paymentsTable.id, req.params.id) });
     if (!record) return;
     await tx.execute(sql`SELECT id FROM bookings WHERE id = ${record.bookingId} FOR UPDATE`);
+    const current = await tx.query.paymentsTable.findFirst({ where: eq(paymentsTable.id, record.id) });
+    if (!current) return;
+    if (current.method === "paystack" &&
+        (current.status === "verified" || !await retireExpiredPackageCheckouts(tx, [current.bookingId]))) {
+      paymentBlocked = true;
+      return;
+    }
     const [payment] = await tx
       .update(paymentsTable)
       .set({ isArchived: true, archiveReason: archiveReason || null })
@@ -1655,6 +1705,8 @@ router.put("/payments/:id/archive", async (req, res) => {
     }
   });
 
+  if (paymentBlocked)
+    return res.status(409).json({ error: "Reconcile this Paystack payment before changing its archive status." });
   if (!updatedPayment)
     return res.status(404).json({ error: "Payment not found" });
   return res.json(toPaymentResponse(updatedPayment));
@@ -1670,11 +1722,19 @@ router.put("/payments/:id/restore", async (req, res) => {
   if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
 
   let updatedPayment: typeof paymentsTable.$inferSelect | undefined;
+  let paymentBlocked = false;
 
   await db.transaction(async (tx) => {
     const record = await tx.query.paymentsTable.findFirst({ where: eq(paymentsTable.id, req.params.id) });
     if (!record) return;
     await tx.execute(sql`SELECT id FROM bookings WHERE id = ${record.bookingId} FOR UPDATE`);
+    const current = await tx.query.paymentsTable.findFirst({ where: eq(paymentsTable.id, record.id) });
+    if (!current) return;
+    if (current.isArchived && current.status === "verified" &&
+        !await retireExpiredPackageCheckouts(tx, [current.bookingId])) {
+      paymentBlocked = true;
+      return;
+    }
     const [payment] = await tx
       .update(paymentsTable)
       .set({ isArchived: false, archiveReason: null })
@@ -1697,6 +1757,8 @@ router.put("/payments/:id/restore", async (req, res) => {
     }
   });
 
+  if (paymentBlocked)
+    return res.status(409).json({ error: "Reconcile the active Paystack checkout before restoring this payment." });
   if (!updatedPayment)
     return res.status(404).json({ error: "Payment not found" });
   return res.json(toPaymentResponse(updatedPayment));

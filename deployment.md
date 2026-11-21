@@ -202,6 +202,14 @@ Before deploying checkout recovery, apply [migration 0019](lib/db/drizzle/0019_c
 
 After release, verify the payment flow in a test environment and confirm that authenticated travellers and assigned agents can still open their historical documents. Purge any CDN caches that stored earlier public file responses.
 
+### Paystack settlement rollout
+
+Apply [migration 0020](lib/db/drizzle/0020_paystack_settlement_guards.sql) before deploying the updated API. It adds a shared Paystack settlement ledger for flights, hotels, and packages and stores the account mode for newly created package checkouts. Existing package attempts can still be verified against their matching Paystack transaction.
+
+Production package checkout uses Paystack live mode by default. Set a finite payment session timeout on the package Paystack integration as well. Set `PACKAGE_PAYSTACK_MODE=test` on an isolated staging deployment with test keys to exercise checkout there. The package checkout toggle controls new sessions. Existing payments can still be verified when it is off.
+
+If the package Paystack account changes while sessions are in flight, keep the old credential temporarily as the secret environment variable `PACKAGE_PAYSTACK_PREVIOUS_SECRET_KEY`. New attempts store a fingerprint so the API can select the matching key during reconciliation. Remove the old key after its sessions are resolved. Legacy sessions created before the migration require the original account for verification.
+
 ---
 
 ## Step 4C — Deploy on Fly.io (API) + Cloudflare Pages (Frontend)

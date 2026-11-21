@@ -311,7 +311,7 @@ export default function AdminBookPilgrim() {
   const [travel, setTravel]       = useState({
     departureCity: "", roomPreference: "Quad", specialRequests: "",
   });
-  const [payment, setPayment] = useState({ method: "cash", markVerified: true, amountPaid: "", paymentReference: "", paymentProofUrl: "" });
+  const [payment, setPayment] = useState({ method: "cash", markVerified: false, amountPaid: "", paymentReference: "", paymentProofUrl: "" });
   const [pkgTab, setPkgTab]     = useState<"all" | "hajj" | "umrah" | "other">("all");
   const [pkgSearch, setPkgSearch] = useState("");
   const [phoneCode, setPhoneCode] = useState("+234");
@@ -600,7 +600,7 @@ export default function AdminBookPilgrim() {
               batchId,
               paymentMethod: payment.method === "online" ? "paystack" : payment.method,
               amountPaid: 0,
-              markVerified: payment.method === "online" ? false : payment.markVerified,
+              markVerified: false,
               totalPrice: child.type === "infant" ? childInfantPricing.infantPrice : childInfantPricing.childPrice,
             } as any);
           } catch (err) {
@@ -628,6 +628,10 @@ export default function AdminBookPilgrim() {
     if (req("lastName") && !pilgrim.lastName) { toast({ title: "Last name is required", variant: "destructive" }); return; }
     if (req("gender") && !pilgrim.gender) { toast({ title: "Sex is required", variant: "destructive" }); return; }
     if (req("phone") && !pilgrim.phone) { toast({ title: "Phone number is required", variant: "destructive" }); return; }
+    if (payment.method !== "online" && payment.markVerified && !(Number(payment.amountPaid) > 0)) {
+      toast({ title: "Enter the amount received before verifying payment", variant: "destructive" });
+      return;
+    }
     bookMutation.mutate({
       packageId,
       packageDateId: packageDateId || undefined,
@@ -701,7 +705,7 @@ export default function AdminBookPilgrim() {
     setSelectedAgentId(""); setCustomCommission("");
     setPilgrim(DEFAULT_PILGRIM);
     setTravel({ departureCity: "", roomPreference: "Quad", specialRequests: "" });
-    setPayment({ method: "cash", markVerified: true, amountPaid: "", paymentReference: "", paymentProofUrl: "" });
+    setPayment({ method: "cash", markVerified: false, amountPaid: "", paymentReference: "", paymentProofUrl: "" });
     setPilgrimType("adult");
     setBatchMode(false); setBatchPilgrims([]); setBatchStep("upload");
     setIsBatchSubmitting(false); setBatchProgress(0); setBatchResults([]);
@@ -1228,7 +1232,7 @@ export default function AdminBookPilgrim() {
                                 return;
                               }
                             }
-                            setBatchPayments(batchPilgrims.map(() => ({ method: "cash", amountPaid: "", markVerified: true, paymentReference: "", paymentProofUrl: "" })));
+                            setBatchPayments(batchPilgrims.map(() => ({ method: "cash", amountPaid: "", markVerified: false, paymentReference: "", paymentProofUrl: "" })));
                             setBatchStep("payment");
                           }} className="rounded-xl text-xs font-black h-9 bg-[#FF3B00] text-white">Continue to Payment →</Button>
                         )}
@@ -1247,7 +1251,7 @@ export default function AdminBookPilgrim() {
                   <Button type="button" variant="outline" onClick={() => { setBatchActiveIndex(batchPilgrims.length - 1); setBatchStep("details"); }} className="rounded-xl text-xs font-bold h-8">← Back to Details</Button>
                 </div>
                 {batchPilgrims.map((p, i) => {
-                  const pm = batchPayments[i] || { method: "cash", amountPaid: "", markVerified: true };
+                  const pm = batchPayments[i] || { method: "cash", amountPaid: "", markVerified: false };
                   const updatePM = (updates: Partial<typeof pm>) => setBatchPayments(prev => prev.map((x, j) => j === i ? { ...x, ...updates } : x));
                   let detType: "adult" | "child" | "infant" = "adult";
                   if (p.dateOfBirth) {
@@ -1318,7 +1322,7 @@ export default function AdminBookPilgrim() {
                   const results: { name: string; success: boolean; reference?: string; error?: string }[] = [];
                   for (let i = 0; i < batchPilgrims.length; i++) {
                     const p = batchPilgrims[i];
-                    const pm = batchPayments[i] || { method: "cash", amountPaid: "0", markVerified: true };
+                    const pm = batchPayments[i] || { method: "cash", amountPaid: "0", markVerified: false };
                     setBatchProgress(i + 1);
                     let detType: "adult" | "child" | "infant" = "adult";
                     if (p.dateOfBirth) {

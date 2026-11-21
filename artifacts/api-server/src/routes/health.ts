@@ -13,7 +13,8 @@ const router: IRouter = Router();
 
 router.get("/readyz", async (_req, res) => {
   try {
-    await db.execute(sql`SELECT checkout_expires_at FROM payments LIMIT 0`);
+    await db.execute(sql`SELECT checkout_expires_at, checkout_mode, checkout_key_fingerprint FROM payments LIMIT 0`);
+    await db.execute(sql`SELECT provider_id FROM paystack_settlements LIMIT 0`);
     const ota = await getOtaConfig();
     const stored = await db.execute(
       sql`SELECT to_regclass('public.ota_bookings') AS bookings`,

@@ -1,3 +1,5 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
+
 type Binding = {
   reference: string;
   amountKobo: number;
@@ -5,6 +7,7 @@ type Binding = {
   bookingId: string;
   purpose: "ota" | "package";
   userId?: string | null;
+  packagePaymentId?: string;
 };
 
 export async function getPaystackSessionTimeout(secret: string) {
@@ -82,10 +85,14 @@ export function matchesPaystackProof(
   allowReversed = false,
 ): boolean {
   if (
+    !payment || !["success", ...(allowReversed ? ["reversed"] : [])].includes(payment.status)
+  ) return false;
+  return matchesPaystackBinding(payment, expected);
+}
+
+export function matchesPaystackBinding(payment: any, expected: Binding): boolean {
+  if (
     !payment ||
-    !["success", ...(allowReversed ? ["reversed"] : [])].includes(
-      payment.status,
-    ) ||
     !Number.isSafeInteger(payment.amount) ||
     payment.amount <= 0 ||
     payment.amount !== expected.amountKobo ||
@@ -108,6 +115,7 @@ export function matchesPaystackProof(
     metadata.bookingId === expected.bookingId &&
     !metadata.otaBookingId &&
     (!metadata.type || metadata.type === "package_booking") &&
+    (!expected.packagePaymentId || metadata.packagePaymentId === expected.packagePaymentId) &&
     (!expected.userId || metadata.userId === expected.userId)
   );
 }
@@ -124,5 +132,13 @@ export function providerTransactionId(value: unknown): string | undefined {
         : "";
   if (!/^[0-9]{1,40}$/.test(input)) return undefined;
   const parsed = BigInt(input);
-  return parsed > 0n ? parsed.toString() : undefined;
+  return parsed > 0n && parsed <= 18446744073709551615n ? parsed.toString() : undefined;
+}
+export function isPaystackReference(reference: unknown): reference is string {
+  return typeof reference === "string" && /^[A-Za-z0-9_.=-]{1,128}$/.test(reference);
+}
+
+export function matchesPaystackSignature(body: Buffer, signature: string, secret: string) {
+  return !!secret && /^[a-f0-9]{128}$/i.test(signature) &&
+    timingSafeEqual(createHmac("sha512", secret).update(body).digest(), Buffer.from(signature, "hex"));
 }

@@ -120,6 +120,13 @@
       "when": 1795046404000,
       "tag": "0019_checkout_recovery",
       "breakpoints": false
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795132800000,
+      "tag": "0020_paystack_settlement_guards",
+      "breakpoints": false
     }
   ]
 }

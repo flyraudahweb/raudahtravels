@@ -6,6 +6,7 @@ import {
   siteSettingsTable,
 } from "@workspace/db";
 import { and, eq, or, sql } from "drizzle-orm";
+import { claimPaystackSettlement } from "../payments/paystackSettlement";
 import { getOtaConfig, duffelTokenForMode } from "./config";
 import { bookNuiteeHotel, lookupNuiteeBooking } from "./nuitee";
 import { bookNuiteeFlight, lookupNuiteeFlight } from "./nuiteeFlights";
@@ -175,30 +176,14 @@ function publicNuiteeOffer(offer: unknown) {
   return publicOffer;
 }
 
-async function recordAdditionalPayment(row: OtaBooking, reference: string) {
-  if (!row.paidAt || reference === (row.paidPaymentReference || row.reference)) return;
-  await db.transaction(async (tx) => {
-    const [event] = await tx.insert(otaEventsTable).values({
-      id: `${row.id}:additional-payment:${reference}`,
-      bookingId: row.id,
-      actor: "system",
-      action: "additional_payment_verified",
-      details: { reference, amountKobo: row.amountKobo },
-    }).onConflictDoNothing().returning({ id: otaEventsTable.id });
-    if (event) await tx.update(bookings).set({
-      issue: sql`COALESCE(${bookings.issue}, 'Additional Paystack payment needs reconciliation')`,
-      revision: sql`${bookings.revision} + 1`,
-    }).where(eq(bookings.id, row.id));
-  });
-}
-
-export async function fulfill(reference: string) {
-  let row = await db.query.otaBookingsTable.findFirst({
-    where: otaPaymentReferenceMatches(reference),
-  });
-  if (!row) throw new OtaError("Booking not found", 404);
-  if (row.status !== "payment_pending" &&
-      (!row.paidAt || reference === (row.paidPaymentReference || row.reference))) return row;
+export async function fulfill(reference: string, expectedBookingId?: string) {
+  const [found, conflicting] = await db.select().from(bookings).where(and(
+    otaPaymentReferenceMatches(reference),
+    expectedBookingId ? eq(bookings.id, expectedBookingId) : undefined,
+  )).limit(2);
+  if (!found || conflicting) throw new OtaError("Booking payment reference is unavailable", 409);
+  let row = found;
+  if (row.paidAt && reference === (row.paidPaymentReference || row.reference)) return row;
   // Fetch the authoritative transaction, never accept browser flags or amounts.
   const payment = await paystackRequest(
     `/transaction/verify/${encodeURIComponent(reference)}`,
@@ -207,43 +192,61 @@ export async function fulfill(reference: string) {
     row.supplier,
   );
   validatePayment(payment, { ...row, reference });
-  if (row.status !== "payment_pending") {
-    await recordAdditionalPayment(row, reference);
-    return row;
-  }
   const paidAt = new Date(payment.paid_at ?? payment.paidAt ?? Date.now());
   const bookingId = row.id;
-  const claimed = await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
+    const [current] = await tx.select().from(bookings).where(and(
+      eq(bookings.id, bookingId), otaPaymentReferenceMatches(reference),
+    )).for("update");
+    if (!current || current.supplier !== row.supplier || current.mode !== row.mode)
+      throw new OtaError("Booking payment context changed. Contact travel support.", 409);
+    validatePayment(payment, { ...current, reference });
+    if (!await claimPaystackSettlement(tx, payment.id, {
+      mode: current.mode, kind: "ota", reference, bookingId, amountKobo: current.amountKobo,
+    })) throw new OtaError("Payment is already bound to another transaction or booking.", 409);
+
+    if (current.paidAt) {
+      if (reference !== (current.paidPaymentReference || current.reference)) {
+        const [event] = await tx.insert(otaEventsTable).values({
+          id: `${bookingId}:additional-payment:${reference}`, bookingId, actor: "system",
+          action: "additional_payment_verified", details: { reference, amountKobo: current.amountKobo },
+        }).onConflictDoNothing().returning({ id: otaEventsTable.id });
+        if (event) await tx.update(bookings).set({
+          issue: sql`COALESCE(${bookings.issue}, 'Additional Paystack payment needs reconciliation')`,
+          revision: sql`${bookings.revision} + 1`,
+        }).where(eq(bookings.id, bookingId));
+      }
+      return { booking: current, purchase: false };
+    }
+    const changedOffer = current.providerOfferId !== row.providerOfferId ||
+      current.checkoutKey !== row.checkoutKey;
+    const canPurchase = current.status === "payment_pending" && !changedOffer;
+    const issue = current.status !== "payment_pending"
+      ? "Payment verified after this checkout closed. Reconcile before fulfillment."
+      : changedOffer ? "Payment verified for a checkout that changed. Reconcile before fulfillment." : undefined;
     const [saved] = await tx
       .update(bookings)
       .set({
         revision: sql`${bookings.revision}+1`,
-        status: "processing",
+        status: canPurchase ? "processing" : "requires_review",
+        ...(issue ? { issue } : {}),
         paidAt: Number.isFinite(paidAt.getTime()) ? paidAt : new Date(),
         paidPaymentReference: reference,
         updatedAt: new Date(),
       })
-      .where(
-        and(eq(bookings.id, bookingId), eq(bookings.status, "payment_pending")),
-      )
+      .where(eq(bookings.id, bookingId))
       .returning();
-    if (saved)
-      await tx.insert(otaEventsTable).values({
-        id: randomUUID(),
-        bookingId,
-        actor: "system",
-        action: "payment_verified",
-      });
-    return saved;
+    if (!saved) throw new OtaError("Booking changed during payment verification", 409);
+    await tx.insert(otaEventsTable).values({
+      id: randomUUID(),
+      bookingId,
+      actor: "system",
+      action: canPurchase ? "payment_verified" : "payment_verified_checkout_changed",
+    });
+    return { booking: saved, purchase: canPurchase };
   });
-  if (!claimed) {
-    const current = (await db.query.otaBookingsTable.findFirst({
-      where: eq(bookings.id, row.id),
-    }))!;
-    await recordAdditionalPayment(current, reference);
-    return current;
-  }
-  row = claimed;
+  if (!result.purchase) return result.booking;
+  row = result.booking;
   let verifiedSupplier: any;
   // A process crash after this claim must be reconciled, never blindly retried.
   try {
