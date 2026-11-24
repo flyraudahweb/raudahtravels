@@ -5,6 +5,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
+import { StorageCapacityNotice } from "@/components/StorageCapacityNotice";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ClerkProvider, Show, useClerk, useUser } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
@@ -203,6 +204,7 @@ function ClerkProviderWithRoutes() {
         <ProfileSyncer />
         <TooltipProvider>
           <AppRoutes />
+          <StorageCapacityNotice />
           <Toaster />
         </TooltipProvider>
       </QueryClientProvider>

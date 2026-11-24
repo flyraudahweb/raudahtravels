@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { clerkClient, getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
 import { siteSettingsTable, contactMessagesTable, bankAccountsTable, bookingFormFieldsTable } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
@@ -24,6 +25,32 @@ import aiRegistrationRouter from "./ai-registration";
 import { getPackagePaystackKeys, packagePaystackMode, packageSalesModeAllowed } from "../services/payments/packagePaystack";
 
 const router: IRouter = Router();
+
+const storageNoticeRecipients = new Set([
+  "alfutiumar2000@gmail.com",
+  "alfutiumar2000@yahoo.com",
+  "aleeyuwada01@gmail.com",
+]);
+
+router.get("/account/storage-notice", async (req, res) => {
+  res.set("Cache-Control", "private, no-store");
+  const { userId } = getAuth(req);
+  if (!userId) return res.status(401).json({ error: "Sign in required" });
+
+  const account = await clerkClient.users.getUser(userId);
+  const email = account.emailAddresses.find(
+    (address) => address.id === account.primaryEmailAddressId,
+  );
+  const canSeeNotice = email?.verification?.status === "verified" &&
+    storageNoticeRecipients.has(email.emailAddress.trim().toLowerCase());
+
+  return res.json({
+    notice: canSeeNotice ? {
+      title: "FlyRaudah storage is 95% full",
+      message: "Upgrade your storage soon. If it reaches capacity, uploads and other site features may stop working properly.",
+    } : null,
+  });
+});
 
 function getWebhookUrl(): string {
   const appUrl = process.env.APP_URL ?? "";
