@@ -137,7 +137,7 @@ export default function PackageDetail() {
 
         <div className="mx-auto max-w-7xl px-4 py-10 pb-28 md:px-8 lg:pb-14">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-12">
-            <div className="lg:col-span-2 space-y-12">
+            <div className="min-w-0 lg:col-span-2 space-y-12">
               {/* Description */}
               <section>
                 <h2 className="text-2xl font-bold text-slate-900 mb-5">
@@ -148,7 +148,7 @@ export default function PackageDetail() {
                 </div>
               </section>
 
-              <PackageCancellationPolicy />
+              <PackageCancellationPolicy detailed />
 
               {/* Inclusions */}
               <section>

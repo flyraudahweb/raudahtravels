@@ -125,6 +125,7 @@ export default function TravelCheckout({
   ]);
   const offer =
     data?.checkoutKey === checkoutKey ? data?.offer || data?.quote : null;
+  const passportRequired = Boolean(offer?.passenger_identity_documents_required);
   const domestic = kind === "flight" && offerId.startsWith("bilal_");
   const nuitee = kind === "hotel" && offerId.startsWith("nqt_");
   const nFlight = kind === "flight" && offerId.startsWith("nfa_");
@@ -177,12 +178,12 @@ export default function TravelCheckout({
                   ).toUpperCase(),
                 }
               : {}),
-            ...(form.get(`passport_${i}`)
+            ...(String(form.get(`passport_${i}`) ?? "").trim()
               ? {
                   identity_documents: [
                     {
                       type: "passport",
-                      unique_identifier: String(form.get(`passport_${i}`)),
+                      unique_identifier: String(form.get(`passport_${i}`)).trim(),
                       issuing_country_code: String(
                         form.get(`country_${i}`),
                       ).toUpperCase(),
@@ -350,6 +351,8 @@ export default function TravelCheckout({
               {(kind === "flight" ? offer.passengers : offer.guests || []).map(
                 (passenger: any, i: number) => {
                   const saved = data.draft?.travellers?.[i];
+                  const passport = saved?.identity_documents?.[0];
+                  const showPassportDetails = passportRequired || Boolean(passportNumbers[i]?.trim());
                   return (
                     <section
                       key={passenger.id || i}
@@ -369,7 +372,7 @@ export default function TravelCheckout({
                       </p>
                       <div className="grid gap-4 sm:grid-cols-2">
                         <label className="text-sm">
-                          Given names
+                          {kind === "flight" ? "First Name" : "Given names"}
                           <input
                             name={`given_${i}`}
                             defaultValue={saved?.given_name}
@@ -379,7 +382,7 @@ export default function TravelCheckout({
                           />
                         </label>
                         <label className="text-sm">
-                          Family name
+                          {kind === "flight" ? "Last Name" : "Family name"}
                           <input
                             name={`family_${i}`}
                             defaultValue={saved?.family_name}
@@ -434,16 +437,14 @@ export default function TravelCheckout({
                             </label>
                             <label className="text-sm">
                               Passport number{" "}
-                              {offer.passenger_identity_documents_required
+                              {passportRequired
                                 ? ""
                                 : "(optional for this fare)"}
                               <input
                                 name={`passport_${i}`}
                                 minLength={4}
                                 maxLength={30}
-                                required={
-                                  !!offer.passenger_identity_documents_required
-                                }
+                                required={passportRequired}
                                 value={passportNumbers[i] || ""}
                                 onChange={(e) =>
                                   setPassportNumbers((previous) => ({
@@ -468,50 +469,44 @@ export default function TravelCheckout({
                                 />
                               </label>
                             )}
-                            <label className="text-sm">
-                              Issuing country (2 letters)
-                              <input
-                                name={`country_${i}`}
-                                defaultValue={
-                                  saved?.identity_documents?.[0]
-                                    ?.issuing_country_code
-                                }
-                                placeholder="NG"
-                                pattern="[a-zA-Z]{2}"
-                                maxLength={2}
-                                required={
-                                  !!offer.passenger_identity_documents_required ||
-                                  !!passportNumbers[i]
-                                }
-                                className={`${travelInput} mt-1 uppercase`}
-                              />
-                            </label>
-                            <label className="text-sm">
-                              Passport expiry
-                              <input
-                                name={`expiry_${i}`}
-                                defaultValue={
-                                  saved?.identity_documents?.[0]?.expires_on
-                                }
-                                type="date"
-                                min={
-                                  lastTravelDate ||
-                                  new Date().toISOString().slice(0, 10)
-                                }
-                                required={
-                                  !!offer.passenger_identity_documents_required ||
-                                  !!passportNumbers[i]
-                                }
-                                className={`${travelInput} mt-1`}
-                              />
-                            </label>
-                            {domestic && passportNumbers[i] && (
+                            {showPassportDetails && (
+                              <>
+                                <label className="text-sm">
+                                  Issuing country (2 letters)
+                                  <input
+                                    name={`country_${i}`}
+                                    defaultValue={passport?.issuing_country_code}
+                                    placeholder="NG"
+                                    pattern="[a-zA-Z]{2}"
+                                    maxLength={2}
+                                    required
+                                    className={`${travelInput} mt-1 uppercase`}
+                                  />
+                                </label>
+                                <label className="text-sm">
+                                  Passport expiry
+                                  <input
+                                    name={`expiry_${i}`}
+                                    defaultValue={passport?.expires_on}
+                                    type="date"
+                                    min={
+                                      lastTravelDate ||
+                                      new Date().toISOString().slice(0, 10)
+                                    }
+                                    required
+                                    className={`${travelInput} mt-1`}
+                                  />
+                                </label>
+                              </>
+                            )}
+                            {domestic && showPassportDetails && (
                               <>
                                 <label className="text-sm">
                                   Passport issue date
                                   <input
                                     name={`issued_${i}`}
                                     type="date"
+                                    defaultValue={passport?.issued_on}
                                     required
                                     className={`${travelInput} mt-1`}
                                   />
@@ -520,6 +515,7 @@ export default function TravelCheckout({
                                   Nationality (2 letters)
                                   <input
                                     name={`nationality_${i}`}
+                                    defaultValue={passport?.nationality}
                                     pattern="[a-zA-Z]{2}"
                                     maxLength={2}
                                     required

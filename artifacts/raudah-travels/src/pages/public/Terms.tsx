@@ -29,7 +29,7 @@ export default function Terms() {
           >
             Package Cancellations and Refunds
           </h2>
-          <PackageCancellationDetails />
+          <PackageCancellationDetails detailed />
           <h2 className="text-2xl font-bold text-[#0F172A] mt-8 mb-4">
             Travel Documents
           </h2>

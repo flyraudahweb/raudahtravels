@@ -1,16 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
-import { useGetBooking, useCreatePayment } from "@workspace/api-client-react";
+import { useGetBooking } from "@workspace/api-client-react";
 import { useUser } from "@clerk/react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { CreditCard, Building2, Banknote, CheckCircle2, CalendarDays, Users, ChevronLeft, Printer } from "lucide-react";
+import { CreditCard, CheckCircle2, CalendarDays, Users, ChevronLeft, Printer } from "lucide-react";
 import { printReceipt } from "@/utils/printReceipt";
 
 declare global {
@@ -28,8 +26,6 @@ declare global {
   }
 }
 
-type PayMethod = "online" | "bank_transfer" | "cash";
-
 export default function DashboardPayExisting() {
   const [, params] = useRoute("/dashboard/bookings/:id/pay");
   const [, setLocation] = useLocation();
@@ -39,24 +35,20 @@ export default function DashboardPayExisting() {
   const bookingId = params?.id ?? "";
   const { data: booking, isLoading } = useGetBooking(bookingId);
 
-  const [method, setMethod] = useState<PayMethod>("online");
-  const [reference, setReference] = useState("");
   const [processing, setProcessing] = useState(false);
   const [done, setDone] = useState(false);
   const [paymentVerified, setPaymentVerified] = useState(false);
-  const [doneMethod, setDoneMethod] = useState<PayMethod>("online");
   const [donePaymentRef, setDonePaymentRef] = useState<string | undefined>();
-  const [donePaymentId, setDonePaymentId] = useState<string | undefined>();
 
-  const createPayment = useCreatePayment();
   const paystackScriptLoaded = useRef(false);
+  const submitting = useRef(false);
 
-  const { data: bankData } = useQuery<{ accounts: Array<{ id: string; bankName: string; accountName: string; accountNumber: string }> }>({
-    queryKey: ["bank-accounts-public"],
-    queryFn: () => fetch("/api/bank-accounts").then(r => r.json()),
-    staleTime: 60000,
+  const { data: appConfig, isPending: loadingPaymentConfig } = useQuery<{ paystackEnabled: boolean }>({
+    queryKey: ["app-config"],
+    queryFn: () => fetch("/api/config").then(r => r.json()),
+    staleTime: 30000,
   });
-  const primaryBank = bankData?.accounts?.[0];
+  const paystackEnabled = appConfig?.paystackEnabled === true;
 
   useEffect(() => {
     if (!paystackScriptLoaded.current) {
@@ -71,6 +63,12 @@ export default function DashboardPayExisting() {
   const totalPrice = booking ? Number(booking.totalPrice) : 0;
   const amountPaid = booking ? Number(booking.amountPaid) : 0;
   const amountDue = totalPrice - amountPaid;
+  const canPay = paystackEnabled && amountDue > 0 && (booking?.status === "pending" || booking?.status === "confirmed");
+
+  const finishAttempt = () => {
+    submitting.current = false;
+    setProcessing(false);
+  };
 
   const handlePaystackPayment = async () => {
     try {
@@ -86,9 +84,8 @@ export default function DashboardPayExisting() {
       if (data.verified) {
         setPaymentVerified(true);
         setDonePaymentRef(data.reference || "");
-        setDoneMethod("online");
         setDone(true);
-        setProcessing(false);
+        finishAttempt();
         return;
       }
       if (!data.accessCode) throw new Error("Open the booking to check its payment status.");
@@ -117,53 +114,32 @@ export default function DashboardPayExisting() {
             });
           }
           setDonePaymentRef(transaction.reference);
-          setDoneMethod("online");
           setDone(true);
-          setProcessing(false);
+          finishAttempt();
         },
         onCancel: () => {
           toast({
             title: "Payment not completed",
-            description: "No payment was taken. You can try again or choose a different method.",
+            description: "Check your booking’s payment status before trying again.",
           });
-          setProcessing(false);
+          finishAttempt();
         },
         onError: () => {
           toast({ title: "Payment status unavailable", description: "Check the booking before making another payment.", variant: "destructive" });
-          setProcessing(false);
+          finishAttempt();
         },
       });
     } catch (error) {
       toast({ title: "Payment unavailable", description: error instanceof Error ? error.message : "Check the booking status before trying again.", variant: "destructive" });
-      setProcessing(false);
+      finishAttempt();
     }
   };
 
   const handleSubmit = async () => {
-    if (processing) return;
+    if (submitting.current || !canPay) return;
+    submitting.current = true;
     setProcessing(true);
-
-    if (method === "online") {
-      await handlePaystackPayment();
-      return;
-    }
-
-    createPayment.mutate(
-      { data: { bookingId, amount: amountDue, method, reference, notes: "" } },
-      {
-        onSuccess: (res) => {
-          setDonePaymentId((res as any)?.id ?? (res as any)?.payment?.id);
-          setDonePaymentRef(reference || undefined);
-          setDoneMethod(method);
-          setDone(true);
-          setProcessing(false);
-        },
-        onError: () => {
-          toast({ title: "Submission failed", description: "Could not submit your payment. Please try again.", variant: "destructive" });
-          setProcessing(false);
-        },
-      }
-    );
+    await handlePaystackPayment();
   };
 
   if (isLoading) return (
@@ -189,10 +165,10 @@ export default function DashboardPayExisting() {
   if (done) {
     const handlePrintDone = () => {
       printReceipt({
-        id: donePaymentId ?? bookingId,
+        id: bookingId,
         amount: amountDue,
-        method: doneMethod,
-        status: doneMethod === "online" && paymentVerified ? "verified" : "pending",
+        method: "paystack",
+        status: paymentVerified ? "verified" : "pending",
         reference: donePaymentRef,
         createdAt: new Date().toISOString(),
         pilgrimName: user?.fullName ?? undefined,
@@ -214,15 +190,15 @@ export default function DashboardPayExisting() {
         {/* Success card */}
         <div className="bg-white rounded-3xl border border-[#DCE3F0] shadow-[0_8px_40px_rgba(45,49,153,0.08)] overflow-hidden">
           {/* Green header */}
-          <div className={`px-8 pt-10 pb-8 text-center ${doneMethod === "online" && paymentVerified ? "bg-gradient-to-br from-emerald-500 to-emerald-600" : "bg-gradient-to-br from-[#2D3199] to-[#4C56B8]"}`}>
+          <div className={`px-8 pt-10 pb-8 text-center ${paymentVerified ? "bg-gradient-to-br from-emerald-500 to-emerald-600" : "bg-gradient-to-br from-[#2D3199] to-[#4C56B8]"}`}>
             <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-4">
               <CheckCircle2 className="w-9 h-9 text-white" />
             </div>
             <h2 className="text-2xl font-black text-white">
-              {doneMethod === "online" ? (paymentVerified ? "Payment Confirmed!" : "Payment verification pending") : "Payment Submitted!"}
+              {paymentVerified ? "Payment Confirmed!" : "Payment verification pending"}
             </h2>
             <p className="text-white/80 text-sm mt-2">
-              {doneMethod === "online" && paymentVerified
+              {paymentVerified
                 ? "Your payment was processed successfully via Paystack."
                 : "Our team will verify your payment within 24 hours."}
             </p>
@@ -236,7 +212,7 @@ export default function DashboardPayExisting() {
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-[#64748B]">Method</span>
-              <span className="font-semibold text-[#334155] capitalize">{doneMethod === "bank_transfer" ? "Bank Transfer" : doneMethod === "online" ? "Online (Paystack)" : "Cash"}</span>
+              <span className="font-semibold text-[#334155] capitalize">Online (Paystack)</span>
             </div>
             {donePaymentRef && (
               <div className="flex justify-between items-center">
@@ -255,7 +231,7 @@ export default function DashboardPayExisting() {
           {/* Islamic message */}
           <div className="px-8 py-5 bg-[#FAFBFF] text-center">
             <p className="text-[#64748B] text-xs mt-1.5">
-              {doneMethod === "online" && paymentVerified
+              {paymentVerified
                 ? "May Allah accept your Hajj/Umrah and grant you a blessed journey."
                 : "We've received your submission. Our team will confirm shortly, insha'Allah."}
             </p>
@@ -293,7 +269,7 @@ export default function DashboardPayExisting() {
 
       <div>
         <h1 className="text-2xl font-bold font-serif text-primary">Complete Payment</h1>
-        <p className="text-muted-foreground text-sm mt-1">Choose how you'd like to pay for your booking</p>
+        <p className="text-muted-foreground text-sm mt-1">Pay your outstanding balance securely through Paystack.</p>
       </div>
 
       {/* Booking summary */}
@@ -334,65 +310,22 @@ export default function DashboardPayExisting() {
         </CardContent>
       </Card>
 
-      {/* Payment method selection */}
-      <div className="space-y-3">
-        <Label className="text-sm font-semibold">Payment Method</Label>
-        <div className="grid grid-cols-3 gap-3">
-          {([
-            { value: "online" as const,        label: "Pay Online",      sub: "Cards & transfers", icon: CreditCard, highlight: true  },
-            { value: "bank_transfer" as const,  label: "Bank Transfer",   sub: "Manual transfer",   icon: Building2,  highlight: false },
-            { value: "cash" as const,           label: "Cash at Office",  sub: "Pay in person",     icon: Banknote,   highlight: false },
-          ]).map(({ value, label, sub, icon: Icon, highlight }) => (
-            <button key={value} type="button"
-              onClick={() => setMethod(value)}
-              className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all text-center cursor-pointer ${
-                method === value
-                  ? highlight ? "border-accent bg-accent/10 text-accent" : "border-primary bg-primary/5 text-primary"
-                  : "border-muted hover:border-primary/40"
-              }`}>
-              <Icon className={`w-5 h-5 ${method === value ? (highlight ? "text-accent" : "text-primary") : "text-muted-foreground"}`} />
-              <span className="font-semibold text-xs">{label}</span>
-              <span className="text-[10px] text-muted-foreground">{sub}</span>
-            </button>
-          ))}
+      <div className="flex items-start gap-3 rounded-xl border border-accent/30 bg-accent/5 p-4">
+        <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+        <div>
+          <h2 className="text-sm font-semibold">Pay Online</h2>
+          <p className="text-sm text-muted-foreground">
+            {loadingPaymentConfig ? "Checking payment availability…" : paystackEnabled ? "Pay securely through Paystack." : "Online payment is currently unavailable. Please try again later."}
+          </p>
         </div>
       </div>
 
-      {/* Bank transfer reference field */}
-      {method === "bank_transfer" && (
-        <div className="space-y-2">
-          <Label htmlFor="reference">Transfer Reference (optional)</Label>
-          <Input
-            id="reference"
-            placeholder="e.g. bank teller number or transaction ID"
-            value={reference}
-            onChange={e => setReference(e.target.value)}
-          />
-          <div className="text-xs text-muted-foreground space-y-0.5">
-            {primaryBank ? (
-              <>
-                <p><span className="font-medium text-foreground">Bank:</span> {primaryBank.bankName}</p>
-                <p><span className="font-medium text-foreground">Account Name:</span> {primaryBank.accountName}</p>
-                <p><span className="font-medium text-foreground">Account Number:</span> <strong className="font-mono text-foreground">{primaryBank.accountNumber}</strong></p>
-              </>
-            ) : null}
-            <p className="mt-1">Transfer ₦{amountDue.toLocaleString()} and use your name as the transfer description. Our team will verify and confirm within 24 hours.</p>
-          </div>
-        </div>
-      )}
-
-      {method === "cash" && (
-        <p className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-4">
-          Visit our office to pay ₦{amountDue.toLocaleString()} in cash. Your booking will be confirmed upon receipt.
-        </p>
-      )}
-
       <Button
         onClick={handleSubmit}
-        disabled={processing}
+        disabled={processing || !canPay}
         className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-6 text-base"
       >
-        {processing ? "Processing…" : method === "online" ? `Pay ₦${amountDue.toLocaleString()} Now` : "Submit Payment"}
+        {processing ? "Processing…" : loadingPaymentConfig ? "Loading…" : `Pay Online · ₦${amountDue.toLocaleString()}`}
       </Button>
     </div>
   );

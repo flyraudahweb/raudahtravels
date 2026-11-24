@@ -8,15 +8,11 @@ import {
   getListPackagesQueryKey,
 } from "@workspace/api-client-react";
 import {
-  CalendarDays,
   Star,
-  CheckCircle2,
   Phone,
   MessageCircle,
   ArrowRight,
-  Check,
   Plane,
-  Package,
   Building2,
   BookOpen,
   ShieldCheck,
@@ -66,6 +62,7 @@ export default function Home() {
   );
   const [showWhatsApp, setShowWhatsApp] = useState(false);
   const [slideIndex, setSlideIndex] = useState(0);
+  const [showDesktopImagery, setShowDesktopImagery] = useState(false);
 
   useEffect(() => {
     const onScroll = () =>
@@ -88,21 +85,25 @@ export default function Home() {
     pubSettings?.landing_hero?.slideshowEnabled !== false;
   const aircraftEnabled = pubSettings?.landing_hero?.aircraftEnabled !== false;
   useEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const desktop = window.matchMedia("(min-width: 768px)");
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let timer: ReturnType<typeof setInterval> | undefined;
     const update = () => {
+      setShowDesktopImagery(desktop.matches);
       clearInterval(timer);
-      if (slideshowEnabled && !media.matches)
+      if (desktop.matches && slideshowEnabled && !reducedMotion.matches)
         timer = setInterval(
           () => setSlideIndex((index) => (index + 1) % HERO_IMAGES.length),
           5000,
         );
     };
     update();
-    media.addEventListener("change", update);
+    desktop.addEventListener("change", update);
+    reducedMotion.addEventListener("change", update);
     return () => {
       clearInterval(timer);
-      media.removeEventListener("change", update);
+      desktop.removeEventListener("change", update);
+      reducedMotion.removeEventListener("change", update);
     };
   }, [slideshowEnabled]);
   const packageParams = {
@@ -124,76 +125,62 @@ export default function Home() {
       <main className="flex-1">
         <Navbar transparent />
         <div>
-          <section className="relative isolate bg-[#1C1F66] px-4 pb-28 pt-28 text-white sm:pb-36 sm:pt-36 md:px-8 md:pt-40">
-            <div
-              className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
-              aria-label="Raudah travel photography"
-            >
-              {slideshowEnabled &&
-                HERO_IMAGES.map((src, index) => (
+          <section
+            aria-labelledby="home-hero-heading"
+            className="relative isolate bg-[#1C1F66] bg-gradient-to-br from-[#1C1F66] via-[#2D3199] to-[#1C1F66] px-4 pb-24 pt-28 text-white md:px-8 md:pb-36 md:pt-40"
+          >
+            {showDesktopImagery && (slideshowEnabled || aircraftEnabled) && (
+              <div
+                className="pointer-events-none absolute inset-0 -z-10 hidden overflow-hidden md:block"
+                aria-hidden="true"
+                data-testid="home-hero-images"
+              >
+                {slideshowEnabled &&
+                  HERO_IMAGES.map((src, index) => (
+                    <img
+                      key={src}
+                      src={src}
+                      alt=""
+                      className="absolute inset-0 h-full w-full object-cover motion-safe:transition-opacity motion-safe:duration-1000"
+                      style={{ opacity: index === slideIndex ? 1 : 0 }}
+                      decoding="async"
+                    />
+                  ))}
+                {aircraftEnabled && (
                   <img
-                    key={src}
-                    src={src}
+                    src={heroAircraftImg}
                     alt=""
-                    aria-hidden
-                    className="absolute inset-0 h-full w-full object-cover motion-safe:transition-opacity motion-safe:duration-1000"
-                    style={{ opacity: index === slideIndex ? 1 : 0 }}
+                    className={`absolute inset-y-0 right-0 h-full object-cover ${slideshowEnabled ? "w-[75%] opacity-75" : "w-full"}`}
+                    style={
+                      slideshowEnabled
+                        ? {
+                            maskImage:
+                              "linear-gradient(to right, transparent, black 35%)",
+                            WebkitMaskImage:
+                              "linear-gradient(to right, transparent, black 35%)",
+                          }
+                        : undefined
+                    }
+                    fetchPriority="high"
                     decoding="async"
                   />
-                ))}
-              {aircraftEnabled && (
-                <img
-                  src={heroAircraftImg}
-                  alt=""
-                  aria-hidden
-                  className={`absolute inset-y-0 right-0 h-full w-full object-cover ${slideshowEnabled ? "md:w-[75%] opacity-75" : ""}`}
-                  style={
-                    slideshowEnabled
-                      ? {
-                          maskImage:
-                            "linear-gradient(to right, transparent, black 35%)",
-                          WebkitMaskImage:
-                            "linear-gradient(to right, transparent, black 35%)",
-                        }
-                      : undefined
-                  }
-                  fetchPriority="high"
-                  decoding="async"
-                />
-              )}
-              <div className="absolute inset-0 bg-[#1C1F66]/65" />
-            </div>
-            <div className="mx-auto max-w-6xl text-center">
-              <p className="mb-5 inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-medium text-white sm:text-sm">
-                Online Travel Agency • Nigeria's Most Trusted Partner
-              </p>
-              <h1 className="text-[26px] font-bold leading-tight tracking-tight text-white sm:text-4xl md:text-5xl">
-                Every check-in is a new beginning
-                <span className="mt-3 block text-[#FF4E00]">
-                  Raudah Travels &amp; Tours
-                </span>
-              </h1>
-              <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs font-medium text-white sm:text-sm">
-                <span className="flex items-center gap-2">
-                  <Check className="h-4 w-4 shrink-0 text-white" />
-                  Compare flight options
-                </span>
-                <span className="flex items-center gap-2">
-                  <Package className="h-4 w-4 shrink-0 text-white" />
-                  Hajj &amp; Umrah specialists
-                </span>
-                <span className="flex items-center gap-2">
-                  <CalendarDays className="h-4 w-4 shrink-0 text-white" />
-                  Find your next stay
-                </span>
-                <span className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 shrink-0 text-white" />
-                  Personal travel support
-                </span>
+                )}
+                <div className="absolute inset-0 bg-[#1C1F66]/65" />
               </div>
+            )}
+            <div className="mx-auto max-w-6xl md:text-center">
+              <h1
+                id="home-hero-heading"
+                className="max-w-[27ch] text-balance text-3xl font-bold leading-tight tracking-tight text-white md:mx-auto md:text-5xl"
+              >
+                Travel simply. Pray peacefully. Explore with confidence.
+              </h1>
+              <p className="mt-3 text-base font-semibold text-white/90 md:mt-4 md:text-2xl md:font-bold md:text-[#FF4E00]">
+                Raudah Travel &amp; Tours
+              </p>
             </div>
           </section>
-          <div className="relative z-20 mx-auto -mt-20 w-full max-w-7xl px-4 md:px-8 sm:-mt-24">
+          <div className="relative z-20 mx-auto -mt-20 w-full max-w-7xl px-4 md:-mt-24 md:px-8">
             <OtaSearchWidget
               packagesSectionId="featured-packages"
               variant="landing"

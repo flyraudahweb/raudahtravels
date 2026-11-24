@@ -181,6 +181,55 @@ describe("OTA navigation and pending actions", () => {
     );
     expect(container.querySelector("form")).toBeNull();
   });
+  it("uses first and last name labels and hides passport details for a fare that does not require them", async () => {
+    state.api.mockImplementation((path: string) =>
+      Promise.resolve(
+        path === "/config"
+          ? { salesEnabled: true }
+          : path === "/bookings"
+            ? { booking: booking("saved") }
+            : offer("off_a"),
+      ),
+    );
+    await render(h(TravelCheckout, { kind: "flight", offerId: "off_a" }));
+    expect(container.querySelector('[name="given_0"]')?.closest("label")?.textContent).toBe("First Name");
+    expect(container.querySelector('[name="family_0"]')?.closest("label")?.textContent).toBe("Last Name");
+    const passport = container.querySelector<HTMLInputElement>('[name="passport_0"]')!;
+    expect(passport.required).toBe(false);
+    expect(container.querySelector('[name="country_0"]')).toBeNull();
+    expect(container.querySelector('[name="expiry_0"]')).toBeNull();
+
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    await act(async () => {
+      setValue.call(passport, "A12345678");
+      passport.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(container.querySelector<HTMLInputElement>('[name="country_0"]')?.required).toBe(true);
+    expect(container.querySelector<HTMLInputElement>('[name="expiry_0"]')?.required).toBe(true);
+
+    await act(async () => {
+      setValue.call(passport, "");
+      passport.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(container.querySelector('[name="country_0"]')).toBeNull();
+    expect(container.querySelector('[name="expiry_0"]')).toBeNull();
+    await act(async () => {
+      container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    const save = state.api.mock.calls.find(([path]) => path === "/bookings");
+    expect(save?.[1].travellers[0]).not.toHaveProperty("identity_documents");
+  });
+  it("keeps the full passport fields when the fare requires a passport", async () => {
+    const result = offer("off_a");
+    state.api.mockImplementation((path: string) =>
+      Promise.resolve(path === "/config"
+        ? { salesEnabled: true }
+        : { ...result, offer: { ...result.offer, passenger_identity_documents_required: true } }),
+    );
+    await render(h(TravelCheckout, { kind: "flight", offerId: "off_a" }));
+    for (const name of ["passport_0", "country_0", "expiry_0"])
+      expect(container.querySelector<HTMLInputElement>(`[name="${name}"]`)?.required).toBe(true);
+  });
   it("resets scroll for a new travel page without scrolling ordinary rerenders", async () => {
     await render(h(TravelShell, {}, h("div", {}, "Results")));
     expect(window.scrollTo).toHaveBeenCalledTimes(1);

@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { uploadFile } from "@/lib/upload";
 import { useRoute, useLocation } from "wouter";
-import { useGetPackage, getGetPackageQueryKey, useCreateBooking, useCreatePayment } from "@workspace/api-client-react";
+import { useGetPackage, getGetPackageQueryKey, useCreateBooking } from "@workspace/api-client-react";
 import { useUser } from "@clerk/react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   CheckCircle2, ChevronLeft, ChevronRight, CalendarDays, Users, Star,
-  CreditCard, Building2, Banknote, Upload, FileText, X, AlertTriangle,
+  CreditCard, Upload, FileText, X,
   WifiOff, Wifi, Baby, UserPlus, AlertCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -42,10 +42,9 @@ declare global {
   }
 }
 
-type PayMethod = "bank_transfer" | "cash" | "online";
-
 const CIVILITY_OPTIONS = ["Mr", "Mrs", "Miss", "Dr", "Prof", "Alhaji", "Alhaja", "Mal.", "Hajiya"];
 const NATIONALITIES    = ["Nigerian", "Burkinabe", "Nigerien", "Ghanaian", "Senegalese", "Cameroonian", "Other"];
+const DEFAULT_DEPARTURE_CITIES = ["Lagos", "Abuja", "Kano", "Port Harcourt", "Ibadan", "Enugu"];
 
 const ETHNIC_GROUPS = [
   "Hausa", "Fulani", "Yoruba", "Igbo", "Ijaw", "Kanuri",
@@ -65,50 +64,6 @@ const PHONE_CODES = [
 ];
 const MARITAL_STATUS   = ["Single", "Married", "Divorced", "Widowed"];
 const LEVEL_OF_STUDY   = ["None", "Primary", "Secondary", "Tertiary", "Postgraduate"];
-
-
-
-function passportExpiryWarning(expiry: string): { type: "expired" | "soon" } | null {
-  if (!expiry) return null;
-  const d = new Date(expiry);
-  const now = new Date();
-  if (d < now) return { type: "expired" };
-  const cutoff = new Date();
-  cutoff.setMonth(cutoff.getMonth() + 3);
-  if (d <= cutoff) return { type: "soon" };
-  return null;
-}
-
-function PassportExpiryAlert({ expiry }: { expiry: string }) {
-  const w = passportExpiryWarning(expiry);
-  if (!w) return null;
-  const isExpired = w.type === "expired";
-  const expiryStr = new Date(expiry).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
-  return (
-    <div className="rounded-2xl border-2 border-red-200 bg-gradient-to-br from-red-50 to-orange-50 p-5">
-      <div className="flex gap-4">
-        <div className="w-11 h-11 rounded-xl bg-red-100 border border-red-200 flex items-center justify-center flex-shrink-0">
-          <AlertTriangle className="w-5 h-5 text-red-600" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-bold text-red-800 text-sm uppercase tracking-wide mb-2">
-            {isExpired ? "Passport Expired — Registration Blocked" : "Passport Expiring Soon — Registration Blocked"}
-          </p>
-          <p className="text-red-700 text-sm leading-relaxed">
-            {isExpired
-              ? `This passport expired on ${expiryStr}. An expired passport cannot be used for Hajj or Umrah visa applications.`
-              : `This passport expires on ${expiryStr}, which is within 3 months from today.`
-            }
-            {" "}Saudi Arabia requires all passport holders to have a minimum of 6 months validity beyond the travel date. Additionally, visa processing can take several weeks — if a delay occurs, travel may fall outside the passport validity window.
-          </p>
-          <p className="text-red-600 text-xs mt-3 font-bold border-t border-red-200 pt-2">
-            Please renew the passport before proceeding with registration.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function FileUploadBox({
   label, accept, value, onChange, previewType = "image", hint, folder = "documents",
@@ -209,20 +164,12 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
   const { data: pkg, isLoading, isFetching } = useGetPackage(packageId, {
     query: { enabled: !!packageId, queryKey: getGetPackageQueryKey(packageId), staleTime: 0 },
   });
-  const { data: appConfig } = useQuery<{ paystackPublicKey: string; paystackEnabled: boolean }>({
+  const { data: appConfig, isPending: loadingPaymentConfig } = useQuery<{ paystackEnabled: boolean }>({
     queryKey: ["app-config"],
     queryFn: () => fetch("/api/config").then((r) => r.json()),
     staleTime: 30000,
   });
-  const paystackEnabled = appConfig?.paystackEnabled ?? true;
-
-  const { data: bankData } = useQuery<{ accounts: Array<{ id: string; bankName: string; accountName: string; accountNumber: string; isActive: boolean }> }>({
-    queryKey: ["bank-accounts-public"],
-    queryFn: () => fetch("/api/bank-accounts").then(r => r.json()),
-    staleTime: 60000,
-  });
-  const primaryBank = bankData?.accounts?.[0];
-  const bankAccounts = bankData?.accounts || [];
+  const paystackEnabled = appConfig?.paystackEnabled === true;
 
   // Fetch room surcharges and child/infant pricing from settings
   const { data: settingsData } = useQuery<Record<string, any>>({
@@ -242,7 +189,6 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
   })();
 
   const createBooking = useCreateBooking();
-  const createPayment = useCreatePayment();
 
   const [step, setStep] = useState(0);
 
@@ -254,7 +200,7 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
 
   // Step 1: Passport
   const [passportForm, setPassportForm] = useState({
-    passportNumber: "", passportIssueDate: "", passportExpiry: "", passportIssuingAuthority: "",
+    passportNumber: "", passportIssueDate: "", passportExpiry: "",
     visaNumber: "", passportCopyUrl: "",
   });
 
@@ -270,19 +216,13 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
   const [contactForm, setContactForm] = useState({
     phone: "", email: user?.primaryEmailAddress?.emailAddress || "",
     country: "Nigeria", city: "", address: "",
-    departureCity: "", roomType: "", specialRequests: "",
+    specialRequests: "",
   });
 
   // Step 4: Payment
-  const [payForm, setPayForm] = useState<{ method: PayMethod; reference: string; pilgrimCount: number; paymentProofUrl: string }>({
-    method: "bank_transfer",
-    reference: "",
-    pilgrimCount: 1,
-    paymentProofUrl: "",
-  });
+  const [pilgrimCount, setPilgrimCount] = useState(1);
 
   const [done, setDone]           = useState(false);
-  const [doneMethod, setDoneMethod] = useState<PayMethod>("bank_transfer");
   const [processing, setProcessing] = useState(false);
   const [phoneCode, setPhoneCode] = useState("+234");
   const paystackScriptLoaded = useRef(false);
@@ -290,8 +230,6 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
   // Payment amount selection (for bank_transfer / cash only)
-  const [paymentOption, setPaymentOption] = useState<"full" | "500000" | "1000000" | "custom">("full");
-  const [customPaymentAmount, setCustomPaymentAmount] = useState("");
 
   const [aiFields, setAiFields] = useState<string[]>([]);
   const aiClass = (k: string) => aiFields.includes(k) ? "border-emerald-500 bg-emerald-50/50 shadow-[0_0_0_2px_rgba(16,185,129,0.3)] text-emerald-950 transition-all focus:border-emerald-600" : "";
@@ -318,7 +256,9 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
   const { isOnline, wasOffline } = useOnlineStatus();
   
   const [packageDateId, setPackageDateId] = useState<string>("");
-  const [departureCityFilter, setDepartureCityFilter] = useState<string>("");
+  const [departureCity, setDepartureCity] = useState("");
+  const [roomType, setRoomType] = useState("quad");
+  const hasFlightSchedule = pkg?.type === "umrah" && Boolean(pkg.packageDates?.length);
 
   useEffect(() => {
     if (!paystackScriptLoaded.current) {
@@ -329,12 +269,6 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
       paystackScriptLoaded.current = true;
     }
   }, []);
-
-  useEffect(() => {
-    if (!paystackEnabled && payForm.method === "online") {
-      setPayForm((f) => ({ ...f, method: "bank_transfer" }));
-    }
-  }, [paystackEnabled]);
 
   // ── Child/Infant helpers ──────────────────────────────────────────
   function childCategory(dob: string): "child" | "infant" | undefined {
@@ -370,24 +304,11 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
   };
 
   // ── Price calculations ────────────────────────────────────────────
-  const roomSurcharge = roomSurcharges[contactForm.roomType?.toLowerCase() || "quad"] || 0;
+  const roomSurcharge = roomSurcharges[roomType] || 0;
   const adultPrice = pkg ? (pkg.price + roomSurcharge) : 0;
   const childrenTotal = childEntries.reduce((sum, c) => sum + getChildPrice(childCategory(c.dateOfBirth) ?? c.type), 0);
-  const fullAmount = (adultPrice * payForm.pilgrimCount) + childrenTotal;
+  const fullAmount = (adultPrice * pilgrimCount) + childrenTotal;
   const fullName = [personalForm.firstName, personalForm.lastName].filter(Boolean).join(" ") || user?.fullName || "";
-
-  // Payment amount based on selection (Paystack always full, bank/cash can be partial)
-  const getPaymentAmount = (): number => {
-    if (payForm.method === "online") return fullAmount;
-    switch (paymentOption) {
-      case "full": return fullAmount;
-      case "500000": return Math.min(500000, fullAmount);
-      case "1000000": return Math.min(1000000, fullAmount);
-      case "custom": return Math.max(500000, Math.min(Number(customPaymentAmount) || 500000, fullAmount));
-      default: return fullAmount;
-    }
-  };
-  const paymentAmount = getPaymentAmount();
 
   const cfg = useFormFieldConfig();
   const show = (name: string) => cfg(name).visible;
@@ -397,25 +318,18 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
   const handleNext = () => {
     // Step-level field validation
     if (step === 0) {
-      if (pkg?.type === "umrah" && pkg.packageDates && pkg.packageDates.length > 0 && !packageDateId) {
+      if (hasFlightSchedule && !packageDateId) {
         toast({ title: "Flight Schedule Required", description: "Please select a flight schedule before proceeding.", variant: "destructive" });
         return;
       }
     }
     if (step === 1) {
       const { valid, missingFields } = validateRequiredFields(cfg, passportForm,
-        ["passportNumber", "passportIssueDate", "passportExpiry", "passportIssuingAuthority", "passportCopyUrl"]);
+        ["passportNumber", "passportIssueDate", "passportCopyUrl"]);
       if (!valid) {
         setValidationErrors(missingFields.map(f => f.label));
         toast({ title: "Required fields missing", description: missingFields.map(f => f.label).join(", "), variant: "destructive" });
         return;
-      }
-      if (passportForm.passportExpiry) {
-        const w = passportExpiryWarning(passportForm.passportExpiry);
-        if (w) {
-          toast({ title: w.type === "expired" ? "Passport is expired" : "Passport expiring too soon", description: "The pilgrim's passport must be renewed before registration can continue.", variant: "destructive" });
-          return;
-        }
       }
     }
     if (step === 2) {
@@ -451,10 +365,10 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
   };
 
   const handleSubmit = async () => {
-    if (processing || submitting.current) return;
+    if (!paystackEnabled || isFetching || !isOnline || processing || submitting.current) return;
     submitting.current = true;
     setProcessing(true);
-    const pilgrimDetails = JSON.stringify({ ...passportForm, ...personalForm, ...contactForm, fullName });
+    const pilgrimDetails = JSON.stringify({ ...passportForm, ...personalForm, ...contactForm, departureCity, roomType, fullName });
     try {
       let bookingId = createdBookingIdRef.current;
       if (!bookingId) {
@@ -476,7 +390,7 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
           data: {
             packageId: pkg!.id,
             packageDateId: packageDateId || undefined,
-            pilgrimCount: payForm.pilgrimCount,
+            pilgrimCount: pilgrimCount,
             pilgrimDetails,
             notes: contactForm.specialRequests,
             fullName,
@@ -484,7 +398,6 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
             passportNumber: passportForm.passportNumber || undefined,
             passportIssueDate: passportForm.passportIssueDate || undefined,
             passportExpiry: passportForm.passportExpiry || undefined,
-            passportIssuingAuthority: passportForm.passportIssuingAuthority || undefined,
             passportCopyUrl: passportForm.passportCopyUrl || undefined,
             visaNumber: passportForm.visaNumber || undefined,
             // Personal fields (from personalForm)
@@ -508,30 +421,21 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
             country: contactForm.country || undefined,
             city: contactForm.city || undefined,
             address: contactForm.address || undefined,
-            roomPreference: contactForm.roomType || "quad",
-            departureCity: contactForm.departureCity || undefined,
+            roomPreference: roomType,
+            departureCity: departureCity || undefined,
             checkoutId: checkoutIdRef.current,
             expectedTotal: fullAmount,
             children: childEntries.map(({ id, type, ...child }) => ({
               ...child, phone: contactForm.phone ? phoneCode + contactForm.phone : undefined,
               email: contactForm.email, country: contactForm.country, city: contactForm.city,
-              roomPreference: contactForm.roomType || "quad",
+              roomPreference: roomType,
             })),
           } as Parameters<typeof createBooking.mutateAsync>[0]["data"],
         });
         bookingId = booking.id;
         createdBookingIdRef.current = bookingId;
       }
-      if (payForm.method === "online") {
-        await handlePaystackPayment(bookingId);
-      } else {
-        await createPayment.mutateAsync({
-          data: { bookingId, amount: paymentAmount, method: payForm.method, reference: payForm.reference, proofUrl: payForm.paymentProofUrl },
-        });
-        setDoneMethod(payForm.method);
-        setDone(true);
-        setProcessing(false);
-      }
+      await handlePaystackPayment(bookingId);
     } catch (error) {
       toast({ title: "Booking needs attention", description: error instanceof Error ? error.message : "Open My Bookings before trying again.", variant: "destructive" });
       setProcessing(false);
@@ -541,10 +445,10 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
   };
 
   useEffect(() => {
-    if (done && (doneMethod !== "online" || paymentConfirmed)) {
+    if (done && paymentConfirmed) {
       try { sessionStorage.removeItem(checkoutStorageKey); } catch { /* Storage is optional. */ }
     }
-  }, [done, doneMethod, paymentConfirmed, checkoutStorageKey]);
+  }, [done, paymentConfirmed, checkoutStorageKey]);
 
   const handlePaystackPayment = async (bookingId: string) => {
     try {
@@ -561,7 +465,6 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
       if (!res.ok) throw new Error(data.error || "Payment could not be prepared");
       if (data.verified) {
         setPaymentConfirmed(data.bookingConfirmed === true);
-        setDoneMethod("online");
         setDone(true);
         setProcessing(false);
         return;
@@ -593,12 +496,10 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
               description: "Check My Bookings for the verified status before paying again.",
             });
           }
-          setDoneMethod("online");
           setDone(true);
           setProcessing(false);
         },
         onCancel: () => {
-          // User closed Paystack popup — keep them on the wizard so they can retry or choose another method
           toast({
             title: "Payment not completed",
             description: "Check the payment status before making another payment.",
@@ -629,14 +530,14 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
   const spacesLeft = pkg.maxCapacity - pkg.currentBookings;
 
   if (done) {
-    const isPaid = doneMethod === "online" && paymentConfirmed;
+    const isPaid = paymentConfirmed;
     return (
       <div className="max-w-lg mx-auto text-center py-16">
         <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${isPaid ? "bg-green-100" : "bg-amber-100"}`}>
           <CheckCircle2 className={`w-10 h-10 ${isPaid ? "text-green-600" : "text-amber-600"}`} />
         </div>
         <h1 className="text-3xl font-serif font-bold text-primary mb-4">
-          {isPaid ? "Booking Confirmed!" : doneMethod === "online" ? "Payment verification pending" : "Booking Submitted!"}
+          {isPaid ? "Booking Confirmed!" : "Payment verification pending"}
         </h1>
         <p className="text-muted-foreground mb-2">
           Your booking for <strong>{pkg.name}</strong> has been submitted.
@@ -646,30 +547,6 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
             ? "Your payment was received. Your visa application is now in progress."
             : "Check My Bookings for the latest payment and reservation status."}
         </p>
-        {doneMethod !== "online" && (
-          <div className="bg-muted/50 rounded-lg p-4 text-sm mb-8 border text-left">
-            <p className="font-semibold mb-2">
-              {doneMethod === "bank_transfer" ? "Bank Transfer Details" : "Cash Payment"}
-            </p>
-            {doneMethod === "bank_transfer" ? (
-              <>
-                {primaryBank ? (
-                  <>
-                    <p><span className="text-muted-foreground">Bank:</span> {primaryBank.bankName}</p>
-                    <p><span className="text-muted-foreground">Account Name:</span> {primaryBank.accountName}</p>
-                    <p><span className="text-muted-foreground">Account Number:</span> <strong className="font-mono">{primaryBank.accountNumber}</strong></p>
-                  </>
-                ) : (
-                  <p className="text-muted-foreground text-xs">Contact Raudah Travels for our bank account details.</p>
-                )}
-                <p><span className="text-muted-foreground">Amount:</span> ₦{fullAmount.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground mt-1">Please use your name as the transfer description/narration.</p>
-              </>
-            ) : (
-              <p className="text-muted-foreground">Please visit our office to complete your cash payment of ₦{fullAmount.toLocaleString()}.</p>
-            )}
-          </div>
-        )}
         <div className="flex gap-3 justify-center">
           <Button variant="outline" onClick={() => setLocation("/dashboard/payments")}>View Payments</Button>
           <Button onClick={() => setLocation("/dashboard/bookings")}>My Bookings</Button>
@@ -763,7 +640,7 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
               <PackageCancellationPolicy />
               <div>
                 <Label htmlFor="pilgrimCount">Number of Pilgrims</Label>
-                <Select value={String(payForm.pilgrimCount)} onValueChange={(v) => setPayForm((f) => ({ ...f, pilgrimCount: Number(v) }))}>
+                <Select value={String(pilgrimCount)} onValueChange={(v) => setPilgrimCount(Number(v))}>
                   <SelectTrigger id="pilgrimCount"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {Array.from({ length: Math.min(10, spacesLeft) }, (_, i) => i + 1).map((n) => (
@@ -772,11 +649,11 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
                   </SelectContent>
                 </Select>
               </div>
-              {pkg?.type === "umrah" && pkg.packageDates && pkg.packageDates.length > 0 && (() => {
-                const departureCities = [...new Set(pkg.packageDates.map((d: any) => (d.outboundRoute || "").split("-")[0].trim()).filter(Boolean))];
-                const filteredDates = departureCityFilter
-                  ? pkg.packageDates.filter((d: any) => (d.outboundRoute || "").startsWith(departureCityFilter))
-                  : [];
+              {hasFlightSchedule && (() => {
+                const dates = pkg.packageDates ?? [];
+                const origin = (route?: string | null) => (route || "").split("-")[0].trim();
+                const departureCities = [...new Set(dates.map(d => origin(d.outboundRoute)).filter(Boolean))];
+                const filteredDates = dates.filter(d => origin(d.outboundRoute) === departureCity);
                 return (
                   <div className="space-y-3 mt-4 border-t pt-4">
                     <div>
@@ -784,9 +661,10 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
                       <div className="flex gap-2 mt-1.5">
                         {departureCities.map((city: string) => (
                           <button key={city} type="button"
-                            onClick={() => { setDepartureCityFilter(departureCityFilter === city ? "" : city); setPackageDateId(""); }}
+                            onClick={() => { setDepartureCity(departureCity === city ? "" : city); setPackageDateId(""); }}
+                            aria-pressed={departureCity === city}
                             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border-2 ${
-                              departureCityFilter === city
+                              departureCity === city
                                 ? "border-primary bg-primary/10 text-primary"
                                 : "border-muted bg-muted/30 text-muted-foreground hover:border-primary/40"
                             }`}>
@@ -795,12 +673,12 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
                         ))}
                       </div>
                     </div>
-                    {departureCityFilter ? (
+                    {departureCity ? (
                       <div>
                         <Label htmlFor="packageDateId" className="text-sm font-semibold text-primary">Flight Schedule *</Label>
                         <Select value={packageDateId} onValueChange={setPackageDateId}>
                           <SelectTrigger id="packageDateId" className="w-full">
-                            <SelectValue placeholder={`Select a ${departureCityFilter} flight...`} />
+                            <SelectValue placeholder={`Select a ${departureCity} flight...`} />
                           </SelectTrigger>
                           <SelectContent>
                             {[...filteredDates]
@@ -819,6 +697,36 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
                   </div>
                 );
               })()}
+              {!hasFlightSchedule && show("departureCity") && (
+                <div>
+                  <Label htmlFor="packageDepartureCity">Departure City</Label>
+                  <Select value={departureCity} onValueChange={setDepartureCity}>
+                    <SelectTrigger id="packageDepartureCity"><SelectValue placeholder="Select city" /></SelectTrigger>
+                    <SelectContent>
+                      {(pkg.departureCities?.length ? pkg.departureCities : DEFAULT_DEPARTURE_CITIES).map(city => (
+                        <SelectItem key={city} value={city}>{city}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {show("roomPreference") && (
+                <div>
+                  <Label htmlFor="packageRoomPreference">Room Preference</Label>
+                  <Select value={roomType} onValueChange={setRoomType}>
+                    <SelectTrigger id="packageRoomPreference"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="quad">Quad (4 persons) — Included</SelectItem>
+                      <SelectItem value="triple">Triple (3 persons){roomSurcharges.triple ? ` (+₦${roomSurcharges.triple.toLocaleString()})` : ""}</SelectItem>
+                      <SelectItem value="double">Double (2 persons){roomSurcharges.double ? ` (+₦${roomSurcharges.double.toLocaleString()})` : ""}</SelectItem>
+                      <SelectItem value="single">Single (1 person){roomSurcharges.single ? ` (+₦${roomSurcharges.single.toLocaleString()})` : ""}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {roomSurcharge > 0 && (
+                    <p className="text-xs text-amber-600 mt-1">Room surcharge: +₦{roomSurcharge.toLocaleString()} per person</p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -826,7 +734,6 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
           {step === 1 && (
             <div className="space-y-4">
               <h2 className="text-lg font-semibold">Passport Details</h2>
-              <PassportExpiryAlert expiry={passportForm.passportExpiry} />
               {/* AI Passport Scanner — auto-fills all fields below */}
               <PassportScanner
                 requirePrivateUpload
@@ -836,7 +743,6 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
                   if (data.lastName) extracted.push("lastName");
                   if (data.passportNumber) extracted.push("passportNumber");
                   if (data.passportIssueDate) extracted.push("passportIssueDate");
-                  if (data.passportExpiry) extracted.push("passportExpiry");
                   if (data.dateOfBirth) extracted.push("dateOfBirth");
                   if (data.gender) extracted.push("gender");
                   if (data.nationality) extracted.push("nationality");
@@ -882,27 +788,6 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
                         if (aiFields.includes("passportIssueDate")) setAiFields(p => p.filter(f => f !== "passportIssueDate"));
                         setPassportForm(f => ({ ...f, passportIssueDate: e.target.value }));
                       }} className={aiClass("passportIssueDate")} />
-                  </div>
-                )}
-                {show("passportExpiry") && (
-                  <div>
-                    <Label htmlFor="passportExpiry">{lbl("passportExpiry", "Expiration Date")}</Label>
-                    <Input id="passportExpiry" type="date" value={passportForm.passportExpiry}
-                      onChange={e => {
-                        if (aiFields.includes("passportExpiry")) setAiFields(p => p.filter(f => f !== "passportExpiry"));
-                        setPassportForm(f => ({ ...f, passportExpiry: e.target.value }));
-                      }} className={aiClass("passportExpiry")} />
-                  </div>
-                )}
-                {show("passportIssuingAuthority") && (
-                  <div className="sm:col-span-2">
-                    <Label htmlFor="passportIssuingAuthority">{lbl("passportIssuingAuthority", "Issuing Authority")}</Label>
-                    <Input id="passportIssuingAuthority" value={passportForm.passportIssuingAuthority}
-                      onChange={e => {
-                        if (aiFields.includes("passportIssuingAuthority")) setAiFields(p => p.filter(f => f !== "passportIssuingAuthority"));
-                        setPassportForm(f => ({ ...f, passportIssuingAuthority: e.target.value }));
-                      }}
-                      placeholder="e.g. Nigeria Immigration Service" className={aiClass("passportIssuingAuthority")} />
                   </div>
                 )}
                 {show("visaNumber") && (
@@ -1152,36 +1037,6 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
                       placeholder="Full residential address" />
                   </div>
                 )}
-                {show("departureCity") && (
-                  <div>
-                    <Label>{lbl("departureCity", "Departure City")}</Label>
-                    <Select value={contactForm.departureCity} onValueChange={v => setContactForm(f => ({ ...f, departureCity: v }))}>
-                      <SelectTrigger><SelectValue placeholder="Select city" /></SelectTrigger>
-                      <SelectContent>
-                        {["Lagos", "Abuja", "Kano", "Port Harcourt", "Ibadan", "Enugu"].map(c => (
-                          <SelectItem key={c} value={c}>{c}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                {show("roomPreference") && (
-                  <div>
-                    <Label>{lbl("roomPreference", "Room Preference")}</Label>
-                    <Select value={contactForm.roomType} onValueChange={v => setContactForm(f => ({ ...f, roomType: v }))}>
-                      <SelectTrigger><SelectValue placeholder="Select room type" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="quad">Quad (4 persons) — Included</SelectItem>
-                        <SelectItem value="triple">Triple (3 persons){roomSurcharges.triple ? ` (+₦${roomSurcharges.triple.toLocaleString()})` : ""}</SelectItem>
-                        <SelectItem value="double">Double (2 persons){roomSurcharges.double ? ` (+₦${roomSurcharges.double.toLocaleString()})` : ""}</SelectItem>
-                        <SelectItem value="single">Single (1 person){roomSurcharges.single ? ` (+₦${roomSurcharges.single.toLocaleString()})` : ""}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {roomSurcharge > 0 && (
-                      <p className="text-xs text-amber-600 mt-1">Room surcharge: +₦{roomSurcharge.toLocaleString()} per person</p>
-                    )}
-                  </div>
-                )}
                 <div className="sm:col-span-2">
                   <Label htmlFor="specialRequests">Special Requests <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
                   <Textarea id="specialRequests" value={contactForm.specialRequests}
@@ -1230,7 +1085,6 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
                           if (data.lastName) extracted.push("lastName");
                           if (data.passportNumber) extracted.push("passportNumber");
                           if (data.passportIssueDate) extracted.push("passportIssueDate");
-                          if (data.passportExpiry) extracted.push("passportExpiry");
                           if (data.dateOfBirth) extracted.push("dateOfBirth");
                           if (data.gender) extracted.push("gender");
                           if (data.nationality) extracted.push("nationality");
@@ -1325,7 +1179,7 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
                 <p className="font-semibold mb-1">Booking Summary</p>
                 <div className="flex justify-between"><span className="text-muted-foreground">Package</span><span className="font-medium">{pkg.name}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Name</span><span>{personalForm.civility ? `${personalForm.civility} ` : ""}{fullName || "—"}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Pilgrims</span><span>{payForm.pilgrimCount}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Pilgrims</span><span>{pilgrimCount}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Departure</span><span>{new Date(pkg.departureDate).toLocaleDateString()}</span></div>
                 {packageDateId && (() => {
                   const selectedDate = pkg.packageDates?.find((d: any) => d.id === packageDateId);
@@ -1344,7 +1198,7 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
                   {isFetching ? <Skeleton className="h-5 w-28" /> : <span>₦{pkg.price.toLocaleString()}</span>}
                 </div>
                 {roomSurcharge > 0 && (
-                  <div className="flex justify-between text-amber-700"><span>Room surcharge ({contactForm.roomType})</span><span>+₦{roomSurcharge.toLocaleString()} × {payForm.pilgrimCount}</span></div>
+                  <div className="flex justify-between text-amber-700"><span>Room surcharge ({roomType})</span><span>+₦{roomSurcharge.toLocaleString()} × {pilgrimCount}</span></div>
                 )}
                 {childEntries.length > 0 && (
                   <>
@@ -1365,120 +1219,15 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
 
               <PackageCancellationPolicy />
 
-              <div>
-                <Label className="mb-3 block">Select Payment Method</Label>
-                <div className={`grid grid-cols-1 gap-3 ${paystackEnabled ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
-                  {([
-                    { value: "online",        label: "Pay Online",     sub: "Card / Bank (Paystack)", icon: CreditCard, highlight: true,  show: paystackEnabled },
-                    { value: "bank_transfer", label: "Bank Transfer",  sub: "Transfer & send proof",  icon: Building2,  highlight: false, show: true },
-                    { value: "cash",          label: "Cash at Office", sub: "Pay at our office",      icon: Banknote,   highlight: false, show: true },
-                  ] as const).filter(o => o.show).map(({ value, label, sub, icon: Icon, highlight }) => (
-                    <button key={value} type="button"
-                      onClick={() => setPayForm(f => ({ ...f, method: value }))}
-                      className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all text-center cursor-pointer ${
-                        payForm.method === value
-                          ? highlight ? "border-accent bg-accent/10 text-accent" : "border-primary bg-primary/5 text-primary"
-                          : "border-muted hover:border-primary/40"
-                      }`}>
-                      <Icon className={`w-6 h-6 ${payForm.method === value ? (highlight ? "text-accent" : "text-primary") : "text-muted-foreground"}`} />
-                      <span className="font-semibold text-sm">{label}</span>
-                      <span className="text-xs text-muted-foreground">{sub}</span>
-                      {highlight && <Badge className="text-[10px] px-1.5 py-0 bg-accent text-accent-foreground">Instant</Badge>}
-                    </button>
-                  ))}
+              <div className="flex items-start gap-3 rounded-xl border border-accent/30 bg-accent/5 p-4">
+                <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-accent" />
+                <div>
+                  <h3 className="text-sm font-semibold">Pay Online</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {loadingPaymentConfig ? "Checking payment availability…" : paystackEnabled ? "Pay securely through Paystack." : "Online payment is currently unavailable. Please try again later."}
+                  </p>
                 </div>
               </div>
-
-              {/* ── Payment Amount Options (bank_transfer / cash) ── */}
-              {(payForm.method === "bank_transfer" || payForm.method === "cash") && (
-                <div className="space-y-3">
-                  <Label className="block">Payment Amount</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      { key: "full" as const, label: "Full Payment", amount: fullAmount },
-                      { key: "500000" as const, label: "Minimum Deposit", amount: 500000 },
-                      { key: "1000000" as const, label: "₦1,000,000", amount: 1000000 },
-                      { key: "custom" as const, label: "Custom Amount", amount: null as number | null },
-                    ].map(opt => (
-                      <button key={opt.key} type="button"
-                        onClick={() => setPaymentOption(opt.key)}
-                        className={`p-3 rounded-lg border-2 text-left transition-all ${paymentOption === opt.key ? "border-primary bg-primary/5" : "border-muted hover:border-primary/30"}`}>
-                        <span className="text-sm font-semibold block">{opt.label}</span>
-                        {opt.amount && <span className="text-xs text-muted-foreground">₦{opt.amount.toLocaleString()}</span>}
-                      </button>
-                    ))}
-                  </div>
-                  {paymentOption === "custom" && (
-                    <div>
-                      <Label className="text-xs">Enter Amount (minimum ₦500,000)</Label>
-                      <Input type="number" value={customPaymentAmount}
-                        onChange={e => setCustomPaymentAmount(e.target.value)}
-                        placeholder="Enter amount" min={500000} />
-                      {Number(customPaymentAmount) > 0 && Number(customPaymentAmount) < 500000 && (
-                        <p className="text-xs text-red-500 mt-1">Minimum payment is ₦500,000</p>
-                      )}
-                    </div>
-                  )}
-                  <div className="bg-primary/5 rounded-lg p-3 flex justify-between items-center">
-                    <span className="text-sm font-medium">Amount to Pay</span>
-                    <span className="text-lg font-bold text-primary">₦{paymentAmount.toLocaleString()}</span>
-                  </div>
-                </div>
-              )}
-
-              {payForm.method === "bank_transfer" && (
-                <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-sm space-y-4">
-                  <div>
-                    <p className="font-semibold text-primary mb-2">Transfer to:</p>
-                    {bankAccounts.length > 0 ? (
-                      <div className="space-y-2">
-                        {bankAccounts.map(b => (
-                          <div key={b.id} className="bg-white p-3 rounded border border-primary/10">
-                            <p className="font-bold text-foreground">{b.bankName}</p>
-                            <p className="font-mono text-primary font-bold">{b.accountNumber} {(b as any).sortCode ? `· ${(b as any).sortCode}` : ""}</p>
-                            <p className="text-xs text-muted-foreground">{b.accountName}</p>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="bg-white p-3 rounded border border-primary/10">
-                        <p className="font-bold text-foreground">GTBank</p>
-                        <p className="font-mono text-primary font-bold">0123456789</p>
-                        <p className="text-xs text-muted-foreground">Raudah Travels & Tours Ltd</p>
-                      </div>
-                    )}
-                  </div>
-                  <div className="mt-3">
-                    <Label htmlFor="payRef">Transaction Reference (optional)</Label>
-                    <Input id="payRef" value={payForm.reference}
-                      onChange={e => setPayForm(f => ({ ...f, reference: e.target.value }))}
-                      placeholder="e.g. FT234567890" />
-                  </div>
-                  <div className="mt-3">
-                    <FileUploadBox
-                      label="Proof of Payment"
-                      accept="image/*,application/pdf"
-                      previewType="file"
-                      value={payForm.paymentProofUrl}
-                      onChange={v => setPayForm(f => ({ ...f, paymentProofUrl: v }))}
-                      hint="Upload your transfer receipt"
-                      folder="receipts"
-                    />
-                  </div>
-                </div>
-              )}
-              {payForm.method === "online" && (
-                <div className="bg-accent/5 border border-accent/20 rounded-lg p-4 text-sm">
-                  <p className="font-semibold text-accent mb-1">Pay securely with Paystack</p>
-                  <p className="text-muted-foreground">Full payment of ₦{fullAmount.toLocaleString()} will be processed securely by Paystack. Once confirmed, visa processing begins automatically.</p>
-                </div>
-              )}
-              {payForm.method === "cash" && (
-                <div className="bg-muted/50 border rounded-lg p-4 text-sm">
-                  <p className="font-semibold mb-1">Cash Payment</p>
-                  <p className="text-muted-foreground">Visit our office to pay ₦{paymentAmount.toLocaleString()} in cash.</p>
-                </div>
-              )}
             </div>
           )}
         </CardContent>
@@ -1495,10 +1244,10 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
         ) : (
           <Button
             onClick={() => setShowConfirmDialog(true)}
-            className={`min-w-36 ${payForm.method === "online" ? "bg-accent hover:bg-accent/90 text-accent-foreground" : "bg-primary"}`}
-            disabled={processing}
+            className="min-w-36 bg-accent hover:bg-accent/90 text-accent-foreground"
+            disabled={processing || isFetching || !paystackEnabled || !isOnline}
           >
-            {processing ? "Processing..." : payForm.method === "online" ? (isFetching ? "Loading…" : `Pay ₦${fullAmount.toLocaleString()}`) : "Confirm Booking"}
+            {processing ? "Processing…" : loadingPaymentConfig || isFetching ? "Loading…" : `Pay Online · ₦${fullAmount.toLocaleString()}`}
           </Button>
         )}
       </div>
@@ -1513,27 +1262,14 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
           <div className="space-y-2 text-sm">
             <div className="flex justify-between"><span className="text-muted-foreground">Pilgrim</span><span className="font-medium">{fullName || "\u2014"}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Package</span><span className="font-medium">{pkg.name}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Payment Method</span><span className="font-medium capitalize">{payForm.method === "online" ? "Paystack (Online)" : payForm.method.replace("_", " ")}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Total</span><span className="font-bold">{"\u20a6"}{fullAmount.toLocaleString()}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Amount to Pay</span><span className="font-bold text-primary">{"\u20a6"}{paymentAmount.toLocaleString()}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Payment Method</span><span className="font-medium capitalize">Paystack (Online)</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Amount to Pay</span><span className="font-bold text-primary">{"\u20a6"}{fullAmount.toLocaleString()}</span></div>
             {childEntries.length > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Children/Infants</span><span>{childEntries.length}</span></div>}
-            {paymentAmount < fullAmount && (
-              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded p-2 mt-2">
-                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                <p className="text-xs text-amber-700">You're making a partial payment. The remaining balance is due before departure.</p>
-              </div>
-            )}
-            {payForm.method === "bank_transfer" && !payForm.paymentProofUrl && (
-              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded p-2 mt-2">
-                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                <p className="text-xs text-amber-700">No payment receipt uploaded. You can upload it later from your dashboard.</p>
-              </div>
-            )}
           </div>
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>Cancel</Button>
-            <Button onClick={() => { setShowConfirmDialog(false); handleSubmit(); }} disabled={processing}>
-              {processing ? "Processing..." : "Confirm & Submit"}
+            <Button onClick={() => { setShowConfirmDialog(false); handleSubmit(); }} disabled={processing || isFetching || !paystackEnabled || !isOnline}>
+              {processing ? "Processing…" : "Continue to Paystack"}
             </Button>
           </DialogFooter>
         </DialogContent>

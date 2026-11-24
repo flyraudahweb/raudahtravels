@@ -1,14 +1,10 @@
-import { useListPayments, getListPaymentsQueryKey, useListBookings, getListBookingsQueryKey, useCreatePayment } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useListPayments, getListPaymentsQueryKey } from "@workspace/api-client-react";
+import { Link } from "wouter";
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { CreditCard, Clock, CheckCircle2, XCircle, Plus, Printer, Building2, Banknote, Search } from "lucide-react";
+import { CreditCard, Clock, CheckCircle2, XCircle, Printer, Search } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useToast } from "@/hooks/use-toast";
 import { printReceipt } from "@/utils/printReceipt";
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; border: string; icon: typeof Clock }> = {
@@ -26,19 +22,11 @@ const METHOD_CONFIG: Record<string, { label: string; icon: string; bg: string }>
 };
 
 export default function DashboardPayments() {
-  const { toast } = useToast();
-  const qc = useQueryClient();
   const { data, isLoading } = useListPayments({}, { query: { queryKey: getListPaymentsQueryKey({}) } });
-  const { data: bookingsData } = useListBookings({}, { query: { queryKey: getListBookingsQueryKey({}) } });
-  const createPayment = useCreatePayment();
-
-  const [open, setOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
-  const [form, setForm] = useState({ bookingId: "", amount: "", method: "bank_transfer", reference: "", notes: "" });
 
   const allPayments = data?.payments || [];
-  const bookings = bookingsData?.bookings || [];
 
   const payments = allPayments.filter(p => {
     if (statusFilter !== "all" && p.status !== statusFilter) return false;
@@ -53,31 +41,6 @@ export default function DashboardPayments() {
     }
     return true;
   });
-
-  const parsedAmount = Number(form.amount);
-  const formValid = form.bookingId.trim() !== "" && !isNaN(parsedAmount) && parsedAmount > 0;
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.bookingId.trim()) {
-      toast({ title: "Select a booking", variant: "destructive" }); return;
-    }
-    if (!parsedAmount || parsedAmount <= 0) {
-      toast({ title: "Enter a valid amount", variant: "destructive" }); return;
-    }
-    createPayment.mutate(
-      { data: { bookingId: form.bookingId, amount: parsedAmount, method: form.method as "bank_transfer" | "cash", reference: form.reference, notes: form.notes } },
-      {
-        onSuccess: () => {
-          toast({ title: "Payment submitted", description: "Awaiting verification from our team." });
-          qc.invalidateQueries({ queryKey: getListPaymentsQueryKey({}) });
-          setOpen(false);
-          setForm({ bookingId: "", amount: "", method: "bank_transfer", reference: "", notes: "" });
-        },
-        onError: () => toast({ title: "Could not submit payment", variant: "destructive" }),
-      }
-    );
-  };
 
   const handlePrint = (payment: typeof allPayments[0]) => {
     printReceipt({
@@ -112,92 +75,11 @@ export default function DashboardPayments() {
         <div>
           <p className="text-[#2D3199] text-xs font-bold uppercase tracking-widest mb-1">Pilgrim Portal</p>
           <h1 className="text-2xl font-black text-[#0F172A]">Payments</h1>
-          <p className="text-[#64748B] text-sm mt-0.5">View and submit your payment records</p>
+          <p className="text-[#64748B] text-sm mt-0.5">View your payment history and receipts</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <button className="flex items-center gap-2 bg-[#FF3B00] hover:bg-[#D63200] text-white px-4 py-2.5 rounded-xl font-bold text-sm transition-colors shadow-sm"
-              data-testid="button-add-payment">
-              <Plus className="w-4 h-4" /> Record Payment
-            </button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-md rounded-2xl p-0 overflow-hidden">
-            <DialogHeader className="px-6 pt-6 pb-4 border-b border-[#F1F5F9]">
-              <DialogTitle className="font-black text-[#0F172A]">Record a Payment</DialogTitle>
-              <p className="text-[#94A3B8] text-sm mt-0.5">Submit a bank transfer or cash payment for verification</p>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
-              <div>
-                <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Booking</Label>
-                <Select value={form.bookingId} onValueChange={v => setForm(f => ({ ...f, bookingId: v }))}>
-                  <SelectTrigger className="mt-1.5 rounded-xl border-[#DCE3F0]" data-testid="select-booking">
-                    <SelectValue placeholder="Select booking" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {bookings.map(b => (
-                      <SelectItem key={b.id} value={b.id}>{b.package?.name || b.id.slice(0, 8)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Amount (₦)</Label>
-                  <Input type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
-                    placeholder="500000" className="mt-1.5 rounded-xl border-[#DCE3F0]"
-                    data-testid="input-amount" />
-                </div>
-                <div>
-                  <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Method</Label>
-                  <Select value={form.method} onValueChange={v => setForm(f => ({ ...f, method: v }))}>
-                    <SelectTrigger className="mt-1.5 rounded-xl border-[#DCE3F0]" data-testid="select-method">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                      <SelectItem value="cash">Cash</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              {form.method === "bank_transfer" && (
-                <div className="bg-[#EEF0FF] rounded-xl p-4 border border-[#C7CCF5] space-y-1.5">
-                  <p className="text-xs font-black text-[#2D3199] uppercase tracking-wider mb-2">Bank Details</p>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[#64748B]">Bank</span>
-                    <span className="font-semibold text-[#0F172A]">GTBank</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[#64748B]">Account Name</span>
-                    <span className="font-semibold text-[#0F172A]">Raudah Travels & Tours Ltd</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[#64748B]">Account No</span>
-                    <span className="font-black text-[#2D3199] font-mono">0123456789</span>
-                  </div>
-                </div>
-              )}
-              <div>
-                <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Transaction Reference</Label>
-                <Input value={form.reference} onChange={e => setForm(f => ({ ...f, reference: e.target.value }))}
-                  placeholder="e.g. FT234567890"
-                  className="mt-1.5 rounded-xl border-[#DCE3F0]" data-testid="input-reference" />
-              </div>
-              <div>
-                <Label className="text-xs font-bold text-[#64748B] uppercase tracking-wider">Notes (optional)</Label>
-                <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                  placeholder="Any additional notes"
-                  className="mt-1.5 rounded-xl border-[#DCE3F0] resize-none"
-                  rows={2} data-testid="input-notes" />
-              </div>
-              <button type="submit" disabled={createPayment.isPending || !formValid}
-                className="w-full py-3 bg-[#2D3199] hover:bg-[#1C1F66] text-white font-bold rounded-xl text-sm transition-colors disabled:opacity-50"
-                data-testid="button-submit-payment">
-                {createPayment.isPending ? "Submitting…" : "Submit Payment"}
-              </button>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <Link href="/dashboard/bookings" className="flex items-center gap-2 rounded-xl bg-[#FF3B00] px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#D63200]">
+          <CreditCard className="h-4 w-4" /> Pay Online
+        </Link>
       </div>
 
       {/* Summary */}

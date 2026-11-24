@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   Plane,
   Building2,
+  BriefcaseBusiness,
   Search,
   ArrowRightLeft,
   ShieldCheck,
@@ -65,6 +66,11 @@ export default function TravelSearchForm({
   const hotel = kind === "hotel";
   const appLayout = variant === "app";
   const landingLayout = variant === "landing";
+  const landingTabClass =
+    "flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-xl px-1 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2D3199] focus-visible:ring-inset sm:gap-2 sm:px-5 sm:text-base";
+  const inactiveLandingTabClass =
+    "text-slate-600 hover:bg-white/75 hover:text-[#2D3199]";
+  const PackageIcon = landingLayout ? BriefcaseBusiness : Package;
   return (
     <div
       role={landingLayout ? "region" : undefined}
@@ -72,7 +78,11 @@ export default function TravelSearchForm({
       className={`relative bg-white text-slate-900 ${landingLayout ? "rounded-3xl border border-slate-200 p-4 shadow-[0_18px_55px_-24px_rgba(28,31,102,0.35)] sm:p-6 md:p-7 [&_[data-booking-field]]:min-h-[94px] [&_[data-booking-field]]:border-slate-200 [&_[data-booking-field]]:bg-white [&_[data-booking-field]]:px-4 [&_[data-booking-label]]:mb-1 [&_[data-booking-label]]:text-sm [&_[data-booking-label]]:font-semibold [&_[data-booking-label]]:text-slate-700 [&_[data-booking-value]]:text-lg [&_[data-booking-hint]]:text-xs [&_[data-booking-hint]]:text-slate-600" : `rounded-2xl border border-slate-200 ${appLayout ? "p-4 sm:p-6" : compact ? "p-4 shadow-sm md:p-5" : "p-4 shadow-[0_20px_70px_-25px_rgba(25,30,100,0.35)] md:p-6"}`}`}
     >
       <div
-        className={`flex flex-wrap items-center gap-2 ${compact ? "mb-3" : "mb-4 border-b border-slate-100 pb-4"}`}
+        className={
+          landingLayout
+            ? "-mx-4 -mt-4 mb-4 grid grid-cols-3 gap-1 rounded-t-[calc(1.5rem-1px)] border-b border-slate-200 bg-[#EEF0F8] p-1.5 sm:-mx-6 sm:-mt-6 sm:mb-5 sm:p-2 md:-mx-7 md:-mt-7"
+            : `flex flex-wrap items-center gap-2 ${compact ? "mb-3" : "mb-4 border-b border-slate-100 pb-4"}`
+        }
       >
         {landingLayout && <h2 className="sr-only">Book your next journey</h2>}
         {(
@@ -95,9 +105,13 @@ export default function TravelSearchForm({
                     .map((age) => Math.min(11, Math.max(2, age))),
                 );
             }}
-            className={`flex items-center gap-2 font-semibold transition-colors ${landingLayout ? "min-h-12 rounded-2xl px-3 py-3 text-sm sm:px-6 sm:text-base" : compact ? "rounded-xl px-3 py-1.5 text-xs" : "rounded-xl px-3 py-2.5 text-sm sm:px-5"} ${kind === key ? "bg-[#2D3199] text-white shadow-sm" : "border-transparent text-slate-500 hover:bg-indigo-50 hover:text-[#2D3199]"}`}
+            className={
+              landingLayout
+                ? `${landingTabClass} ${kind === key ? "bg-white text-[#2D3199] shadow-sm ring-1 ring-slate-200/80" : inactiveLandingTabClass}`
+                : `flex items-center gap-2 font-semibold transition-colors ${compact ? "rounded-xl px-3 py-1.5 text-xs" : "rounded-xl px-3 py-2.5 text-sm sm:px-5"} ${kind === key ? "bg-[#2D3199] text-white shadow-sm" : "border-transparent text-slate-500 hover:bg-indigo-50 hover:text-[#2D3199]"}`
+            }
           >
-            <Icon size={19} />
+            <Icon size={19} className={landingLayout ? "h-4 w-4 shrink-0 sm:h-5 sm:w-5" : undefined} aria-hidden="true" />
             {label}
           </button>
         ))}
@@ -126,9 +140,13 @@ export default function TravelSearchForm({
                 : "smooth",
             });
           }}
-          className={`flex items-center gap-2 rounded-xl font-bold text-slate-500 transition-colors hover:bg-indigo-50 hover:text-[#2D3199] ${landingLayout ? "min-h-12 px-3 py-3 text-sm sm:px-6 sm:text-base" : compact ? "px-3 py-1.5 text-xs" : "px-3 py-2.5 text-sm sm:px-5"}`}
+          className={
+            landingLayout
+              ? `${landingTabClass} ${inactiveLandingTabClass} active:bg-white active:text-[#2D3199]`
+              : `flex items-center gap-2 rounded-xl font-bold text-slate-500 transition-colors hover:bg-indigo-50 hover:text-[#2D3199] ${compact ? "px-3 py-1.5 text-xs" : "px-3 py-2.5 text-sm sm:px-5"}`
+          }
         >
-          <Package size={19} aria-hidden="true" />
+          <PackageIcon size={19} className={landingLayout ? "h-4 w-4 shrink-0 sm:h-5 sm:w-5" : undefined} aria-hidden="true" />
           Packages
         </Link>
       </div>
