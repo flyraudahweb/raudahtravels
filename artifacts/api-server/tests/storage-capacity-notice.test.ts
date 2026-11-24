@@ -32,13 +32,13 @@ it("opens on sign-in and reminds only the approved session after dismissal", asy
   try {
     await render();
     expect(popup()?.textContent).toContain(notice.title);
-    expect(popup()?.querySelector("button")?.textContent).toBe("Remind me in 5 minutes");
+    expect(popup()?.querySelector("button")?.textContent).toBe("Remind me in 30 seconds");
     await dismiss();
     expect(popup()).toBeNull();
 
     await render(false);
     await render();
-    await act(async () => { vi.advanceTimersByTime(299_999); });
+    await act(async () => { vi.advanceTimersByTime(29_999); });
     expect(popup()).toBeNull();
     await act(async () => { vi.advanceTimersByTime(1); });
     expect(popup()?.textContent).toContain(notice.title);
@@ -51,7 +51,7 @@ it("opens on sign-in and reminds only the approved session after dismissal", asy
     auth.sessionId = "other-session";
     client.setQueryData(["account-storage-notice", auth.sessionId], { notice: null });
     await render();
-    await act(async () => { vi.advanceTimersByTime(300_000); });
+    await act(async () => { vi.advanceTimersByTime(30_000); });
     expect(popup()).toBeNull();
 
     auth.sessionId = "new-approved-session";

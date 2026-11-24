@@ -12,8 +12,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-const REMINDER_MINUTES = 5;
-const REMINDER_DELAY_MS = REMINDER_MINUTES * 60_000;
+const REMINDER_SECONDS = 30;
+const REMINDER_DELAY_MS = REMINDER_SECONDS * 1000;
 type StorageNotice = { title: string; message: string };
 
 export function StorageCapacityNotice() {
@@ -74,7 +74,7 @@ function StorageNoticeDialog({ sessionId, notice }: { sessionId: string; notice:
       }}
     >
       <AlertDialogContent
-        className="w-[calc(100%_-_2rem)] max-w-md rounded-xl border-amber-300 bg-white shadow-2xl"
+        className="max-h-[calc(100dvh_-_2rem)] w-[calc(100%_-_2rem)] max-w-2xl gap-6 overflow-y-auto rounded-2xl border-amber-300 bg-white p-7 shadow-2xl sm:gap-8 sm:p-10"
         onOpenAutoFocus={() => {
           previousFocus.current = document.activeElement instanceof HTMLElement
             ? document.activeElement
@@ -86,18 +86,18 @@ function StorageNoticeDialog({ sessionId, notice }: { sessionId: string; notice:
           }
         }}
       >
-        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-amber-100 text-amber-800">
-          <TriangleAlert aria-hidden="true" className="h-6 w-6" />
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-amber-800">
+          <TriangleAlert aria-hidden="true" className="h-8 w-8" />
         </div>
         <AlertDialogHeader className="text-left">
-          <AlertDialogTitle className="text-xl text-slate-950">{notice.title}</AlertDialogTitle>
-          <AlertDialogDescription className="leading-relaxed text-slate-700">
+          <AlertDialogTitle className="text-2xl font-bold leading-tight text-slate-950 sm:text-4xl">{notice.title}</AlertDialogTitle>
+          <AlertDialogDescription className="text-base leading-relaxed text-slate-700 sm:text-lg">
             {notice.message}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel className="mt-0 min-h-11">
-            Remind me in {REMINDER_MINUTES} minutes
+          <AlertDialogCancel className="mt-0 min-h-12 px-5">
+            Remind me in {REMINDER_SECONDS} seconds
           </AlertDialogCancel>
         </AlertDialogFooter>
       </AlertDialogContent>
