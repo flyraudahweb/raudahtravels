@@ -7,16 +7,18 @@ import {
   BriefcaseBusiness,
   Search,
   ArrowRightLeft,
+  ChevronDown,
   ShieldCheck,
   Package,
   Plus,
   X,
 } from "lucide-react";
 import { ota, travelButton } from "@/lib/ota";
-import { dateKey, MAX_MULTI_CITY_LEGS, readDate, readMultiCityLegs } from "@/lib/travelSearch";
+import { cabinNames, dateKey, MAX_MULTI_CITY_LEGS, readDate, readMultiCityLegs } from "@/lib/travelSearch";
 import {
   AirportPicker,
   DatePicker,
+  searchField,
   StayDestinationPicker,
   TravellerPicker,
 } from "./SearchPickers";
@@ -27,6 +29,8 @@ type EditableLeg = ReturnType<typeof readMultiCityLegs>[number] & {
   originLabel?: string;
   destinationLabel?: string;
 };
+const multiCityColumns =
+  "grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-[minmax(0,1fr)_2.75rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]";
 
 export default function TravelSearchForm({
   initialKind = "flight",
@@ -91,6 +95,7 @@ export default function TravelSearchForm({
   });
   const multiCityEnabled = otaConfig?.multiCityFlightSearchEnabled === true;
   const multiCityStatusId = useId();
+  const flightGroupId = useId();
   const multiCityUnavailable = !hotel && !loadingConfig && !multiCityEnabled;
   const roundTrip = tripType === "round_trip";
   const appLayout = variant === "app";
@@ -273,33 +278,35 @@ export default function TravelSearchForm({
         }}
       >
         {!hotel && (
-          <fieldset className="mb-4 grid w-full max-w-sm grid-cols-3 rounded-full border border-indigo-100 bg-indigo-50/70 p-1 text-xs font-semibold sm:text-sm">
+          <fieldset className="mx-auto mb-4 w-full min-w-0 max-w-sm sm:mx-0">
             <legend className="sr-only">Journey type</legend>
-            {(
-              [
-                ["round_trip", "Round trip"],
-                ["one_way", "One way"],
-                ["multi_city", "Multi-city"],
-              ] as const
-            ).map(([value, label]) => {
-              const disabled = value === "multi_city" && !multiCityEnabled;
-              return (
-                <label key={label} className={disabled ? "cursor-not-allowed" : "cursor-pointer"}>
-                  <input
-                    type="radio"
-                    name="journey"
-                    className="peer sr-only"
-                    checked={tripType === value}
-                    disabled={disabled}
-                    aria-describedby={disabled && multiCityUnavailable ? multiCityStatusId : undefined}
-                    onChange={() => changeTripType(value)}
-                  />
-                  <span className="flex min-h-10 items-center justify-center whitespace-nowrap rounded-full px-2 text-slate-700 transition-colors peer-checked:bg-[#2D3199] peer-checked:text-white peer-disabled:opacity-50 peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-600 peer-focus-visible:ring-offset-2">
-                    {label}
-                  </span>
-                </label>
-              );
-            })}
+            <div className="grid grid-cols-3 rounded-full border border-indigo-100 bg-indigo-50/70 p-1 text-center text-xs font-semibold sm:text-sm">
+              {(
+                [
+                  ["round_trip", "Round trip"],
+                  ["one_way", "One way"],
+                  ["multi_city", "Multi-city"],
+                ] as const
+              ).map(([value, label]) => {
+                const disabled = value === "multi_city" && !multiCityEnabled;
+                return (
+                  <label key={label} className={`relative min-w-0 ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}>
+                    <input
+                      type="radio"
+                      name="journey"
+                      className="peer sr-only"
+                      checked={tripType === value}
+                      disabled={disabled}
+                      aria-describedby={disabled && multiCityUnavailable ? multiCityStatusId : undefined}
+                      onChange={() => changeTripType(value)}
+                    />
+                    <span className="flex min-h-10 items-center justify-center whitespace-nowrap rounded-full px-1 text-slate-700 transition-colors peer-checked:bg-[#2D3199] peer-checked:text-white peer-disabled:opacity-50 peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-600 peer-focus-visible:ring-offset-2 sm:px-2">
+                      {label}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
           </fieldset>
         )}
         {multiCityUnavailable && (
@@ -308,40 +315,101 @@ export default function TravelSearchForm({
           </p>
         )}
         {multiCity && (
-          <div className="mb-4 space-y-3">
+          <div className="mb-4 space-y-3 sm:space-y-4">
             {legs.map((leg, index) => (
-              <fieldset key={leg.id} className="rounded-2xl border border-slate-200 p-3 sm:p-4">
-                <legend className="px-1 text-sm font-semibold text-indigo-950">Flight {index + 1}</legend>
-                <div className="grid items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
-                  <AirportPicker label="Flying from" value={leg.origin} selectedLabel={leg.originLabel}
-                    onChange={(code, name) => updateLeg(leg.id, { origin: code, originLabel: name })} />
-                  <AirportPicker label="Flying to" value={leg.destination} selectedLabel={leg.destinationLabel}
-                    onChange={(code, name) => updateLeg(leg.id, { destination: code, destinationLabel: name })} />
-                  <DatePicker departure={leg.departureDate} returnDate="" range={false} hotel={false}
-                    onChange={(date) => updateLeg(leg.id, { departureDate: date })} />
+              <div key={leg.id} role="group" aria-labelledby={`${flightGroupId}-${leg.id}`}>
+                <div className="mb-2 flex min-h-7 items-center justify-between gap-2">
+                  <h3 id={`${flightGroupId}-${leg.id}`} className="text-xs font-bold uppercase tracking-wide text-indigo-950">
+                    Flight {index + 1}
+                  </h3>
                   {legs.length > 2 && (
-                    <button type="button" aria-label={`Remove flight ${index + 1}`}
+                    <button
+                      type="button"
+                      aria-label={`Remove flight ${index + 1}`}
                       onClick={() => setLegs((current) => current.filter(({ id }) => id !== leg.id))}
-                      className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-600 hover:bg-indigo-50 hover:text-[#2D3199]">
+                      className="inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-xs font-medium text-slate-600 hover:bg-indigo-50 hover:text-[#2D3199]"
+                    >
                       <X size={18} aria-hidden="true" />
+                      Remove
                     </button>
                   )}
                 </div>
-              </fieldset>
+                <div className={multiCityColumns}>
+                  <div className="relative col-span-2 grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_2.75rem_minmax(0,1fr)] sm:gap-3 lg:col-span-3 lg:grid-cols-subgrid">
+                    <AirportPicker
+                      label="From"
+                      value={leg.origin}
+                      selectedLabel={leg.originLabel}
+                      onChange={(code, name) => updateLeg(leg.id, { origin: code, originLabel: name })}
+                    />
+                    <button
+                      type="button"
+                      aria-label={`Swap airports for flight ${index + 1}`}
+                      onClick={() => updateLeg(leg.id, {
+                        origin: leg.destination,
+                        originLabel: leg.destinationLabel,
+                        destination: leg.origin,
+                        destinationLabel: leg.originLabel,
+                      })}
+                      className="absolute right-3 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-indigo-100 bg-white text-[#2D3199] shadow-sm transition-colors hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2D3199] sm:static sm:translate-y-0 sm:self-center"
+                    >
+                      <ArrowRightLeft size={17} aria-hidden="true" />
+                    </button>
+                    <AirportPicker
+                      label="To"
+                      value={leg.destination}
+                      selectedLabel={leg.destinationLabel}
+                      onChange={(code, name) => updateLeg(leg.id, { destination: code, destinationLabel: name })}
+                    />
+                  </div>
+                  <DatePicker
+                    departure={leg.departureDate}
+                    returnDate=""
+                    range={false}
+                    hotel={false}
+                    onChange={(date) => updateLeg(leg.id, { departureDate: date })}
+                  />
+                  <label
+                    data-booking-field=""
+                    className={`${searchField} relative min-w-0 cursor-pointer gap-1 focus-within:ring-2 focus-within:ring-[#2D3199]`}
+                  >
+                    <span className="min-w-0 flex-1" aria-hidden="true">
+                      <span data-booking-label="" className="block text-[11px] font-medium text-slate-500">Cabin class</span>
+                      <span data-booking-value="" className="block truncate text-sm font-bold text-slate-950">{cabinNames[cabin]}</span>
+                      <span data-booking-hint="" className="block text-[10px] text-slate-500">All flights</span>
+                    </span>
+                    <ChevronDown size={14} aria-hidden="true" className="shrink-0 text-slate-400" />
+                    <select
+                      aria-label="Cabin class for all flights"
+                      value={cabin}
+                      onChange={(event) => setCabin(event.target.value)}
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                    >
+                      {Object.entries(cabinNames).map(([key, name]) => (
+                        <option key={key} value={key}>{name}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </div>
             ))}
-            {legs.length < MAX_MULTI_CITY_LEGS && (
-              <button type="button" onClick={() => {
-                const id = nextLegId.current++;
-                setLegs((current) => [...current, { id, origin: "", destination: "", departureDate: "" }]);
-              }} className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-[#2D3199] hover:bg-indigo-50">
-                <Plus size={17} aria-hidden="true" /> Add flight
-              </button>
-            )}
           </div>
         )}
         <div
-          className={`grid gap-3 ${multiCity ? "sm:grid-cols-[minmax(0,1fr)_auto]" : appLayout ? "sm:grid-cols-2" : compact ? "xl:grid-cols-[2fr_1.35fr_1fr_auto]" : "lg:grid-cols-[1.8fr_1.35fr_1fr_auto]"}`}
+          className={multiCity ? multiCityColumns : `grid gap-3 ${appLayout ? "sm:grid-cols-2" : compact ? "xl:grid-cols-[2fr_1.35fr_1fr_auto]" : "lg:grid-cols-[1.8fr_1.35fr_1fr_auto]"}`}
         >
+          {multiCity && legs.length < MAX_MULTI_CITY_LEGS && (
+            <button
+              type="button"
+              onClick={() => {
+                const id = nextLegId.current++;
+                setLegs((current) => [...current, { id, origin: "", destination: "", departureDate: "" }]);
+              }}
+              className="col-span-2 inline-flex min-h-11 items-center gap-2 self-center justify-self-start rounded-xl border border-dashed border-indigo-300 px-4 text-sm font-semibold text-[#2D3199] transition-colors hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2D3199] lg:col-span-4"
+            >
+              <Plus size={18} aria-hidden="true" /> Add another flight
+            </button>
+          )}
           {!multiCity && (hotel ? (
             <div className={appLayout ? "sm:col-span-2" : undefined}>
               <StayDestinationPicker value={city} onChange={setCity} />
@@ -393,25 +461,28 @@ export default function TravelSearchForm({
               setReturnDate(last);
             }}
           />}
-          <TravellerPicker
-            kind={kind}
-            adults={adults}
-            ages={ages}
-            rooms={rooms}
-            cabin={cabin}
-            guestNationality={guestNationality}
-            onGuestNationalityChange={setGuestNationality}
-            onChange={(value) => {
-              setAdults(value.adults);
-              setAges(value.ages);
-              setRooms(value.rooms);
-              setCabin(value.cabin);
-            }}
-          />
+          <div className={multiCity ? "col-span-2 min-w-0 lg:col-span-1 lg:col-start-5" : "contents"}>
+            <TravellerPicker
+              kind={kind}
+              adults={adults}
+              ages={ages}
+              rooms={rooms}
+              cabin={cabin}
+              showCabin={!multiCity}
+              guestNationality={guestNationality}
+              onGuestNationalityChange={setGuestNationality}
+              onChange={(value) => {
+                setAdults(value.adults);
+                setAges(value.ages);
+                setRooms(value.rooms);
+                setCabin(value.cabin);
+              }}
+            />
+          </div>
           <button
             type="submit"
             disabled={multiCity && !multiCityEnabled}
-            className={`${travelButton} min-h-[62px] bg-[#FF3B00] text-[15px] shadow-[0_6px_18px_-8px_rgba(255,59,0,0.5)] hover:bg-[#dc3300] ${appLayout && !multiCity ? "sm:col-span-2" : compact ? "xl:min-h-[76px]" : ""}`}
+            className={`${travelButton} min-h-[62px] bg-[#FF3B00] text-[15px] shadow-[0_6px_18px_-8px_rgba(255,59,0,0.5)] hover:bg-[#dc3300] ${multiCity ? "col-span-2 lg:col-span-1 lg:col-start-5" : appLayout ? "sm:col-span-2" : compact ? "xl:min-h-[76px]" : ""}`}
           >
             <Search size={21} />
             <span>Search {hotel ? "hotels" : "flights"}</span>

@@ -688,6 +688,7 @@ export function TravellerPicker({
   ages,
   rooms,
   cabin,
+  showCabin = true,
   guestNationality,
   onGuestNationalityChange,
   onChange,
@@ -697,6 +698,7 @@ export function TravellerPicker({
   ages: number[];
   rooms: number;
   cabin: string;
+  showCabin?: boolean;
   guestNationality?: string;
   onGuestNationalityChange?: (value: string) => void;
   onChange: (value: {
@@ -723,7 +725,7 @@ export function TravellerPicker({
           type="button"
           data-booking-field=""
           className={searchField}
-          aria-label="Travellers and trip details"
+          aria-label={hotel || showCabin ? "Travellers and trip details" : "Travellers"}
         >
           <Users size={20} className="shrink-0 text-[#2D3199]" />
           <span className="min-w-0 flex-1">
@@ -731,7 +733,7 @@ export function TravellerPicker({
               data-booking-label=""
               className="block text-[11px] text-slate-500"
             >
-              {hotel ? "Guests & rooms" : "Travellers & cabin"}
+              {hotel ? "Guests & rooms" : showCabin ? "Travellers & cabin" : "Travellers"}
             </span>
             <span
               data-booking-value=""
@@ -742,11 +744,13 @@ export function TravellerPicker({
                 ? `, ${ages.length} child${ages.length > 1 ? "ren" : ""}`
                 : ""}
             </span>
-            <span data-booking-hint="" className="text-[10px] text-slate-500">
-              {hotel
-                ? `${rooms} room${rooms > 1 ? "s" : ""}`
-                : cabinNames[cabin]}
-            </span>
+            {(hotel || showCabin) && (
+              <span data-booking-hint="" className="text-[10px] text-slate-500">
+                {hotel
+                  ? `${rooms} room${rooms > 1 ? "s" : ""}`
+                  : cabinNames[cabin]}
+              </span>
+            )}
           </span>
           <ChevronDown size={14} className="text-slate-400" />
         </button>
@@ -849,20 +853,22 @@ export function TravellerPicker({
                 Travelling with an infant under 2? Contact our team to arrange
                 your booking.
               </p>
-              <label className="mb-4 block text-xs font-semibold">
-                Cabin class
-                <select
-                  value={cabin}
-                  onChange={(e) => update({ cabin: e.target.value })}
-                  className="mt-2 w-full rounded-xl border bg-white px-3 py-3 text-sm"
-                >
-                  {Object.entries(cabinNames).map(([key, name]) => (
-                    <option key={key} value={key}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {showCabin && (
+                <label className="mb-4 block text-xs font-semibold">
+                  Cabin class
+                  <select
+                    value={cabin}
+                    onChange={(e) => update({ cabin: e.target.value })}
+                    className="mt-2 w-full rounded-xl border bg-white px-3 py-3 text-sm"
+                  >
+                    {Object.entries(cabinNames).map(([key, name]) => (
+                      <option key={key} value={key}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
             </>
           )}
         </div>

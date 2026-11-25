@@ -147,16 +147,27 @@ describe("OTA navigation and pending actions", () => {
     ]);
     await render(h(TravelSearchForm, { initial }));
     expect(container.querySelector<HTMLInputElement>('input[name="journey"]:checked')?.parentElement?.textContent).toBe("Multi-city");
-    await act(async () => button("Add flight").click());
+    await act(async () => button("Add another flight").click());
     expect(container.textContent).toContain("Flight 3");
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Remove flight 3"]')!.click());
     expect(container.textContent).not.toContain("Flight 3");
+
+    const cabins = container.querySelectorAll<HTMLSelectElement>('select[aria-label="Cabin class for all flights"]');
+    expect(cabins).toHaveLength(2);
+    await act(async () => {
+      cabins[1].value = "business";
+      cabins[1].dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(cabins[0].value).toBe("business");
+    expect(container.querySelector('button[aria-label="Travellers"]')).not.toBeNull();
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Swap airports for flight 2"]')!.click());
 
     await act(async () => button("Search flights").click());
     expect(state.navigate).toHaveBeenCalledOnce();
     const target = new URL(state.navigate.mock.calls[0][0], "https://example.test");
     expect(target.pathname).toBe("/flights/search");
-    expect(target.searchParams.getAll("leg")).toEqual(initial.getAll("leg"));
+    expect(target.searchParams.getAll("leg")).toEqual(["LOS,JED,2099-01-01", "CAI,MED,2099-01-06"]);
+    expect(target.searchParams.get("cabinClass")).toBe("business");
     expect(target.searchParams.has("returnDate")).toBe(false);
   });
   it("preserves the shared trip and disables multi-city search when no supplier supports it", async () => {
