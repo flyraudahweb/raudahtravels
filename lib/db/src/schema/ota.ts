@@ -158,3 +158,27 @@ export const otaDuffelEventsTable = pgTable(
     check("ota_duffel_mode", sql`${t.mode} IN ('test','live')`),
   ],
 );
+
+export const otaFollowupsTable = pgTable("ota_followups", {
+  id: text("id").primaryKey(),
+  bookingId: text("booking_id").unique(),
+  clerkUserId: text("clerk_user_id").notNull(),
+  kind: text("kind").notNull(),
+  trip: text("trip").notNull(),
+  phone: text("phone"),
+  email: text("email"),
+  requestedAt: timestamp("requested_at", { withTimezone: true }),
+  assignedTo: text("assigned_to"),
+  assignedName: text("assigned_name"),
+  outcome: text("outcome"),
+  note: text("note"),
+  blocker: text("blocker"),
+  blockedRevision: integer("blocked_revision"),
+  revision: integer("revision").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("ota_followups_updated").on(t.updatedAt),
+  index("ota_followups_owner_request").on(t.clerkUserId, t.requestedAt),
+  check("ota_followups_kind", sql`${t.kind} IN ('hotel', 'flight')`),
+  check("ota_followups_outcome", sql`${t.outcome} IN ('reached', 'no_answer', 'resolved')`),
+]);

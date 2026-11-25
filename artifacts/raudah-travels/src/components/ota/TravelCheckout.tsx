@@ -10,8 +10,9 @@ import {
   TravelShell,
 } from "./TravelSearchPage";
 import { money, ota, OtaRequestError, travelButton, travelInput } from "@/lib/ota";
-import { BookingSteps } from "./BookingPresentation";
+import { BookingSteps, tripTitle } from "./BookingPresentation";
 import { TravelCancellationPolicy } from "./TravelPolicies";
+import { TravelCallback } from "./TravelCallback";
 
 export default function TravelCheckout({
   kind,
@@ -280,6 +281,9 @@ export default function TravelCheckout({
         )}
       </TravelShell>
     );
+  const callback = <TravelCallback key={checkoutKey} request={editBookingId && data?.draft
+    ? { source: "booking", bookingId: editBookingId }
+    : { source: "checkout", kind, offerId, trip: tripTitle({ kind, offer }).slice(0, 150) }} />;
   return (
     <TravelShell>
       <BookingSteps step={1} />
@@ -291,6 +295,7 @@ export default function TravelCheckout({
             : "Review your trip and add travellers"}
       </h1>
       {error && <ErrorMessage message={error} />}
+      {!offer && error && <div className="mt-4 max-w-lg">{callback}</div>}
       {!offer && !error ? (
         <Loading />
       ) : (
@@ -670,6 +675,7 @@ export default function TravelCheckout({
                   </p>
                 )}
               </section>
+              {callback}
               <div className="rounded-2xl bg-indigo-50 p-5 text-sm text-indigo-900">
                 <h3 className="font-bold">Need a hand?</h3>
                 <p className="mt-2">

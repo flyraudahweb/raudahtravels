@@ -224,6 +224,8 @@ beforeAll(async () => {
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0019_checkout_recovery.sql"), "utf8"));
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0020_paystack_settlement_guards.sql"), "utf8"));
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0021_booking_review_guards.sql"), "utf8"));
+  await module.pool.query("DROP TABLE ota_followups");
+  await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0022_ota_followups.sql"), "utf8"));
   await module.db.insert(module.profilesTable).values([
     {
       id: "user",
@@ -326,6 +328,7 @@ beforeEach(async () => {
   await module.db.delete(module.otaDuffelEventsTable);
   await module.db.delete(module.paystackSettlementsTable);
   await module.db.delete(module.otaPaymentJobsTable);
+  await module.db.delete(module.otaFollowupsTable);
   await module.db.delete(module.otaEventsTable);
   await module.db.delete(module.otaPrebookClaimsTable);
   await module.db.delete(module.otaBookingsTable);
@@ -610,6 +613,48 @@ async function request(
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 }
+
+it("makes callback requests and stale bookings visible only to authorized follow-up staff", async () => {
+  await create();
+  const path = "/admin/follow-ups";
+  const staff = randomUUID();
+  await module.db.insert(module.profilesTable).values({
+    id: staff, clerkUserId: staff, email: "travel-staff@example.test", fullName: "Travel Staff", role: "staff",
+  });
+  expect((await request(path, "user")).status).toBe(403);
+  expect((await request(path, staff)).status).toBe(403);
+  await module.db.insert(module.staffPermissionsTable).values({ id: randomUUID(), userId: staff, permission: "ota_followups" });
+  expect((await request(`/admin/bookings/${booking.id}`, staff)).status).toBe(403);
+  expect((await request("/callbacks", "other", { source: "booking", bookingId: booking.id })).status).toBe(404);
+  const callback = { source: "checkout", kind: "hotel", offerId: "hotel_1", trip: "Makkah stay", phone: "+2348012345678" };
+  const saved = await Promise.all([request("/callbacks", "user", callback), request("/callbacks", "user", callback)]);
+  expect(saved.map((response) => response.status)).toEqual([200, 200]);
+  const requests = (await (await request(path + "?kind=hotel", staff)).json()).cases;
+  expect(requests).toHaveLength(1);
+  expect(requests[0]).toMatchObject({ reason: "callback", phone: callback.phone });
+  await module.db.update(module.otaBookingsTable).set({ mode: "live" }).where(eq(module.otaBookingsTable.id, booking.id));
+  const { trackCheckoutBlocker } = await import("../src/services/ota/followups");
+  await Promise.all([trackCheckoutBlocker(booking.id, booking.revision, "fare_changed"),
+    trackCheckoutBlocker(booking.id, booking.revision, "fare_changed")]);
+  expect((await (await request(path + "?reason=fare_changed", staff)).json()).cases).toMatchObject([
+    { id: booking.id, reason: "fare_changed", revision: 0 },
+  ]);
+  await module.db.update(module.otaBookingsTable).set({ mode: "live", expiresAt: new Date(Date.now() - 1000),
+    revision: booking.revision + 1,
+    updatedAt: new Date(Date.now() - 20 * 60_000) }).where(eq(module.otaBookingsTable.id, booking.id));
+  const candidates = (await (await request(path + "?reason=expired", staff)).json()).cases;
+  expect(candidates).toHaveLength(1);
+  expect(candidates[0]).toMatchObject({ id: booking.id, reference: booking.reference, reason: "expired", assigned: false });
+  expect(candidates[0]).not.toHaveProperty("ownerId");
+  const claims = await Promise.all([request(`${path}/${booking.id}`, staff, { action: "claim", revision: 0 }),
+    request(`${path}/${booking.id}`, staff, { action: "claim", revision: 0 })]);
+  expect(claims.map((response) => response.status).sort()).toEqual([200, 409]);
+  const result = await request(`${path}/${booking.id}`, staff, { action: "outcome", revision: 1, outcome: "resolved", note: "Guided customer" });
+  expect(result.status).toBe(200);
+  expect((await (await request(path + "?state=resolved", staff)).json()).cases[0]).toMatchObject({
+    outcome: "resolved", note: "Guided customer", assignedToMe: true,
+  });
+});
 
 describe("Nuitee hotel checkout", () => {
   function date(days: number) {

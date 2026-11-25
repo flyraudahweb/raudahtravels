@@ -30,6 +30,7 @@ import AdminPassports from "./AdminPassports";
 import AdminBackup from "./AdminBackup";
 import AdminUsers from "./AdminUsers";
 import AdminOta from "./AdminOta";
+import AdminOtaFollowups from "./AdminOtaFollowups";
 import AdminOtaApi from "./AdminOtaApi";
 import AdminEhajj from "./AdminEhajj";
 import { useEhajjAccess } from "@/lib/ehajj";
@@ -295,12 +296,13 @@ export default function AdminConsole() {
     const groups = showEhajj
       ? [...ALL_NAV_GROUPS, { label: "Pilgrim integrations", items: [{ href: "/admin/ehajj", label: "EHajj", icon: BookOpen }] }]
       : ALL_NAV_GROUPS;
-    if (profile?.role === "super_admin") return [...groups, { label: "Travel Distribution", items: [{ href: "/admin/ota", label: "Online Travel Agency", icon: Building2 }, {href:"/admin/ota-api",label:"OTA API & Mobile",icon:Code2}] }];
+    const followups = { href: "/admin/ota-follow-ups", label: "Checkout Follow-up", icon: Inbox, permKey: "ota_followups" };
+    if (profile?.role === "super_admin") return [...groups, { label: "Travel Distribution", items: [{ href: "/admin/ota", label: "Online Travel Agency", icon: Building2 }, followups, {href:"/admin/ota-api",label:"OTA API & Mobile",icon:Code2}] }];
     if (!isStaffOnly) return groups;
     const allowed = new Set(myPerms?.permissions || []);
     // If the staff member has any support specialties, they must be able to see the Support page
     if ((myPerms?.specialties || []).length > 0) allowed.add("support_tickets");
-    return groups
+    return [...groups, { label: "Travel Distribution", items: [followups] }]
       .map(group => ({
         ...group,
         items: (group.items as any[]).filter((item: any) => !item.permKey || allowed.has(item.permKey)),
@@ -485,6 +487,7 @@ export default function AdminConsole() {
           <div className="max-w-6xl mx-auto px-4 md:px-8 py-8">
             <Switch>
               <Route path="/admin/ota" component={AdminOta} />
+              <Route path="/admin/ota-follow-ups" component={AdminOtaFollowups} />
               <Route path="/admin/ota-api" component={AdminOtaApi} />
               <Route path="/admin"              component={AdminOverview} />
               <Route path="/admin/packages"     component={AdminPackages} />

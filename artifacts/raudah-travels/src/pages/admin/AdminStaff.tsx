@@ -38,6 +38,7 @@ export const PAGE_PERMISSIONS = [
   { key: "agents",            label: "Agent Applications", desc: "Review agent applications" },
   { key: "bank_accounts",     label: "Bank Accounts",      desc: "Manage bank account details" },
   { key: "support_tickets",   label: "Support Tickets",    desc: "Manage customer support tickets" },
+  { key: "ota_followups",     label: "Checkout Follow-up", desc: "Call flight and hotel customers and manage follow-up cases" },
   { key: "team_chat",         label: "Team Chat",          desc: "Internal team messaging" },
   { key: "activity_log",      label: "Activity Log",       desc: "View system activity log" },
   { key: "booking_form",      label: "Booking Form",       desc: "Customise booking form fields" },

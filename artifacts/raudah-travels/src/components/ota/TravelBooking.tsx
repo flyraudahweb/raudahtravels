@@ -21,6 +21,7 @@ import {
   TravelShell,
 } from "./TravelSearchPage";
 import { TravelCancellationPolicy } from "./TravelPolicies";
+import { TravelCallback } from "./TravelCallback";
 import { money, ota, OtaRequestError, travelButton, travelInput } from "@/lib/ota";
 import { flightRecheckHref } from "@/lib/travelSearch";
 
@@ -631,6 +632,9 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
                 </ol>
               )}
             </section>
+            <div className="mb-5 print:hidden">
+              <TravelCallback key={`${user?.id}:${bookingId}`} request={{ source: "booking", bookingId }} />
+            </div>
             <section
               id="booking-help"
               className="scroll-mt-28 rounded-2xl border bg-white p-6 print:hidden"

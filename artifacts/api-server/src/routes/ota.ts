@@ -18,10 +18,14 @@ import {
   otaBookingsTable as bookings,
   otaEventsTable,
   otaPrebookClaimsTable,
+  otaFollowupsTable as followups,
   notificationsTable,
 } from "@workspace/db";
 import { and, eq, desc, sql, like, isNull, or } from "drizzle-orm";
 import { customerTimeline } from "../services/ota/bookingUpdates";
+import { followupQueue, followupReasons, trackCheckoutBlocker } from "../services/ota/followups";
+import { logger } from "../lib/logger";
+import { hasStaffGrant } from "../lib/bookingAccess";
 import {
   getOtaConfig,
   saveOtaConfig,
@@ -192,6 +196,13 @@ async function owned(req: Request) {
   });
   if (!row) throw new OtaError("Booking not found", 404);
   return row;
+}
+async function followupOperator(req: Request) {
+  const actor = await identity(req);
+  if (actor.profile.role !== "super_admin" &&
+      (actor.profile.role !== "staff" || !await hasStaffGrant(actor.profile, "ota_followups")))
+    throw new OtaError("Checkout Follow-up access is required.", 403);
+  return actor;
 }
 // Bounded in-memory burst control; production multi-instance deployments should
 // additionally apply a shared rate limit at their reverse proxy.
@@ -1201,6 +1212,50 @@ router.post(
     res.status(201).json({ booking: customerBooking(row) });
   }),
 );
+router.post("/ota/callbacks", endpoint(async (req, res) => {
+  const { userId, profile } = await identity(req);
+  const input = z.discriminatedUnion("source", [
+    z.object({ source: z.literal("booking"), bookingId: z.string().uuid() }),
+    z.object({ source: z.literal("checkout"), kind: z.enum(["flight", "hotel"]),
+      offerId: z.string().min(1).max(8000), trip: z.string().trim().min(1).max(150),
+      phone: z.string().regex(/^\+[1-9]\d{6,14}$/) }),
+  ]).parse(req.body);
+  const booking = input.source === "booking" ? await db.query.otaBookingsTable.findFirst({
+    where: and(eq(bookings.id, input.bookingId), eq(bookings.clerkUserId, userId)),
+  }) : undefined;
+  if (input.source === "booking" && !booking) throw new OtaError("Booking not found", 404);
+  const id = input.source === "booking" ? input.bookingId : `callback-${createHash("sha256")
+    .update(JSON.stringify([userId, input.kind, input.offerId])).digest("hex")}`;
+  const values = {
+    id, bookingId: booking?.id, clerkUserId: userId,
+    kind: input.source === "checkout" ? input.kind : booking!.kind,
+    trip: input.source === "checkout" ? input.trip : "Saved travel checkout",
+    phone: input.source === "checkout" ? input.phone : null,
+    email: input.source === "checkout" ? profile.email : null,
+    requestedAt: new Date(),
+  };
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`ota-callback:${userId}`}, 0))`);
+    const existing = await tx.query.otaFollowupsTable.findFirst({ where: eq(followups.id, id) });
+    if (existing?.requestedAt && existing.outcome !== "resolved") return;
+    const [recent] = await tx.select({ count: sql<number>`count(*)::int` }).from(followups)
+      .where(and(eq(followups.clerkUserId, userId), sql`${followups.requestedAt} > now() - interval '1 hour'`));
+    if (recent.count >= 5) throw new OtaError("You have already requested several calls. Please wait for our team.", 429);
+    await tx.insert(followups).values(values).onConflictDoUpdate({
+      target: followups.id,
+      set: { requestedAt: values.requestedAt, updatedAt: values.requestedAt,
+        revision: sql`${followups.revision} + 1`,
+        outcome: sql`CASE WHEN ${followups.outcome} = 'resolved' THEN NULL ELSE ${followups.outcome} END`,
+        assignedTo: sql`CASE WHEN ${followups.outcome} = 'resolved' THEN NULL ELSE ${followups.assignedTo} END`,
+        assignedName: sql`CASE WHEN ${followups.outcome} = 'resolved' THEN NULL ELSE ${followups.assignedName} END`,
+        note: sql`CASE WHEN ${followups.outcome} = 'resolved' THEN NULL ELSE ${followups.note} END`,
+      },
+      setWhere: eq(followups.clerkUserId, userId),
+    });
+  });
+  res.json({ requested: true });
+}));
+
 router.post(
   "/ota/bookings/:id/flight-fare",
   endpoint(async (req, res) => {
@@ -1252,35 +1307,34 @@ router.post(
     const appOrigin = otaAppOrigin();
     if (!appOrigin)
       throw new OtaError("Secure payment callback URL is not configured", 503);
-    if (nFlight) {
-      await verifyNuiteeFlightPrebook(c, row);
-    } else if (nuitee) {
-      await verifyNuiteePrebook(c, row);
-    } else if (domestic) {
-      if (!(await refreshDomesticQuote(c, domesticBookingQuote(row))))
-        throw new OtaError(
-          "This itinerary is no longer available. Search again before paying.",
-          409, undefined, "flight_offer_unavailable",
+    try {
+      if (nFlight) {
+        await verifyNuiteeFlightPrebook(c, row);
+      } else if (nuitee) {
+        await verifyNuiteePrebook(c, row);
+      } else if (domestic) {
+        if (!(await refreshDomesticQuote(c, domesticBookingQuote(row))))
+          throw new OtaError(
+            "This itinerary is no longer available. Search again before paying.",
+            409, undefined, "flight_offer_unavailable",
+          );
+      } else {
+        const fresh = await duffelRequest(
+          c,
+          row.kind === "flight" ? `/air/offers/${row.providerOfferId}` : `/stays/quotes/${row.providerOfferId}`,
         );
-    } else {
-      const fresh = await duffelRequest(
-        c,
-        row.kind === "flight"
-          ? `/air/offers/${row.providerOfferId}`
-          : `/stays/quotes/${row.providerOfferId}`,
-      );
-      available(fresh);
-      if (row.kind === "hotel") assertHotelQuote(fresh);
-      if (
-        !sameSupplierAmount(fresh.total_amount, row.supplierAmount) ||
-        fresh.total_currency !== row.supplierCurrency
-      )
-        throw new OtaError(
-          "Supplier pricing has changed. Please start a new search before paying.",
-          409,
-          undefined,
-          row.kind === "flight" ? "flight_fare_changed" : undefined,
-        );
+        available(fresh);
+        if (row.kind === "hotel") assertHotelQuote(fresh);
+        if (!sameSupplierAmount(fresh.total_amount, row.supplierAmount) || fresh.total_currency !== row.supplierCurrency)
+          throw new OtaError("Supplier pricing has changed. Please start a new search before paying.",
+            409, undefined, row.kind === "flight" ? "flight_fare_changed" : undefined);
+      }
+    } catch (error) {
+      if (error instanceof OtaError && error.status === 409 && row.mode === "live") {
+        await trackCheckoutBlocker(row.id, row.revision, error.code === "flight_fare_changed" ? "fare_changed" : "unavailable")
+          .catch(() => logger.warn({ bookingId: row.id }, "Could not record checkout follow-up"));
+      }
+      throw error;
     }
     const sameCheckout = and(
       eq(bookings.id, row.id),
@@ -1948,6 +2002,54 @@ router.get(
     res.json({ events: await recentDuffelEvents() });
   }),
 );
+router.get("/ota/admin/follow-ups", endpoint(async (req, res) => {
+  const actor = await followupOperator(req);
+  const input = z.object({
+    offset: z.coerce.number().int().min(0).max(10000).default(0),
+    kind: z.enum(["flight", "hotel"]).optional(), reason: z.enum(followupReasons).optional(),
+    supplier: z.enum(["nuitee", "bilalsadasub", "duffel"]).optional(),
+    search: z.string().trim().max(100).optional(), state: z.enum(["open", "resolved"]).default("open"),
+  }).parse(req.query);
+  const rows = await followupQueue({ ...input, resolved: input.state === "resolved" });
+  res.json({ canManage: actor.profile.role === "super_admin", nextOffset: rows.length > 50 ? input.offset + 50 : null,
+    cases: rows.slice(0, 50).map(({ ownerId, savedCase, assignedTo, ...row }) => ({
+      ...row, assigned: Boolean(assignedTo), assignedToMe: assignedTo === actor.profile.id,
+    })),
+  });
+}));
+
+router.post("/ota/admin/follow-ups/:id", endpoint(async (req, res) => {
+  const { profile } = await followupOperator(req);
+  const id = z.string().regex(/^(?:[a-f0-9-]{36}|callback-[a-f0-9]{64})$/i).parse(req.params.id);
+  const input = z.discriminatedUnion("action", [
+    z.object({ action: z.literal("claim"), revision: z.number().int().nonnegative() }),
+    z.object({ action: z.literal("release"), revision: z.number().int().nonnegative() }),
+    z.object({ action: z.literal("outcome"), outcome: z.enum(["reached", "no_answer", "resolved"]),
+      revision: z.number().int().nonnegative(),
+      note: z.string().trim().max(500).default("") }),
+  ]).parse(req.body);
+  const [row] = await followupQueue({ id, offset: 0 });
+  if (!row) throw new OtaError("This case is no longer open. Refresh the queue.", 409);
+  const changed = await db.transaction(async (tx) => {
+    if (input.action === "claim" && !row.savedCase) await tx.insert(followups).values({
+      id, bookingId: row.bookingId, clerkUserId: row.ownerId, kind: row.kind, trip: row.trip,
+    }).onConflictDoNothing();
+    const [updated] = await tx.update(followups).set({
+      updatedAt: new Date(),
+      revision: sql`${followups.revision} + 1`,
+      ...(input.action === "claim" ? { assignedTo: profile.id, assignedName: profile.fullName } :
+        input.action === "release" ? { assignedTo: null, assignedName: null } :
+        { outcome: input.outcome, note: input.note }),
+    }).where(and(eq(followups.id, id), eq(followups.revision, input.revision), sql`${followups.outcome} IS DISTINCT FROM 'resolved'`,
+      input.action === "claim" ? isNull(followups.assignedTo) :
+        profile.role === "super_admin" ? undefined : eq(followups.assignedTo, profile.id),
+    )).returning({ id: followups.id });
+    return updated;
+  });
+  if (!changed) throw new OtaError("This case changed. Refresh the queue before trying again.", 409);
+  res.json({ updated: true });
+}));
+
 router.get(
   "/ota/admin/bookings",
   endpoint(async (req, res) => {
