@@ -915,7 +915,7 @@ router.post(
         "The price has changed. Refresh the offer and review the new total before paying.",
         409,
         undefined,
-        input.refreshFlightFare ? "flight_fare_changed" : undefined,
+        nFlight ? "flight_fare_changed" : undefined,
       );
     const nuiteeSourceKey =
       nFlightQuote?.selection.offerId ??

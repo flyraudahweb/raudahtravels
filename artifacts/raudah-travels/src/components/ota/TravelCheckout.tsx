@@ -9,7 +9,7 @@ import {
   RateConditions,
   TravelShell,
 } from "./TravelSearchPage";
-import { money, ota, travelButton, travelInput } from "@/lib/ota";
+import { money, ota, OtaRequestError, travelButton, travelInput } from "@/lib/ota";
 import { BookingSteps } from "./BookingPresentation";
 import { TravelCancellationPolicy } from "./TravelPolicies";
 
@@ -26,6 +26,7 @@ export default function TravelCheckout({
   const editBookingId = new URLSearchParams(search).get("edit");
   const [data, setData] = useState<any>(null),
     [error, setError] = useState(""),
+    [previousFare, setPreviousFare] = useState<number>(),
     [busy, setBusy] = useState(false),
     [config, setConfig] = useState<any>(null);
   const [passportNumbers, setPassportNumbers] = useState<
@@ -42,6 +43,7 @@ export default function TravelCheckout({
     setBusy(false);
     setData(null);
     setError("");
+    setPreviousFare(undefined);
     setConfig(null);
     setPassportNumbers({});
     if (!isLoaded || (kind === "hotel" && !isSignedIn)) return;
@@ -151,7 +153,8 @@ export default function TravelCheckout({
     submitting.current = true;
     setError("");
     setBusy(true);
-    const form = new FormData(event.currentTarget);
+    const checkoutForm = event.currentTarget;
+    const form = new FormData(checkoutForm);
     const contact = {
       email: String(form.get("email")),
       phone: String(form.get("phone")),
@@ -222,7 +225,25 @@ export default function TravelCheckout({
       )
         navigate(`/travel/bookings/${booking.id}`);
     } catch (e: any) {
-      if (requestEpoch.current === epoch) setError(e.message);
+      if (requestEpoch.current !== epoch) return;
+      if (nFlight && e instanceof OtaRequestError && e.code === "flight_fare_changed") {
+        try {
+          const current = await ota(`/flights/offers/${encodeURIComponent(offerId)}`);
+          if (requestEpoch.current !== epoch) return;
+          if (current.pricing.totalKobo !== data.pricing.totalKobo) {
+            setPreviousFare(data.pricing.totalKobo);
+            setData({ ...data, ...current });
+            const terms = checkoutForm.elements.namedItem("terms");
+            if (terms instanceof HTMLInputElement) terms.checked = false;
+            return;
+          }
+        } catch (refreshError) {
+          if (requestEpoch.current !== epoch) return;
+          setError(refreshError instanceof Error ? refreshError.message : "The current fare could not be checked. Please try again.");
+          return;
+        }
+      }
+      setError(e.message);
     } finally {
       if (requestEpoch.current === epoch) {
         submitting.current = false;
@@ -545,6 +566,12 @@ export default function TravelCheckout({
               )}
               <TravelCancellationPolicy kind={kind} offer={offer} />
               <section className="space-y-4 rounded-2xl border bg-white p-6">
+                {previousFare !== undefined && (
+                  <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-950">
+                    The fare changed from {money(previousFare)} to <strong>{money(data.pricing.totalKobo)}</strong>.
+                    Your traveller details are still here. Review the updated total and accept the terms to continue.
+                  </p>
+                )}
                 <label className="flex items-start gap-3 text-sm text-slate-600">
                   <input
                     type="checkbox"
@@ -571,7 +598,8 @@ export default function TravelCheckout({
                   disabled={busy || !salesEnabled}
                   className={`${travelButton} w-full`}
                 >
-                  {busy ? "Saving checkout…" : "Save and continue to payment"}
+                  {busy ? "Checking and saving…" : previousFare !== undefined
+                    ? `Continue at ${money(data.pricing.totalKobo)}` : "Save and continue to payment"}
                   <ArrowRight size={16} />
                 </button>
                 {!salesEnabled && (

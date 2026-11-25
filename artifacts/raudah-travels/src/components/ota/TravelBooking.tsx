@@ -211,12 +211,13 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
   useEffect(() => {
     if (fareReview) fareAlertRef.current?.focus();
   }, [fareReview]);
+  const expired = booking && Date.parse(booking.expiresAt) <= Date.now();
   useEffect(() => {
-    if (!fareReview || busy || !booking?.canRefreshFlightFare || !booking.offer?.cabin_class ||
+    if ((!fareReview && !expired) || busy || !booking?.canRefreshFlightFare || !booking.offer?.cabin_class ||
         autoFareRevision.current === booking.revision) return;
     autoFareRevision.current = booking.revision;
     checkCurrentFare();
-  }, [fareReview, busy, booking]);
+  }, [fareReview, expired, busy, booking]);
   if (!isLoaded)
     return (
       <TravelShell>
@@ -234,8 +235,7 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
         </SignInButton>
       </TravelShell>
     );
-  const confirmed = booking?.status === "confirmed",
-    expired = booking && Date.parse(booking.expiresAt) <= Date.now();
+  const confirmed = booking?.status === "confirmed";
   const provider = booking?.providerResult,
     offer = booking?.offer;
   const needsFareReview = booking?.status === "payment_pending" && (expired || !!fareReview);

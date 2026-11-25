@@ -345,6 +345,41 @@ describe("OTA navigation and pending actions", () => {
     expect(container.textContent).toContain("Payment service is unavailable. Try again.");
   });
 
+  it("refreshes a changed Nuitee fare without clearing the traveller form", async () => {
+    const initial = offer("nfa_example");
+    const updatedPricing = { ...pricing, totalKobo: 120000 };
+    let priceChanged = false;
+    state.api.mockImplementation((path: string) => {
+      if (path === "/config") return Promise.resolve({ nuiteeFlightCheckoutEnabled: true });
+      if (path === "/bookings") {
+        if (priceChanged) return Promise.resolve({ booking: booking("renewed") });
+        priceChanged = true;
+        return Promise.reject(new OtaRequestError("Fare changed", "flight_fare_changed"));
+      }
+      return Promise.resolve(priceChanged ? { ...initial, pricing: updatedPricing } : initial);
+    });
+    await render(h(TravelCheckout, { kind: "flight", offerId: "nfa_example" }));
+    const form = container.querySelector("form")!;
+    const firstName = form.querySelector<HTMLInputElement>('[name="given_0"]')!;
+    const terms = form.querySelector<HTMLInputElement>('[name="terms"]')!;
+    firstName.value = "Umar";
+    terms.checked = true;
+    const submit = () => act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await submit();
+    expect(state.navigate).not.toHaveBeenCalled();
+    expect(firstName.value).toBe("Umar");
+    expect(terms.checked).toBe(false);
+    expect(button("Continue at ₦1,200.00")).toBeTruthy();
+    terms.checked = true;
+    await submit();
+    expect(state.api.mock.calls.filter(([path]) => path === "/bookings").at(-1)?.[1]).toMatchObject({
+      expectedTotalKobo: 120000, travellers: [{ given_name: "Umar" }],
+    });
+    expect(state.navigate).toHaveBeenCalledWith("/travel/bookings/renewed");
+  });
+
   it("reports missing supplier traveller data without crashing checkout", async () => {
     state.api.mockImplementation((path: string) =>
       Promise.resolve(
