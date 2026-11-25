@@ -640,8 +640,8 @@ export default function AdminOtaApi() {
               </div>
               <p className="mt-5 rounded-xl bg-amber-50 p-3 text-[11px] leading-5 text-amber-800">
                 Product switches, provider access and payment modes still apply.
-                Self-service exchanges, native push and multi-city are not
-                implemented.
+                Multi-city search depends on an enabled supplier that supports it.
+                Self-service exchanges and native push are outside the current API scope.
               </p>
               <button
                 onClick={() => {

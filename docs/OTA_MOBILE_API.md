@@ -1,6 +1,6 @@
 # FlyRaudah OTA Mobile API
 
-Contract version: 1.0.3. Base URL: https://flyraudah.com.ng/api/ota/v1.
+Contract version: 1.0.4. Base URL: https://flyraudah.com.ng/api/ota/v1.
 
 ## Developer kit, environments & first request
 
@@ -79,7 +79,7 @@ Build the FlyRaudah mobile app on the same customer accounts and OTA engine as t
 6. Checkout: POST /bookings once per explicit confirmation. Save the returned booking ID before POST /bookings/{id}/pay. Disable repeated taps; do not silently retry checkout creation after a timeout because Idempotency-Key is not supported. Recover GET /bookings first.
 7. Payment: open only the server authorizationUrl in the system authentication/browser flow. On web return, app resume or app restart, GET the retained booking and POST /complete only when appropriate. A browser success screen or mobile deep link is never payment proof.
 8. My Trips: GET /bookings?offset=; use nextOffset, merge by ID, compare revisions and show pending/confirmed/attention summaries. Trip details use GET /bookings/{id}, GET /timeline and occasional POST /refresh with {}. Show supplied documents safely; never synthesize ticket numbers.
-9. Inbox and help: GET /updates?offset=, POST /updates/{encodedId}/read or /updates/read-all, and POST /bookings/{id}/service-request. Poll only while active and respect Retry-After; native push, seats, infants, multi-city and instant self-service refunds/exchanges are not currently exposed.
+9. Inbox and help: GET /updates?offset=, POST /updates/{encodedId}/read or /updates/read-all, and POST /bookings/{id}/service-request. Poll only while active and respect Retry-After. Native push, seats, infants and instant self-service refunds/exchanges are not currently exposed.
 10. Release acceptance: run the documented staging payment/provider tests with matching modes, migration 0012 only if backend keys are used, HTTPS, secret isolation, ownership tests, timeout recovery and operator reconciliation. Production Stays access and a funded supplier account are separate provider requirements.
 
 
@@ -124,10 +124,10 @@ First-party mobile apps use public search plus customer session JWTs; they do no
 
 ## Flight search → offer → checkout
 
-Use GET /places for city/airport suggestions and select the returned IATA code. POST /flights/search supports one-way or return trips, economy/premium economy/business/first, adults and children aged 2–11. At most nine passengers total. Results include supplier offer/passenger IDs, itinerary, expiry, conditions and server-priced pricing.totalKobo. Re-fetch GET /flights/offers/{id} before checkout. Map each traveller to that offer’s passenger ID; birth date must match the searched age at departure. Provide passport data when passenger_identity_documents_required is true. A passport supplied optionally is still validated through the last itinerary date. Entry/visa/extra passport-validity requirements are not determined by this API.
+Use GET /places for city and airport suggestions. POST /flights/search supports one-way, return and multi-city trips, four cabin classes, and up to nine adults and children aged 2–11 combined. Multi-city availability depends on the enabled suppliers. Results include the complete itinerary, offer and passenger IDs, expiry, conditions and server-priced pricing.totalKobo. Refresh GET /flights/offers/{id} before checkout. Map each traveller to the offer’s passenger ID and provide passport data when required. A passport supplied optionally is still validated through the last itinerary date.
 
-1. POST /flights/search with origin, destination, departureDate, optional returnDate, adults, childAges and cabinClass.
-2. Render both slices for a return offer; never present its bundled price as one leg’s separate fare. Filter stops using connections plus technical stops.
+1. POST /flights/search with origin, destination, departureDate and optional returnDate, or submit two to six ordered legs with an origin, destination and departureDate per leg. Send adults, childAges and cabinClass with either format.
+2. Render every slice. The total price covers the entire offer for all travellers. Filter stops using connections plus technical stops.
 3. GET /flights/offers/{id}; display pricing.totalKobo, expiry, baggage and cancellation/change conditions.
 4. POST /bookings with kind=flight, current offerId, acceptedTerms=true, contact, one matching traveller per passenger, and expectedTotalKobo from the last response.
 5. A 409 price change requires fresh presentation and explicit traveller confirmation. A saved checkout is not yet a paid or supplier-confirmed booking.
@@ -200,7 +200,7 @@ Paystack delivers signed events to the existing /api/payments/paystack/webhook (
 
 ## Supported scope & launch checklist
 
-This is the implemented Raudah OTA API, not a claim of Trip.com feature parity. Supported: one-way/return flights, adult/child travel, prepaid hotel inventory, owner checkout/history, hosted payment, supplier updates and support requests. Not exposed: multi-city, infants, ancillary/seat sales, held orders, self-service exchanges/cancellations, arbitrary payment callbacks, partial-refund APIs, native push subscriptions or partner booking-on-behalf APIs. Direct unsupported requests to support. Do not represent these as completed features in a mobile UI.
+The Raudah OTA API supports one-way, return and multi-city flights, adult and child travel, prepaid hotel inventory, owner checkout and history, hosted payment, supplier updates and support requests. Infants, ancillary and seat sales, held orders, self-service exchanges or cancellations, partial-refund APIs, native push subscriptions and partner bookings on behalf of customers are outside this API. Direct unsupported requests to support.
 
 1. Deploy API and web code together; apply the required OTA migrations and 0012 for optional search keys.
 2. Use the same Clerk instance and verify new-account bootstrap plus blocked-account rejection.
@@ -402,7 +402,7 @@ Parameters:
 
 ### POST /flights/search
 
-Search one-way / return flights. Adults plus children cannot exceed 9. Returns up to 80 online offers sorted by totalKobo. Supported domestic searches may also return estimates sorted by estimatedTotalKobo. Only items in offers can go to checkout. If partialAvailability is true, at least one applicable supplier could not be checked.
+Search one-way, return or multi-city flights. Adults plus children cannot exceed 9. Multi-city searches return complete offers from enabled suppliers that support the itinerary, currently Nuitee and Duffel. Returns up to 80 online offers sorted by totalKobo. Some one-way domestic searches also return estimates. If partialAvailability is true, at least one applicable supplier could not be checked.
 
 Authentication: Public; optional scoped server search key.
 
@@ -413,68 +413,155 @@ Request schema:
 
 ```json
 {
-  "type": "object",
-  "properties": {
-    "origin": {
-      "type": "string",
-      "description": "Uppercase origin IATA",
-      "pattern": "^[A-Z]{3}$"
-    },
-    "destination": {
-      "type": "string",
-      "description": "Different uppercase destination IATA",
-      "pattern": "^[A-Z]{3}$"
-    },
-    "departureDate": {
-      "type": "string",
-      "description": "Today or future",
-      "format": "date"
-    },
-    "returnDate": {
-      "type": "string",
-      "description": "Optional; same day or after departure",
-      "format": "date"
-    },
-    "adults": {
-      "type": "integer",
-      "description": "Adult passengers, ages 12+",
-      "minimum": 1,
-      "maximum": 9
-    },
-    "childAges": {
-      "type": "array",
-      "items": {
-        "type": "integer",
-        "description": "Child age at departure",
-        "minimum": 2,
-        "maximum": 11
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "adults": {
+          "type": "integer",
+          "description": "Adult passengers, ages 12+",
+          "minimum": 1,
+          "maximum": 9
+        },
+        "childAges": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "description": "Child age at departure",
+            "minimum": 2,
+            "maximum": 11
+          },
+          "maxItems": 8,
+          "default": []
+        },
+        "cabinClass": {
+          "type": "string",
+          "description": "Cabin",
+          "enum": [
+            "economy",
+            "premium_economy",
+            "business",
+            "first"
+          ],
+          "default": "economy"
+        },
+        "origin": {
+          "type": "string",
+          "description": "Uppercase origin IATA",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "destination": {
+          "type": "string",
+          "description": "Different uppercase destination IATA",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "departureDate": {
+          "type": "string",
+          "description": "Today or future",
+          "format": "date"
+        },
+        "returnDate": {
+          "type": "string",
+          "description": "Optional; same day or after departure",
+          "format": "date"
+        },
+        "legs": {
+          "not": {}
+        }
       },
-      "maxItems": 8,
-      "default": []
+      "required": [
+        "adults",
+        "origin",
+        "destination",
+        "departureDate"
+      ]
     },
-    "cabinClass": {
-      "type": "string",
-      "description": "Cabin",
-      "enum": [
-        "economy",
-        "premium_economy",
-        "business",
-        "first"
-      ],
-      "default": "economy"
+    {
+      "type": "object",
+      "properties": {
+        "adults": {
+          "type": "integer",
+          "description": "Adult passengers, ages 12+",
+          "minimum": 1,
+          "maximum": 9
+        },
+        "childAges": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "description": "Child age at departure",
+            "minimum": 2,
+            "maximum": 11
+          },
+          "maxItems": 8,
+          "default": []
+        },
+        "cabinClass": {
+          "type": "string",
+          "description": "Cabin",
+          "enum": [
+            "economy",
+            "premium_economy",
+            "business",
+            "first"
+          ],
+          "default": "economy"
+        },
+        "origin": {
+          "not": {}
+        },
+        "destination": {
+          "not": {}
+        },
+        "departureDate": {
+          "not": {}
+        },
+        "returnDate": {
+          "not": {}
+        },
+        "legs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "origin": {
+                "type": "string",
+                "description": "Uppercase origin IATA",
+                "pattern": "^[A-Z]{3}$"
+              },
+              "destination": {
+                "type": "string",
+                "description": "Different uppercase destination IATA",
+                "pattern": "^[A-Z]{3}$"
+              },
+              "departureDate": {
+                "type": "string",
+                "description": "Today or future",
+                "format": "date"
+              }
+            },
+            "required": [
+              "origin",
+              "destination",
+              "departureDate"
+            ]
+          },
+          "minItems": 2,
+          "maxItems": 6,
+          "description": "Ordered multi-city legs. Omit top-level route and date fields."
+        }
+      },
+      "required": [
+        "adults",
+        "legs"
+      ]
     }
-  },
-  "required": [
-    "origin",
-    "destination",
-    "departureDate",
-    "adults"
   ],
   "example": {
     "origin": "LOS",
     "destination": "JED",
-    "departureDate": "2027-01-03",
-    "returnDate": "2027-01-10",
+    "departureDate": "2027-01-09",
+    "returnDate": "2027-01-16",
     "adults": 1,
     "childAges": [],
     "cabinClass": "economy"
@@ -565,8 +652,8 @@ Request schema:
   "example": {
     "latitude": 21.4225,
     "longitude": 39.8262,
-    "checkIn": "2027-01-03",
-    "checkOut": "2027-01-10",
+    "checkIn": "2027-01-09",
+    "checkOut": "2027-01-16",
     "rooms": 1,
     "adults": 1,
     "childAges": []
@@ -1455,6 +1542,13 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "$ref": "#/components/schemas/Slice"
       }
     },
+    "trip_type": {
+      "type": "string",
+      "description": "Multi-city itinerary when provided",
+      "enum": [
+        "multi_city"
+      ]
+    },
     "conditions": {
       "type": "object",
       "properties": {},
@@ -1562,7 +1656,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
     "id": "off_example123",
     "total_amount": "100.00",
     "total_currency": "USD",
-    "expires_at": "2026-11-19T20:48:40.347Z",
+    "expires_at": "2026-11-25T02:11:35.257Z",
     "passengers": [
       {
         "id": "pas_example123",
@@ -1586,8 +1680,8 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "duration": "PT5H30M",
         "segments": [
           {
-            "departing_at": "2027-01-03T10:00:00",
-            "arriving_at": "2027-01-03T17:30:00",
+            "departing_at": "2027-01-09T10:00:00",
+            "arriving_at": "2027-01-09T17:30:00",
             "origin": {
               "iata_code": "LOS"
             },
@@ -2019,7 +2113,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
       "id": "off_example123",
       "total_amount": "100.00",
       "total_currency": "USD",
-      "expires_at": "2026-11-19T20:48:40.347Z",
+      "expires_at": "2026-11-25T02:11:35.257Z",
       "passengers": [
         {
           "id": "pas_example123",
@@ -2043,8 +2137,8 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
           "duration": "PT5H30M",
           "segments": [
             {
-              "departing_at": "2027-01-03T10:00:00",
-              "arriving_at": "2027-01-03T17:30:00",
+              "departing_at": "2027-01-09T10:00:00",
+              "arriving_at": "2027-01-09T17:30:00",
               "origin": {
                 "iata_code": "LOS"
               },
@@ -2089,7 +2183,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
       "email": "traveller@example.com",
       "phone": "+2348012345678"
     },
-    "expiresAt": "2026-11-19T20:48:40.347Z",
+    "expiresAt": "2026-11-25T02:11:35.257Z",
     "paidAt": null,
     "providerResult": null,
     "providerNotice": null,
@@ -2138,7 +2232,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "id": "off_example123",
         "total_amount": "100.00",
         "total_currency": "USD",
-        "expires_at": "2026-11-19T20:48:40.347Z",
+        "expires_at": "2026-11-25T02:11:35.257Z",
         "passengers": [
           {
             "id": "pas_example123",
@@ -2162,8 +2256,8 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
             "duration": "PT5H30M",
             "segments": [
               {
-                "departing_at": "2027-01-03T10:00:00",
-                "arriving_at": "2027-01-03T17:30:00",
+                "departing_at": "2027-01-09T10:00:00",
+                "arriving_at": "2027-01-09T17:30:00",
                 "origin": {
                   "iata_code": "LOS"
                 },
@@ -2208,7 +2302,7 @@ Download docs/ota-openapi.json or the super-admin Developer Centre export for al
         "email": "traveller@example.com",
         "phone": "+2348012345678"
       },
-      "expiresAt": "2026-11-19T20:48:40.347Z",
+      "expiresAt": "2026-11-25T02:11:35.257Z",
       "paidAt": null,
       "providerResult": null,
       "providerNotice": null,
@@ -2455,6 +2549,10 @@ Successful response
         "type": "boolean",
         "description": "Flight search enabled"
       },
+      "multiCityFlightSearchEnabled": {
+        "type": "boolean",
+        "description": "An enabled flight supplier supports multi-city search"
+      },
       "hotelsEnabled": {
         "type": "boolean",
         "description": "Stays search enabled"
@@ -2506,6 +2604,7 @@ Successful response
     },
     "required": [
       "flightsEnabled",
+      "multiCityFlightSearchEnabled",
       "hotelsEnabled",
       "salesEnabled",
       "nuiteeFlightCheckoutEnabled",
@@ -2519,6 +2618,7 @@ Successful response
   },
   "example": {
     "flightsEnabled": true,
+    "multiCityFlightSearchEnabled": true,
     "hotelsEnabled": false,
     "salesEnabled": false,
     "nuiteeFlightCheckoutEnabled": true,
@@ -2592,7 +2692,7 @@ Successful response
           },
           "multiCity": {
             "type": "boolean",
-            "description": "False"
+            "description": "An enabled flight supplier supports multi-city search"
           },
           "infants": {
             "type": "boolean",
@@ -2896,7 +2996,7 @@ Successful response
         "id": "off_example123",
         "total_amount": "100.00",
         "total_currency": "USD",
-        "expires_at": "2026-11-19T20:48:40.347Z",
+        "expires_at": "2026-11-25T02:11:35.257Z",
         "passengers": [
           {
             "id": "pas_example123",
@@ -2920,8 +3020,8 @@ Successful response
             "duration": "PT5H30M",
             "segments": [
               {
-                "departing_at": "2027-01-03T10:00:00",
-                "arriving_at": "2027-01-03T17:30:00",
+                "departing_at": "2027-01-09T10:00:00",
+                "arriving_at": "2027-01-09T17:30:00",
                 "origin": {
                   "iata_code": "LOS"
                 },
@@ -2983,7 +3083,7 @@ Successful response
       "id": "off_example123",
       "total_amount": "100.00",
       "total_currency": "USD",
-      "expires_at": "2026-11-19T20:48:40.347Z",
+      "expires_at": "2026-11-25T02:11:35.257Z",
       "passengers": [
         {
           "id": "pas_example123",
@@ -3007,8 +3107,8 @@ Successful response
           "duration": "PT5H30M",
           "segments": [
             {
-              "departing_at": "2027-01-03T10:00:00",
-              "arriving_at": "2027-01-03T17:30:00",
+              "departing_at": "2027-01-09T10:00:00",
+              "arriving_at": "2027-01-09T17:30:00",
               "origin": {
                 "iata_code": "LOS"
               },
@@ -3215,7 +3315,7 @@ Successful response
             "id": "off_example123",
             "total_amount": "100.00",
             "total_currency": "USD",
-            "expires_at": "2026-11-19T20:48:40.347Z",
+            "expires_at": "2026-11-25T02:11:35.257Z",
             "passengers": [
               {
                 "id": "pas_example123",
@@ -3239,8 +3339,8 @@ Successful response
                 "duration": "PT5H30M",
                 "segments": [
                   {
-                    "departing_at": "2027-01-03T10:00:00",
-                    "arriving_at": "2027-01-03T17:30:00",
+                    "departing_at": "2027-01-09T10:00:00",
+                    "arriving_at": "2027-01-09T17:30:00",
                     "origin": {
                       "iata_code": "LOS"
                     },
@@ -3285,7 +3385,7 @@ Successful response
             "email": "traveller@example.com",
             "phone": "+2348012345678"
           },
-          "expiresAt": "2026-11-19T20:48:40.347Z",
+          "expiresAt": "2026-11-25T02:11:35.257Z",
           "paidAt": null,
           "providerResult": null,
           "providerNotice": null,
@@ -3342,7 +3442,7 @@ Successful response
             "email": "traveller@example.com",
             "phone": "+2348012345678"
           },
-          "expiresAt": "2026-11-19T20:48:40.347Z",
+          "expiresAt": "2026-11-25T02:11:35.257Z",
           "paidAt": null,
           "providerResult": null,
           "providerNotice": null,

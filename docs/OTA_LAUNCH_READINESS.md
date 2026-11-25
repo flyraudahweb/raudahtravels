@@ -34,7 +34,7 @@ Production steps, in order:
 6. Complete real-session staging purchase/refund/notification acceptance, including duplicate callbacks, concurrent requests, expired offers and interrupted supplier calls. Verify that unknown reservation outcomes are reconciled without a repeated purchase.
 7. Before live activation, verify live product access, matching live credentials, supplier funding, transactional email delivery, worker uptime, backup/restore, edge throttling, monitoring and operator reconciliation ownership.
 
-The native mobile app remains a starting point. /app login/signup use Clerk and need actual-device/real-session acceptance; result and checkout actions continue into the existing web flow. Push, infants, multi-city, paid extras and self-service changes/cancellations remain outside the supported release scope. Nigerian domestic inventory beyond the current provider still needs an approved supplier integration if required for launch.
+The native mobile app remains a starting point. /app login/signup use Clerk and need verification on a real device with a real session. Result and checkout actions continue into the existing web flow. Push, infant fares, paid extras and self-service changes and cancellations remain outside the supported release scope. Nigerian domestic inventory beyond the current provider still needs an approved supplier integration if required for launch.
 
 Final local verification: **153 tests passed across 14 suites**, workspace/mobile-client TypeScript checks passed, both API/frontend production builds passed and diff checks passed. The separate registration integration suite was excluded because of its known Windows setup/cleanup issue. The first broad run hit the disposable PostgreSQL setup timeout; the fresh rerun passed. New race tests also caught a JSON-versus-JSONB comparison error in the initial fix; the final guard explicitly casts the existing JSON column and passes the integration test. Existing nonfatal frontend sourcemap, NODE_ENV and large-chunk warnings remain.
 
@@ -92,7 +92,7 @@ The customer API, OpenAPI contract and client starter are implemented. A finishe
 
 First-party mobile customers use Clerk session JWTs. The optional super-admin-created search keys are for trusted servers, not mobile binaries and not customer booking access.
 
-API capability flags explicitly exclude infants, multi-city, ancillary sales, native push and self-service exchanges/cancellations. Changes/cancellations use support requests. These are product extensions rather than prerequisites for the supported basic booking flow.
+The API reports multi-city availability based on the enabled flight suppliers. Infant fares, ancillary sales, native push and self-service exchanges and cancellations are outside API scope. Customers use support requests for changes and cancellations.
 
 No Tiqwa, Wakanow or other Nigerian domestic supplier integration has been implemented. Supplier research is separate from current functionality. Confirm an account, contract, exact airline coverage and API specification before adding an adapter.
 

@@ -109,7 +109,7 @@ The pnpm workspace uses TypeScript, React 19.1, Vite 7, Tailwind 4, Radix/shadcn
 - `/app`, `/app/login` and `/app/signup` are a responsive web starter in `pages/app/TravelApp.tsx`. It uses Clerk, real package reads and the shared OTA search, continuing into existing web checkout. See [app scope](OTA_APP_STARTER.md).
 - `services/ota/mobileRoutes.ts` and `mobileApiPaths.ts` expose 23 customer operations under `/api/ota/v1`. Owner actions require a Clerk session and an active profile. Optional hashed, scoped, expiring/revocable search keys serve trusted backends. Mobile clients use customer authentication.
 - `/admin/ota-api` is the Super Admin developer centre in `pages/admin/AdminOtaApi.tsx`. Contract source is `services/ota/apiDocumentation.ts`; `apiDeveloperTools.ts` and `mobileClientAssets.ts` supply protected download assets. Run `pnpm run docs:ota` after changing the OTA contract to refresh `docs/ota-openapi.json`, the integration guide, Postman files and typed mobile client/declarations. See [mobile API](OTA_MOBILE_API.md) and `docs/mobile/README.md`.
-- Native packaging, device acceptance, push, deep links, infants, multi-city, paid extras and self-service changes/cancellations remain outside the supported starter. Customer service requests provide the current support workflow.
+- Native packaging, device acceptance, push, deep links, infant fares, paid extras and self-service changes and cancellations remain outside the supported starter. Customer service requests provide the current support workflow.
 
 ### Public design and package discovery
 

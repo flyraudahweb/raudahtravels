@@ -19,11 +19,13 @@ import {
   airlineKey,
   airportTitle,
   dateKey,
-  durationMinutes,
   flightDuration,
+  flightDurationLabel,
+  flightLegLabel,
   flightStops,
   moveDate,
   readDate,
+  readMultiCityLegs,
   selectFlights,
   type FlightFilters,
 } from "@/lib/travelSearch";
@@ -43,12 +45,6 @@ const shortDate = (value: string) =>
     day: "numeric",
     month: "short",
   }) || "Choose dates";
-const duration = (value: string) => {
-  const minutes = durationMinutes(value);
-  return Number.isFinite(minutes)
-    ? `${Math.floor(minutes / 60)}h ${Math.round(minutes % 60)}m`
-    : "Duration pending";
-};
 
 export function SearchLoading({
   query,
@@ -137,7 +133,9 @@ export function SearchLoading({
           }}
         >
           <DialogTitle className="flex items-center justify-center gap-3 text-xl font-bold text-[#1C1F66]">
-            {kind === "flight" ? (
+            {kind === "flight" && query.has("leg") ? (
+              "Finding multi-city flights"
+            ) : kind === "flight" ? (
               <>
                 {query.get("originLabel")?.slice(0, 80) ||
                   airportTitle(query.get("origin") || "")}
@@ -150,9 +148,9 @@ export function SearchLoading({
             )}
           </DialogTitle>
           <DialogDescription className="text-center text-xs text-slate-500">
-            {shortDate(
-              query.get(kind === "flight" ? "departureDate" : "checkIn") || "",
-            )}
+            {kind === "flight" && query.has("leg")
+              ? `${readMultiCityLegs(query).length} flights`
+              : shortDate(query.get(kind === "flight" ? "departureDate" : "checkIn") || "")}
             {query.get(kind === "flight" ? "returnDate" : "checkOut") &&
               ` — ${shortDate(query.get(kind === "flight" ? "returnDate" : "checkOut")!)}`}{" "}
             · {travellerCount} traveller{travellerCount === 1 ? "" : "s"}
@@ -268,9 +266,11 @@ export default function FlightResults({
     destination =
       query.get("destinationLabel")?.slice(0, 80) ||
       airportTitle(query.get("destination") || "");
+  const multiCity = query.has("leg");
+  const tripLabel = multiCity ? "Multi-city" : query.has("returnDate") ? "Round trip" : "One way";
   return (
     <>
-      <div
+      {!multiCity && <div
         className="mt-5 flex overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1 shadow-sm"
         aria-label="Search nearby departure dates"
         ref={dateStrip}
@@ -301,13 +301,19 @@ export default function FlightResults({
             </button>
           );
         })}
-      </div>
+      </div>}
       <div className="my-5 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-slate-950">
-            {origin} <span className="px-1 text-slate-400">→</span>{" "}
-            {destination}
+            {multiCity ? "Multi-city flights" : (
+              <>{origin} <span className="px-1 text-slate-400">→</span> {destination}</>
+            )}
           </h2>
+          {multiCity && (
+            <p className="mt-1 text-sm text-slate-600">
+              {readMultiCityLegs(query).map((leg) => `${leg.origin} → ${leg.destination}`).join(" · ")}
+            </p>
+          )}
           <p className="mt-1 text-xs text-slate-500">
             {results.length} of {offers.length} flight options ·{" "}
             {hasEstimates
@@ -467,7 +473,7 @@ export default function FlightResults({
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
             <div className="flex items-center gap-2 bg-[#1C1F66] px-5 py-3 text-xs font-semibold text-white">
               <Plane size={15} />
-              {query.get("returnDate")
+              {multiCity ? "Your multi-city options" : query.has("returnDate")
                 ? "Your round-trip options"
                 : "Flights to " + destination}
             </div>
@@ -515,7 +521,9 @@ export default function FlightResults({
               <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500">
                 {offers.length
                   ? "Try fewer filters to see more flight options."
-                  : "Choose a nearby date above or change your destination."}
+                  : multiCity
+                    ? "Try different dates or airports for your flights."
+                    : "Choose a nearby date above or change your destination."}
               </p>
               {offers.length > 0 && (
                 <button
@@ -543,7 +551,7 @@ export default function FlightResults({
                     </span>
                   )}
                   <span className="text-slate-500">
-                    {query.get("returnDate") ? "Round trip" : "One way"} ·{" "}
+                    {tripLabel} ·{" "}
                     {query.get("cabinClass")?.replace(/_/g, " ") || "Economy"}
                   </span>
                   {offer.conditions?.refund_before_departure?.allowed && (
@@ -581,11 +589,7 @@ export default function FlightResults({
                               </span>
                             </div>
                             <p className="mt-1 text-[9px] text-slate-400">
-                              {offer.slices.length > 1
-                                ? index
-                                  ? "Return"
-                                  : "Outbound"
-                                : "Departure"}
+                              {offer.slices.length > 1 ? flightLegLabel(offer, index) : "Departure"}
                             </p>
                           </div>
                           <div className="text-center">
@@ -607,7 +611,7 @@ export default function FlightResults({
                           </div>
                           <div className="text-center">
                             <p className="mb-2 text-[10px] text-slate-500">
-                              {duration(slice.duration)}
+                              {flightDurationLabel(slice.duration) || "Duration pending"}
                             </p>
                             <div className="relative mx-1 h-px bg-slate-300">
                               <span className="absolute -top-0.5 left-0 h-1 w-1 rounded-full bg-slate-300" />

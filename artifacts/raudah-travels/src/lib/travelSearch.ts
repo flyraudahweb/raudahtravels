@@ -1,3 +1,29 @@
+export const MAX_MULTI_CITY_LEGS = 6;
+
+export function hasTravelSearch(kind: "flight" | "hotel", query: URLSearchParams) {
+  return kind === "flight" ? query.has("leg") || query.has("departureDate") : query.has("checkIn");
+}
+
+export function readMultiCityLegs(query: URLSearchParams) {
+  return query.getAll("leg").slice(0, MAX_MULTI_CITY_LEGS + 1).map((value) => {
+    const [origin = "", destination = "", departureDate = ""] = value.split(",");
+    return { origin, destination, departureDate };
+  });
+}
+
+export function flightLegLabel(offer: any, index: number) {
+  const slices = offer.slices ?? [];
+  if (slices.length === 1) return "Your flight";
+  const iata = (place: any) => place?.iata_city_code ?? place?.iata_code;
+  const outbound = slices[0];
+  const inbound = slices[1];
+  if (offer.trip_type === "multi_city" || slices.length !== 2 ||
+      iata(outbound?.origin) !== iata(inbound?.destination) ||
+      iata(outbound?.destination) !== iata(inbound?.origin))
+    return `Flight ${index + 1}`;
+  return index === 0 ? "Outbound" : "Return";
+}
+
 export const popularAirports = [
   {
     code: "LOS",
@@ -127,6 +153,12 @@ export function durationMinutes(value: string = "") {
         Number(match[3] || 0) +
         Number(match[4] || 0) / 60
     : Infinity;
+}
+export function flightDurationLabel(value?: string) {
+  const minutes = Math.round(durationMinutes(value));
+  if (!Number.isFinite(minutes)) return "";
+  const hours = Math.floor(minutes / 60);
+  return hours ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
 }
 export const flightDuration = (offer: any) =>
   offer.estimate

@@ -16,12 +16,14 @@ import {
   type DomesticFareQuote,
 } from "./domesticFareChecks";
 import { searchNuiteeFlights, nuiteeFlightPlaces } from "./nuiteeFlights";
+import { itineraryLegs, type FlightLeg } from "./flightItinerary";
 
 type FlightSearch = {
   origin: string;
   destination: string;
   departureDate: string;
   returnDate?: string;
+  legs?: FlightLeg[];
   adults: number;
   childAges: number[];
   cabinClass: DomesticFareQuote["search"]["cabinClass"];
@@ -43,6 +45,7 @@ type EstimatedFare = {
 type FlightInventory = { offers: any[] } | { estimatedFares: EstimatedFare[] };
 
 interface FlightSupplier {
+  supportsMultiCity: boolean;
   isEnabled(config: OtaConfig): boolean;
   covers(config: OtaConfig, input: FlightSearch): boolean;
   search(
@@ -134,6 +137,7 @@ export async function bilalAirports(
 function coversDomesticFare(config: OtaConfig, input: FlightSearch) {
   return (
     !input.returnDate &&
+    !input.legs &&
     [input.origin, input.destination].every((code) =>
       config.bilalAirports.includes(code),
     )
@@ -299,28 +303,24 @@ export async function prepareDomesticCheckout(
 
 const suppliers: FlightSupplier[] = [
   {
+    supportsMultiCity: true,
     isEnabled: nuiteeFlightSearchReady,
     covers: () => true,
     search: searchNuiteeFlights,
     places: nuiteeFlightPlaces,
   },
   {
+    supportsMultiCity: true,
     isEnabled: primaryFlightSearchReady,
     covers: () => true,
     async search(config, input) {
-      const slices = [
-        {
-          origin: input.origin,
-          destination: input.destination,
-          departure_date: input.departureDate,
-        },
-      ];
-      if (input.returnDate)
-        slices.push({
-          origin: input.destination,
-          destination: input.origin,
-          departure_date: input.returnDate,
-        });
+      const slices = itineraryLegs(input).map(
+        ({ origin, destination, departureDate }) => ({
+          origin,
+          destination,
+          departure_date: departureDate,
+        }),
+      );
       const data = await duffelRequest(
         config,
         "/air/offer_requests?return_offers=true",
@@ -335,15 +335,25 @@ const suppliers: FlightSupplier[] = [
         },
       );
       return {
-        offers: (data.offers || []).map((offer: any) => ({
-          ...offer,
-          pricing: price(
-            config,
-            "flight",
-            offer.total_amount,
-            offer.total_currency,
-          ),
-        })),
+        offers: (data.offers || [])
+          .filter((offer: any) =>
+            !input.legs ||
+            (Array.isArray(offer?.slices) &&
+              offer.slices.length === slices.length &&
+              offer.slices.every((slice: any) =>
+                Array.isArray(slice?.segments) && slice.segments.length,
+              )),
+          )
+          .map((offer: any) => ({
+            ...offer,
+            ...(input.legs ? { trip_type: "multi_city" } : {}),
+            pricing: price(
+              config,
+              "flight",
+              offer.total_amount,
+              offer.total_currency,
+            ),
+          })),
       };
     },
     places: (config, term) =>
@@ -353,6 +363,7 @@ const suppliers: FlightSupplier[] = [
       ),
   },
   {
+    supportsMultiCity: false,
     isEnabled: bilalFlightSearchReady,
     // The published search result only describes an outbound journey.
     covers: coversDomesticFare,
@@ -397,6 +408,13 @@ export function flightSearchReady(config: OtaConfig) {
   );
 }
 
+export function multiCityFlightSearchReady(config: OtaConfig) {
+  return (
+    config.flightsEnabled &&
+    suppliers.some((supplier) => supplier.supportsMultiCity && supplier.isEnabled(config))
+  );
+}
+
 function configuredSuppliers(config: OtaConfig) {
   const enabled = suppliers.filter((supplier) => supplier.isEnabled(config));
   if (!enabled.length)
@@ -413,8 +431,10 @@ export async function searchFlights(
   includeFareCheckTokens = false,
 ) {
   const eligible = configuredSuppliers(config).filter((supplier) =>
-    supplier.covers(config, input),
+    (!input.legs || supplier.supportsMultiCity) && supplier.covers(config, input),
   );
+  if (input.legs && !eligible.length)
+    throw new OtaError("Multi-city search is currently unavailable.", 503);
   const settled = await Promise.allSettled(
     eligible.map((supplier) =>
       supplier.search(config, input, includeFareCheckTokens),

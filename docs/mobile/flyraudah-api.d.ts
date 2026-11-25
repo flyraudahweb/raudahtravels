@@ -129,8 +129,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Search one-way / return flights
-         * @description Adults plus children cannot exceed 9. Returns up to 80 online offers sorted by totalKobo. Supported domestic searches may also return estimates sorted by estimatedTotalKobo. Only items in offers can go to checkout. If partialAvailability is true, at least one applicable supplier could not be checked.
+         * Search one-way, return or multi-city flights
+         * @description Adults plus children cannot exceed 9. Multi-city searches return complete offers from enabled suppliers that support the itinerary, currently Nuitee and Duffel. Returns up to 80 online offers sorted by totalKobo. Some one-way domestic searches also return estimates. If partialAvailability is true, at least one applicable supplier could not be checked.
          */
         post: operations["post_flights_search"];
         delete?: never;
@@ -672,7 +672,7 @@ export interface components {
          *       "id": "off_example123",
          *       "total_amount": "100.00",
          *       "total_currency": "USD",
-         *       "expires_at": "2026-11-19T20:48:40.338Z",
+         *       "expires_at": "2026-11-25T02:11:35.250Z",
          *       "passengers": [
          *         {
          *           "id": "pas_example123",
@@ -696,8 +696,8 @@ export interface components {
          *           "duration": "PT5H30M",
          *           "segments": [
          *             {
-         *               "departing_at": "2027-01-03T10:00:00",
-         *               "arriving_at": "2027-01-03T17:30:00",
+         *               "departing_at": "2027-01-09T10:00:00",
+         *               "arriving_at": "2027-01-09T17:30:00",
          *               "origin": {
          *                 "iata_code": "LOS"
          *               },
@@ -765,6 +765,11 @@ export interface components {
             /** @description Requires passport data in every flight traveller */
             passenger_identity_documents_required?: boolean;
             slices?: components["schemas"]["Slice"][];
+            /**
+             * @description Multi-city itinerary when provided
+             * @enum {string}
+             */
+            trip_type?: "multi_city";
             conditions?: {
                 [key: string]: unknown;
             };
@@ -926,7 +931,7 @@ export interface components {
          *         "id": "off_example123",
          *         "total_amount": "100.00",
          *         "total_currency": "USD",
-         *         "expires_at": "2026-11-19T20:48:40.338Z",
+         *         "expires_at": "2026-11-25T02:11:35.250Z",
          *         "passengers": [
          *           {
          *             "id": "pas_example123",
@@ -950,8 +955,8 @@ export interface components {
          *             "duration": "PT5H30M",
          *             "segments": [
          *               {
-         *                 "departing_at": "2027-01-03T10:00:00",
-         *                 "arriving_at": "2027-01-03T17:30:00",
+         *                 "departing_at": "2027-01-09T10:00:00",
+         *                 "arriving_at": "2027-01-09T17:30:00",
          *                 "origin": {
          *                   "iata_code": "LOS"
          *                 },
@@ -996,7 +1001,7 @@ export interface components {
          *         "email": "traveller@example.com",
          *         "phone": "+2348012345678"
          *       },
-         *       "expiresAt": "2026-11-19T20:48:40.338Z",
+         *       "expiresAt": "2026-11-25T02:11:35.250Z",
          *       "paidAt": null,
          *       "providerResult": null,
          *       "providerNotice": null,
@@ -1113,7 +1118,7 @@ export interface components {
          *           "id": "off_example123",
          *           "total_amount": "100.00",
          *           "total_currency": "USD",
-         *           "expires_at": "2026-11-19T20:48:40.338Z",
+         *           "expires_at": "2026-11-25T02:11:35.250Z",
          *           "passengers": [
          *             {
          *               "id": "pas_example123",
@@ -1137,8 +1142,8 @@ export interface components {
          *               "duration": "PT5H30M",
          *               "segments": [
          *                 {
-         *                   "departing_at": "2027-01-03T10:00:00",
-         *                   "arriving_at": "2027-01-03T17:30:00",
+         *                   "departing_at": "2027-01-09T10:00:00",
+         *                   "arriving_at": "2027-01-09T17:30:00",
          *                   "origin": {
          *                     "iata_code": "LOS"
          *                   },
@@ -1183,7 +1188,7 @@ export interface components {
          *           "email": "traveller@example.com",
          *           "phone": "+2348012345678"
          *         },
-         *         "expiresAt": "2026-11-19T20:48:40.338Z",
+         *         "expiresAt": "2026-11-25T02:11:35.250Z",
          *         "paidAt": null,
          *         "providerResult": null,
          *         "providerNotice": null,
@@ -1319,6 +1324,7 @@ export interface operations {
                     /**
                      * @example {
                      *       "flightsEnabled": true,
+                     *       "multiCityFlightSearchEnabled": true,
                      *       "hotelsEnabled": false,
                      *       "salesEnabled": false,
                      *       "nuiteeFlightCheckoutEnabled": true,
@@ -1333,6 +1339,8 @@ export interface operations {
                     "application/json": {
                         /** @description Flight search enabled */
                         flightsEnabled: boolean;
+                        /** @description An enabled flight supplier supports multi-city search */
+                        multiCityFlightSearchEnabled: boolean;
                         /** @description Stays search enabled */
                         hotelsEnabled: boolean;
                         /** @description Primary supplier checkout enabled */
@@ -1562,7 +1570,7 @@ export interface operations {
                             selfServiceCancellation?: boolean;
                             /** @description False */
                             selfServiceExchange?: boolean;
-                            /** @description False */
+                            /** @description An enabled flight supplier supports multi-city search */
                             multiCity?: boolean;
                             /** @description False */
                             infants?: boolean;
@@ -2528,14 +2536,24 @@ export interface operations {
                  * @example {
                  *       "origin": "LOS",
                  *       "destination": "JED",
-                 *       "departureDate": "2027-01-03",
-                 *       "returnDate": "2027-01-10",
+                 *       "departureDate": "2027-01-09",
+                 *       "returnDate": "2027-01-16",
                  *       "adults": 1,
                  *       "childAges": [],
                  *       "cabinClass": "economy"
                  *     }
                  */
                 "application/json": {
+                    /** @description Adult passengers, ages 12+ */
+                    adults: number;
+                    /** @default [] */
+                    childAges?: number[];
+                    /**
+                     * @description Cabin
+                     * @default economy
+                     * @enum {string}
+                     */
+                    cabinClass?: "economy" | "premium_economy" | "business" | "first";
                     /** @description Uppercase origin IATA */
                     origin: string;
                     /** @description Different uppercase destination IATA */
@@ -2550,6 +2568,8 @@ export interface operations {
                      * @description Optional; same day or after departure
                      */
                     returnDate?: string;
+                    legs?: never;
+                } | {
                     /** @description Adult passengers, ages 12+ */
                     adults: number;
                     /** @default [] */
@@ -2560,6 +2580,22 @@ export interface operations {
                      * @enum {string}
                      */
                     cabinClass?: "economy" | "premium_economy" | "business" | "first";
+                    origin?: never;
+                    destination?: never;
+                    departureDate?: never;
+                    returnDate?: never;
+                    /** @description Ordered multi-city legs. Omit top-level route and date fields. */
+                    legs: {
+                        /** @description Uppercase origin IATA */
+                        origin: string;
+                        /** @description Different uppercase destination IATA */
+                        destination: string;
+                        /**
+                         * Format: date
+                         * @description Today or future
+                         */
+                        departureDate: string;
+                    }[];
                 };
             };
         };
@@ -2577,7 +2613,7 @@ export interface operations {
                      *           "id": "off_example123",
                      *           "total_amount": "100.00",
                      *           "total_currency": "USD",
-                     *           "expires_at": "2026-11-19T20:48:40.338Z",
+                     *           "expires_at": "2026-11-25T02:11:35.250Z",
                      *           "passengers": [
                      *             {
                      *               "id": "pas_example123",
@@ -2601,8 +2637,8 @@ export interface operations {
                      *               "duration": "PT5H30M",
                      *               "segments": [
                      *                 {
-                     *                   "departing_at": "2027-01-03T10:00:00",
-                     *                   "arriving_at": "2027-01-03T17:30:00",
+                     *                   "departing_at": "2027-01-09T10:00:00",
+                     *                   "arriving_at": "2027-01-09T17:30:00",
                      *                   "origin": {
                      *                     "iata_code": "LOS"
                      *                   },
@@ -2843,7 +2879,7 @@ export interface operations {
                      *         "id": "off_example123",
                      *         "total_amount": "100.00",
                      *         "total_currency": "USD",
-                     *         "expires_at": "2026-11-19T20:48:40.338Z",
+                     *         "expires_at": "2026-11-25T02:11:35.250Z",
                      *         "passengers": [
                      *           {
                      *             "id": "pas_example123",
@@ -2867,8 +2903,8 @@ export interface operations {
                      *             "duration": "PT5H30M",
                      *             "segments": [
                      *               {
-                     *                 "departing_at": "2027-01-03T10:00:00",
-                     *                 "arriving_at": "2027-01-03T17:30:00",
+                     *                 "departing_at": "2027-01-09T10:00:00",
+                     *                 "arriving_at": "2027-01-09T17:30:00",
                      *                 "origin": {
                      *                   "iata_code": "LOS"
                      *                 },
@@ -3078,8 +3114,8 @@ export interface operations {
                  * @example {
                  *       "latitude": 21.4225,
                  *       "longitude": 39.8262,
-                 *       "checkIn": "2027-01-03",
-                 *       "checkOut": "2027-01-10",
+                 *       "checkIn": "2027-01-09",
+                 *       "checkOut": "2027-01-16",
                  *       "rooms": 1,
                  *       "adults": 1,
                  *       "childAges": []

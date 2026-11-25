@@ -27,7 +27,7 @@ import {
   HotelRateCancellation,
   isCancellationCondition,
 } from "./TravelPolicies";
-import { moveDate } from "@/lib/travelSearch";
+import { flightDurationLabel, flightLegLabel, hasTravelSearch, moveDate, readMultiCityLegs } from "@/lib/travelSearch";
 import { destinations, money, ota, travelButton, travelInput } from "@/lib/ota";
 
 export function TravelShell({ children }: { children: ReactNode }) {
@@ -85,14 +85,6 @@ function flightDate(value?: string) {
     timeZone: "UTC",
   });
 }
-function durationLabel(value?: string) {
-  const parts = /^PT(?:(\d+)H)?(?:(\d+)M)?/.exec(value || "");
-  return parts
-    ? [parts[1] && `${parts[1]}h`, parts[2] && `${parts[2]}m`]
-        .filter(Boolean)
-        .join(" ")
-    : "";
-}
 export function FlightItinerary({
   offer,
   compact = false,
@@ -119,6 +111,7 @@ export function FlightItinerary({
         const segments = slice.segments || [],
           first = segments[0],
           last = segments[segments.length - 1];
+        const duration = flightDurationLabel(slice.duration);
         const stops =
           Math.max(0, segments.length - 1) +
           segments.reduce(
@@ -133,17 +126,12 @@ export function FlightItinerary({
           >
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-xs">
               <span className="font-semibold text-indigo-700">
-                {offer.slices.length > 1
-                  ? i === 0
-                    ? "Outbound"
-                    : "Return"
-                  : "Your flight"}{" "}
+                {flightLegLabel(offer, i)}{" "}
                 · {flightDate(first?.departing_at)}
               </span>
               <span className="inline-flex items-center gap-1.5 text-slate-500">
                 <Clock3 size={12} />
-                {durationLabel(slice.duration)}
-                {slice.duration && " · "}
+                {duration && `${duration} · `}
                 {segments.length
                   ? stops === 0
                     ? "Non-stop"
@@ -330,9 +318,7 @@ export default function TravelSearchPage({
     { isSignedIn } = useUser();
   const [data, setData] = useState<any[]>([]),
     [loading, setLoading] = useState(() =>
-      new URLSearchParams(search).has(
-        kind === "flight" ? "departureDate" : "checkIn",
-      ),
+      hasTravelSearch(kind, new URLSearchParams(search)),
     ),
     [error, setError] = useState("");
   const [sort, setSort] = useState("price");
@@ -366,7 +352,7 @@ export default function TravelSearchPage({
       });
   }, [rates]);
   const query = new URLSearchParams(search),
-    hasSearch = query.has(kind === "flight" ? "departureDate" : "checkIn");
+    hasSearch = hasTravelSearch(kind, query);
   useEffect(() => {
     roomRequest.current?.abort();
     setRates(null);
@@ -392,10 +378,12 @@ export default function TravelSearchPage({
     const body =
       kind === "flight"
         ? {
-            origin: q.get("origin"),
-            destination: q.get("destination"),
-            departureDate: q.get("departureDate"),
-            ...(q.get("returnDate") ? { returnDate: q.get("returnDate") } : {}),
+            ...(q.has("leg") ? { legs: readMultiCityLegs(q) } : {
+              origin: q.get("origin"),
+              destination: q.get("destination"),
+              departureDate: q.get("departureDate"),
+              ...(q.get("returnDate") ? { returnDate: q.get("returnDate") } : {}),
+            }),
             cabinClass: q.get("cabinClass") || "economy",
             adults: Number(q.get("adults") || 1),
             childAges,

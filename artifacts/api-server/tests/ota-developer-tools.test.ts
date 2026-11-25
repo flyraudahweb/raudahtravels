@@ -13,10 +13,21 @@ import { readFile } from "node:fs/promises";
 import { MOBILE_CLIENT_FILES } from "../src/services/ota/mobileClientAssets";
 import openapiTS, { astToString } from "openapi-typescript";
 import ts from "typescript";
-import { otaOpenApi } from "../src/services/ota/apiDocumentation";
+import { otaOpenApi, otaTypeGenerationOptions } from "../src/services/ota/apiDocumentation";
 import { validateOtaSchema } from "./helpers/ota-contract";
 
 describe("FlyRaudah integration kit", () => {
+  it("requires exactly one itinerary format in the flight search contract", () => {
+    const schema = otaOpenApi().paths["/flights/search"].post.requestBody.content["application/json"].schema;
+    const route = { origin: "LOS", destination: "JED", departureDate: "2027-01-12" };
+    const journeys = { legs: [route, { origin: "MED", destination: "CAI", departureDate: "2027-01-16" }] };
+    expect(() => validateOtaSchema(schema, { adults: 1, ...route })).not.toThrow();
+    expect(() => validateOtaSchema(schema, { adults: 1, ...journeys })).not.toThrow();
+    expect(() => validateOtaSchema(schema, { adults: 1 })).toThrow();
+    expect(() => validateOtaSchema(schema, { adults: 1, ...route, ...journeys })).toThrow();
+    expect(MOBILE_CLIENT_FILES["flyraudah-api.d.ts"]).toContain("legs?: never;");
+    expect(MOBILE_CLIENT_FILES["flyraudah-api.d.ts"]).toContain("origin?: never;");
+  });
   it("exports request samples that validate after variables are populated", () => {
     const spec = otaOpenApi();
     const values = Object.fromEntries(
@@ -55,7 +66,7 @@ describe("FlyRaudah integration kit", () => {
           )
         ).replaceAll("\r\n", "\n"),
       ).toBe(source);
-    const regenerated = astToString(await openapiTS(otaOpenApi() as any));
+    const regenerated = astToString(await openapiTS(otaOpenApi() as any, otaTypeGenerationOptions(ts)));
     const print = (source: string) =>
       ts
         .createPrinter({ removeComments: true })

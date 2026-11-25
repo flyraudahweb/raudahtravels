@@ -1004,8 +1004,14 @@ describe("Nuitee hotel checkout", () => {
   });
 });
 
-it("runs N flight checkout through Paystack and the account card with one order for repeated submissions", async () => {
+it.each([
+  { trip: "one-way", multiCity: false },
+  { trip: "multi-city", multiCity: true },
+])("runs N $trip checkout through Paystack and the account card with one order for repeated submissions", async ({ multiCity }) => {
   const date = new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10);
+  const secondDate = new Date(Date.now() + 23 * 86400000).toISOString().slice(0, 10);
+  const legs = [{ origin: "LOS", destination: "ABV", departureDate: date }];
+  if (multiCity) legs.push({ origin: "ABV", destination: "KAN", departureDate: secondDate });
   const fare = {
     offerId: "n-flight-offer",
     expiration: new Date(Date.now() + 600_000).toISOString(),
@@ -1013,20 +1019,20 @@ it("runs N flight checkout through Paystack and the account card with one order 
   };
   const journey = {
     journeyKey: "flight-1",
-    segments: [
-      {
-        originCode: "LOS",
-        destinationCode: "ABV",
-        direction: "OUTBOUND",
-        departureTime: date + "T08:00:00",
-        arrivalTime: date + "T09:10:00",
-        carrier: { marketingCode: "P4", marketingName: "Air Peace" },
-        flight: { marketingNumber: "7001" },
-      },
-    ],
+    segments: legs.map((leg, index) => ({
+      originCode: leg.origin,
+      destinationCode: leg.destination,
+      direction: "OUTBOUND",
+      ...(multiCity ? { legIndex: index } : {}),
+      departureTime: leg.departureDate + "T08:00:00",
+      arrivalTime: leg.departureDate + "T09:10:00",
+      carrier: { marketingCode: "P4", marketingName: "Air Peace" },
+      flight: { marketingNumber: "7001" },
+    })),
   };
   let prebooks = 0;
   let purchases = 0;
+  let searchedLegs: unknown;
   const fallback = globalThis.fetch;
   vi.stubGlobal("fetch", async (input: string | URL, init?: RequestInit) => {
     const url = new URL(String(input));
@@ -1038,6 +1044,7 @@ it("runs N flight checkout through Paystack and the account card with one order 
     const prebook = { price: 100, currency: "GBP", booking: { journey } };
     switch (url.pathname) {
       case "/v3.0/flights/rates":
+        searchedLegs = JSON.parse(String(init?.body)).legs;
         return data({ journeys: [{ ...journey, offers: [fare] }] });
       case "/v3.0/flights/verify":
         return data({ journey: { ...journey, ...fare } });
@@ -1094,18 +1101,17 @@ it("runs N flight checkout through Paystack and the account card with one order 
     },
     "super",
   );
-  const {
-    offers: [offer],
-  } = await (
-    await request("/flights/search", undefined, {
-      origin: "LOS",
-      destination: "ABV",
-      departureDate: date,
-      adults: 1,
-      childAges: [],
-      cabinClass: "economy",
-    })
-  ).json();
+  const search = await request("/flights/search", undefined, {
+    ...(multiCity ? { legs } : legs[0]),
+    adults: 1,
+    childAges: [],
+    cabinClass: "economy",
+  });
+  expect(search.status).toBe(200);
+  const { offers: [offer] } = await search.json();
+  expect(searchedLegs).toEqual(legs.map(({ origin, destination, departureDate }) => ({
+    origin, destination, date: departureDate,
+  })));
   const payload = {
     kind: "flight",
     offerId: offer.id,
@@ -1140,6 +1146,7 @@ it("runs N flight checkout through Paystack and the account card with one order 
   );
   booking = first.booking;
   expect(repeat.booking.id).toBe(booking.id);
+  expect(booking.offer.slices).toHaveLength(legs.length);
   expect(booking.offer.checkoutSelectionId).toBeUndefined();
   const corrected = await request("/bookings", "user", {
     ...payload,
@@ -1183,6 +1190,11 @@ it("runs N flight checkout through Paystack and the account card with one order 
   expect(vi.mocked(sendEmail).mock.calls[0]?.[0].text).toContain(
     `LOS ${date}T08:00:00 → ABV ${date}T09:10:00`,
   );
+  if (multiCity) {
+    expect(vi.mocked(sendEmail).mock.calls[0]?.[0].text).toContain(
+      `ABV ${secondDate}T08:00:00 → KAN ${secondDate}T09:10:00`,
+    );
+  }
 });
 
 async function create(native = false, expectedTotalKobo = 10000000) {

@@ -48,6 +48,7 @@ vi.mock("@/lib/ota", async (importOriginal) => ({
 }));
 
 import TravelSearchPage, {
+  FlightItinerary,
   TravelShell,
 } from "../../raudah-travels/src/components/ota/TravelSearchPage";
 import TravelCheckout from "../../raudah-travels/src/components/ota/TravelCheckout";
@@ -117,6 +118,11 @@ beforeEach(() => {
     setTimeout(() => callback(0), 0),
   );
   vi.stubGlobal("cancelAnimationFrame", clearTimeout);
+  vi.stubGlobal("matchMedia", () => ({
+    matches: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   container = document.createElement("div");
   document.body.append(container);
@@ -130,6 +136,89 @@ afterEach(async () => {
 });
 
 describe("OTA navigation and pending actions", () => {
+  it("adds and removes multi-city fields and keeps the selected flights in the search URL", async () => {
+    const { default: TravelSearchForm } = await vi.importActual<
+      typeof import("../../raudah-travels/src/components/ota/TravelSearchForm")
+    >("../../raudah-travels/src/components/ota/TravelSearchForm");
+    client.setQueryData(["ota", "public-config"], { multiCityFlightSearchEnabled: true });
+    const initial = new URLSearchParams([
+      ["leg", "LOS,JED,2099-01-01"],
+      ["leg", "MED,CAI,2099-01-06"],
+    ]);
+    await render(h(TravelSearchForm, { initial }));
+    expect(container.querySelector<HTMLInputElement>('input[name="journey"]:checked')?.parentElement?.textContent).toBe("Multi-city");
+    await act(async () => button("Add flight").click());
+    expect(container.textContent).toContain("Flight 3");
+    await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Remove flight 3"]')!.click());
+    expect(container.textContent).not.toContain("Flight 3");
+
+    await act(async () => button("Search flights").click());
+    expect(state.navigate).toHaveBeenCalledOnce();
+    const target = new URL(state.navigate.mock.calls[0][0], "https://example.test");
+    expect(target.pathname).toBe("/flights/search");
+    expect(target.searchParams.getAll("leg")).toEqual(initial.getAll("leg"));
+    expect(target.searchParams.has("returnDate")).toBe(false);
+  });
+  it("preserves the shared trip and disables multi-city search when no supplier supports it", async () => {
+    const { default: TravelSearchForm } = await vi.importActual<
+      typeof import("../../raudah-travels/src/components/ota/TravelSearchForm")
+    >("../../raudah-travels/src/components/ota/TravelSearchForm");
+    client.setQueryData(["ota", "public-config"], { multiCityFlightSearchEnabled: false });
+    await render(h(TravelSearchForm, {
+      initial: new URLSearchParams("leg=LOS,JED,2099-01-01&leg=MED,CAI,2099-01-06"),
+    }));
+    expect(container.textContent).toContain("Multi-city search is currently unavailable.");
+    expect(container.textContent).toContain("Flight 2");
+    expect(container.querySelector<HTMLInputElement>('input[name="journey"]:checked')?.disabled).toBe(true);
+    expect(button("Search flights").disabled).toBe(true);
+    await act(async () => button("Search flights").click());
+    expect(state.navigate).not.toHaveBeenCalled();
+  });
+  it("labels multi-city results and fare cards consistently", async () => {
+    const { default: FlightResults } = await vi.importActual<
+      typeof import("../../raudah-travels/src/components/ota/FlightResults")
+    >("../../raudah-travels/src/components/ota/FlightResults");
+    const flight = {
+      origin: { iata_code: "LOS" },
+      destination: { iata_code: "JED" },
+      departing_at: "2099-01-01T08:00:00",
+      arriving_at: "2099-01-01T12:20:00",
+    };
+    await render(h(FlightResults, {
+      query: new URLSearchParams("leg=LOS,JED,2099-01-01&leg=MED,CAI,2099-01-06"),
+      offers: [{ ...offer("multi").offer, pricing, slices: [
+        { origin: flight.origin, destination: flight.destination, duration: "PT15600S", segments: [flight] },
+      ] }],
+      details: (selected) => h(FlightItinerary, { offer: selected }),
+      onDate: vi.fn(),
+    }));
+    expect(container.textContent).toContain("Your multi-city options");
+    expect(container.textContent).toContain("Multi-city · Economy");
+    expect(container.textContent).not.toContain("One way");
+    expect(container.querySelector("article details")?.textContent).toContain("4h 20m · Non-stop");
+  });
+  it("searches a shared multi-city URL with all legs in order", async () => {
+    state.search = new URLSearchParams([
+      ["leg", "LOS,JED,2099-01-01"],
+      ["leg", "MED,CAI,2099-01-06"],
+      ["leg", "CAI,LOS,2099-01-09"],
+      ["adults", "2"],
+      ["cabinClass", "business"],
+    ]).toString();
+    state.api.mockResolvedValue({ offers: [] });
+    await render(h(TravelSearchPage, { kind: "flight" }));
+
+    expect(state.api.mock.calls.find(([path]) => path === "/flights/search")?.[1]).toEqual({
+      legs: [
+        { origin: "LOS", destination: "JED", departureDate: "2099-01-01" },
+        { origin: "MED", destination: "CAI", departureDate: "2099-01-06" },
+        { origin: "CAI", destination: "LOS", departureDate: "2099-01-09" },
+      ],
+      adults: 2,
+      childAges: [],
+      cabinClass: "business",
+    });
+  });
   it("reveals a failed search at the results section instead of leaving an offscreen error", async () => {
     state.search =
       "origin=LOS&destination=JED&departureDate=2099-01-01&adults=1";

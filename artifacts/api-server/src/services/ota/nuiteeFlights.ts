@@ -3,6 +3,13 @@ import { z } from "zod";
 import { nuiteeFlightSearchReady, type OtaConfig } from "./config";
 import { NUITEE_API, nuiteeRequest } from "./nuitee";
 import { OtaError, price, sameSupplierAmount, available } from "./provider";
+import {
+  itineraryLegs,
+  MAX_MULTI_CITY_LEGS,
+  multiCityLegs,
+  type FlightLeg,
+} from "./flightItinerary";
+import { matchesFlightAirport } from "./metroAirports";
 
 type Mode = OtaConfig["nuiteeFlightMode"];
 export type NuiteeFlightSearch = {
@@ -10,6 +17,7 @@ export type NuiteeFlightSearch = {
   destination: string;
   departureDate: string;
   returnDate?: string;
+  legs?: FlightLeg[];
   adults: number;
   childAges: number[];
   cabinClass: string;
@@ -31,7 +39,12 @@ const selectionSchema = z.object({
   childAges: z.array(z.number().int().min(2).max(11)).max(8),
   journeyKey: z.string().min(1).max(256),
   roundTrip: z.boolean(),
+  legs: multiCityLegs.optional(),
   legDurations: legDurations.optional(),
+  multiCityDurations: z
+    .array(elapsed.nullable())
+    .max(MAX_MULTI_CITY_LEGS)
+    .optional(),
   expiresAt: z.number().int(),
 });
 type Selection = z.infer<typeof selectionSchema>;
@@ -111,19 +124,9 @@ async function fetchJourneys(
   mode: Mode,
   input: NuiteeFlightSearch,
 ) {
-  const legs = [
-    {
-      origin: input.origin,
-      destination: input.destination,
-      date: input.departureDate,
-    },
-  ];
-  if (input.returnDate)
-    legs.push({
-      origin: input.destination,
-      destination: input.origin,
-      date: input.returnDate,
-    });
+  const legs = itineraryLegs(input).map(({ origin, destination, departureDate }) => ({
+    origin, destination, date: departureDate,
+  }));
   const data = await request(
     config,
     mode,
@@ -197,6 +200,7 @@ const segmentSchema = z.object({
   departureTime: timestamp,
   arrivalTime: timestamp,
   direction: z.enum(["OUTBOUND", "INBOUND"]),
+  legIndex: z.number().int().nonnegative().optional(),
   originName: z.string().optional(),
   destinationName: z.string().optional(),
   stopCount: z.number().int().min(0).optional(),
@@ -216,6 +220,7 @@ const segmentSchema = z.object({
 
 const providerDuration = z.object({
   direction: z.enum(["OUTBOUND", "INBOUND"]),
+  legIndex: z.number().int().nonnegative().optional(),
   duration: z.object({ iso8601: elapsed }),
 });
 const baggageItem = z.object({
@@ -314,12 +319,80 @@ function journeyDurations(journey: any) {
   return durations;
 }
 
+type FlightSegment = z.infer<typeof segmentSchema>;
+
+function groupMultiCitySegments(segments: FlightSegment[], legs: FlightLeg[]) {
+  // Leg indices constrain the partition when supplied. The route, dates and
+  // airport continuity also have to match, including for unindexed segments.
+  const partitions: FlightSegment[][][] = [];
+  function match(legIndex: number, offset: number, groups: FlightSegment[][]) {
+    if (partitions.length > 1) return;
+    if (legIndex === legs.length) {
+      if (offset === segments.length) partitions.push(groups);
+      return;
+    }
+    const leg = legs[legIndex];
+    const first = segments[offset];
+    if (
+      !first ||
+      !matchesFlightAirport(leg.origin, first.originCode) ||
+      first.departureTime.slice(0, 10) !== leg.departureDate
+    )
+      return;
+    for (let end = offset; end < segments.length; end++) {
+      const segment = segments[end];
+      if (segment.legIndex !== undefined && segment.legIndex !== legIndex) break;
+      if (end > offset && segments[end - 1].destinationCode !== segment.originCode)
+        break;
+      if (matchesFlightAirport(leg.destination, segment.destinationCode))
+        match(legIndex + 1, end + 1, [...groups, segments.slice(offset, end + 1)]);
+    }
+  }
+  match(0, 0, []);
+  return partitions.length === 1 ? partitions[0] : undefined;
+}
+
+function multiCityLegDurations(
+  journey: { legDurations?: unknown },
+  count: number,
+) {
+  const values: unknown[] = Array.isArray(journey.legDurations)
+    ? journey.legDurations
+    : [];
+  const durationsByPosition = values.map((value) => providerDuration.safeParse(value));
+  const indexed = durationsByPosition.some(
+    (parsed) => parsed.success && parsed.data.legIndex !== undefined,
+  );
+  const durations = new Map<number, string>();
+  for (const [position, parsed] of durationsByPosition.entries()) {
+    if (!parsed.success) continue;
+    const index = indexed
+      ? parsed.data.legIndex
+      : values.length === count ? position : undefined;
+    if (index !== undefined && index < count)
+      durations.set(index, parsed.data.duration.iso8601);
+  }
+  return durations;
+}
+
+function segmentElapsed(group: FlightSegment[]) {
+  if (group.length === 1) {
+    const duration = elapsed.safeParse(group[0].duration?.iso8601);
+    if (duration.success) return duration.data;
+  }
+  const departure = group[0].departureTime;
+  const arrival = group.at(-1)!.arrivalTime;
+  const hasOffset = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+  if (!hasOffset.test(departure) || !hasOffset.test(arrival)) return;
+  const seconds = (Date.parse(arrival) - Date.parse(departure)) / 1000;
+  return Number.isFinite(seconds) && seconds > 0 ? `PT${seconds}S` : undefined;
+}
+
 function normalizeJourney(
   config: OtaConfig,
   journey: any,
   quote: any,
   selection: Selection,
-  id: string,
 ) {
   const parsed = z
     .array(segmentSchema)
@@ -338,20 +411,25 @@ function normalizeJourney(
     !config.rates[currency]
   )
     return;
-  const groups = [
+  const directionalGroups = [
     parsed.data.filter((segment) => segment.direction === "OUTBOUND"),
   ];
   const inbound = parsed.data.filter(
     (segment) => segment.direction === "INBOUND",
   );
-  if (selection.roundTrip) groups.push(inbound);
+  if (selection.roundTrip) directionalGroups.push(inbound);
+  const groups = selection.legs
+    ? groupMultiCitySegments(parsed.data, selection.legs)
+    : directionalGroups;
   if (
+    !groups ||
     groups.some((group) => !group.length) ||
-    (!selection.roundTrip && inbound.length)
+    (!selection.legs && !selection.roundTrip && inbound.length)
   )
     return;
   const durations = { ...selection.legDurations, ...journeyDurations(journey) };
-  const slices = groups.map((group) => {
+  const orderedDurations = selection.legs && multiCityLegDurations(journey, groups.length);
+  const slices = groups.map((group, index) => {
     const segments = group.map((s) => ({
       origin: { iata_code: s.originCode, name: s.originName },
       destination: { iata_code: s.destinationCode, name: s.destinationName },
@@ -373,9 +451,9 @@ function normalizeJourney(
     return {
       origin: segments[0].origin,
       destination: segments.at(-1)!.destination,
-      duration:
-        durations[group[0].direction] ??
-        (group.length === 1 ? segments[0].duration : undefined),
+      duration: orderedDurations
+        ? orderedDurations.get(index) ?? selection.multiCityDurations?.[index] ?? segmentElapsed(group)
+        : durations[group[0].direction] ?? (group.length === 1 ? segments[0].duration : undefined),
       segments,
     };
   });
@@ -387,9 +465,9 @@ function normalizeJourney(
     currency,
   );
   return {
-    id,
     mode: selection.mode,
     supplier: "nuitee",
+    ...(selection.legs ? { trip_type: "multi_city" } : {}),
     expires_at: new Date(selection.expiresAt).toISOString(),
     owner: {
       name: first.marketingName || first.marketingCode || "Airline",
@@ -431,6 +509,7 @@ export async function searchNuiteeFlights(
           childAges: input.childAges,
           journeyKey: journey.journeyKey,
           roundTrip: !!input.returnDate,
+          legs: input.legs,
           legDurations: durations,
           expiresAt: Math.min(expiry, limit),
         });
@@ -440,9 +519,18 @@ export async function searchNuiteeFlights(
           journey,
           offer,
           result.data,
-          seal(result.data),
         );
-        return normalized ? [normalized] : [];
+        if (!normalized) return [];
+        const selection = result.data.legs ? {
+          ...result.data,
+          legs: normalized.slices.map((slice) => ({
+            origin: slice.origin.iata_code,
+            destination: slice.destination.iata_code,
+            departureDate: slice.segments[0].departing_at.slice(0, 10),
+          })),
+          multiCityDurations: normalized.slices.map((slice) => slice.duration ?? null),
+        } : result.data;
+        return [{ ...normalized, id: seal(selection) }];
       });
     return candidates
       .sort((a, b) => a.pricing.totalKobo - b.pricing.totalKobo)
@@ -471,12 +559,11 @@ export async function verifyNuiteeFlight(config: OtaConfig, token: string) {
     journey,
     journey,
     { ...selection, expiresAt },
-    token,
   );
   if (!offer)
-    throw new OtaError("The flight no longer has a usable price.", 409);
+    throw new OtaError("The full itinerary and fare could not be verified. Search again.", 409);
   available(offer);
-  return { selection, offer, pricing: offer.pricing };
+  return { selection, offer: { ...offer, id: token }, pricing: offer.pricing };
 }
 
 type Contact = { email: string; phone: string; phoneCountryCode?: string };

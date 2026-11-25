@@ -105,7 +105,14 @@ import {
   searchFlightPlaces,
   searchFlights,
   flightSearchReady,
+  multiCityFlightSearchReady,
 } from "../services/ota/flightSuppliers";
+import {
+  flightLegSchema,
+  itineraryLegs,
+  MAX_MULTI_CITY_LEGS,
+  multiCityLegs,
+} from "../services/ota/flightItinerary";
 import { getBilalTicket } from "../services/ota/bilalOrders";
 import { featuredHotelAvailability } from "../services/ota/featuredHotels";
 import { listDomesticFareIncreases } from "../services/ota/domesticFareChecks";
@@ -272,12 +279,13 @@ router.get(
         supportRequests: true,
         selfServiceCancellation: false,
         selfServiceExchange: false,
-        multiCity: false,
+        multiCity: multiCityFlightSearchReady(c),
         infants: false,
         ancillaries: false,
       },
       limits: {
         flightPassengers: 9,
+        multiCityLegs: MAX_MULTI_CITY_LEGS,
         flightChildAgeMin: 2,
         flightChildAgeMax: 11,
         hotelAdults: 16,
@@ -445,6 +453,7 @@ router.get(
     const c = await getOtaConfig();
     res.json({
       flightsEnabled: flightSearchReady(c),
+      multiCityFlightSearchEnabled: multiCityFlightSearchReady(c),
       hotelsEnabled:
         c.hotelsEnabled || (webHotelChannel(req) && nuiteeHotelSearchReady(c)),
       ...(webHotelChannel(req)
@@ -479,25 +488,41 @@ router.get(
 router.post(
   "/ota/flights/search",
   endpoint(async (req, res) => {
-    const input = z
-      .object({
-        origin: z.string().regex(/^[A-Z]{3}$/),
-        destination: z.string().regex(/^[A-Z]{3}$/),
-        departureDate: future,
+    const travellers = z.object({
+      adults: z.number().int().min(1).max(9),
+      childAges: z.array(z.number().int().min(2).max(11)).max(8).default([]),
+      cabinClass: z
+        .enum(["economy", "premium_economy", "business", "first"])
+        .default("economy"),
+    });
+    const payload = z.union([
+      travellers.extend({
+        legs: multiCityLegs,
+        origin: z.never().optional(),
+        destination: z.never().optional(),
+        departureDate: z.never().optional(),
+        returnDate: z.never().optional(),
+      }),
+      travellers.extend({
+        ...flightLegSchema.shape,
         returnDate: future.optional(),
-        adults: z.number().int().min(1).max(9),
-        childAges: z.array(z.number().int().min(2).max(11)).max(8).default([]),
-        cabinClass: z
-          .enum(["economy", "premium_economy", "business", "first"])
-          .default("economy"),
-      })
-      .parse(req.body);
+        legs: z.never().optional(),
+      }),
+    ]).parse(req.body);
+    const input = payload.legs ? { ...payload, ...payload.legs[0] } : payload;
+    const legs = itineraryLegs(input);
     if (
-      input.origin === input.destination ||
-      (input.returnDate && input.returnDate < input.departureDate) ||
-      input.adults + input.childAges.length > 9
+      input.adults + input.childAges.length > 9 ||
+      legs.some(
+        (leg, index) =>
+          leg.origin === leg.destination ||
+          !future.safeParse(leg.departureDate).success ||
+          (index > 0 && leg.departureDate < legs[index - 1].departureDate),
+      )
     )
-      throw new OtaError("Check airports, dates and passenger count");
+      throw new OtaError(
+        "Choose different airports for each leg, put travel dates in order and check the traveller count.",
+      );
     const c = await getOtaConfig();
     if (!c.flightsEnabled)
       throw new OtaError("Flight search is not enabled", 503);

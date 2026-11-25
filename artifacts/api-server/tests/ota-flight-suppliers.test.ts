@@ -24,6 +24,11 @@ const input = {
   childAges: [8],
   cabinClass: "economy" as const,
 };
+const multiCity = [
+  { origin: "LOS", destination: "ABV", departureDate: "2027-01-15" },
+  { origin: "ABV", destination: "KAN", departureDate: "2027-01-16" },
+  { origin: "KAN", destination: "LOS", departureDate: "2027-01-19" },
+];
 const config = configSchema.parse({
   duffelToken: "duffel_test_fixture",
   bilalTestToken: "sk_test_fixture",
@@ -53,7 +58,8 @@ afterEach(() => {
 });
 
 describe("OTA flight suppliers", () => {
-  it("verifies and prebooks an N fare with its own live key when the other suppliers are paused", async () => {
+  it.each(["one-way", "indexed multi-city", "multi-city without indices", "metro codes"])(
+    "verifies, prebooks and books an N %s fare with its own key", async (format) => {
     vi.stubEnv("SETTINGS_ENCRYPTION_KEY", "b".repeat(64));
     const settings = configSchema.parse({
       mode: "test",
@@ -79,7 +85,36 @@ describe("OTA flight suppliers", () => {
       expiration: new Date(Date.now() + 300_000).toISOString(),
       pricing: { display: { total: 85000, currency: "NGN" } },
     };
-    const journey = { journeyKey: "itinerary-1", segments: [segment] };
+    const multi = format !== "one-way";
+    const indexed = format === "indexed multi-city";
+    const metro = format === "metro codes";
+    const legs = multiCity.map((leg, index) => metro && index === 0 ? { ...leg, origin: "LON" } : leg);
+    const segments = multi ? [
+      { ...segment, originCode: metro ? "LHR" : segment.originCode, ...(indexed ? { legIndex: 0 } : {}) },
+      {
+        ...segment, originCode: "ABV", destinationCode: "ENU",
+        departureTime: "2027-01-16T08:00:00", arrivalTime: "2027-01-16T09:05:00",
+        ...(indexed ? { legIndex: 1 } : {}),
+      },
+      {
+        ...segment, originCode: "ENU", destinationCode: "KAN",
+        departureTime: "2027-01-16T10:00:00", arrivalTime: "2027-01-16T11:05:00",
+        ...(indexed ? { legIndex: 1 } : {}),
+      },
+      {
+        ...segment, originCode: "KAN", destinationCode: "LOS",
+        departureTime: "2027-01-19T08:00:00", arrivalTime: "2027-01-19T09:05:00",
+        ...(indexed ? { legIndex: 2 } : {}),
+      },
+    ] : [segment];
+    const durations = (multi ? ["PT2H5M", "PT3H5M", "PT1H5M"] : ["PT2H5M"])
+      .map((iso8601, index) => ({
+        direction: "OUTBOUND",
+        ...(indexed ? { legIndex: index } : {}),
+        duration: { iso8601 },
+      }));
+    const itinerary = { journeyKey: "itinerary-1", segments };
+    let verificationSegments = segments;
     const terms = {
       refundable: false,
       changeable: true,
@@ -112,20 +147,17 @@ describe("OTA flight suppliers", () => {
           expect(body).toMatchObject({
             adults: 1,
             childrenAges: [8],
-            legs: [{ origin: "LOS", destination: "ABV" }],
+            legs: (multi ? legs : [input]).map(({ origin, destination, departureDate }) => ({
+              origin, destination, date: departureDate,
+            })),
           });
           return Response.json({
             data: [
               {
                 journeys: [
                   {
-                    ...journey,
-                    legDurations: [
-                      {
-                        direction: "OUTBOUND",
-                        duration: { iso8601: "PT2H5M" },
-                      },
-                    ],
+                    ...itinerary,
+                    legDurations: durations,
                     offers: [fare],
                   },
                 ],
@@ -135,7 +167,7 @@ describe("OTA flight suppliers", () => {
         case "/flights/verify":
           expect(body).toEqual({ offerId: fare.offerId });
           return Response.json({
-            data: [{ journey: { ...journey, ...fare, terms, baggage } }],
+            data: [{ journey: { ...itinerary, segments: verificationSegments, ...fare, terms, baggage } }],
           });
         case "/flights/prebooks":
           expect(body).toMatchObject({
@@ -154,7 +186,7 @@ describe("OTA flight suppliers", () => {
                 price: prebookPrice,
                 currency: "NGN",
                 paymentTypes: ["ACC_CREDIT_CARD"],
-                booking: { journey },
+                booking: { journey: itinerary },
               },
             ],
           });
@@ -165,7 +197,7 @@ describe("OTA flight suppliers", () => {
                 prebookId,
                 price: prebookPrice,
                 currency: "NGN",
-                booking: { journey },
+                booking: { journey: itinerary },
               },
             ],
           });
@@ -182,7 +214,7 @@ describe("OTA flight suppliers", () => {
                 booking: {
                   bookingId: "f-test",
                   status: "PENDING_CONFIRMATION",
-                  journey,
+                  journey: itinerary,
                   customTags: body.customTags,
                 },
               },
@@ -192,17 +224,35 @@ describe("OTA flight suppliers", () => {
           throw new Error("Unexpected provider request");
       }
     });
-    const offers = (await searchFlights(settings, input)).offers;
+    const offers = (await searchFlights(settings, multi ? { ...input, ...legs[0], legs } : input)).offers;
     expect(offers).toHaveLength(1);
-    expect(offers[0].slices[0].duration).toBe("PT2H5M");
+    expect(offers[0].slices.map((slice) => slice.duration)).toEqual(durations.map((value) => value.duration.iso8601));
     const selectionId = offers[0].id;
     expect(offers[0].slices[0].segments[0].technical_stop_count).toBe(1);
     expect(offers[0].pricing.totalKobo).toBe(9_350_000);
     await expect(
       verifyNuiteeFlight(settings, selectionId + "x"),
     ).rejects.toMatchObject({ status: 400 });
+    if (multi) {
+      verificationSegments = segments.slice(0, -1);
+      await expect(verifyNuiteeFlight(settings, selectionId)).rejects.toMatchObject({ status: 409 });
+      const invalidSegments = [
+        [{ ...segments[0], originCode: metro ? "LGW" : "JED" }, ...segments.slice(1)],
+        [{ ...segments[0], departureTime: "2027-01-14T08:00:00" }, ...segments.slice(1)],
+        [segments[0], segments[1], { ...segments[2], originCode: "ACC" }, segments[3]],
+      ];
+      for (const invalid of invalidSegments) {
+        verificationSegments = invalid;
+        await expect(verifyNuiteeFlight(settings, selectionId)).rejects.toMatchObject({ status: 409 });
+      }
+      verificationSegments = segments;
+    }
     const quote = await verifyNuiteeFlight(settings, selectionId);
-    expect(quote.offer.slices[0].duration).toBe("PT2H5M");
+    expect(quote.offer.slices.map((slice) => slice.duration)).toEqual(durations.map((value) => value.duration.iso8601));
+    if (multi) {
+      expect(quote.offer.trip_type).toBe("multi_city");
+      expect(quote.offer.slices.map(({ segments }) => segments.length)).toEqual([1, 2, 1]);
+    }
     expect(quote.offer.fare_terms).toMatchObject({
       refundable: false,
       changeable: true,
@@ -237,7 +287,7 @@ describe("OTA flight suppliers", () => {
       providerBookingId: null,
       supplierAmount: "85000",
       supplierCurrency: "NGN",
-      offer: { nuiteeFlightJourneyKey: journey.journeyKey },
+      offer: { nuiteeFlightJourneyKey: itinerary.journeyKey },
     };
     prebookPrice++;
     await expect(bookNuiteeFlight(settings, row)).rejects.toMatchObject({
@@ -250,6 +300,26 @@ describe("OTA flight suppliers", () => {
       status: "processing",
     });
     expect(bookingCalls).toBe(1);
+  });
+  it("sends every multi-city leg to Duffel and omits Bilalsadasub", async () => {
+    const fetcher = vi.fn(async (url: string, init: RequestInit) => {
+      expect(new URL(url).hostname).toBe("api.duffel.com");
+      expect(JSON.parse(String(init.body)).data.slices).toEqual(multiCity.map(
+        ({ origin, destination, departureDate }) => ({ origin, destination, departure_date: departureDate }),
+      ));
+      const slices = multiCity.map((leg) => ({ segments: [leg] }));
+      return Response.json({
+        data: { offers: [{ ...online, slices }, { ...online, id: "partial", slices: slices.slice(0, 2) }] },
+      });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const multiSearch = { ...input, legs: multiCity };
+    expect((await searchFlights(config, multiSearch)).offers).toMatchObject([
+      { id: online.id, trip_type: "multi_city" },
+    ]);
+    await expect(searchFlights({ ...config, primaryFlightsEnabled: false }, multiSearch))
+      .rejects.toMatchObject({ status: 503 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
   it("uses a configured supplier by default and skips missing or explicitly disabled keys", async () => {
     const fetcher = vi.fn(async (url: string) => {

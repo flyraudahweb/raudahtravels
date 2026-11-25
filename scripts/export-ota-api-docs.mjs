@@ -45,7 +45,7 @@ try {
     JSON.stringify(docs.otaPostmanEnvironment(), null, 2) + "\n",
   );
   const { default: openapiTS, astToString } = require("openapi-typescript");
-  const types = astToString(await openapiTS(spec));
+  const types = astToString(await openapiTS(spec, docs.otaTypeGenerationOptions(require("typescript"))));
   await writeFile(path.join(root, "docs/mobile/flyraudah-api.d.ts"), types);
   const assets = {
     "flyraudah-api.d.ts": types,

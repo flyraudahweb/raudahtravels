@@ -137,7 +137,7 @@ Regression evidence and remaining browser/staging acceptance limits are recorded
 
 ## Supported scope and operational limits
 
-- The flight UI supports adults and children aged 2–11, one-way/return trips and one selected offer. Infant, multi-city, seat/ancillary sales, hold orders and self-service exchanges are not exposed. Direct those requests to support.
+- The flight UI supports adults and children aged 2–11, one-way and return trips, and multi-city trips with two to six legs in one offer. Multi-city requires an enabled N or Duffel flight connection. Infant fares, seat and ancillary sales, hold orders and self-service exchanges go through support.
 - Hotel checkout supports prepaid balance-funded rates. Card-guaranteed, deposit, loyalty-required and pay-at-property inventory is not offered for purchase. Property-payable extras remain visible when supplied.
 - Booking FX is operator-managed. A separate automatically refreshed reference feed is displayed for comparison. References never overwrite admin selling rates or saved checkout prices.
 - Signed Duffel webhooks reconcile flight/hotel creation, airline changes and cancellations. Polling and explicit refresh remain available. Monitor the event inbox and Duffel dashboard for unmatched or exhausted events requiring operator reconciliation.
@@ -187,7 +187,7 @@ Mobile customers authenticate with their Clerk session JWT, then call `POST /me/
 
 Optional trusted-backend search keys are created/revoked in the Developer Centre. Select test/live mode, expiry (1–365 days), scopes (`config:read`, `flights:read`, `hotels:read`) and a 10–60 request/minute limit. Copy the secret once into the trusted backend's secret store; only its hash is stored by Raudah. Keys cannot create purchases, access customer bookings or administer the service. Their mode must match active OTA settings. Shared database counters enforce each key's limit across instances; existing user/IP limits and an edge limit still apply.
 
-Regenerate checked-in documentation with `pnpm run docs:ota`. The source is `artifacts/api-server/src/services/ota/apiDocumentation.ts`; generated deliverables are `docs/ota-openapi.json` and `docs/OTA_MOBILE_API.md`. See the guide for secure token storage, hosted payment/app resume, timeout recovery, price/revision rules, updates, polling and launch acceptance. Native push, self-service exchanges/cancellations, infants and multi-city are explicitly outside the current API scope. Hotel access and matching payment/provider modes remain deployment requirements.
+Regenerate checked-in documentation with `pnpm run docs:ota`. The source is `artifacts/api-server/src/services/ota/apiDocumentation.ts`. Generated deliverables include `docs/ota-openapi.json` and `docs/OTA_MOBILE_API.md`. See the guide for secure token storage, hosted payment and app resume, timeout recovery, price and revision rules, updates, polling and launch acceptance. Native push, self-service exchanges and cancellations, and infant fares are outside the current API scope. Hotel access and matching payment and provider modes remain deployment requirements.
 
 ## Header display controls and mobile API review
 

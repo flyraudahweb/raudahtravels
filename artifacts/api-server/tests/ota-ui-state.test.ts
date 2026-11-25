@@ -2,10 +2,7 @@ import { describe, it, expect } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { newestBooking } from "../../raudah-travels/src/lib/bookingSnapshot";
-import {
-  PackageCancellationPolicy,
-  packageCancellationTerms,
-} from "../../raudah-travels/src/components/CancellationPolicy";
+import { PackageCancellationPolicy } from "../../raudah-travels/src/components/CancellationPolicy";
 import { TravelCancellationPolicy } from "../../raudah-travels/src/components/ota/TravelPolicies";
 
 describe("booking screen response races", () => {
@@ -110,9 +107,11 @@ describe("booking cancellation policies", () => {
 
   it("displays the published package terms and links to their section", () => {
     const markup = renderToStaticMarkup(
-      createElement(PackageCancellationPolicy),
+      createElement(PackageCancellationPolicy, { detailed: true }),
     );
-    expect(markup).toContain(packageCancellationTerms);
+    expect(markup).toContain("Before visa processing starts");
+    expect(markup).toContain("You may be eligible for a partial refund.");
+    expect(markup).toContain("The package is non-refundable.");
     expect(markup).toContain("/terms#package-cancellations");
     expect(markup).toContain('href="/contact"');
   });

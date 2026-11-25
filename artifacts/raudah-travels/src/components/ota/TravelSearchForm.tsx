@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import {
   Plane,
@@ -8,15 +9,24 @@ import {
   ArrowRightLeft,
   ShieldCheck,
   Package,
+  Plus,
+  X,
 } from "lucide-react";
-import { travelButton } from "@/lib/ota";
-import { dateKey, readDate } from "@/lib/travelSearch";
+import { ota, travelButton } from "@/lib/ota";
+import { dateKey, MAX_MULTI_CITY_LEGS, readDate, readMultiCityLegs } from "@/lib/travelSearch";
 import {
   AirportPicker,
   DatePicker,
   StayDestinationPicker,
   TravellerPicker,
 } from "./SearchPickers";
+
+type TripType = "one_way" | "round_trip" | "multi_city";
+type EditableLeg = ReturnType<typeof readMultiCityLegs>[number] & {
+  id: number;
+  originLabel?: string;
+  destinationLabel?: string;
+};
 
 export default function TravelSearchForm({
   initialKind = "flight",
@@ -39,8 +49,15 @@ export default function TravelSearchForm({
     [destination, setDestination] = useState(
       initial?.get("destination") || "JED",
     );
-  const [city, setCity] = useState(initial?.get("city") || "0"),
-    [roundTrip, setRoundTrip] = useState(!!initial?.get("returnDate"));
+  const [city, setCity] = useState(initial?.get("city") || "0");
+  const [tripType, setTripType] = useState<TripType>(
+    initial?.has("leg") ? "multi_city" : initial?.has("returnDate") ? "round_trip" : "one_way",
+  );
+  const [legs, setLegs] = useState<EditableLeg[]>(() =>
+    readMultiCityLegs(initial ?? new URLSearchParams()).slice(0, MAX_MULTI_CITY_LEGS)
+      .map((leg, id) => ({ ...leg, id })),
+  );
+  const nextLegId = useRef(MAX_MULTI_CITY_LEGS);
   const [guestNationality, setGuestNationality] = useState(
     initial?.get("guestNationality") || "NG",
   );
@@ -64,6 +81,18 @@ export default function TravelSearchForm({
     );
   const [error, setError] = useState("");
   const hotel = kind === "hotel";
+  const multiCity = !hotel && tripType === "multi_city";
+  const { data: otaConfig, isPending: loadingConfig } = useQuery({
+    queryKey: ["ota", "public-config"],
+    queryFn: () => ota<{ multiCityFlightSearchEnabled?: boolean }>("/config"),
+    enabled: !hotel,
+    staleTime: 30_000,
+    retry: false,
+  });
+  const multiCityEnabled = otaConfig?.multiCityFlightSearchEnabled === true;
+  const multiCityStatusId = useId();
+  const multiCityUnavailable = !hotel && !loadingConfig && !multiCityEnabled;
+  const roundTrip = tripType === "round_trip";
   const appLayout = variant === "app";
   const landingLayout = variant === "landing";
   const landingTabClass =
@@ -71,6 +100,19 @@ export default function TravelSearchForm({
   const inactiveLandingTabClass =
     "text-slate-600 hover:bg-white/75 hover:text-[#2D3199]";
   const PackageIcon = landingLayout ? BriefcaseBusiness : Package;
+  function changeTripType(next: TripType) {
+    setError("");
+    setTripType(next);
+    if (next === "multi_city" && legs.length < 2) {
+      setLegs([
+        { id: 0, origin, destination, originLabel, destinationLabel, departureDate: departure },
+        { id: 1, origin: destination, originLabel: destinationLabel, destination: "", departureDate: returnDate },
+      ]);
+    }
+  }
+  function updateLeg(id: number, values: Partial<EditableLeg>) {
+    setLegs((current) => current.map((leg) => leg.id === id ? { ...leg, ...values } : leg));
+  }
   return (
     <div
       role={landingLayout ? "region" : undefined}
@@ -154,12 +196,20 @@ export default function TravelSearchForm({
         onSubmit={(event) => {
           event.preventDefault();
           setError("");
-          if (!readDate(departure) || departure < dateKey(new Date()))
+          const today = dateKey(new Date());
+          if (multiCity) {
+            if (!multiCityEnabled) return;
+            if (legs.length < 2 || legs.some(({ origin, destination, departureDate }, index) =>
+              !/^[A-Z]{3}$/.test(origin) || !/^[A-Z]{3}$/.test(destination) ||
+              origin === destination || !readDate(departureDate) || departureDate < today ||
+              (index > 0 && departureDate < legs[index - 1].departureDate)))
+              return setError("Choose two different airports and a date for each flight. Put the flights in date order.");
+          } else if (!readDate(departure) || departure < today)
             return setError(
               "Select a departure or check-in date from the calendar.",
             );
           if (
-            (hotel || roundTrip) &&
+            !multiCity && (hotel || roundTrip) &&
             (!readDate(returnDate) ||
               (hotel ? returnDate <= departure : returnDate < departure))
           )
@@ -169,7 +219,7 @@ export default function TravelSearchForm({
                 : "Select a return date on or after departure.",
             );
           if (
-            !hotel &&
+            !hotel && !multiCity &&
             (!/^[A-Z]{3}$/.test(origin) ||
               !/^[A-Z]{3}$/.test(destination) ||
               origin === destination)
@@ -193,14 +243,18 @@ export default function TravelSearchForm({
             childAges: ages.join(","),
           });
           if (!hotel) {
-            query.set("origin", origin);
-            query.set("destination", destination);
-            if (originLabel) query.set("originLabel", originLabel);
-            if (destinationLabel)
-              query.set("destinationLabel", destinationLabel);
-            query.set("departureDate", departure);
             query.set("cabinClass", cabin);
-            if (roundTrip) query.set("returnDate", returnDate);
+            if (multiCity) {
+              for (const leg of legs)
+                query.append("leg", [leg.origin, leg.destination, leg.departureDate].join(","));
+            } else {
+              query.set("origin", origin);
+              query.set("destination", destination);
+              if (originLabel) query.set("originLabel", originLabel);
+              if (destinationLabel) query.set("destinationLabel", destinationLabel);
+              query.set("departureDate", departure);
+              if (roundTrip) query.set("returnDate", returnDate);
+            }
           } else {
             query.set("city", city);
             query.set("checkIn", departure);
@@ -219,34 +273,76 @@ export default function TravelSearchForm({
         }}
       >
         {!hotel && (
-          <fieldset className="mb-4 flex items-center gap-5 text-xs font-medium sm:text-sm">
+          <fieldset className="mb-4 grid w-full max-w-sm grid-cols-3 rounded-full border border-indigo-100 bg-indigo-50/70 p-1 text-xs font-semibold sm:text-sm">
             <legend className="sr-only">Journey type</legend>
             {(
               [
-                [false, "One way"],
-                [true, "Round trip"],
+                ["round_trip", "Round trip"],
+                ["one_way", "One way"],
+                ["multi_city", "Multi-city"],
               ] as const
-            ).map(([value, label]) => (
-              <label
-                key={label}
-                className="flex cursor-pointer items-center gap-2"
-              >
-                <input
-                  type="radio"
-                  name="journey"
-                  className="h-3.5 w-3.5 accent-[#2D3199]"
-                  checked={roundTrip === value}
-                  onChange={() => setRoundTrip(value)}
-                />
-                {label}
-              </label>
-            ))}
+            ).map(([value, label]) => {
+              const disabled = value === "multi_city" && !multiCityEnabled;
+              return (
+                <label key={label} className={disabled ? "cursor-not-allowed" : "cursor-pointer"}>
+                  <input
+                    type="radio"
+                    name="journey"
+                    className="peer sr-only"
+                    checked={tripType === value}
+                    disabled={disabled}
+                    aria-describedby={disabled && multiCityUnavailable ? multiCityStatusId : undefined}
+                    onChange={() => changeTripType(value)}
+                  />
+                  <span className="flex min-h-10 items-center justify-center whitespace-nowrap rounded-full px-2 text-slate-700 transition-colors peer-checked:bg-[#2D3199] peer-checked:text-white peer-disabled:opacity-50 peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-600 peer-focus-visible:ring-offset-2">
+                    {label}
+                  </span>
+                </label>
+              );
+            })}
           </fieldset>
         )}
+        {multiCityUnavailable && (
+          <p id={multiCityStatusId} role="status" className="mb-4 text-xs text-slate-600">
+            Multi-city search is currently unavailable.
+          </p>
+        )}
+        {multiCity && (
+          <div className="mb-4 space-y-3">
+            {legs.map((leg, index) => (
+              <fieldset key={leg.id} className="rounded-2xl border border-slate-200 p-3 sm:p-4">
+                <legend className="px-1 text-sm font-semibold text-indigo-950">Flight {index + 1}</legend>
+                <div className="grid items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+                  <AirportPicker label="Flying from" value={leg.origin} selectedLabel={leg.originLabel}
+                    onChange={(code, name) => updateLeg(leg.id, { origin: code, originLabel: name })} />
+                  <AirportPicker label="Flying to" value={leg.destination} selectedLabel={leg.destinationLabel}
+                    onChange={(code, name) => updateLeg(leg.id, { destination: code, destinationLabel: name })} />
+                  <DatePicker departure={leg.departureDate} returnDate="" range={false} hotel={false}
+                    onChange={(date) => updateLeg(leg.id, { departureDate: date })} />
+                  {legs.length > 2 && (
+                    <button type="button" aria-label={`Remove flight ${index + 1}`}
+                      onClick={() => setLegs((current) => current.filter(({ id }) => id !== leg.id))}
+                      className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-600 hover:bg-indigo-50 hover:text-[#2D3199]">
+                      <X size={18} aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
+              </fieldset>
+            ))}
+            {legs.length < MAX_MULTI_CITY_LEGS && (
+              <button type="button" onClick={() => {
+                const id = nextLegId.current++;
+                setLegs((current) => [...current, { id, origin: "", destination: "", departureDate: "" }]);
+              }} className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-[#2D3199] hover:bg-indigo-50">
+                <Plus size={17} aria-hidden="true" /> Add flight
+              </button>
+            )}
+          </div>
+        )}
         <div
-          className={`grid gap-3 ${appLayout ? "sm:grid-cols-2" : compact ? "xl:grid-cols-[2fr_1.35fr_1fr_auto]" : "lg:grid-cols-[1.8fr_1.35fr_1fr_auto]"}`}
+          className={`grid gap-3 ${multiCity ? "sm:grid-cols-[minmax(0,1fr)_auto]" : appLayout ? "sm:grid-cols-2" : compact ? "xl:grid-cols-[2fr_1.35fr_1fr_auto]" : "lg:grid-cols-[1.8fr_1.35fr_1fr_auto]"}`}
         >
-          {hotel ? (
+          {!multiCity && (hotel ? (
             <div className={appLayout ? "sm:col-span-2" : undefined}>
               <StayDestinationPicker value={city} onChange={setCity} />
             </div>
@@ -286,8 +382,8 @@ export default function TravelSearchForm({
                 }}
               />
             </div>
-          )}
-          <DatePicker
+          ))}
+          {!multiCity && <DatePicker
             departure={departure}
             returnDate={returnDate}
             range={hotel || roundTrip}
@@ -296,7 +392,7 @@ export default function TravelSearchForm({
               setDeparture(first);
               setReturnDate(last);
             }}
-          />
+          />}
           <TravellerPicker
             kind={kind}
             adults={adults}
@@ -314,7 +410,8 @@ export default function TravelSearchForm({
           />
           <button
             type="submit"
-            className={`${travelButton} min-h-[62px] bg-[#FF3B00] text-[15px] shadow-[0_6px_18px_-8px_rgba(255,59,0,0.5)] hover:bg-[#dc3300] ${appLayout ? "sm:col-span-2" : compact ? "xl:min-h-[76px]" : ""}`}
+            disabled={multiCity && !multiCityEnabled}
+            className={`${travelButton} min-h-[62px] bg-[#FF3B00] text-[15px] shadow-[0_6px_18px_-8px_rgba(255,59,0,0.5)] hover:bg-[#dc3300] ${appLayout && !multiCity ? "sm:col-span-2" : compact ? "xl:min-h-[76px]" : ""}`}
           >
             <Search size={21} />
             <span>Search {hotel ? "hotels" : "flights"}</span>

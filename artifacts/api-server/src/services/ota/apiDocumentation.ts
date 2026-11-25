@@ -1,4 +1,17 @@
+import { MAX_MULTI_CITY_LEGS } from "./flightItinerary";
+import type { OpenAPITSOptions } from "openapi-typescript";
+
 type Schema = Record<string, any>;
+export function otaTypeGenerationOptions(ts: typeof import("typescript")): OpenAPITSOptions {
+  return {
+    transform(schema) {
+      // In OpenAPI 3.0, negating an empty schema forbids every value.
+      return "not" in schema && schema.not && Object.keys(schema.not).length === 0
+        ? ts.factory.createKeywordTypeNode(ts.SyntaxKind.NeverKeyword)
+        : undefined;
+    },
+  };
+}
 const string = (description: string, extra: Schema = {}) => ({
   type: "string",
   description,
@@ -205,7 +218,7 @@ export const mobileGuides = [
       "Checkout: POST /bookings once per explicit confirmation. Save the returned booking ID before POST /bookings/{id}/pay. Disable repeated taps; do not silently retry checkout creation after a timeout because Idempotency-Key is not supported. Recover GET /bookings first.",
       "Payment: open only the server authorizationUrl in the system authentication/browser flow. On web return, app resume or app restart, GET the retained booking and POST /complete only when appropriate. A browser success screen or mobile deep link is never payment proof.",
       "My Trips: GET /bookings?offset=; use nextOffset, merge by ID, compare revisions and show pending/confirmed/attention summaries. Trip details use GET /bookings/{id}, GET /timeline and occasional POST /refresh with {}. Show supplied documents safely; never synthesize ticket numbers.",
-      "Inbox and help: GET /updates?offset=, POST /updates/{encodedId}/read or /updates/read-all, and POST /bookings/{id}/service-request. Poll only while active and respect Retry-After; native push, seats, infants, multi-city and instant self-service refunds/exchanges are not currently exposed.",
+      "Inbox and help: GET /updates?offset=, POST /updates/{encodedId}/read or /updates/read-all, and POST /bookings/{id}/service-request. Poll only while active and respect Retry-After. Native push, seats, infants and instant self-service refunds/exchanges are not currently exposed.",
       "Release acceptance: run the documented staging payment/provider tests with matching modes, migration 0012 only if backend keys are used, HTTPS, secret isolation, ownership tests, timeout recovery and operator reconciliation. Production Stays access and a funded supplier account are separate provider requirements.",
     ],
   },
@@ -263,10 +276,10 @@ export const mobileGuides = [
   {
     id: "flights",
     title: "Flight search → offer → checkout",
-    body: "Use GET /places for city/airport suggestions and select the returned IATA code. POST /flights/search supports one-way or return trips, economy/premium economy/business/first, adults and children aged 2–11. At most nine passengers total. Results include supplier offer/passenger IDs, itinerary, expiry, conditions and server-priced pricing.totalKobo. Re-fetch GET /flights/offers/{id} before checkout. Map each traveller to that offer’s passenger ID; birth date must match the searched age at departure. Provide passport data when passenger_identity_documents_required is true. A passport supplied optionally is still validated through the last itinerary date. Entry/visa/extra passport-validity requirements are not determined by this API.",
+    body: "Use GET /places for city and airport suggestions. POST /flights/search supports one-way, return and multi-city trips, four cabin classes, and up to nine adults and children aged 2–11 combined. Multi-city availability depends on the enabled suppliers. Results include the complete itinerary, offer and passenger IDs, expiry, conditions and server-priced pricing.totalKobo. Refresh GET /flights/offers/{id} before checkout. Map each traveller to the offer’s passenger ID and provide passport data when required. A passport supplied optionally is still validated through the last itinerary date.",
     steps: [
-      "POST /flights/search with origin, destination, departureDate, optional returnDate, adults, childAges and cabinClass.",
-      "Render both slices for a return offer; never present its bundled price as one leg’s separate fare. Filter stops using connections plus technical stops.",
+      "POST /flights/search with origin, destination, departureDate and optional returnDate, or submit two to six ordered legs with an origin, destination and departureDate per leg. Send adults, childAges and cabinClass with either format.",
+      "Render every slice. The total price covers the entire offer for all travellers. Filter stops using connections plus technical stops.",
       "GET /flights/offers/{id}; display pricing.totalKobo, expiry, baggage and cancellation/change conditions.",
       "POST /bookings with kind=flight, current offerId, acceptedTerms=true, contact, one matching traveller per passenger, and expectedTotalKobo from the last response.",
       "A 409 price change requires fresh presentation and explicit traveller confirmation. A saved checkout is not yet a paid or supplier-confirmed booking.",
@@ -346,7 +359,7 @@ export const mobileGuides = [
   {
     id: "scope",
     title: "Supported scope & launch checklist",
-    body: "This is the implemented Raudah OTA API, not a claim of Trip.com feature parity. Supported: one-way/return flights, adult/child travel, prepaid hotel inventory, owner checkout/history, hosted payment, supplier updates and support requests. Not exposed: multi-city, infants, ancillary/seat sales, held orders, self-service exchanges/cancellations, arbitrary payment callbacks, partial-refund APIs, native push subscriptions or partner booking-on-behalf APIs. Direct unsupported requests to support. Do not represent these as completed features in a mobile UI.",
+    body: "The Raudah OTA API supports one-way, return and multi-city flights, adult and child travel, prepaid hotel inventory, owner checkout and history, hosted payment, supplier updates and support requests. Infants, ancillary and seat sales, held orders, self-service exchanges or cancellations, partial-refund APIs, native push subscriptions and partner bookings on behalf of customers are outside this API. Direct unsupported requests to support.",
     steps: [
       "Deploy API and web code together; apply the required OTA migrations and 0012 for optional search keys.",
       "Use the same Clerk instance and verify new-account bootstrap plus blocked-account rejection.",
@@ -645,6 +658,7 @@ export function otaOpenApi() {
           "Requires passport data in every flight traveller",
         ),
         slices: array(ref("Slice")),
+        trip_type: string("Multi-city itinerary when provided", { enum: ["multi_city"] }),
         conditions: object({}, [], { additionalProperties: true }),
         fare_terms: object({
           refundable: bool("Whether the supplier permits refunds"),
@@ -1040,6 +1054,7 @@ export function otaOpenApi() {
       scope: "config:read",
       response: object({
         flightsEnabled: bool("Flight search enabled"),
+        multiCityFlightSearchEnabled: bool("An enabled flight supplier supports multi-city search"),
         hotelsEnabled: bool("Stays search enabled"),
         salesEnabled: bool("Primary supplier checkout enabled"),
         nuiteeFlightCheckoutEnabled: bool("Nuitee flight checkout enabled"),
@@ -1052,6 +1067,7 @@ export function otaOpenApi() {
       }),
       example: {
         flightsEnabled: true,
+        multiCityFlightSearchEnabled: true,
         hotelsEnabled: false,
         salesEnabled: false,
         nuiteeFlightCheckoutEnabled: true,
@@ -1085,7 +1101,7 @@ export function otaOpenApi() {
           supportRequests: bool("Implemented"),
           selfServiceCancellation: bool("False"),
           selfServiceExchange: bool("False"),
-          multiCity: bool("False"),
+          multiCity: bool("An enabled flight supplier supports multi-city search"),
           infants: bool("False"),
           ancillaries: bool("False"),
         }),
@@ -1192,43 +1208,56 @@ export function otaOpenApi() {
       }),
     },
   );
-  const flightSearch = object(
-    {
-      origin: string("Uppercase origin IATA", { pattern: "^[A-Z]{3}$" }),
-      destination: string("Different uppercase destination IATA", {
-        pattern: "^[A-Z]{3}$",
-      }),
-      departureDate: date("Today or future"),
-      returnDate: date("Optional; same day or after departure"),
-      adults: integer("Adult passengers, ages 12+", 1, 9),
-      childAges: array(integer("Child age at departure", 2, 11), {
-        maxItems: 8,
-        default: [],
-      }),
-      cabinClass: string("Cabin", {
-        enum: ["economy", "premium_economy", "business", "first"],
-        default: "economy",
-      }),
+  const route = {
+    origin: string("Uppercase origin IATA", { pattern: "^[A-Z]{3}$" }),
+    destination: string("Different uppercase destination IATA", { pattern: "^[A-Z]{3}$" }),
+    departureDate: date("Today or future"),
+  };
+  const travellers = {
+    adults: integer("Adult passengers, ages 12+", 1, 9),
+    childAges: array(integer("Child age at departure", 2, 11), { maxItems: 8, default: [] }),
+    cabinClass: string("Cabin", {
+      enum: ["economy", "premium_economy", "business", "first"],
+      default: "economy",
+    }),
+  };
+  const forbidden = { not: {} };
+  const flightSearch = {
+    oneOf: [
+      object({
+        ...travellers,
+        ...route,
+        returnDate: date("Optional; same day or after departure"),
+        legs: forbidden,
+      }, ["adults", "origin", "destination", "departureDate"]),
+      object({
+        ...travellers,
+        origin: forbidden,
+        destination: forbidden,
+        departureDate: forbidden,
+        returnDate: forbidden,
+        legs: array(object(route, ["origin", "destination", "departureDate"]), {
+          minItems: 2, maxItems: MAX_MULTI_CITY_LEGS,
+          description: "Ordered multi-city legs. Omit top-level route and date fields.",
+        }),
+      }, ["adults", "legs"]),
+    ],
+    example: {
+      origin: "LOS",
+      destination: "JED",
+      departureDate: travelDate,
+      returnDate,
+      adults: 1,
+      childAges: [],
+      cabinClass: "economy",
     },
-    ["origin", "destination", "departureDate", "adults"],
-    {
-      example: {
-        origin: "LOS",
-        destination: "JED",
-        departureDate: travelDate,
-        returnDate,
-        adults: 1,
-        childAges: [],
-        cabinClass: "economy",
-      },
-    },
-  );
+  };
   add(
     "POST",
     "/flights/search",
-    "Search one-way / return flights",
+    "Search one-way, return or multi-city flights",
     "Flights",
-    "Adults plus children cannot exceed 9. Returns up to 80 online offers sorted by totalKobo. Supported domestic searches may also return estimates sorted by estimatedTotalKobo. Only items in offers can go to checkout. If partialAvailability is true, at least one applicable supplier could not be checked.",
+    "Adults plus children cannot exceed 9. Multi-city searches return complete offers from enabled suppliers that support the itinerary, currently Nuitee and Duffel. Returns up to 80 online offers sorted by totalKobo. Some one-way domestic searches also return estimates. If partialAvailability is true, at least one applicable supplier could not be checked.",
     {
       scope: "flights:read",
       body: flightSearch,
@@ -1547,7 +1576,7 @@ export function otaOpenApi() {
     openapi: "3.0.3",
     info: {
       title: "FlyRaudah OTA Mobile API",
-      version: "1.0.3",
+      version: "1.0.4",
       contact: { name: "FlyRaudah support", url: `${origin}/contact` },
       termsOfService: `${origin}/terms`,
       description:
@@ -1591,6 +1620,10 @@ export function otaOpenApi() {
     },
     "x-guides": mobileGuides,
     "x-changelog": [
+      {
+        version: "1.0.4",
+        changes: ["Multi-city searches with two to six legs and supplier availability flags"],
+      },
       {
         version: "1.0.3",
         changes: ["Nuitee flight checkout availability and environment, fare terms, baggage and unpaid checkout edits"],
