@@ -6,6 +6,7 @@ export class OtaError extends Error {
     message: string,
     public status = 400,
     public requestId?: string,
+    public code?: "flight_fare_changed" | "flight_offer_unavailable" | "checkout_expired",
   ) {
     super(message);
   }

@@ -152,6 +152,13 @@ export function otaPaymentReferenceMatches(reference: string) {
     sql`${bookings.previousPaymentReferences} ? ${reference}`,
   );
 }
+export function canRefreshNuiteeFlightFare(row: OtaBooking) {
+  return row.kind === "flight" && row.supplier === "nuitee" &&
+    row.status === "payment_pending" && !row.checkoutEditClaim &&
+    !row.paidAt && !row.authorizationUrl && !row.paymentInitializationAt &&
+    !row.paymentReference && !row.paidPaymentReference &&
+    !row.previousPaymentReferences.length;
+}
 export function customerBooking(row: OtaBooking) {
   const {
     travellers,
@@ -179,6 +186,7 @@ export function customerBooking(row: OtaBooking) {
       : undefined;
   return {
     ...safe,
+    ...(canRefreshNuiteeFlightFare(row) ? { canRefreshFlightFare: true } : {}),
     ...(editableOfferId ? { editableOfferId } : {}),
     ...(row.supplier === "bilalsadasub"
       ? { offer: publicDomesticOffer(row.offer), providerOfferId: null }

@@ -11,6 +11,60 @@ export function readMultiCityLegs(query: URLSearchParams) {
   });
 }
 
+type FlightSearchSnapshot = {
+  trip_type?: string;
+  cabin_class?: string;
+  slices?: Array<{
+    origin?: { iata_code?: string; iata_city_code?: string };
+    destination?: { iata_code?: string; iata_city_code?: string };
+    segments?: Array<{ departing_at?: string }>;
+  }>;
+  passengers?: Array<{ type?: string; age?: number }>;
+};
+
+export function flightRecheckHref(offer: FlightSearchSnapshot | undefined) {
+  const slices = offer?.slices ?? [];
+  if (!slices.length || slices.length > MAX_MULTI_CITY_LEGS) return "/flights";
+  const legs = slices.map((slice) => ({
+    origin: slice.origin?.iata_code ?? "",
+    destination: slice.destination?.iata_code ?? "",
+    date: slice.segments?.[0]?.departing_at?.slice(0, 10) ?? "",
+  }));
+  if (legs.some(({ origin, destination }) => !/^[A-Z]{3}$/.test(origin) ||
+      !/^[A-Z]{3}$/.test(destination) || origin === destination)) return "/flights";
+
+  const passengers = offer?.passengers ?? [];
+  const adults = passengers.filter(({ type }) => type === "adult").length;
+  const childAges = passengers.flatMap(({ type, age }) =>
+    type === "child" && age !== undefined && Number.isInteger(age) && age >= 2 && age <= 11 ? [age] : [],
+  );
+  const countKnown = adults > 0 && passengers.length <= 9 && adults + childAges.length === passengers.length;
+  const query = new URLSearchParams();
+  if (countKnown) {
+    query.set("adults", String(adults));
+    query.set("childAges", childAges.join(","));
+  }
+  const cabin = offer?.cabin_class;
+  if (cabin && Object.hasOwn(cabinNames, cabin)) query.set("cabinClass", cabin);
+
+  const today = dateKey(new Date());
+  const datesReady = legs.every(({ date }, index) =>
+    !!readDate(date) && date >= today && (index === 0 || date >= legs[index - 1].date),
+  );
+  if (countKnown && datesReady && flightLegLabel(offer, 0) === "Flight 1") {
+    for (const { origin, destination, date } of legs)
+      query.append("leg", [origin, destination, date].join(","));
+  } else {
+    query.set("origin", legs[0].origin);
+    query.set("destination", legs[0].destination);
+    if (countKnown && datesReady) {
+      query.set("departureDate", legs[0].date);
+      if (legs.length === 2) query.set("returnDate", legs[1].date);
+    }
+  }
+  return `/flights/search?${query}`;
+}
+
 export function flightLegLabel(offer: any, index: number) {
   const slices = offer.slices ?? [];
   if (slices.length === 1) return "Your flight";

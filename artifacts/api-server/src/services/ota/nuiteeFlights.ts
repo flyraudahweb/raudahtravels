@@ -32,11 +32,13 @@ const legDurations = z.object({
   OUTBOUND: elapsed.optional(),
   INBOUND: elapsed.optional(),
 });
+export const nuiteeFlightCabin = z.enum(["economy", "premium_economy", "business", "first"]);
 const selectionSchema = z.object({
   offerId: providerId,
   mode: z.enum(["test", "live"]),
   adults: z.number().int().min(1).max(9),
   childAges: z.array(z.number().int().min(2).max(11)).max(8),
+  cabinClass: nuiteeFlightCabin.optional(),
   journeyKey: z.string().min(1).max(256),
   roundTrip: z.boolean(),
   legs: multiCityLegs.optional(),
@@ -106,6 +108,7 @@ async function request(
   const result = await nuiteeRequest(config, mode, NUITEE_API, path, {
     body,
     timeout,
+    flightOfferUnavailable: path === "/flights/verify" || path.startsWith("/flights/prebooks/"),
   });
   if (
     !Array.isArray(result.data) ||
@@ -482,6 +485,7 @@ function normalizeJourney(
     },
     total_amount: pricing.supplierAmount,
     total_currency: currency,
+    ...(selection.cabinClass ? { cabin_class: selection.cabinClass } : {}),
     ...allowanceDetails(quote),
     slices,
     passengers: [
@@ -499,7 +503,7 @@ export async function searchNuiteeFlights(
   const mode = config.nuiteeFlightMode;
   const journeys = await fetchJourneys(config, mode, input);
   const limit = Date.now() + 15 * 60000;
-  const offers = journeys.slice(0, 200).flatMap((journey: any) => {
+  const offers: (NonNullable<ReturnType<typeof normalizeJourney>> & { id: string })[] = journeys.slice(0, 200).flatMap((journey: any) => {
     if (!Array.isArray(journey?.offers)) return [];
     const durations = journeyDurations(journey);
     const candidates = (journey.offers as any[])
@@ -512,6 +516,7 @@ export async function searchNuiteeFlights(
           mode,
           adults: input.adults,
           childAges: input.childAges,
+          cabinClass: input.cabinClass,
           journeyKey: journey.journeyKey,
           roundTrip: !!input.returnDate,
           legs: input.legs,
@@ -569,6 +574,76 @@ export async function verifyNuiteeFlight(config: OtaConfig, token: string) {
     throw new OtaError("The full itinerary and fare could not be verified. Search again.", 409);
   available(offer);
   return { selection, offer: { ...offer, id: token }, pricing: offer.pricing };
+}
+
+const savedAirport = z.object({ iata_code: code });
+const savedCarrier = z.object({ iata_code: z.string().min(2) });
+const savedFlight = z.object({
+  trip_type: z.literal("multi_city").optional(),
+  cabin_class: nuiteeFlightCabin.optional(),
+  slices: z.array(z.object({
+    segments: z.array(z.object({
+      origin: savedAirport,
+      destination: savedAirport,
+      departing_at: timestamp,
+      arriving_at: timestamp,
+      marketing_carrier: savedCarrier,
+      marketing_carrier_flight_number: z.string().min(1),
+      operating_carrier: savedCarrier.partial().optional(),
+      operating_carrier_flight_number: z.string().min(1).optional(),
+    })).min(1).max(20),
+  })).min(1).max(MAX_MULTI_CITY_LEGS),
+  passengers: z.array(z.discriminatedUnion("type", [
+    z.object({ type: z.literal("adult") }),
+    z.object({ type: z.literal("child"), age: z.number().int().min(2).max(11) }),
+  ])).min(1).max(9),
+});
+
+export function matchesNuiteeFlightDraft(saved: unknown, fresh: unknown) {
+  const previous = savedFlight.safeParse(saved);
+  const current = savedFlight.safeParse(fresh);
+  if (!previous.success || !current.success || !current.data.cabin_class) return false;
+  const { cabin_class: previousCabin, ...previousItinerary } = previous.data;
+  const { cabin_class: currentCabin, ...currentItinerary } = current.data;
+  return (!previousCabin || previousCabin === currentCabin) &&
+    JSON.stringify(previousItinerary) === JSON.stringify(currentItinerary);
+}
+
+export async function refreshNuiteeFlightFare(
+  config: OtaConfig,
+  saved: unknown,
+  requestedCabin?: z.infer<typeof nuiteeFlightCabin>,
+) {
+  const unavailable = () => new OtaError(
+    "We couldn't find a current fare for these exact flights. See current flights to choose another option.",
+    409, undefined, "flight_offer_unavailable",
+  );
+  const parsed = savedFlight.safeParse(saved);
+  if (!parsed.success) throw unavailable();
+  const { cabin_class, passengers, slices, trip_type } = parsed.data;
+  const cabinClass = cabin_class ?? requestedCabin;
+  if (!cabinClass) throw new OtaError("Choose a cabin class to check the current fare.");
+  const legs = slices.map(({ segments }) => ({
+    origin: segments[0].origin.iata_code,
+    destination: segments[segments.length - 1].destination.iata_code,
+    departureDate: segments[0].departing_at.slice(0, 10),
+  }));
+  if (legs[0].departureDate < new Date().toISOString().slice(0, 10)) throw unavailable();
+  const matchesDraft = (offer: unknown) => matchesNuiteeFlightDraft(
+    { ...parsed.data, cabin_class: cabinClass }, offer,
+  );
+  const { offers } = await searchNuiteeFlights(config, {
+    ...legs[0],
+    ...(trip_type === "multi_city" ? { legs } : legs[1] ? { returnDate: legs[1].departureDate } : {}),
+    cabinClass,
+    adults: passengers.filter((passenger) => passenger.type === "adult").length,
+    childAges: passengers.flatMap((passenger) => passenger.type === "child" ? [passenger.age] : []),
+  });
+  const match = offers.filter(matchesDraft).sort((a, b) => a.pricing.totalKobo - b.pricing.totalKobo)[0];
+  if (!match) throw unavailable();
+  const quote = await verifyNuiteeFlight(config, match.id);
+  if (!matchesDraft(quote.offer)) throw unavailable();
+  return quote;
 }
 
 type Contact = { email: string; phone: string; phoneCountryCode?: string };
@@ -664,13 +739,12 @@ export async function prebookNuiteeFlight(
   const prebookId = z.string().uuid().safeParse(data.prebookId);
   if (
     !prebookId.success ||
-    !sameSupplierAmount(String(data.price), quote.offer.total_amount) ||
-    data.currency !== quote.offer.total_currency ||
-    data.booking?.journey?.journeyKey !== quote.selection.journeyKey
+    data.booking?.journey?.journeyKey !== quote.selection.journeyKey ||
+    !matchesPrebookFare(data, quote.offer.total_amount, quote.offer.total_currency)
   )
     throw new OtaError(
       "The supplier changed this flight or fare. Search again before paying.",
-      409,
+      409, undefined, "flight_fare_changed",
     );
   return prebookId.data;
 }
@@ -685,6 +759,27 @@ type SavedFlight = {
   offer: unknown;
 };
 
+function usdCents(amount: string) {
+  const parts = /^(\d{1,16})(?:\.(\d{1,2}))?$/.exec(amount);
+  return parts ? BigInt(parts[1] + (parts[2] ?? "").padEnd(2, "0")) : null;
+}
+
+function matchesPrebookFare(
+  prebook: { price?: unknown; currency?: unknown; booking?: { journey?: { pricing?: { display?: { currency?: unknown; total?: unknown } } } } },
+  savedAmount: string,
+  savedCurrency: string,
+) {
+  if (prebook.currency !== savedCurrency) return false;
+  const payableAmount = String(prebook.price);
+  if (sameSupplierAmount(payableAmount, savedAmount)) return true;
+  // The payable USD amount can be one cent lower than the matching displayed fare.
+  const display = prebook.booking?.journey?.pricing?.display;
+  if (savedCurrency !== "USD" || display?.currency !== savedCurrency ||
+      !sameSupplierAmount(String(display.total), savedAmount)) return false;
+  const saved = usdCents(savedAmount), payable = usdCents(payableAmount);
+  return saved !== null && payable !== null && payable > 0n && saved - payable === 1n;
+}
+
 export async function verifyNuiteeFlightPrebook(
   config: OtaConfig,
   row: SavedFlight,
@@ -697,16 +792,21 @@ export async function verifyNuiteeFlightPrebook(
     row.mode as Mode,
     `/flights/prebooks/${encodeURIComponent(row.providerOfferId)}`,
   );
+  const journey = result.booking?.journey;
   if (
     result.prebookId !== row.providerOfferId ||
-    result.booking?.journey?.journeyKey !== nuiteeFlightJourneyKey ||
-    !sameSupplierAmount(String(result.price), row.supplierAmount) ||
-    result.currency !== row.supplierCurrency
+    !nuiteeFlightJourneyKey || journey?.journeyKey !== nuiteeFlightJourneyKey
   )
     throw new OtaError(
-      "The flight changed. Review the fare before proceeding.",
-      409,
+      "We couldn’t confirm this flight. Search again to see current options.",
+      409, undefined, "flight_offer_unavailable",
     );
+
+  if (matchesPrebookFare(result, row.supplierAmount, row.supplierCurrency)) return;
+  throw new OtaError(
+    "The saved fare has changed. Review current flight prices before paying.",
+    409, undefined, "flight_fare_changed",
+  );
 }
 
 function bookedSlices(offer: unknown, journey: any) {

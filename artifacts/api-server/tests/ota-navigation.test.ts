@@ -53,6 +53,7 @@ import TravelSearchPage, {
 } from "../../raudah-travels/src/components/ota/TravelSearchPage";
 import TravelCheckout from "../../raudah-travels/src/components/ota/TravelCheckout";
 import TravelBooking from "../../raudah-travels/src/components/ota/TravelBooking";
+import { OtaRequestError } from "../../raudah-travels/src/lib/ota";
 
 function deferred<T = any>() {
   let resolve!: (value: T) => void, reject!: (error: Error) => void;
@@ -267,6 +268,83 @@ describe("OTA navigation and pending actions", () => {
       "Your reservation is confirmed",
     );
   });
+  it("guides a customer back to the saved route when a fare changes before payment", async () => {
+    const date = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+    state.api.mockImplementation((path: string) => {
+      if (path === "/bookings/a/pay")
+        return Promise.reject(new OtaRequestError("Internal fare mismatch", "flight_fare_changed"));
+      if (path === "/bookings/a") return Promise.resolve({
+        booking: {
+          ...booking("a"),
+          offer: {
+            cabin_class: "business",
+            passengers: [{ type: "adult" }, { type: "child", age: 8 }],
+            slices: [{ origin: { iata_code: "LOS" }, destination: { iata_code: "ABV" },
+              segments: [{ departing_at: date + "T08:00:00" }] }],
+          },
+        },
+      });
+      return Promise.resolve({});
+    });
+    await render(h(TravelBooking, { bookingId: "a" }));
+    expect(container.querySelector("h1")?.classList.contains("text-white")).toBe(true);
+    await act(async () => button("Pay ₦").click());
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain("The flight price has changed");
+    expect(alert?.textContent).not.toContain("Internal fare mismatch");
+    expect(document.activeElement).toBe(alert);
+    const url = new URL(alert!.querySelector("a")!.href);
+    expect(url.pathname).toBe("/flights/search");
+    expect(Object.fromEntries(url.searchParams)).toMatchObject({
+      origin: "LOS", destination: "ABV", departureDate: date,
+      cabinClass: "business", adults: "1", childAges: "8",
+    });
+    expect(button("I have paid")).toBeTruthy();
+    expect(button("Pay ₦")).toBeUndefined();
+  });
+
+  it("shows a current fare and resumes payment on the saved checkout after approval", async () => {
+    const save = deferred();
+    const saved = {
+      ...booking("a"), canRefreshFlightFare: true,
+      offer: { slices: [], cabin_class: "economy" },
+      contact: { email: "test@example.test" }, travellers: [{ id: "pas_a" }],
+    };
+    let payRequests = 0;
+    state.api.mockImplementation((path: string) => {
+      if (path === "/bookings/a") return Promise.resolve({ booking: saved });
+      if (path === "/bookings/a/pay") return Promise.reject(++payRequests === 1
+        ? new OtaRequestError("Fare changed", "flight_fare_changed")
+        : new Error("Payment service is unavailable. Try again."));
+      if (path === "/bookings/a/flight-fare") return Promise.resolve({
+        offer: { id: "current-fare", cabin_class: "economy" },
+        pricing: { totalKobo: 120000 }, revision: 0,
+      });
+      if (path === "/bookings") return save.promise;
+      return Promise.resolve({});
+    });
+    await render(h(TravelBooking, { bookingId: "a" }));
+    await act(async () => button("Pay ₦").click());
+    expect(state.api.mock.calls.filter(([path]) => path === "/bookings/a/flight-fare")).toHaveLength(1);
+    expect(container.textContent).toContain("Current total");
+    expect(container.textContent).toContain("₦1,200.00");
+    expect(payRequests).toBe(1);
+    await act(async () => {
+      button("Accept fare and pay").click();
+      button("Accept fare and pay").click();
+    });
+    const checkoutSaves = state.api.mock.calls.filter(([path]) => path === "/bookings");
+    expect(checkoutSaves).toHaveLength(1);
+    expect(checkoutSaves[0][1]).toMatchObject({
+      editBookingId: "a", editRevision: 0, refreshFlightFare: true, offerId: "current-fare",
+      expectedTotalKobo: 120000, contact: saved.contact, travellers: saved.travellers,
+    });
+    await act(async () => save.resolve({ booking: { ...saved, amountKobo: 120000, revision: 1 } }));
+    expect(payRequests).toBe(2);
+    expect(button("Pay ₦1,200.00")).toBeTruthy();
+    expect(container.textContent).toContain("Payment service is unavailable. Try again.");
+  });
+
   it("reports missing supplier traveller data without crashing checkout", async () => {
     state.api.mockImplementation((path: string) =>
       Promise.resolve(

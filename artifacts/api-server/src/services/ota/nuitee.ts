@@ -60,7 +60,7 @@ export async function nuiteeRequest(
   mode: Mode,
   base: string,
   path: string,
-  options: { body?: unknown; timeout?: number; unavailable?: boolean } = {},
+  options: { body?: unknown; timeout?: number; unavailable?: boolean; flightOfferUnavailable?: boolean } = {},
 ) {
   const key = nuiteeTokenForMode(config, mode);
   if (!key)
@@ -95,6 +95,9 @@ export async function nuiteeRequest(
       "The Nuitee response did not match the requested environment.",
       502,
     );
+  if (options.flightOfferUnavailable && (response.status === 404 || errorCode === 2001))
+    throw new OtaError("The current flight offer is unavailable. Check for a fresh fare.",
+      409, undefined, "flight_offer_unavailable");
   if (options.unavailable && errorCode === 2001) return { data: [] };
   if (errorCode === 2001)
     throw new OtaError(

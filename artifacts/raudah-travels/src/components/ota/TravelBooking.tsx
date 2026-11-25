@@ -21,7 +21,14 @@ import {
   TravelShell,
 } from "./TravelSearchPage";
 import { TravelCancellationPolicy } from "./TravelPolicies";
-import { money, ota, travelButton, travelInput } from "@/lib/ota";
+import { money, ota, OtaRequestError, travelButton, travelInput } from "@/lib/ota";
+import { flightRecheckHref } from "@/lib/travelSearch";
+
+type FlightFareQuote = {
+  offer: { id: string; cabin_class: string } & Parameters<typeof TravelCancellationPolicy>[0]["offer"];
+  pricing: { totalKobo: number };
+  revision: number;
+};
 
 export default function TravelBooking({ bookingId }: { bookingId: string }) {
   const { isLoaded, isSignedIn, user } = useUser(),
@@ -30,13 +37,19 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
     query: { queryKey: getGetProfileQueryKey(), enabled: !!isSignedIn },
   });
   const activeBookingId = useRef<string | null>(bookingId);
+  const fareAlertRef = useRef<HTMLElement>(null);
+  const autoFareRevision = useRef<number | undefined>(undefined);
   const requestEpoch = useRef(0),
     actionInFlight = useRef(false);
   const [booking, setBooking] = useState<any>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
-    [notice, setNotice] = useState("");
+    [notice, setNotice] = useState(""),
+    [fareReview, setFareReview] = useState<string>(),
+    [fareQuote, setFareQuote] = useState<FlightFareQuote>(),
+    [fareError, setFareError] = useState(""),
+    [recoveryCabin, setRecoveryCabin] = useState("");
   function acceptBooking(next: any) {
     if (activeBookingId.current === next.id)
       setBooking((previous: any) => newestBooking(previous, next));
@@ -54,6 +67,7 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
   async function runAction(
     request: () => Promise<any>,
     apply: (data: any) => void,
+    handleError?: (error: unknown) => boolean,
   ) {
     if (actionInFlight.current) return;
     const epoch = requestEpoch.current;
@@ -64,7 +78,7 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
       const data = await request();
       if (requestEpoch.current === epoch) apply(data);
     } catch (e: any) {
-      if (requestEpoch.current === epoch) setError(e.message);
+      if (requestEpoch.current === epoch && !handleError?.(e)) setError(e.message);
     } finally {
       if (requestEpoch.current === epoch) {
         actionInFlight.current = false;
@@ -81,6 +95,11 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
     setBusy(false);
     setNotice("");
     setMessage("");
+    setFareReview(undefined);
+    setFareQuote(undefined);
+    setFareError("");
+    setRecoveryCabin("");
+    autoFareRevision.current = undefined;
     if (!isSignedIn) return;
     const controller = new AbortController();
     ota(`/bookings/${bookingId}`, undefined, undefined, controller.signal)
@@ -126,11 +145,62 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
       clearInterval(timer);
     };
   }, [booking?.status, bookingId, isSignedIn, user?.id]);
+  function handlePayError(error: unknown) {
+    if (!(error instanceof OtaRequestError) ||
+      !error.code || !["flight_fare_changed", "flight_offer_unavailable", "checkout_expired"].includes(error.code)) return false;
+    setFareReview(error.code);
+    return true;
+  }
   async function pay() {
     await runAction(
       () => ota(`/bookings/${bookingId}/pay`, {}),
       (data) => window.location.assign(data.authorizationUrl),
+      handlePayError,
     );
+  }
+  function showFareError(error: unknown) {
+    setFareError(error instanceof Error ? error.message : "Couldn't check the fare. Please try again.");
+    return true;
+  }
+  function checkCurrentFare() {
+    setFareError("");
+    setFareQuote(undefined);
+    void runAction(
+      () => ota<FlightFareQuote>(`/bookings/${bookingId}/flight-fare`, {
+        ...(recoveryCabin && !booking.offer?.cabin_class ? { cabinClass: recoveryCabin } : {}),
+      }),
+      setFareQuote,
+      showFareError,
+    );
+  }
+  function acceptFareAndPay(quote: FlightFareQuote) {
+    const epoch = requestEpoch.current;
+    setFareError("");
+    void runAction(async () => {
+      const { booking: saved } = await ota("/bookings", {
+        kind: "flight",
+        offerId: quote.offer.id,
+        editBookingId: bookingId,
+        editRevision: quote.revision,
+        refreshFlightFare: true,
+        contact: booking.contact,
+        travellers: booking.travellers,
+        acceptedTerms: true,
+        expectedTotalKobo: quote.pricing.totalKobo,
+      });
+      if (requestEpoch.current !== epoch) return;
+      acceptBooking(saved);
+      setFareQuote(undefined);
+      setFareReview(undefined);
+      return ota(`/bookings/${bookingId}/pay`, {});
+    }, (data) => {
+      if (data) window.location.assign(data.authorizationUrl);
+    }, (error) => {
+      setFareQuote(undefined);
+      if (handlePayError(error)) return showFareError(error);
+      setError(error instanceof Error ? error.message : "Couldn't continue to payment. Please try again.");
+      return true;
+    });
   }
   async function check() {
     await runAction(
@@ -138,6 +208,15 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
       (data) => acceptBooking(data.booking),
     );
   }
+  useEffect(() => {
+    if (fareReview) fareAlertRef.current?.focus();
+  }, [fareReview]);
+  useEffect(() => {
+    if (!fareReview || busy || !booking?.canRefreshFlightFare || !booking.offer?.cabin_class ||
+        autoFareRevision.current === booking.revision) return;
+    autoFareRevision.current = booking.revision;
+    checkCurrentFare();
+  }, [fareReview, busy, booking]);
   if (!isLoaded)
     return (
       <TravelShell>
@@ -159,10 +238,82 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
     expired = booking && Date.parse(booking.expiresAt) <= Date.now();
   const provider = booking?.providerResult,
     offer = booking?.offer;
+  const needsFareReview = booking?.status === "payment_pending" && (expired || !!fareReview);
+  const canRefreshFare = booking?.canRefreshFlightFare === true;
+  const currentFare = canRefreshFare && fareQuote?.revision === booking?.revision ? fareQuote : undefined;
+  const searchAgainHref = booking?.kind === "flight" ? flightRecheckHref(offer) : "/hotels";
+  const checkPayment = (
+    <button
+      disabled={busy}
+      onClick={check}
+      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:border-indigo-300"
+    >
+      <RefreshCw size={15} aria-hidden="true" /> I have paid — check status
+    </button>
+  );
   return (
     <TravelShell>
       <div className="mx-auto max-w-4xl">
         {error && <ErrorMessage message={error} />}
+        {needsFareReview && (
+          <section ref={fareAlertRef} role="alert" tabIndex={-1} aria-labelledby="fare-review-title"
+            className="mb-5 scroll-mt-28 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 sm:p-5 print:hidden">
+            <h2 id="fare-review-title" className="text-base font-bold text-amber-950">
+              {fareReview === "flight_fare_changed" ? "The flight price has changed"
+                : fareReview === "flight_offer_unavailable" ? "This flight needs a new availability check"
+                : "This checkout has expired"}
+            </h2>
+            <p className="mt-1 text-sm leading-relaxed">
+              {canRefreshFare
+                ? "Your traveller details are saved. Check the current fare for the same flights to continue."
+                : "Your checkout is still in My Trips. Check the latest options before paying. If you already paid, check your payment status first."}
+            </p>
+            {canRefreshFare && !offer?.cabin_class && (
+              <label className="mt-4 block max-w-xs text-sm font-semibold">
+                Cabin class
+                <select value={recoveryCabin} disabled={busy} className={`${travelInput} mt-1`}
+                  onChange={(event) => {
+                    setRecoveryCabin(event.target.value);
+                    setFareQuote(undefined);
+                    setFareError("");
+                  }}>
+                  <option value="">Choose a cabin class</option>
+                  <option value="economy">Economy</option>
+                  <option value="premium_economy">Premium economy</option>
+                  <option value="business">Business</option>
+                  <option value="first">First</option>
+                </select>
+              </label>
+            )}
+            {currentFare && (
+              <div className="mt-4 space-y-3 rounded-xl border border-amber-200 bg-white p-4 text-slate-900">
+                <dl className="flex flex-wrap justify-between gap-x-6 gap-y-2 text-sm">
+                  <div><dt className="text-slate-600">Saved quote</dt><dd>{money(booking.amountKobo)}</dd></div>
+                  <div><dt className="text-slate-600">Current total</dt><dd className="font-bold">{money(currentFare.pricing.totalKobo)}</dd></div>
+                </dl>
+                <TravelCancellationPolicy kind="flight" offer={currentFare.offer} requestMode="none" />
+              </div>
+            )}
+            {fareError && <p className="mt-3 text-sm font-semibold" role="status">{fareError}</p>}
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              {canRefreshFare && (currentFare ? (
+                <button type="button" className={travelButton} disabled={busy} onClick={() => acceptFareAndPay(currentFare)}>
+                  {busy ? "Preparing payment…" : "Accept fare and pay"}
+                </button>
+              ) : (
+                <button type="button" className={travelButton} disabled={busy || (!offer?.cabin_class && !recoveryCabin)} onClick={checkCurrentFare}>
+                  {busy ? "Checking current fare…" : "Check current fare"}
+                </button>
+              ))}
+              <Link href={searchAgainHref} className={canRefreshFare
+                ? "inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:border-indigo-300"
+                : travelButton}>
+                {booking.kind === "flight" ? "See current flights" : "See current hotel rates"}
+              </Link>
+              {!canRefreshFare && checkPayment}
+            </div>
+          </section>
+        )}
         {booking?.providerNotice && (
           <p
             role="status"
@@ -192,8 +343,8 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
                 ) : (
                   <Clock3 className="mt-1 shrink-0 text-amber-300" size={32} />
                 )}
-                <div>
-                  <h1 className="text-2xl font-black md:text-3xl">
+                <div className="min-w-0">
+                  <h1 className="text-2xl font-black text-white md:text-3xl print:text-slate-950">
                     {confirmed
                       ? "Your reservation is confirmed."
                       : booking.status === "payment_pending"
@@ -210,7 +361,11 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
                     {booking.reference}
                   </p>
                   <div className="mt-3">
-                    <BookingStatus booking={booking} />
+                    {fareReview && !expired && needsFareReview ? (
+                      <span className="inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
+                        Fare needs review
+                      </span>
+                    ) : <BookingStatus booking={booking} />}
                   </div>
                   {booking.issue && (
                     <p className="mt-3 text-sm">{booking.issue}</p>
@@ -239,9 +394,9 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
               <div>
                 <h2 className="font-bold text-slate-900">What happens next?</h2>
                 <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">
-                  {bookingState(booking).next}
+                  {needsFareReview ? "Review current options to continue. Your saved booking details are below." : bookingState(booking).next}
                 </p>
-                {booking.status === "payment_pending" && !expired && (
+                {booking.status === "payment_pending" && !needsFareReview && (
                   <p className="mt-2 text-xs text-amber-800">
                     Offer expires {new Date(booking.expiresAt).toLocaleString()}
                     . Price and availability are checked before payment.
@@ -250,7 +405,7 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
               </div>
               <dl className="space-y-2 text-sm">
                 <div>
-                  <dt className="text-slate-500">Booking total</dt>
+                  <dt className="text-slate-500">{needsFareReview ? "Saved quote" : "Booking total"}</dt>
                   <dd className="text-xl font-bold text-slate-900">
                     {money(booking.amountKobo)}
                   </dd>
@@ -283,20 +438,12 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
               >
                 My trips
               </Link>
-              {booking.editableOfferId && !expired && (
+              {booking.editableOfferId && !needsFareReview && (
                 <Link
                   href={`/${booking.kind === "flight" ? "flights" : "hotels"}/checkout/${encodeURIComponent(booking.editableOfferId)}?edit=${encodeURIComponent(booking.id)}`}
                   className="rounded-xl border bg-white px-4 py-3 text-sm font-bold"
                 >
                   Edit checkout
-                </Link>
-              )}
-              {booking.status === "payment_pending" && expired && (
-                <Link
-                  href={booking.kind === "flight" ? "/flights" : "/hotels"}
-                  className={travelButton}
-                >
-                  Search again
                 </Link>
               )}
               {confirmed && (
@@ -315,26 +462,18 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
                     Download e-ticket (PDF)
                   </a>
                 )}
-              {booking.status === "payment_pending" && (
+              {booking.status === "payment_pending" && !needsFareReview && (
                 <>
                   <button
-                    disabled={busy || expired}
+                    disabled={busy}
                     onClick={pay}
                     className={travelButton}
                   >
                     {busy
                       ? "Please wait…"
-                      : expired
-                        ? "Checkout expired"
-                        : `Pay ${money(booking.amountKobo)}`}
+                      : `Pay ${money(booking.amountKobo)}`}
                   </button>
-                  <button
-                    disabled={busy}
-                    onClick={check}
-                    className="flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-bold"
-                  >
-                    <RefreshCw size={15} />I have paid — check status
-                  </button>
+                  {checkPayment}
                 </>
               )}
             </div>
@@ -352,12 +491,6 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
                 <RefreshCw size={15} />
                 Refresh supplier itinerary and ticket information
               </button>
-            )}
-            {expired && booking.status === "payment_pending" && (
-              <p className="mb-4 text-sm text-amber-800">
-                This offer has expired. If you have already paid, check payment
-                status. Otherwise, start a new search.
-              </p>
             )}
             <section className="mb-5 space-y-5 rounded-2xl border bg-white p-6">
               <div className="flex flex-wrap justify-between gap-3">

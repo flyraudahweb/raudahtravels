@@ -50,6 +50,7 @@ import {
 import {
   audit,
   customerBooking,
+  canRefreshNuiteeFlightFare,
   activeOtaPaymentReference,
   otaPaymentReferenceMatches,
   otaPaystackTimeoutSeconds,
@@ -131,7 +132,10 @@ import {
 import {
   NUITEE_FLIGHT_PREFIX,
   checkNuiteeFlights,
+  matchesNuiteeFlightDraft,
+  nuiteeFlightCabin,
   verifyNuiteeFlight,
+  refreshNuiteeFlightFare,
   prebookNuiteeFlight,
   verifyNuiteeFlightPrebook,
 } from "../services/ota/nuiteeFlights";
@@ -160,6 +164,7 @@ const endpoint =
           error instanceof OtaError
             ? error.message
             : "Travel services are temporarily unavailable. Please contact support.",
+        ...(error instanceof OtaError && error.code ? { code: error.code } : {}),
       });
     }
   };
@@ -741,6 +746,7 @@ router.post(
         offerId: z.string(),
         editBookingId: z.string().uuid().optional(),
         editRevision: z.number().int().nonnegative().optional(),
+        refreshFlightFare: z.literal(true).optional(),
         contact: contactSchema,
         travellers: z.array(z.unknown()).min(1).max(24),
         acceptedTerms: z.literal(true),
@@ -749,7 +755,8 @@ router.post(
       .refine(
         (payload) =>
           (payload.editBookingId === undefined) ===
-          (payload.editRevision === undefined),
+          (payload.editRevision === undefined) &&
+          (!payload.refreshFlightFare || payload.editBookingId !== undefined),
       )
       .parse(req.body);
     const c = await getOtaConfig();
@@ -763,6 +770,8 @@ router.post(
       input.offerId.startsWith("nqt_");
     const nFlight =
       input.kind === "flight" && input.offerId.startsWith(NUITEE_FLIGHT_PREFIX);
+    if (input.refreshFlightFare && (!nFlight || !webHotelChannel(req)))
+      throw new OtaError("This fare cannot be refreshed here.", 409);
     if (input.editBookingId && !nuitee && !nFlight)
       throw new OtaError("This checkout cannot be edited.", 409);
     if (
@@ -905,6 +914,8 @@ router.post(
       throw new OtaError(
         "The price has changed. Refresh the offer and review the new total before paying.",
         409,
+        undefined,
+        input.refreshFlightFare ? "flight_fare_changed" : undefined,
       );
     const nuiteeSourceKey =
       nFlightQuote?.selection.offerId ??
@@ -940,6 +951,13 @@ router.post(
         "Payment may already be in progress, or this checkout changed. Open My Trips to review the saved booking.",
         409,
       );
+    const sameOffer = (row: typeof bookings.$inferSelect) =>
+      (row.offer as { checkoutSelectionId?: string }).checkoutSelectionId === input.offerId;
+    const noPaymentAttempt = input.refreshFlightFare ? and(
+      isNull(bookings.paymentReference),
+      isNull(bookings.paidPaymentReference),
+      sql`${bookings.previousPaymentReferences} = '[]'::jsonb`,
+    ) : undefined;
     const reusable = (existing: typeof bookings.$inferSelect | undefined) =>
       existing?.clerkUserId === userId &&
       existing.status === "payment_pending" &&
@@ -947,6 +965,7 @@ router.post(
       existing.supplier === supplier &&
       existing.mode === mode &&
       existing.kind === input.kind &&
+      (!input.refreshFlightFare || sameOffer(existing)) &&
       existing.expiresAt.getTime() > Date.now() + 60000 &&
       existing.amountKobo === pricing.totalKobo &&
       isDeepStrictEqual(existing.travellers, travellers) &&
@@ -969,10 +988,17 @@ router.post(
         existing.kind !== input.kind ||
         existing.supplier !== supplier ||
         existing.mode !== mode ||
-        (existing.offer as { checkoutSelectionId?: string })
-          .checkoutSelectionId !== input.offerId)
+        (!input.refreshFlightFare && !sameOffer(existing)))
     )
       throw new OtaError("Editable checkout not found.", 404);
+    if (input.refreshFlightFare && existing) {
+      if (!canRefreshNuiteeFlightFare(existing)) throw lockedCheckout();
+      if (!matchesNuiteeFlightDraft(existing.offer, offer))
+        throw new OtaError("The saved flights are no longer available at this fare. Check current flights.",
+          409, undefined, "flight_offer_unavailable");
+      if (!isDeepStrictEqual(existing.contact, input.contact) || !isDeepStrictEqual(existing.travellers, travellers))
+        throw lockedCheckout();
+    }
     if (existing && reusable(existing) && !existing.checkoutEditClaim) {
       res.status(201).json({ booking: customerBooking(existing) });
       return;
@@ -1008,7 +1034,7 @@ router.post(
           const [locked] = await tx.update(bookings).set({ checkoutEditClaim: claimId })
             .where(and(eq(bookings.id, existing.id), eq(bookings.revision, existing.revision),
               eq(bookings.status, "payment_pending"), isNull(bookings.paidAt), isNull(bookings.authorizationUrl),
-              isNull(bookings.paymentInitializationAt), isNull(bookings.checkoutEditClaim)))
+              isNull(bookings.paymentInitializationAt), isNull(bookings.checkoutEditClaim), noPaymentAttempt))
             .returning({ id: bookings.id });
           if (!locked) throw lockedCheckout();
         }
@@ -1017,7 +1043,8 @@ router.post(
       if (!acquired) {
         for (let i = 0; i < 20; i++) {
           const latest = await lookup();
-          if (latest && reusable(latest) && !latest.checkoutEditClaim) {
+          if (latest && reusable(latest) && !latest.checkoutEditClaim &&
+              (!input.refreshFlightFare || canRefreshNuiteeFlightFare(latest))) {
             res.status(201).json({ booking: customerBooking(latest) });
             return;
           }
@@ -1118,6 +1145,7 @@ router.post(
                 isNull(bookings.paidAt),
                 isNull(bookings.authorizationUrl),
                 isNull(bookings.paymentInitializationAt),
+                noPaymentAttempt,
                 flightClaim ? eq(bookings.checkoutEditClaim, flightClaim) : isNull(bookings.checkoutEditClaim),
               ),
             )
@@ -1128,7 +1156,10 @@ router.post(
             bookingId: updated.id,
             actor: userId,
             action: "checkout_updated",
-            details: { termsAccepted: true },
+            details: {
+              termsAccepted: true,
+              ...(input.refreshFlightFare ? { previousAmountKobo: existing.amountKobo, amountKobo: updated.amountKobo } : {}),
+            },
           });
           await release();
           return updated;
@@ -1171,6 +1202,23 @@ router.post(
   }),
 );
 router.post(
+  "/ota/bookings/:id/flight-fare",
+  endpoint(async (req, res) => {
+    if (!webHotelChannel(req)) throw new OtaError("Booking not found", 404);
+    const row = await owned(req);
+    if (row.kind !== "flight" || row.supplier !== "nuitee")
+      throw new OtaError("Flight fare refresh is unavailable for this booking.", 409);
+    if (!canRefreshNuiteeFlightFare(row))
+      throw new OtaError("Open this booking in My Trips to check its payment status before refreshing the fare.", 409);
+    const { cabinClass } = z.object({ cabinClass: nuiteeFlightCabin.optional() }).parse(req.body);
+    const config = await getOtaConfig();
+    if (!nuiteeFlightCheckoutReady(config) || config.nuiteeFlightMode !== row.mode)
+      throw new OtaError("Online payment is unavailable for this flight. Try again later.", 503);
+    const { offer, pricing } = await refreshNuiteeFlightFare(config, row.offer, cabinClass);
+    res.json({ offer, pricing, revision: row.revision });
+  }),
+);
+router.post(
   "/ota/bookings/:id/pay",
   endpoint(async (req, res) => {
     const row = await owned(req),
@@ -1189,14 +1237,13 @@ router.post(
     )
       throw new OtaError("Online payments are unavailable", 503);
     if (row.supplier === "duffel") requireLiveWebhook(c);
-    if (
-      row.status !== "payment_pending" ||
-      row.expiresAt.getTime() <= Date.now() + 60000
-    )
+    if (row.status !== "payment_pending")
       throw new OtaError(
-        "This checkout cannot accept payment. Please search again or view its status.",
+        "This booking cannot accept another payment. Check its current status in My Trips.",
         409,
       );
+    if (row.expiresAt.getTime() <= Date.now() + 60000)
+      throw new OtaError("This offer has expired. Search again for current prices.", 409, undefined, "checkout_expired");
     if (
       !nuitee &&
       !(row.kind === "flight" ? c.flightsEnabled : c.hotelsEnabled)
@@ -1213,7 +1260,7 @@ router.post(
       if (!(await refreshDomesticQuote(c, domesticBookingQuote(row))))
         throw new OtaError(
           "This itinerary is no longer available. Search again before paying.",
-          409,
+          409, undefined, "flight_offer_unavailable",
         );
     } else {
       const fresh = await duffelRequest(
@@ -1231,6 +1278,8 @@ router.post(
         throw new OtaError(
           "Supplier pricing has changed. Please start a new search before paying.",
           409,
+          undefined,
+          row.kind === "flight" ? "flight_fare_changed" : undefined,
         );
     }
     const sameCheckout = and(
@@ -1293,7 +1342,7 @@ router.post(
       : await otaPaystackTimeoutSeconds(current.mode, current.supplier, configuredKey);
     const paymentWindow = timeout + 90;
     if (current.expiresAt.getTime() <= Date.now() + paymentWindow * 1000)
-      throw new OtaError("There is not enough time left to pay for this offer. Please search again.", 409);
+      throw new OtaError("There is not enough time left to pay for this offer. Please search again.", 409, undefined, "checkout_expired");
 
     const canPreparePayment = and(
       sameCheckout,

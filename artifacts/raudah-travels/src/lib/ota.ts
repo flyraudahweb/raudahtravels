@@ -1,3 +1,9 @@
+export class OtaRequestError extends Error {
+  constructor(message: string, public readonly code?: string) {
+    super(message);
+  }
+}
+
 export async function ota<T = any>(
   path: string,
   body?: unknown,
@@ -13,8 +19,9 @@ export async function ota<T = any>(
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok)
-    throw new Error(
+    throw new OtaRequestError(
       data.error || "Travel service is unavailable. Please try again.",
+      typeof data.code === "string" ? data.code : undefined,
     );
   return data;
 }
