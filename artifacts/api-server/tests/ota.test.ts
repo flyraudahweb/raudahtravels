@@ -226,6 +226,8 @@ beforeAll(async () => {
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0021_booking_review_guards.sql"), "utf8"));
   await module.pool.query("DROP TABLE ota_followups");
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0022_ota_followups.sql"), "utf8"));
+  await module.pool.query("DROP TABLE ota_reservation_desk");
+  await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0023_ota_reservation_desk.sql"), "utf8"));
   await module.db.insert(module.profilesTable).values([
     {
       id: "user",
@@ -329,6 +331,7 @@ beforeEach(async () => {
   await module.db.delete(module.paystackSettlementsTable);
   await module.db.delete(module.otaPaymentJobsTable);
   await module.db.delete(module.otaFollowupsTable);
+  await module.db.delete(module.otaDeskTable);
   await module.db.delete(module.otaEventsTable);
   await module.db.delete(module.otaPrebookClaimsTable);
   await module.db.delete(module.otaBookingsTable);
@@ -654,6 +657,65 @@ it("makes callback requests and stale bookings visible only to authorized follow
   expect((await (await request(path + "?state=resolved", staff)).json()).cases[0]).toMatchObject({
     outcome: "resolved", note: "Guided customer", assignedToMe: true,
   });
+});
+
+it("runs the reservations desk, safeguarding assignment, servicing, documents, and verified finances", async () => {
+  await create();
+  const path = `/admin/reservations/${booking.id}`;
+  const staff = randomUUID();
+  await module.db.insert(module.profilesTable).values({
+    id: staff, clerkUserId: staff, email: "desk@example.test", fullName: "Reservations Operator", role: "staff",
+  });
+  expect((await request(path, staff)).status).toBe(403);
+  await module.db.insert(module.staffPermissionsTable).values({ id: randomUUID(), userId: staff, permission: "ota_reservations" });
+  await module.db.update(module.otaBookingsTable).set({ paidAt: new Date(), status: "confirmed", providerBookingId: "ord_test",
+    providerResult: { booking_reference: "PNRDESK" } }).where(eq(module.otaBookingsTable.id, booking.id));
+  const result = await request("/admin/reservations?mode=test&task=tickets&search=pnrdesk", staff);
+  expect(result.status).toBe(200);
+  expect((await result.json()).rows).toMatchObject([{ id: booking.id, document: null }]);
+  const detail = (await (await request(path, staff)).json());
+  expect(detail.booking).not.toHaveProperty("travellers");
+  expect(detail.booking).not.toHaveProperty("amountKobo");
+  expect((await request(path + "/send-documents", staff, {})).status).toBe(403);
+  expect((await request(path + "/finance", staff, { action: "refresh", revision: 0 })).status).toBe(403);
+  const claims = await Promise.all([request(path + "/case", staff, { action: "claim", revision: 0 }), request(path + "/case", "super", { action: "claim", revision: 0 })]);
+  expect(claims.map((response) => response.status).sort()).toEqual([200, 409]);
+  const proposal = { stage: "proposed", revision: 1, kind: "cancellation", fee: 0, refund: 80, currency: "GBP", note: "Supplier terms verified" };
+  expect((await request(path + "/service", "super", proposal)).status).toBe(200);
+  expect((await request(path + "/service", "super", { stage: "approved", revision: 1, note: "Approved", customerApproved: true })).status).toBe(409);
+  expect((await request(path + "/service", "super", { stage: "approved", revision: 2, note: "Approved", customerApproved: true })).status).toBe(200);
+  expect((await request(path + "/service", "super", { stage: "supplier_submitted", revision: 3, note: "Submitted", supplierReference: "CASE-5" })).status).toBe(200);
+  gatewayPatch = { fees: 50000 };
+  expect((await request(path + "/finance", "super", { action: "supplier_cost", revision: 4, supplierKobo: 9000000, invoice: "SUP-99" })).status).toBe(200);
+  const fallback = globalThis.fetch;
+  vi.stubGlobal("fetch", async (input: string | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.hostname === "api.paystack.co" && url.pathname === "/refund/99") return Response.json({ status: true, data: {
+      id: 99, domain: "test", status: "processed", currency: "NGN", amount: 100000, transaction: { id: 101 },
+    } });
+    if (url.hostname === "api.paystack.co" && url.pathname === "/settlement") return Response.json({ status: true, data: [
+      { id: 88, domain: "test", status: "success", currency: "NGN", settlement_date: "2026-11-24T00:00:00Z" },
+    ] });
+    if (url.hostname === "api.paystack.co" && url.pathname === "/settlement/88/transactions") return Response.json({ status: true, data: [
+      { id: 101, reference: booking.reference },
+    ] });
+    return fallback(input, init);
+  });
+  expect((await request(path + "/finance", "super", { action: "refund", revision: 5, refundId: "99" })).status).toBe(200);
+  expect((await request(path + "/finance", "super", { action: "refund", revision: 6, refundId: "99" })).status).toBe(200);
+  expect((await request(path + "/finance", "super", { action: "settlement", revision: 7, settlementId: "88", date: "2026-11-24" })).status).toBe(200);
+  expect((await (await request(path, "super")).json()).case.finance).toMatchObject({
+    marginKobo: 850000, refundedKobo: 100000, feesKobo: 50000, settlement: { id: "88" },
+  });
+  // A sandbox booking cannot send documents to the live email address.
+  expect((await request(path + "/send-documents", "super", {})).status).toBe(409);
+  await module.db.update(module.otaBookingsTable).set({ mode: "live" }).where(eq(module.otaBookingsTable.id, booking.id));
+  const { sendEmail } = await import("../src/utils/email");
+  vi.mocked(sendEmail).mockClear();
+  const mails = await Promise.all([request(path + "/send-documents", "super", {}), request(path + "/send-documents", "super", {})]);
+  expect(mails.map((response) => response.status).sort()).toEqual([200, 409]);
+  expect(sendEmail).toHaveBeenCalledTimes(1);
+  expect(vi.mocked(sendEmail).mock.calls[0][0].text).toContain(`/travel/bookings/${booking.id}`);
 });
 
 describe("Nuitee hotel checkout", () => {

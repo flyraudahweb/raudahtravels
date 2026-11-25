@@ -35,7 +35,7 @@ export default function AdminOtaFollowups() {
   query.set("offset", String(offset));
   const queue = useQuery({
     queryKey: ["ota-follow-ups", user?.id, query.toString()],
-    queryFn: ({ signal }) => ota<{ cases: FollowupCase[]; nextOffset: number | null; canManage: boolean }>(
+    queryFn: ({ signal }) => ota<{ cases: FollowupCase[]; nextOffset: number | null; canManage: boolean; canOpenDesk: boolean }>(
       `/admin/follow-ups?${query}`, undefined, undefined, signal,
     ),
     enabled: !!user?.id, gcTime: 0, retry: false, refetchInterval: 30_000,
@@ -114,7 +114,7 @@ export default function AdminOtaFollowups() {
                 {!item.assigned && item.outcome !== "resolved" && <button type="button" className={travelButton} disabled={!!busy} onClick={() => void update(item.id, { action: "claim", revision: item.revision })}>Claim case</button>}
                 {editable && item.assignedToMe && dial && /^\+[1-9]\d{6,14}$/.test(dial) && <a className={travelButton} href={`tel:${dial}`}><Phone size={15} aria-hidden="true" /> Call customer</a>}
                 {editable && <button type="button" className="rounded-xl border px-4 py-2 text-sm font-semibold" disabled={!!busy} onClick={() => void update(item.id, { action: "release", revision: item.revision })}>Release case</button>}
-                {data.canManage && item.bookingId && <Link className="text-sm font-semibold text-indigo-800 underline" href={`/admin/ota?booking=${item.bookingId}`}>Open reservation</Link>}
+                {data.canOpenDesk && item.bookingId && <Link className="text-sm font-semibold text-indigo-800 underline" href={`/admin/ota-reservations?booking=${item.bookingId}${item.mode === "test" ? "&mode=test" : ""}`}>Open reservation</Link>}
               </div>
               {editable && <form className="grid gap-3 border-t pt-4 sm:grid-cols-[1fr_2fr_auto]" onSubmit={(event) => {
                 event.preventDefault();

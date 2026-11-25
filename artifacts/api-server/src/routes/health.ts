@@ -37,6 +37,7 @@ router.get("/readyz", async (_req, res) => {
       await db.execute(sql`SELECT reference FROM ota_payment_jobs LIMIT 0`);
       await db.execute(sql`SELECT dedupe_key FROM ota_duffel_events LIMIT 0`);
       await db.execute(sql`SELECT booking_id, requested_at, assigned_to FROM ota_followups LIMIT 0`);
+      await db.execute(sql`SELECT booking_id, revision, service, finance FROM ota_reservation_desk LIMIT 0`);
     }
     if ((await getRegistrationConfig()).enabled)
       await db.execute(sql`SELECT sequence FROM ai_registration_jobs LIMIT 0`);

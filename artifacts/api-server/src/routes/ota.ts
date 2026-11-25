@@ -19,6 +19,7 @@ import {
   otaEventsTable,
   otaPrebookClaimsTable,
   otaFollowupsTable as followups,
+  otaDeskTable as desk,
   notificationsTable,
 } from "@workspace/db";
 import { and, eq, desc, sql, like, isNull, or } from "drizzle-orm";
@@ -26,6 +27,8 @@ import { customerTimeline } from "../services/ota/bookingUpdates";
 import { followupQueue, followupReasons, trackCheckoutBlocker } from "../services/ota/followups";
 import { logger } from "../lib/logger";
 import { hasStaffGrant } from "../lib/bookingAccess";
+import { deskCancellationQuote, deskQuery, reservations, verifyDeskPayment, verifyDeskRefund, verifyDeskSettlement } from "../services/ota/reservationDesk";
+import { sendEmail } from "../utils/email";
 import {
   getOtaConfig,
   saveOtaConfig,
@@ -203,6 +206,40 @@ async function followupOperator(req: Request) {
       (actor.profile.role !== "staff" || !await hasStaffGrant(actor.profile, "ota_followups")))
     throw new OtaError("Checkout Follow-up access is required.", 403);
   return actor;
+}
+
+async function deskOperator(req: Request, grant: "reservations" | "documents" | "finance" = "reservations") {
+  const actor = await identity(req);
+  const allowed = async (permission: string) => actor.profile.role === "super_admin" ||
+    (actor.profile.role === "staff" && await hasStaffGrant(actor.profile, `ota_${permission}`));
+  if (!await allowed("reservations") || (grant !== "reservations" && !await allowed(grant)))
+    throw new OtaError("You need the appropriate Reservations Desk permission.", 403);
+  return { ...actor, allowed };
+}
+
+async function deskBooking(id: unknown) {
+  const bookingId = z.string().uuid().parse(id);
+  const row = await db.query.otaBookingsTable.findFirst({ where: eq(bookings.id, bookingId) });
+  if (!row) throw new OtaError("Reservation not found.", 404);
+  return row;
+}
+
+const deskRevision = z.number().int().nonnegative();
+type DeskPatch = Partial<typeof desk.$inferInsert>;
+async function updateDesk(
+  row: typeof bookings.$inferSelect, profileId: string, revision: number, action: string, patch: DeskPatch,
+  guard?: ReturnType<typeof and>,
+) {
+  await db.transaction(async (tx) => {
+    const [current] = await tx.select({ revision: bookings.revision }).from(bookings)
+      .where(eq(bookings.id, row.id)).for("update");
+    if (current?.revision !== row.revision) throw new OtaError("The booking changed. Reload and review its current status.", 409);
+    await tx.insert(desk).values({ bookingId: row.id }).onConflictDoNothing();
+    const [saved] = await tx.update(desk).set({ ...patch, revision: sql`${desk.revision} + 1`, updatedAt: new Date() })
+      .where(and(eq(desk.bookingId, row.id), eq(desk.revision, revision), guard)).returning({ bookingId: desk.bookingId });
+    if (!saved) throw new OtaError("This case changed or is assigned to another operator. Reload it before trying again.", 409);
+    await tx.insert(otaEventsTable).values({ id: randomUUID(), bookingId: row.id, actor: profileId, action });
+  });
 }
 // Bounded in-memory burst control; production multi-instance deployments should
 // additionally apply a shared rate limit at their reverse proxy.
@@ -1236,6 +1273,8 @@ router.post("/ota/callbacks", endpoint(async (req, res) => {
   };
   await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`ota-callback:${userId}`}, 0))`);
+    if (booking) await tx.select({ id: bookings.id }).from(bookings)
+      .where(eq(bookings.id, booking.id)).for("update");
     const existing = await tx.query.otaFollowupsTable.findFirst({ where: eq(followups.id, id) });
     if (existing?.requestedAt && existing.outcome !== "resolved") return;
     const [recent] = await tx.select({ count: sql<number>`count(*)::int` }).from(followups)
@@ -2002,6 +2041,213 @@ router.get(
     res.json({ events: await recentDuffelEvents() });
   }),
 );
+router.get("/ota/admin/reservations", endpoint(async (req, res) => {
+  await deskOperator(req);
+  const filters = deskQuery.parse(req.query);
+  if (filters.from && filters.to && filters.from > filters.to)
+    throw new OtaError("The travel end date must follow the start date.", 400);
+  res.json(await reservations(filters));
+}));
+
+router.get("/ota/admin/reservations/:id", endpoint(async (req, res) => {
+  const actor = await deskOperator(req);
+  const row = await deskBooking(req.params.id);
+  const [record, documents, finance, events] = await Promise.all([
+    db.query.otaDeskTable.findFirst({ where: eq(desk.bookingId, row.id) }),
+    actor.allowed("documents"), actor.allowed("finance"),
+    db.select({ action: otaEventsTable.action, createdAt: otaEventsTable.createdAt }).from(otaEventsTable)
+      .where(eq(otaEventsTable.bookingId, row.id)).orderBy(desc(otaEventsTable.createdAt)).limit(30),
+  ]);
+  const { offer, providerResult } = customerBooking(row);
+  const result = providerResult as any;
+  const details = offer as any;
+  const quote = row.pricing as { supplierKobo?: number };
+  res.json({
+    permissions: { documents, finance, supervisor: actor.profile.role === "super_admin" },
+    booking: {
+      id: row.id, kind: row.kind, supplier: row.supplier, mode: row.mode, status: row.status,
+      reference: row.reference, paidAt: row.paidAt, serviceRequest: row.serviceRequest, providerNotice: row.providerNotice,
+      contact: { email: (row.contact as any)?.email, phone: (row.contact as any)?.phone },
+      providerBookingId: row.providerBookingId, locator: result?.booking_reference || result?.reference || null,
+      offer: { slices: result?.slices ?? details?.slices, accommodation: { name: details?.accommodation?.name,
+        address: details?.accommodation?.location?.address?.line_one },
+        check_in_date: result?.check_in_date || details?.check_in_date, check_out_date: result?.check_out_date || details?.check_out_date,
+        check_in_instructions: result?.check_in_instructions,
+        conditions: details?.conditions, cancellation_summary: details?.cancellation_summary,
+        rates: details?.accommodation?.rooms?.flatMap((room: any) => (room.rates ?? []).map((rate: any) => ({
+          cancellation_summary: rate.cancellation_summary, cancellation_timeline: rate.cancellation_timeline, conditions: rate.conditions,
+        }))),
+      },
+      ...(documents && row.status === "confirmed" ? { travellers: (Array.isArray(row.travellers) ? row.travellers : []).map((traveller) =>
+        [traveller.given_name, traveller.family_name].filter(Boolean).join(" ")) } : {}),
+      ticket: row.status === "confirmed" && row.supplier === "bilalsadasub" && result?.ticketPdfAvailable === true,
+      ticketed: row.status === "confirmed" && Boolean(result?.ticketed_at || result?.ticketPdfAvailable || result?.documents?.length),
+      ...(finance ? { amountKobo: row.amountKobo, quotedSupplierKobo: quote?.supplierKobo, recordedRefund: row.refund, paymentIssue: row.paymentIssue } : {}),
+    },
+    case: { revision: record?.revision ?? 0, assigned: !!record?.assignedTo, assignedToMe: record?.assignedTo === actor.profile.id,
+      assignedName: record?.assignedName, resolvedAt: record?.resolvedAt, note: record?.note, service: record?.service,
+      ...(documents ? { documentSentAt: record?.documentSentAt } : {}), ...(finance ? { finance: record?.finance } : {}),
+    },
+    events,
+  });
+}));
+
+router.post("/ota/admin/reservations/:id/refresh", endpoint(async (req, res) => {
+  const actor = await deskOperator(req);
+  const row = await deskBooking(req.params.id);
+  if (!row.paidAt || row.status === "refunded") throw new OtaError("Supplier lookup is unavailable for this reservation status.", 409);
+  if (!row.providerBookingId && row.supplier === "duffel")
+    throw new OtaError("No supplier booking ID is saved. Match the reservation in OTA operations first.", 409);
+  const updated = await refreshBooking(row);
+  if (!updated.providerBookingId) throw new OtaError("The supplier has not returned a matching reservation yet. Keep this booking under review.", 409);
+  await audit(row.id, actor.profile.id, "desk_supplier_checked");
+  res.json({ updated: true });
+}));
+
+router.post("/ota/admin/reservations/:id/case", endpoint(async (req, res) => {
+  const { profile } = await deskOperator(req);
+  const row = await deskBooking(req.params.id);
+  const input = z.discriminatedUnion("action", [
+    z.object({ action: z.literal("claim"), revision: deskRevision }),
+    z.object({ action: z.literal("release"), revision: deskRevision }),
+    z.object({ action: z.literal("resolve"), revision: deskRevision, note: z.string().trim().min(3).max(1000) }),
+    z.object({ action: z.literal("reopen"), revision: deskRevision }),
+  ]).parse(req.body);
+  const canEdit = profile.role === "super_admin" ? undefined : eq(desk.assignedTo, profile.id);
+  const patch = input.action === "claim" ? { assignedTo: profile.id, assignedName: profile.fullName } :
+    input.action === "release" ? { assignedTo: null, assignedName: null } :
+    input.action === "resolve" ? { resolvedAt: new Date(), note: input.note } : { resolvedAt: null };
+  await updateDesk(row, profile.id, input.revision, `desk_case_${input.action}`, patch,
+    input.action === "claim" ? isNull(desk.assignedTo) : canEdit);
+  res.json({ updated: true });
+}));
+
+router.get("/ota/admin/reservations/:id/cancellation-quote", endpoint(async (req, res) => {
+  await deskOperator(req);
+  res.json({ quote: await deskCancellationQuote(await deskBooking(req.params.id)) });
+}));
+
+router.post("/ota/admin/reservations/:id/service", endpoint(async (req, res) => {
+  const { profile } = await deskOperator(req);
+  const row = await deskBooking(req.params.id);
+  const base = z.object({ revision: deskRevision, note: z.string().trim().min(3).max(1000) });
+  const input = z.discriminatedUnion("stage", [
+    base.extend({ stage: z.literal("proposed"), kind: z.enum(["change", "cancellation"]),
+      fee: z.number().finite().nonnegative().max(10_000_000).nullable(),
+      refund: z.number().finite().nonnegative().max(10_000_000).nullable(), currency: z.string().regex(/^[A-Z]{3}$/) }),
+    base.extend({ stage: z.literal("approved"), customerApproved: z.literal(true) }),
+    base.extend({ stage: z.literal("supplier_submitted"), supplierReference: z.string().trim().min(2).max(128) }),
+  ]).parse(req.body);
+  if (!row.paidAt) throw new OtaError("A verified payment is required before recording servicing.", 409);
+  const previous = await db.query.otaDeskTable.findFirst({ where: eq(desk.bookingId, row.id) });
+  const current = previous?.service as { stage?: string; bookingRevision?: number } | undefined;
+  if ((input.stage === "proposed" && current?.stage === "supplier_submitted") ||
+      (input.stage === "approved" && (current?.stage !== "proposed" || current.bookingRevision !== row.revision)) ||
+      (input.stage === "supplier_submitted" && current?.stage !== "approved"))
+    throw new OtaError("Review the current servicing stage before continuing.", 409);
+  const { revision, ...values } = input;
+  const service = { ...(input.stage === "proposed" ? { bookingRevision: row.revision } : current), ...values, updatedAt: new Date().toISOString() };
+  await updateDesk(row, profile.id, revision, `desk_service_${input.stage}`, { service, resolvedAt: null },
+    profile.role === "super_admin" ? undefined : eq(desk.assignedTo, profile.id));
+  res.json({ updated: true });
+}));
+
+router.get("/ota/admin/reservations/:id/ticket", endpoint(async (req, res) => {
+  await deskOperator(req, "documents");
+  const row = await deskBooking(req.params.id);
+  if (row.status !== "confirmed" || row.supplier !== "bilalsadasub" || !row.providerBookingId || !(row.providerResult as any)?.ticketPdfAvailable)
+    throw new OtaError("An airline ticket PDF is unavailable for this booking.", 404);
+  const file = await getBilalTicket(await getOtaConfig(), z.enum(["test", "live"]).parse(row.mode), row.providerBookingId);
+  const current = await deskBooking(req.params.id);
+  if (current.status !== "confirmed" || current.providerBookingId !== row.providerBookingId)
+    throw new OtaError("The reservation changed. Reload before opening the ticket.", 409);
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", 'attachment; filename="FlyRaudah-e-ticket.pdf"');
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.send(file);
+}));
+
+router.post("/ota/admin/reservations/:id/send-documents", endpoint(async (req, res) => {
+  const { profile } = await deskOperator(req, "documents");
+  const row = await deskBooking(req.params.id);
+  const to = z.string().email().safeParse((row.contact as any)?.email);
+  const origin = otaAppOrigin();
+  if (row.status !== "confirmed" || row.mode !== "live" || !row.paidAt || !to.success || !origin)
+    throw new OtaError("Document delivery requires a confirmed live booking and a saved customer email.", 409);
+  const attempt = new Date();
+  const claimed = await db.transaction(async (tx) => {
+    const [current] = await tx.select({ revision: bookings.revision }).from(bookings).where(eq(bookings.id, row.id)).for("update");
+    if (current?.revision !== row.revision) return false;
+    await tx.insert(desk).values({ bookingId: row.id }).onConflictDoNothing();
+    const [entry] = await tx.update(desk).set({ documentAttemptAt: attempt }).where(and(eq(desk.bookingId, row.id),
+      or(isNull(desk.documentAttemptAt), sql`${desk.documentAttemptAt} < now() - interval '5 minutes'`)))
+      .returning({ bookingId: desk.bookingId });
+    return !!entry;
+  });
+  if (!claimed) throw new OtaError("A delivery was just attempted or the booking changed. Check the record before retrying.", 409);
+  const link = `${origin}/travel/bookings/${row.id}`;
+  const sent = await sendEmail({ to: to.data, subject: `Travel documents · ${row.reference}`,
+    text: `Sign in to your FlyRaudah account to view and print the latest documents for ${row.reference}.\n${link}`,
+    html: `<p>Sign in to view and print your latest travel documents.</p><p><a href="${link}">Open your booking</a></p>`,
+  });
+  if (!sent) throw new OtaError("The email service could not confirm delivery. Check the delivery record before retrying.", 502);
+  await db.transaction(async (tx) => {
+    await tx.update(desk).set({ documentSentAt: new Date() }).where(and(eq(desk.bookingId, row.id), eq(desk.documentAttemptAt, attempt)));
+    await tx.insert(otaEventsTable).values({ id: randomUUID(), bookingId: row.id, actor: profile.id, action: "desk_document_link_sent" });
+  });
+  res.json({ sent: true });
+}));
+
+const deskKobo = deskRevision.max(1_000_000_000_000_000);
+const deskEvidence = z.object({
+  supplierKobo: deskKobo.optional(), supplierInvoice: z.string().max(128).optional(),
+  refunds: z.array(z.object({ id: z.string(), amountKobo: deskKobo })).max(50).default([]),
+  settlement: z.object({ id: z.string(), date: z.string() }).optional(),
+});
+router.post("/ota/admin/reservations/:id/finance", endpoint(async (req, res) => {
+  const { profile } = await deskOperator(req, "finance");
+  const row = await deskBooking(req.params.id);
+  const id = z.string().regex(/^[1-9]\d{0,19}$/);
+  const input = z.discriminatedUnion("action", [
+    z.object({ action: z.literal("refresh"), revision: deskRevision }),
+    z.object({ action: z.literal("supplier_cost"), revision: deskRevision, supplierKobo: deskKobo,
+      invoice: z.string().trim().min(3).max(128) }),
+    z.object({ action: z.literal("refund"), revision: deskRevision, refundId: id }),
+    z.object({ action: z.literal("settlement"), revision: deskRevision, settlementId: id,
+      date: z.string().date(), page: z.number().int().min(1).max(1000).default(1) }),
+  ]).parse(req.body);
+  const record = await db.query.otaDeskTable.findFirst({ where: eq(desk.bookingId, row.id) });
+  if ((record?.revision ?? 0) !== input.revision) throw new OtaError("Reload the reservation before reconciling it.", 409);
+  const previous = deskEvidence.parse(record?.finance ?? {});
+  const { key: _key, ...verified } = await verifyDeskPayment(row);
+  const pay = { ...verified, key: _key };
+  const refunds = new Map(previous.refunds.map((entry) => [entry.id, entry]));
+  const existingRefund = (row.refund ?? {}) as { id?: string | number; amount?: number; status?: string };
+  if (existingRefund.id != null && existingRefund.status === "processed" && existingRefund.amount === pay.amountKobo)
+    refunds.set(String(existingRefund.id), { id: String(existingRefund.id), amountKobo: pay.amountKobo });
+  if (input.action === "refund") {
+    const verifiedRefund = await verifyDeskRefund(row, pay, input.refundId);
+    refunds.set(verifiedRefund.id, verifiedRefund);
+  }
+  const refundedKobo = [...refunds.values()].reduce((total, entry) => total + entry.amountKobo, 0);
+  if (refunds.size > 50 || refundedKobo > pay.amountKobo)
+    throw new OtaError("Recorded refunds exceed the paid total. Review the original transaction and refund records.", 409);
+  const settled = input.action === "settlement"
+    ? await verifyDeskSettlement(row, pay, input.settlementId, input.date, input.page) : previous.settlement;
+  const supplierKobo = input.action === "supplier_cost" ? input.supplierKobo : previous.supplierKobo;
+  const quoted = deskKobo.safeParse((row.pricing as any)?.supplierKobo);
+  const differenceKobo = quoted.success && supplierKobo != null ? supplierKobo - quoted.data : null;
+  const complete = verified.feesKobo != null && supplierKobo != null &&
+    (verified.gatewayStatus === "success" || refundedKobo === pay.amountKobo);
+  await updateDesk(row, profile.id, input.revision, `desk_finance_${input.action}`, { finance: {
+    ...verified, supplierKobo, supplierInvoice: input.action === "supplier_cost" ? input.invoice : previous.supplierInvoice,
+    differenceKobo, settlement: settled, refunds: [...refunds.values()], refundedKobo,
+    marginKobo: complete ? pay.amountKobo - supplierKobo! - verified.feesKobo! - refundedKobo : null,
+    checkedAt: new Date().toISOString(),
+  } });
+  res.json({ updated: true });
+}));
+
 router.get("/ota/admin/follow-ups", endpoint(async (req, res) => {
   const actor = await followupOperator(req);
   const input = z.object({
@@ -2011,7 +2257,9 @@ router.get("/ota/admin/follow-ups", endpoint(async (req, res) => {
     search: z.string().trim().max(100).optional(), state: z.enum(["open", "resolved"]).default("open"),
   }).parse(req.query);
   const rows = await followupQueue({ ...input, resolved: input.state === "resolved" });
-  res.json({ canManage: actor.profile.role === "super_admin", nextOffset: rows.length > 50 ? input.offset + 50 : null,
+  const canManage = actor.profile.role === "super_admin";
+  res.json({ canManage, canOpenDesk: canManage || await hasStaffGrant(actor.profile, "ota_reservations"),
+    nextOffset: rows.length > 50 ? input.offset + 50 : null,
     cases: rows.slice(0, 50).map(({ ownerId, savedCase, assignedTo, ...row }) => ({
       ...row, assigned: Boolean(assignedTo), assignedToMe: assignedTo === actor.profile.id,
     })),
@@ -2031,6 +2279,8 @@ router.post("/ota/admin/follow-ups/:id", endpoint(async (req, res) => {
   const [row] = await followupQueue({ id, offset: 0 });
   if (!row) throw new OtaError("This case is no longer open. Refresh the queue.", 409);
   const changed = await db.transaction(async (tx) => {
+    if (row.bookingId) await tx.select({ id: bookings.id }).from(bookings)
+      .where(eq(bookings.id, row.bookingId)).for("update");
     if (input.action === "claim" && !row.savedCase) await tx.insert(followups).values({
       id, bookingId: row.bookingId, clerkUserId: row.ownerId, kind: row.kind, trip: row.trip,
     }).onConflictDoNothing();

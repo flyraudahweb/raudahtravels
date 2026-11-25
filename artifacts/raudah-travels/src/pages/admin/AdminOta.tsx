@@ -167,9 +167,10 @@ export default function AdminOta() {
         </button>
       </div>
       <OtaOperationsSummary />
-      <Link href="/admin/ota-follow-ups" className="inline-flex text-sm font-semibold text-indigo-800 underline">
-        Open checkout follow-up
-      </Link>
+      <div className="flex flex-wrap gap-4">
+        <Link href="/admin/ota-reservations" className="text-sm font-semibold text-indigo-800 underline">Open Reservations Desk</Link>
+        <Link href="/admin/ota-follow-ups" className="text-sm font-semibold text-indigo-800 underline">Open checkout follow-up</Link>
+      </div>
       <div className="flex flex-wrap gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3">
         {[
           ["Reservations on this page", rows.length, Plane],

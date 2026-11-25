@@ -4,7 +4,9 @@ import { sql } from "drizzle-orm";
 export const followupReasons = ["callback", "payment_review", "supplier_review", "fare_changed", "unavailable", "expired", "unpaid"] as const;
 
 export async function trackCheckoutBlocker(bookingId: string, revision: number, blocker: "fare_changed" | "unavailable") {
-  await db.execute(sql`
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM ota_bookings WHERE id = ${bookingId} FOR UPDATE`);
+    await tx.execute(sql`
     INSERT INTO ota_followups (id, booking_id, clerk_user_id, kind, trip, blocker, blocked_revision)
     SELECT id, id, clerk_user_id, kind, 'Saved travel checkout', ${blocker}, revision
     FROM ota_bookings
@@ -14,7 +16,8 @@ export async function trackCheckoutBlocker(bookingId: string, revision: number, 
     WHERE ota_followups.outcome IS DISTINCT FROM 'resolved'
       AND (ota_followups.blocked_revision IS NULL OR ota_followups.blocked_revision <= excluded.blocked_revision)
       AND (ota_followups.blocker IS DISTINCT FROM excluded.blocker OR ota_followups.blocked_revision IS DISTINCT FROM excluded.blocked_revision)
-  `);
+    `);
+  });
 }
 
 const queue = sql`

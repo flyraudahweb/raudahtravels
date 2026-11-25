@@ -254,3 +254,10 @@
   0% { transform: translateX(-110%); }
   100% { transform: translateX(410%); }
 }
+
+@media print {
+  body:has([data-ota-print]) * { visibility: hidden; }
+  body:has([data-ota-print]) :has([data-ota-print]) { overflow: visible !important; }
+  body [data-ota-print], body [data-ota-print] * { visibility: visible; }
+  body [data-ota-print] { position: absolute; inset: 0 0 auto; width: 100%; margin: 0; }
+}

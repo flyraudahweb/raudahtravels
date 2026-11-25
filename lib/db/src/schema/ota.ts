@@ -182,3 +182,17 @@ export const otaFollowupsTable = pgTable("ota_followups", {
   check("ota_followups_kind", sql`${t.kind} IN ('hotel', 'flight')`),
   check("ota_followups_outcome", sql`${t.outcome} IN ('reached', 'no_answer', 'resolved')`),
 ]);
+
+export const otaDeskTable = pgTable("ota_reservation_desk", {
+  bookingId: text("booking_id").primaryKey(),
+  revision: integer("revision").notNull().default(0),
+  assignedTo: text("assigned_to"),
+  assignedName: text("assigned_name"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  note: text("note"),
+  service: jsonb("service"),
+  finance: jsonb("finance"),
+  documentSentAt: timestamp("document_sent_at", { withTimezone: true }),
+  documentAttemptAt: timestamp("document_attempt_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

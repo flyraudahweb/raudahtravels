@@ -22,6 +22,7 @@ import {
 } from "./TravelSearchPage";
 import { TravelCancellationPolicy } from "./TravelPolicies";
 import { TravelCallback } from "./TravelCallback";
+import { FlightItineraryDownload } from "./FlightItineraryDownload";
 import { money, ota, OtaRequestError, travelButton, travelInput } from "@/lib/ota";
 import { flightRecheckHref } from "@/lib/travelSearch";
 
@@ -452,6 +453,16 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
                   <Printer size={16} />
                   Print itinerary / voucher
                 </button>
+              )}
+              {confirmed && booking.kind === "flight" && booking.supplier === "nuitee" && (
+                <FlightItineraryDownload key={`${user?.id}:${booking.id}`} className={travelButton} itinerary={{
+                  reference: booking.reference,
+                  locator: provider?.booking_reference || provider?.reference,
+                  ticketed: !!provider?.ticketed_at,
+                  mode: booking.mode,
+                  names: booking.travellers?.map((traveller: any) => [traveller.given_name, traveller.family_name].filter(Boolean).join(" ")),
+                  slices: provider?.slices?.some((slice: any) => slice.segments?.length) ? provider.slices : offer?.slices ?? [],
+                }} />
               )}
               {confirmed &&
                 booking.supplier === "bilalsadasub" &&
