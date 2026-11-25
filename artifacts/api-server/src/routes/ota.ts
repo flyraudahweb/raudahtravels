@@ -229,6 +229,7 @@ type DeskPatch = Partial<typeof desk.$inferInsert>;
 async function updateDesk(
   row: typeof bookings.$inferSelect, profileId: string, revision: number, action: string, patch: DeskPatch,
   guard?: ReturnType<typeof and>,
+  options?: { customerMessage?: string; previousService?: unknown },
 ) {
   await db.transaction(async (tx) => {
     const [current] = await tx.select({ revision: bookings.revision }).from(bookings)
@@ -238,7 +239,15 @@ async function updateDesk(
     const [saved] = await tx.update(desk).set({ ...patch, revision: sql`${desk.revision} + 1`, updatedAt: new Date() })
       .where(and(eq(desk.bookingId, row.id), eq(desk.revision, revision), guard)).returning({ bookingId: desk.bookingId });
     if (!saved) throw new OtaError("This case changed or is assigned to another operator. Reload it before trying again.", 409);
-    await tx.insert(otaEventsTable).values({ id: randomUUID(), bookingId: row.id, actor: profileId, action });
+    await tx.insert(otaEventsTable).values({ id: randomUUID(), bookingId: row.id, actor: profileId, action,
+      ...(options?.previousService ? { details: { previousService: options.previousService } } : {}) });
+    if (options?.customerMessage) {
+      if (!row.serviceRequest) throw new OtaError("The customer request has already been closed.", 409);
+      await tx.update(bookings).set({ serviceRequest: null, revision: sql`${bookings.revision} + 1`,
+        updatedAt: patch.resolvedAt ?? new Date() }).where(eq(bookings.id, row.id));
+      await tx.insert(otaEventsTable).values({ id: randomUUID(), bookingId: row.id, actor: profileId,
+        action: "service_request_resolved", details: { message: row.serviceRequest, customerMessage: options.customerMessage } });
+    }
   });
 }
 // Bounded in-memory burst control; production multi-instance deployments should
@@ -2082,6 +2091,7 @@ router.get("/ota/admin/reservations/:id", endpoint(async (req, res) => {
         [traveller.given_name, traveller.family_name].filter(Boolean).join(" ")) } : {}),
       ticket: row.status === "confirmed" && row.supplier === "bilalsadasub" && result?.ticketPdfAvailable === true,
       ticketed: row.status === "confirmed" && Boolean(result?.ticketed_at || result?.ticketPdfAvailable || result?.documents?.length),
+      itineraryReview: result?.itineraryReview === true,
       ...(finance ? { amountKobo: row.amountKobo, quotedSupplierKobo: quote?.supplierKobo, recordedRefund: row.refund, paymentIssue: row.paymentIssue } : {}),
     },
     case: { revision: record?.revision ?? 0, assigned: !!record?.assignedTo, assignedToMe: record?.assignedTo === actor.profile.id,
@@ -2110,7 +2120,8 @@ router.post("/ota/admin/reservations/:id/case", endpoint(async (req, res) => {
   const input = z.discriminatedUnion("action", [
     z.object({ action: z.literal("claim"), revision: deskRevision }),
     z.object({ action: z.literal("release"), revision: deskRevision }),
-    z.object({ action: z.literal("resolve"), revision: deskRevision, note: z.string().trim().min(3).max(1000) }),
+    z.object({ action: z.literal("resolve"), revision: deskRevision, note: z.string().trim().min(3).max(1000),
+      customerMessage: z.string().trim().min(10).max(1000).optional() }),
     z.object({ action: z.literal("reopen"), revision: deskRevision }),
   ]).parse(req.body);
   const canEdit = profile.role === "super_admin" ? undefined : eq(desk.assignedTo, profile.id);
@@ -2118,7 +2129,8 @@ router.post("/ota/admin/reservations/:id/case", endpoint(async (req, res) => {
     input.action === "release" ? { assignedTo: null, assignedName: null } :
     input.action === "resolve" ? { resolvedAt: new Date(), note: input.note } : { resolvedAt: null };
   await updateDesk(row, profile.id, input.revision, `desk_case_${input.action}`, patch,
-    input.action === "claim" ? isNull(desk.assignedTo) : canEdit);
+    input.action === "claim" ? isNull(desk.assignedTo) : canEdit,
+    input.action === "resolve" ? { customerMessage: input.customerMessage } : undefined);
   res.json({ updated: true });
 }));
 
@@ -2141,14 +2153,16 @@ router.post("/ota/admin/reservations/:id/service", endpoint(async (req, res) => 
   if (!row.paidAt) throw new OtaError("A verified payment is required before recording servicing.", 409);
   const previous = await db.query.otaDeskTable.findFirst({ where: eq(desk.bookingId, row.id) });
   const current = previous?.service as { stage?: string; bookingRevision?: number } | undefined;
-  if ((input.stage === "proposed" && current?.stage === "supplier_submitted") ||
+  if ((input.stage === "proposed" && (row.status === "cancelled" || row.status === "refunded" ||
+      (["approved", "supplier_submitted"].includes(current?.stage ?? "") && !previous?.resolvedAt))) ||
       (input.stage === "approved" && (current?.stage !== "proposed" || current.bookingRevision !== row.revision)) ||
       (input.stage === "supplier_submitted" && current?.stage !== "approved"))
     throw new OtaError("Review the current servicing stage before continuing.", 409);
   const { revision, ...values } = input;
   const service = { ...(input.stage === "proposed" ? { bookingRevision: row.revision } : current), ...values, updatedAt: new Date().toISOString() };
   await updateDesk(row, profile.id, revision, `desk_service_${input.stage}`, { service, resolvedAt: null },
-    profile.role === "super_admin" ? undefined : eq(desk.assignedTo, profile.id));
+    profile.role === "super_admin" ? undefined : eq(desk.assignedTo, profile.id),
+    input.stage === "proposed" && previous?.resolvedAt ? { previousService: current } : undefined);
   res.json({ updated: true });
 }));
 
@@ -2172,6 +2186,8 @@ router.post("/ota/admin/reservations/:id/send-documents", endpoint(async (req, r
   const row = await deskBooking(req.params.id);
   const to = z.string().email().safeParse((row.contact as any)?.email);
   const origin = otaAppOrigin();
+  if ((row.providerResult as { itineraryReview?: boolean } | null)?.itineraryReview === true)
+    throw new OtaError("Confirm the updated flight schedule before sending documents.", 409);
   if (row.status !== "confirmed" || row.mode !== "live" || !row.paidAt || !to.success || !origin)
     throw new OtaError("Document delivery requires a confirmed live booking and a saved customer email.", 409);
   const attempt = new Date();
@@ -2200,6 +2216,7 @@ router.post("/ota/admin/reservations/:id/send-documents", endpoint(async (req, r
 
 const deskKobo = deskRevision.max(1_000_000_000_000_000);
 const deskEvidence = z.object({
+  reference: z.string().optional(), transactionId: z.string().optional(),
   supplierKobo: deskKobo.optional(), supplierInvoice: z.string().max(128).optional(),
   refunds: z.array(z.object({ id: z.string(), amountKobo: deskKobo })).max(50).default([]),
   settlement: z.object({ id: z.string(), date: z.string() }).optional(),
@@ -2221,7 +2238,8 @@ router.post("/ota/admin/reservations/:id/finance", endpoint(async (req, res) => 
   const previous = deskEvidence.parse(record?.finance ?? {});
   const { key: _key, ...verified } = await verifyDeskPayment(row);
   const pay = { ...verified, key: _key };
-  const refunds = new Map(previous.refunds.map((entry) => [entry.id, entry]));
+  const samePayment = previous.reference === pay.reference && previous.transactionId === pay.transactionId;
+  const refunds = new Map((samePayment ? previous.refunds : []).map((entry) => [entry.id, entry]));
   const existingRefund = (row.refund ?? {}) as { id?: string | number; amount?: number; status?: string };
   if (existingRefund.id != null && existingRefund.status === "processed" && existingRefund.amount === pay.amountKobo)
     refunds.set(String(existingRefund.id), { id: String(existingRefund.id), amountKobo: pay.amountKobo });
@@ -2233,7 +2251,7 @@ router.post("/ota/admin/reservations/:id/finance", endpoint(async (req, res) => 
   if (refunds.size > 50 || refundedKobo > pay.amountKobo)
     throw new OtaError("Recorded refunds exceed the paid total. Review the original transaction and refund records.", 409);
   const settled = input.action === "settlement"
-    ? await verifyDeskSettlement(row, pay, input.settlementId, input.date, input.page) : previous.settlement;
+    ? await verifyDeskSettlement(row, pay, input.settlementId, input.date, input.page) : samePayment ? previous.settlement : undefined;
   const supplierKobo = input.action === "supplier_cost" ? input.supplierKobo : previous.supplierKobo;
   const quoted = deskKobo.safeParse((row.pricing as any)?.supplierKobo);
   const differenceKobo = quoted.success && supplierKobo != null ? supplierKobo - quoted.data : null;

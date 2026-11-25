@@ -448,13 +448,13 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
                   Edit checkout
                 </Link>
               )}
-              {confirmed && (
+              {confirmed && provider?.itineraryReview !== true && (
                 <button onClick={() => window.print()} className={travelButton}>
                   <Printer size={16} />
                   Print itinerary / voucher
                 </button>
               )}
-              {confirmed && booking.kind === "flight" && booking.supplier === "nuitee" && (
+              {confirmed && booking.kind === "flight" && booking.supplier === "nuitee" && provider?.itineraryReview !== true && (
                 <FlightItineraryDownload key={`${user?.id}:${booking.id}`} className={travelButton} itinerary={{
                   reference: booking.reference,
                   locator: provider?.booking_reference || provider?.reference,
@@ -515,15 +515,15 @@ export default function TravelBooking({ bookingId }: { bookingId: string }) {
               </div>
               {booking.kind === "flight" ? (
                 <>
-                  <FlightItinerary
-                    offer={
-                      provider?.slices?.some(
-                        (slice: any) => slice.segments?.length,
-                      )
-                        ? provider
-                        : offer
-                    }
-                  />
+                  {provider?.itineraryReview === true ? (
+                    <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-950">
+                      The airline reported a schedule change. Contact the travel team to confirm your latest flight times.
+                    </p>
+                  ) : (
+                    <FlightItinerary
+                      offer={provider?.slices?.some((slice: any) => slice.segments?.length) ? provider : offer}
+                    />
+                  )}
                   <h3 className="font-bold">Ticket information</h3>
                   {confirmed && provider?.documents?.length ? (
                     provider.documents.map((d: any, i: number) => (

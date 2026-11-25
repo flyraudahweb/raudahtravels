@@ -707,11 +707,28 @@ it("runs the reservations desk, safeguarding assignment, servicing, documents, a
   expect((await (await request(path, "super")).json()).case.finance).toMatchObject({
     marginKobo: 850000, refundedKobo: 100000, feesKobo: 50000, settlement: { id: "88" },
   });
+  await module.db.update(module.otaBookingsTable).set({ paidPaymentReference: "part-two" }).where(eq(module.otaBookingsTable.id, booking.id));
+  expect((await request(path + "/finance", "super", { action: "refresh", revision: 8 })).status).toBe(200);
+  const finance = (await (await request(path, "super")).json()).case.finance;
+  expect(finance).toMatchObject({ refundedKobo: 0, refunds: [], supplierInvoice: "SUP-99" });
+  expect(finance).not.toHaveProperty("settlement");
+  expect((await request(`/bookings/${booking.id}/service-request`, "user", { message: "Please help change my trip." })).status).toBe(200);
+  expect((await request(path + "/case", "super", { action: "resolve", revision: 9, note: "Internal handling completed", customerMessage: "We reviewed your request and contacted you." })).status).toBe(200);
+  const resolved = (await (await request(path, "super")).json());
+  expect(resolved.booking.serviceRequest).toBeNull();
+  const timeline = (await (await request(`/bookings/${booking.id}/timeline`, "user")).json()).events;
+  expect(timeline.some((item: any) => item.response === "We reviewed your request and contacted you.")).toBe(true);
+  expect(JSON.stringify(timeline)).not.toContain("Internal handling completed");
+  expect((await request(path + "/service", "super", { ...proposal, revision: 10, kind: "change" })).status).toBe(200);
   // A sandbox booking cannot send documents to the live email address.
   expect((await request(path + "/send-documents", "super", {})).status).toBe(409);
   await module.db.update(module.otaBookingsTable).set({ mode: "live" }).where(eq(module.otaBookingsTable.id, booking.id));
   const { sendEmail } = await import("../src/utils/email");
   vi.mocked(sendEmail).mockClear();
+  await module.db.update(module.otaBookingsTable).set({ providerResult: { itineraryReview: true } }).where(eq(module.otaBookingsTable.id, booking.id));
+  expect((await request(path + "/send-documents", "super", {})).status).toBe(409);
+  expect(sendEmail).not.toHaveBeenCalled();
+  await module.db.update(module.otaBookingsTable).set({ providerResult: { booking_reference: "PNRDESK" } }).where(eq(module.otaBookingsTable.id, booking.id));
   const mails = await Promise.all([request(path + "/send-documents", "super", {}), request(path + "/send-documents", "super", {})]);
   expect(mails.map((response) => response.status).sort()).toEqual([200, 409]);
   expect(sendEmail).toHaveBeenCalledTimes(1);
@@ -1398,11 +1415,13 @@ it.each([
   expect((await (await request(path, "user")).json()).booking.status).toBe(
     "processing",
   );
-  expect(
-    (await (await request(path + "/refresh", "user", {})).json()).booking,
-  ).toMatchObject({
+  const confirmedBooking = (await (await request(path + "/refresh", "user", {})).json()).booking;
+  expect(confirmedBooking).toMatchObject({
     status: "confirmed",
     providerResult: { booking_reference: "TICKETED" },
+  });
+  expect((await (await request(path + "/refresh", "user", {})).json()).booking).toMatchObject({
+    revision: confirmedBooking.revision, updatedAt: confirmedBooking.updatedAt,
   });
   const { sendEmail } = await import("../src/utils/email");
   vi.mocked(sendEmail).mockClear();
@@ -1425,6 +1444,15 @@ it.each([
   expect(await module.db.query.otaEventsTable.findMany({
     where: eq(module.otaEventsTable.action, "itinerary_changed"),
   })).toHaveLength(1);
+
+  updatedJourney = { ...updatedJourney, journeyKey: "flight-1-unverified-update", segments: [] };
+  const unresolved = (await (await request(path + "/refresh", "user", {})).json()).booking;
+  expect(unresolved.providerResult.itineraryReview).toBe(true);
+  vi.mocked(sendEmail).mockClear();
+  await (await import("../src/services/ota/maintenance")).maintainOta();
+  const notice = vi.mocked(sendEmail).mock.calls[0]?.[0].text;
+  expect(notice).toContain("confirm your latest flight schedule");
+  expect(notice).not.toContain("T10:00");
 
 });
 

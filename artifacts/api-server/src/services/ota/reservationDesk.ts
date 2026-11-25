@@ -30,7 +30,7 @@ export async function reservations(input: z.infer<typeof deskQuery>) {
           b.offer #>> '{slices,0,origin,iata_code}', b.offer #>> '{slices,0,destination,iata_code}'), ''), 'Travel reservation') AS trip,
         COALESCE(b.offer->>'check_in_date', left(b.provider_result #>> '{slices,0,segments,0,departing_at}',10),
           left(b.offer #>> '{slices,0,segments,0,departing_at}',10)) AS "travelDate",
-        CASE WHEN b.status <> 'confirmed' THEN NULL
+        CASE WHEN b.status <> 'confirmed' OR b.provider_result->>'itineraryReview' = 'true' THEN NULL
           WHEN b.kind = 'hotel' AND COALESCE(b.provider_result->>'booking_reference', b.provider_result->>'reference') IS NOT NULL THEN 'voucher'
           WHEN b.kind = 'flight' AND b.provider_result->>'ticketPdfAvailable' = 'true' THEN 'pdf'
           WHEN b.kind = 'flight' AND (b.provider_result->>'ticketed_at' IS NOT NULL OR
@@ -52,7 +52,7 @@ export async function reservations(input: z.infer<typeof deskQuery>) {
       AND (${input.to ?? ""} = '' OR "travelDate" <= ${input.to ?? ""})
       AND (${input.document ?? ""} = '' OR (status = 'confirmed' AND (${input.document ?? ""} = 'ready') = (document IS NOT NULL)))
       AND (${search} = '' OR strpos(lower(concat_ws(' ', reference, locator, "supplierId", trip, email, phone)), ${search}) > 0)
-      AND (${input.task ?? ""} = '' OR (("resolvedAt" IS NULL OR "bookingUpdatedAt" > "resolvedAt") AND CASE ${input.task ?? ""}
+      AND (${input.task ?? ""} = '' OR ((${input.task ?? ""} = 'service' OR "resolvedAt" IS NULL OR "bookingUpdatedAt" > "resolvedAt") AND CASE ${input.task ?? ""}
         WHEN 'confirmation' THEN "paidAt" IS NOT NULL AND status IN ('processing','requires_review')
         WHEN 'tickets' THEN status = 'confirmed' AND kind = 'flight' AND document IS NULL
         WHEN 'vouchers' THEN status = 'confirmed' AND kind = 'hotel' AND document IS NULL

@@ -542,6 +542,19 @@ async function saveBilalOrder(
     typeof pricing.actualSupplierKobo === "number"
       ? pricing.actualSupplierKobo
       : fare.supplierKobo;
+  const providerResult = {
+    booking_reference: order.pnr,
+    reference: order.reference,
+    supplierStatus: order.status,
+    ticketPdfAvailable: confirmed,
+    slices: (row.offer as any).slices,
+    documents: confirmed ? tickets.map((number) => ({ type: "electronic_ticket", unique_identifier: number })) : [],
+  };
+  const issue = status === "requires_review" ? "Bilalsadasub ticketing requires operator review." : null;
+  if (row.status === status && row.providerBookingId === order.reference && row.issue === issue &&
+      (!confirmed || pricing.actualSupplierKobo === debit) &&
+      isDeepStrictEqual(row.providerResult, JSON.parse(JSON.stringify(providerResult))))
+    return markSupplierSynced(row);
   const updated = await db.transaction(async (tx) => {
     const [saved] = await tx
       .update(bookings)
@@ -549,19 +562,7 @@ async function saveBilalOrder(
         revision: sql`${bookings.revision}+1`,
         status,
         providerBookingId: order.reference,
-        providerResult: {
-          booking_reference: order.pnr,
-          reference: order.reference,
-          supplierStatus: order.status,
-          ticketPdfAvailable: confirmed,
-          slices: (row.offer as any).slices,
-          documents: confirmed
-            ? tickets.map((number) => ({
-                type: "electronic_ticket",
-                unique_identifier: number,
-              }))
-            : [],
-        },
+        providerResult,
         ...(confirmed
           ? {
               pricing: {
@@ -572,10 +573,7 @@ async function saveBilalOrder(
               },
             }
           : {}),
-        issue:
-          status === "requires_review"
-            ? "Bilalsadasub ticketing requires operator review."
-            : null,
+        issue,
         ...(cancelled && row.status !== "cancelled"
           ? {
               providerNotice:
@@ -640,6 +638,13 @@ async function saveBilalOrder(
   );
 }
 
+async function markSupplierSynced(row: OtaBooking) {
+  const [updated] = await db.update(bookings).set({ syncedAt: new Date() })
+    .where(and(eq(bookings.id, row.id), eq(bookings.revision, row.revision), eq(bookings.status, row.status)))
+    .returning();
+  return updated ?? (await db.query.otaBookingsTable.findFirst({ where: eq(bookings.id, row.id) }))!;
+}
+
 async function saveNuiteeBooking(
   row: OtaBooking,
   result: NonNullable<
@@ -655,9 +660,10 @@ async function saveNuiteeBooking(
   )
     return row;
   const stateChanged = row.status !== result.status;
-  const prior = row.providerResult as { slices?: unknown; itineraryReview?: boolean } | null;
+  const prior = row.providerResult as { slices?: unknown; itineraryReview?: boolean; ticketed_at?: string } | null;
   const latest = "slices" in result ? result.slices : undefined;
-  const awaitingItinerary = "itineraryReview" in result && result.itineraryReview === true;
+  const awaitingItinerary = result.status === "confirmed" &&
+    (("itineraryReview" in result && result.itineraryReview === true) || (!latest && prior?.itineraryReview === true));
   const newItineraryReview = awaitingItinerary && !prior?.itineraryReview;
   const signature = (value: unknown) => Array.isArray(value) ? value.map((slice) =>
     slice.segments?.map((segment: any) => [
@@ -675,6 +681,17 @@ async function saveNuiteeBooking(
         ? "The airline updated your itinerary. Review the latest travel dates and times before you depart."
         : row.kind === "flight" && result.status === "confirmed" && (!latest || !prior?.itineraryReview)
           ? row.providerNotice : null;
+  const providerResult = {
+    ...result,
+    ...(!latest && prior?.slices ? { slices: prior.slices } : {}),
+    ...(awaitingItinerary ? { itineraryReview: true } : {}),
+    ...(result.status === "confirmed" && prior?.ticketed_at && !("ticketed_at" in result)
+      ? { ticketed_at: prior.ticketed_at } : {}),
+  };
+  const issue = result.status === "requires_review" ? "The flight reservation requires supplier review." : null;
+  if (!completingPayment && !stateChanged && row.providerBookingId === result.id && row.providerNotice === notice &&
+      row.issue === issue && isDeepStrictEqual(row.providerResult, JSON.parse(JSON.stringify(providerResult))))
+    return markSupplierSynced(row);
   const updated = await db.transaction(async (tx) => {
     const [saved] = await tx
       .update(bookings)
@@ -682,11 +699,8 @@ async function saveNuiteeBooking(
         revision: sql`${bookings.revision}+1`,
         status: result.status,
         providerBookingId: result.id,
-        providerResult: !latest && prior?.slices ? { ...result, slices: prior.slices } : result,
-        issue:
-          result.status === "requires_review"
-            ? "The flight reservation requires supplier review."
-            : null,
+        providerResult,
+        issue,
         providerNotice: notice,
         ...(stateChanged || itineraryChanged || newItineraryReview
           ? { notificationSentAt: null, notificationAttemptAt: null }
@@ -783,6 +797,8 @@ export async function refreshBooking(row: OtaBooking) {
   if (!cancelled && row.status === "cancelled") return row;
   if (!cancelled && !supplierBookingConfirmed(row.kind, result))
     throw new OtaError("Provider confirmation is incomplete", 409);
+  if ((!cancelled || row.status === "cancelled") && isDeepStrictEqual(row.providerResult, result))
+    return markSupplierSynced(row);
   const previousDocuments = new Set(
     ((row.providerResult as any)?.documents || [])
       .map((d: any) => d.unique_identifier)

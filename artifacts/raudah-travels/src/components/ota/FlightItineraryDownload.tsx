@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Download } from "lucide-react";
 import type { createFlightItineraryPdf } from "@/lib/flightItineraryPdf";
 
@@ -8,18 +8,34 @@ export function FlightItineraryDownload({ itinerary, className }: {
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const scope = useRef(0);
+  const pending = useRef(false);
+  const snapshot = JSON.stringify(itinerary);
+  useLayoutEffect(() => {
+    pending.current = false;
+    setBusy(false);
+    setError("");
+    return () => { scope.current++; };
+  }, [snapshot]);
   if (!itinerary.slices?.some((slice) => slice.segments?.length)) return null;
   async function download() {
+    if (pending.current) return;
+    const active = scope.current;
+    pending.current = true;
     setBusy(true);
     setError("");
     try {
       const { createFlightItineraryPdf } = await import("@/lib/flightItineraryPdf");
+      if (scope.current !== active) return;
       const reference = itinerary.reference.replace(/[^A-Za-z0-9-]/g, "").slice(0, 70);
       createFlightItineraryPdf(itinerary).save(`FlyRaudah-itinerary-${reference}.pdf`);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Unable to download. Try printing the itinerary.");
+      if (scope.current === active) setError(error instanceof Error ? error.message : "Unable to download. Try printing the itinerary.");
     } finally {
-      setBusy(false);
+      if (scope.current === active) {
+        pending.current = false;
+        setBusy(false);
+      }
     }
   }
   return <div>

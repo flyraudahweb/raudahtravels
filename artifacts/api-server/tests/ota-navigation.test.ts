@@ -380,6 +380,22 @@ describe("OTA navigation and pending actions", () => {
     expect(state.navigate).toHaveBeenCalledWith("/travel/bookings/renewed");
   });
 
+  it("withholds itinerary downloads until the updated Nuitee schedule is verified", async () => {
+    const confirmedOffer = { slices: [{ segments: [{ departing_at: "2099-01-01T08:00:00" }] }] };
+    state.api.mockImplementation((path: string) => {
+      if (path === "/bookings/under-review" || path === "/bookings/verified") return Promise.resolve({
+        booking: { ...booking(path.split("/").at(-1)!, "confirmed"), supplier: "nuitee", offer: confirmedOffer,
+          providerResult: { itineraryReview: path.endsWith("under-review") } },
+      });
+      return Promise.resolve({ events: [] });
+    });
+    await render(h(TravelBooking, { bookingId: "under-review" }));
+    expect(button("Download itinerary PDF")).toBeUndefined();
+    expect(button("Print itinerary / voucher")).toBeUndefined();
+    await render(h(TravelBooking, { bookingId: "verified" }));
+    expect(button("Download itinerary PDF")).toBeTruthy();
+  });
+
   it("reports missing supplier traveller data without crashing checkout", async () => {
     state.api.mockImplementation((path: string) =>
       Promise.resolve(

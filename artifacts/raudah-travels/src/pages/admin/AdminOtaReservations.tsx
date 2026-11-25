@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useUser } from "@clerk/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
@@ -108,20 +108,26 @@ function ReservationDetail({ id, userId, onChange }: { id: string; userId?: stri
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [quote, setQuote] = useState<any>();
+  const pending = useRef(false);
   const details = useQuery({ queryKey: ["ota-reservation", userId, id],
     queryFn: ({ signal }) => ota(base, undefined, undefined, signal), enabled: !!userId, gcTime: 0, retry: false,
   });
   const data = details.isSuccess ? details.data : undefined;
   async function run(path: string, body: object | undefined, success: string) {
+    if (pending.current) return;
+    pending.current = true;
     setBusy(true); setError(""); setMessage("");
     try {
       const response = await ota(base + path, body);
       if (path === "/cancellation-quote") setQuote(response.quote);
-      else { await details.refetch(); onChange(); }
+      else {
+        if (path === "/refresh") setQuote(undefined);
+        await details.refetch(); onChange();
+      }
       setMessage(success);
     } catch (error) {
       setError(error instanceof Error ? error.message : "The action could not be completed.");
-    } finally { setBusy(false); }
+    } finally { pending.current = false; setBusy(false); }
   }
   if (details.error) return <p role="alert" className={`${card} text-red-800`}>{details.error.message}</p>;
   if (!data) return <p role="status" className={card}>Loading reservation…</p>;
@@ -131,7 +137,7 @@ function ReservationDetail({ id, userId, onChange }: { id: string; userId?: stri
   const service = work.service;
   const finance = work.finance;
   const isHotel = booking.kind === "hotel";
-  const printable = permissions.documents && booking.status === "confirmed" && (!isHotel || booking.locator);
+  const printable = permissions.documents && booking.status === "confirmed" && !booking.itineraryReview && (!isHotel || booking.locator);
   const documentTitle = isHotel ? "Hotel voucher" : "Flight itinerary";
   const policyOffer = { ...booking.offer, accommodation: { ...booking.offer.accommodation, rooms: [{ rates: booking.offer.rates }] } };
   return <div className="space-y-4">
@@ -155,10 +161,22 @@ function ReservationDetail({ id, userId, onChange }: { id: string; userId?: stri
         {editable && work.assigned && <button className={outline} disabled={busy} onClick={() => void run("/case", { action: "release", revision: rev }, "Case released.")}>Release case</button>}
         {editable && work.resolvedAt && <button className={outline} disabled={busy} onClick={() => void run("/case", { action: "reopen", revision: rev }, "Case reopened.")}>Reopen case</button>}
       </div>
-      {editable && !work.resolvedAt && <form className="flex flex-wrap gap-2" onSubmit={(event) => {
+      {editable && !work.resolvedAt && <form className="space-y-3" onSubmit={(event) => {
         const form = formFields(event);
-        void run("/case", { action: "resolve", revision: rev, note: form.get("note") }, "Case resolved.");
-      }}><input name="note" className={`${travelInput} flex-1`} aria-label="Resolution note" placeholder="Resolution note" minLength={3} maxLength={1000} required /><button className={outline} disabled={busy}>Resolve case</button></form>}
+        const customerMessage = String(form.get("customerMessage") ?? "").trim();
+        if (customerMessage && customerMessage.length < 10) {
+          setError("Enter at least 10 characters in the customer update.");
+          return;
+        }
+        void run("/case", { action: "resolve", revision: rev, note: form.get("note"), customerMessage: customerMessage || undefined },
+          customerMessage ? "Case resolved and the customer request closed." : "Case resolved.");
+      }}>
+        <input name="note" className={travelInput} aria-label="Internal resolution note" placeholder="Internal resolution note" minLength={3} maxLength={1000} required />
+        {booking.serviceRequest && <label className="block space-y-1 text-sm text-slate-700">Customer update to close their request (optional)
+          <textarea name="customerMessage" minLength={10} maxLength={1000} className={travelInput} placeholder="Leave blank to keep the customer request open" />
+        </label>}
+        <button className={outline} disabled={busy}>Resolve case</button>
+      </form>}
     </section>
     <section className={`${card} print:hidden`}>
       <h3 className="font-bold">Changes and cancellations</h3>
@@ -167,7 +185,10 @@ function ReservationDetail({ id, userId, onChange }: { id: string; userId?: stri
       {booking.supplier === "nuitee" && !isHotel && booking.status === "confirmed" && <button className={outline} disabled={busy} onClick={() => void run("/cancellation-quote", undefined, "Supplier quote received.")}>Get Nuitee cancellation quote</button>}
       {quote && <dl className="grid gap-3 rounded-lg bg-indigo-50 p-3 sm:grid-cols-2"><DetailField name="Estimated refund" value={quote.refund ? `${quote.refund.currency} ${quote.refund.amount}` : "Unavailable"}/><DetailField name="Penalty" value={quote.penalty ? `${quote.penalty.currency} ${quote.penalty.amount}` : "Unavailable"}/><DetailField name="Quote confidence" value={quote.confidence}/><DetailField name="Refund destination" value={quote.destination || "Unavailable"}/></dl>}
       {service && <dl className="grid gap-3 rounded-lg bg-slate-50 p-3 sm:grid-cols-2"><DetailField name="Case stage" value={stages[service.stage as keyof typeof stages]} /><DetailField name="Request type" value={service.kind} /><DetailField name="Proposed fee" value={service.fee == null ? "Unavailable" : `${service.currency} ${service.fee}`} /><DetailField name="Proposed refund" value={service.refund == null ? "Unavailable" : `${service.currency} ${service.refund}`} /><DetailField name="Operator note" value={service.note} />{service.supplierReference && <DetailField name="Supplier case reference" value={service.supplierReference}/>}</dl>}
-      {editable && booking.paidAt && service?.stage !== "supplier_submitted" && <ServiceForm key={`${rev}:${!!quote}`} service={service} quote={quote} busy={busy} save={(body, text) => void run("/service", { ...body, revision: rev }, text)} />}
+      {editable && booking.paidAt && !["cancelled", "refunded"].includes(booking.status) && (work.resolvedAt || service?.stage !== "supplier_submitted") && (
+        <ServiceForm key={`${rev}:${!!quote}`} service={work.resolvedAt ? undefined : service} quote={quote} busy={busy}
+          save={(body, text) => void run("/service", { ...body, revision: rev }, text)} />
+      )}
       {booking.status === "cancelled" && <p className="text-sm font-semibold text-slate-800">Supplier cancellation recorded. Check the customer refund separately in Finance.</p>}
     </section>
     {permissions.documents && <section className={`${card} print:border-0 print:shadow-none`} data-ota-print={printable ? "" : undefined}>
@@ -184,7 +205,9 @@ function ReservationDetail({ id, userId, onChange }: { id: string; userId?: stri
           {booking.ticket && <a className={outline} href={`/api/ota${base}/ticket`}>Download airline ticket</a>}
           {booking.mode === "live" && booking.paidAt && <button className={outline} disabled={busy} onClick={() => void run("/send-documents", {}, "Secure booking link sent to the saved customer email.")}>Email secure booking link</button>}</div>
         {work.documentSentAt && <p className="text-xs text-slate-600 print:hidden">Last emailed {new Date(work.documentSentAt).toLocaleString("en-NG", { timeZone: "Africa/Lagos" })}</p>}
-      </> : <p className="text-sm text-slate-600">Documents become available when the reservation is confirmed.</p>}
+      </> : <p className="text-sm text-slate-600">{booking.itineraryReview
+        ? "Confirm the updated flight schedule with the supplier before issuing documents."
+        : "Documents become available when the reservation is confirmed."}</p>}
     </section>}
     {permissions.finance && booking.paidAt && <section className={`${card} print:hidden`}>
       <h3 className="font-bold">Finance reconciliation</h3>

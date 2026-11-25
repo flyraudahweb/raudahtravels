@@ -178,7 +178,9 @@ async function maintainBookings() {
         result.slices.some((slice: any) => slice?.segments?.length)
           ? result.slices
           : (row.offer as { slices?: unknown })?.slices;
-      if (row.kind === "flight" && Array.isArray(slices)) {
+      if (row.kind === "flight" && result.itineraryReview === true) {
+        confirmationDetails.push("Contact the travel team to confirm your latest flight schedule.");
+      } else if (row.kind === "flight" && Array.isArray(slices)) {
         for (const slice of slices) {
           if (!Array.isArray(slice?.segments)) continue;
           for (const segment of slice.segments) {
