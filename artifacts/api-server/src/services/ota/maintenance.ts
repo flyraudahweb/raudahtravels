@@ -1,4 +1,5 @@
-import { db, otaBookingsTable as bookings } from "@workspace/db";
+import { expirePackageHolds } from "../payments/packageHolds";
+import { db, otaBookingsTable as bookings, otaPrebookClaimsTable } from "@workspace/db";
 import { and, eq, isNull, lt, or, asc, inArray, sql } from "drizzle-orm";
 import { audit, refreshBooking } from "./booking";
 import { sendEmail } from "../../utils/email";
@@ -20,9 +21,17 @@ export async function maintainOta() {
   await processOtaPayments();
   await processDuffelEvents();
   await maintainBookings();
+  await expirePackageHolds();
 }
 
 async function maintainBookings() {
+  await db.transaction(async (tx) => {
+    const expired = await tx.delete(otaPrebookClaimsTable)
+      .where(sql`${otaPrebookClaimsTable.createdAt} < now() - interval '2 minutes'`)
+      .returning({ id: otaPrebookClaimsTable.attemptId });
+    if (expired.length) await tx.update(bookings).set({ checkoutEditClaim: null })
+      .where(inArray(bookings.checkoutEditClaim, expired.map(({ id }) => id)));
+  });
   const stale = await db
     .update(bookings)
     .set({
@@ -227,6 +236,7 @@ export function startOtaMaintenance(
     { name: "payment queue", run: processOtaPayments },
     { name: "supplier inbox", run: processDuffelEvents },
     { name: "booking maintenance", run: maintainBookings },
+    { name: "package holds", run: expirePackageHolds },
   ],
 ) {
   // Slow provider requests in one stage must not stop the other queues or alerts.

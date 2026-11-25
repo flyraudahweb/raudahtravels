@@ -21,7 +21,7 @@ import PassportScanner from "@/components/PassportScanner";
 import BatchPassportUpload, { type BatchPilgrim } from "@/components/BatchPassportUpload";
 import { useFormFieldConfig, validateRequiredFields } from "@/hooks/useFormFieldConfig";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { uploadFile } from "@/lib/upload";
+import { uploadFile, uploadScannedImage } from "@/lib/upload";
 import { openAgentPackagePayment } from "@/lib/package-payment";
 
 function FileUploadBox({ label, accept, value, onChange, previewType = "image", folder = "documents" }: {
@@ -178,6 +178,8 @@ export default function AgentClients() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [regStep, setRegStep] = useState(1);
   const registrationCheckout = useRef<string | undefined>(undefined);
+  const batchRegistration = useRef<{ id: string; checkoutIds: string[] } | null>(null);
+  const scannedUploads = useRef(new Map<string, Promise<unknown>>());
   const [savedOnlineBooking, setSavedOnlineBooking] = useState<string | null>(null);
   const openingPayment = useRef(false);
   const [isOpeningPayment, setIsOpeningPayment] = useState(false);
@@ -340,13 +342,29 @@ export default function AgentClients() {
     }
   }
 
+  async function privateScan(value: unknown, folder: "passports" | "photos") {
+    if (typeof value !== "string" || !value.startsWith("data:")) return value;
+    const key = folder + ":" + value;
+    const cached = scannedUploads.current.get(key);
+    if (cached) return cached;
+    const pending = uploadScannedImage(value, folder);
+    scannedUploads.current.set(key, pending);
+    try { return await pending; }
+    catch (error) { scannedUploads.current.delete(key); throw error; }
+  }
+
   const registerMutation = useMutation({
-    mutationFn: (body: Record<string, unknown>) =>
-      fetch("/api/agent/register-client", {
+    mutationFn: async (body: Record<string, unknown>) => {
+      const [passportCopyUrl, profilePhotoUrl] = await Promise.all([
+        privateScan(body.passportCopyUrl, "passports"),
+        privateScan(body.profilePhotoUrl, "photos"),
+      ]);
+      return fetch("/api/agent/register-client", {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || "Failed"); return d; }),
+        body: JSON.stringify({ ...body, passportCopyUrl, profilePhotoUrl }),
+      }).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || "Failed"); return d; });
+    },
     onSuccess: async (data) => {
       submittingRef.current = false;
       // Skip automatic navigation during batch submission
@@ -388,9 +406,9 @@ export default function AgentClients() {
     if (req("phone") && !form.phone.trim()) { submittingRef.current = false; toast({ title: "Phone number is required", variant: "destructive" }); return; }
     const warn = passportWarn(form.passportExpiry);
     if (warn === "expired") { submittingRef.current = false; toast({ title: "Passport expired", description: "Cannot register with expired passport.", variant: "destructive" }); return; }
-    if (form.paymentMethod === "online") registrationCheckout.current ??= crypto.randomUUID();
+    registrationCheckout.current ??= crypto.randomUUID();
     registerMutation.mutate({
-      checkoutId: form.paymentMethod === "online" ? registrationCheckout.current : undefined,
+      checkoutId: registrationCheckout.current,
       packageId: form.packageId,
       packageDateId: form.packageDateId || undefined,
       civility: form.civility || undefined,
@@ -422,7 +440,7 @@ export default function AgentClients() {
       visaNumber: form.visaNumber || undefined,
       passportCopyUrl: form.passportCopyUrl || undefined,
       profilePhotoUrl: form.profilePhotoUrl || undefined,
-      amountPaid: form.paymentMethod === "online" ? 0 : form.paymentMethod === "wallet" ? effectivePrice : (form.amountPaid ? Number(form.amountPaid) : undefined),
+      amountPaid: form.paymentMethod === "online" ? 0 : form.paymentMethod === "wallet" ? undefined : (form.amountPaid ? Number(form.amountPaid) : undefined),
       paymentMethod: form.paymentMethod === "online" ? "paystack" : form.paymentMethod,
       paymentReference: form.paymentReference || undefined,
       paymentProofUrl: form.paymentProofUrl || undefined,
@@ -1298,7 +1316,7 @@ export default function AgentClients() {
                         return acc + Number(effectivePrice) + roomSurcharge + ciExtra;
                       }, 0);
 
-                      if (totalWalletRequired > 0) {
+                      if (totalWalletRequired > 0 && !batchRegistration.current) {
                         const balance = walletData?.balance ?? 0;
                         if (balance < totalWalletRequired) {
                           toast({ title: "Insufficient wallet balance", description: `Need ₦${totalWalletRequired.toLocaleString()} from wallet, but you have ₦${balance.toLocaleString()}`, variant: "destructive" });
@@ -1307,7 +1325,8 @@ export default function AgentClients() {
                       }
 
                       setIsBatchSubmitting(true); setBatchProgress(0);
-                      const batchId = crypto.randomUUID();
+                      batchRegistration.current ??= { id: crypto.randomUUID(), checkoutIds: batchPilgrims.map(() => crypto.randomUUID()) };
+                      const { id: batchId, checkoutIds } = batchRegistration.current;
                       const results: { name: string; success: boolean; reference?: string; error?: string }[] = [];
                       for (let i = 0; i < batchPilgrims.length; i++) {
                         const p = batchPilgrims[i];
@@ -1319,10 +1338,6 @@ export default function AgentClients() {
                           const ageM = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
                           if (ageM <= 23) detType = "infant"; else if (ageM <= 132) detType = "child";
                         }
-                        const roomSurcharge = roomSurcharges[(p.roomPreference || "quad").toLowerCase()] || 0;
-                        const ciExtra = detType === "infant" ? (childInfantPricing.infantPrice || 0) : detType === "child" ? (childInfantPricing.childPrice || 0) : 0;
-                        const pTotalPrice = Number(effectivePrice) + roomSurcharge + ciExtra;
-
                         try {
                           const data = await registerMutation.mutateAsync({
                             packageId: form.packageId,
@@ -1357,7 +1372,8 @@ export default function AgentClients() {
                             roomPreference: p.roomPreference || "Double",
                             departureCity: p.departureCity || undefined,
                             paymentMethod: pm.method,
-                            amountPaid: pm.method === "wallet" ? pTotalPrice : (pm.amountPaid ? Number(pm.amountPaid) : 0),
+                            checkoutId: checkoutIds[i],
+                            amountPaid: pm.method === "wallet" ? undefined : (pm.amountPaid ? Number(pm.amountPaid) : 0),
                             pilgrimType: detType,
                             batchId,
                           });
@@ -1962,6 +1978,8 @@ export default function AgentClients() {
                     <Button type="button" onClick={() => {
                       setResult(null);
                       registrationCheckout.current = undefined;
+                      batchRegistration.current = null;
+                      scannedUploads.current.clear();
                       setSavedOnlineBooking(null);
                       setForm(f => ({ ...BLANK_FORM, packageId: f.packageId, packageDateId: f.packageDateId, paymentMethod: f.paymentMethod }));
                       setPilgrimType("adult");

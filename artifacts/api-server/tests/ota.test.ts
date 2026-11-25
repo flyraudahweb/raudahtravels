@@ -199,7 +199,7 @@ beforeAll(async () => {
   setupTrace("applying checked-in migrations");
   // Verify the checked-in migration, including its database constraints.
   await module.pool.query(
-    "DROP TABLE ota_duffel_events, ota_payment_jobs, ota_events, ota_bookings CASCADE",
+    "DROP TABLE ota_prebook_claims, ota_payment_credentials, ota_duffel_events, ota_payment_jobs, ota_events, ota_bookings CASCADE",
   );
   await module.pool.query(
     await readFile(path.join(root, "lib/db/drizzle/0009_ota.sql"), "utf8"),
@@ -223,6 +223,7 @@ beforeAll(async () => {
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0018_booking_consistency.sql"), "utf8"));
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0019_checkout_recovery.sql"), "utf8"));
   await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0020_paystack_settlement_guards.sql"), "utf8"));
+  await module.pool.query(await readFile(path.join(root, "lib/db/drizzle/0021_booking_review_guards.sql"), "utf8"));
   await module.db.insert(module.profilesTable).values([
     {
       id: "user",
@@ -326,6 +327,7 @@ beforeEach(async () => {
   await module.db.delete(module.paystackSettlementsTable);
   await module.db.delete(module.otaPaymentJobsTable);
   await module.db.delete(module.otaEventsTable);
+  await module.db.delete(module.otaPrebookClaimsTable);
   await module.db.delete(module.otaBookingsTable);
   await module.db.delete(module.siteSettingsTable);
   await module.db.insert(module.siteSettingsTable).values({
@@ -1031,6 +1033,7 @@ it.each([
     })),
   };
   let prebooks = 0;
+  let updatedJourney = journey;
   let purchases = 0;
   let searchedLegs: unknown;
   const fallback = globalThis.fetch;
@@ -1071,7 +1074,7 @@ it.each([
       case "/v3.0/flights/bookings/n-flight-1":
         return data({
           booking: {
-            journey,
+            journey: updatedJourney,
             status: "CONFIRMED",
             bookingId: "n-flight-1",
             bookingRef: "TICKETED",
@@ -1146,6 +1149,7 @@ it.each([
   );
   booking = first.booking;
   expect(repeat.booking.id).toBe(booking.id);
+  expect(prebooks).toBe(1);
   expect(booking.offer.slices).toHaveLength(legs.length);
   expect(booking.offer.checkoutSelectionId).toBeUndefined();
   const corrected = await request("/bookings", "user", {
@@ -1195,6 +1199,17 @@ it.each([
       `ABV ${secondDate}T08:00:00 → KAN ${secondDate}T09:10:00`,
     );
   }
+  updatedJourney = { ...journey, journeyKey: "flight-1-rescheduled", segments: journey.segments.map((segment) => ({
+    ...segment, departureTime: segment.departureTime.replace("08:00", "10:00"),
+    arrivalTime: segment.arrivalTime.replace("09:10", "11:10"),
+  })) };
+  const changed = await request(path + "/refresh", "user", {});
+  expect(changed.status).toBe(200);
+  expect((await changed.json()).booking.providerResult.slices[0].segments[0].departing_at).toContain("10:00");
+  expect(await module.db.query.otaEventsTable.findMany({
+    where: eq(module.otaEventsTable.action, "itinerary_changed"),
+  })).toHaveLength(1);
+
 });
 
 async function create(native = false, expectedTotalKobo = 10000000) {
@@ -2002,6 +2017,54 @@ describe("package checkout consistency", () => {
     expect((await module.db.query.packagesTable.findFirst())?.currentBookings).toBe(1);
   });
 
+  it("calculates the agent room price and debits initial registration once", async () => {
+    const packageId = await packageWithCapacity(4);
+    const agentId = randomUUID();
+    await module.db.insert(module.agentsTable).values({
+      id: agentId, userId: "user", businessName: "Test agent", status: "active",
+    });
+    await module.db.insert(module.agentWalletsTable).values({ id: randomUUID(), agentId, balance: "750000" });
+    await module.db.insert(module.siteSettingsTable).values({ key: "room_surcharges", value: { single: 15000 } });
+    const body = { checkoutId: randomUUID(), packageId, firstName: "Example", lastName: "Client",
+      roomPreference: "Single", roomSurcharge: 0, paymentMethod: "wallet" };
+    const register = () => legacyRequest("/agent/register-client", "user", body);
+    const [first, repeat] = await Promise.all([register(), register()]);
+    expect([first.status, repeat.status]).toEqual([201, 201]);
+    expect((await first.json()).reference).toBe((await repeat.json()).reference);
+    expect(Number((await module.db.query.agentWalletsTable.findFirst())?.balance)).toBe(535000);
+    expect(await module.db.query.walletTransactionsTable.findMany()).toHaveLength(1);
+  });
+
+  it("releases an expired unpaid group once across concurrent maintenance runs", async () => {
+    const packageId = await packageWithCapacity(2);
+    const created = await legacyRequest("/bookings", "user", {
+      packageId, fullName: "Guest", children: [{ firstName: "Example", lastName: "Child", dateOfBirth: "2022-01-01" }],
+    });
+    expect(created.status).toBe(201);
+    const { id } = await created.json();
+    await module.db.update(module.bookingsTable).set({ capacityHoldExpiresAt: new Date(Date.now() - 1000) })
+      .where(eq(module.bookingsTable.id, id));
+    const { expirePackageHolds } = await import("../src/services/payments/packageHolds");
+    await Promise.all([expirePackageHolds(), expirePackageHolds()]);
+    expect((await module.db.query.bookingsTable.findMany()).map((row) => row.status)).toEqual(["cancelled", "cancelled"]);
+    expect((await module.db.query.packagesTable.findFirst())?.currentBookings).toBe(0);
+  });
+
+  it("restores only payments archived with the booking", async () => {
+    const bookingId = await packageFixture([]);
+    const offline = { bookingId, userId: "user", amount: "50000", method: "cash" as const, status: "verified" as const };
+    await module.db.insert(module.paymentsTable).values([
+      { id: randomUUID(), ...offline, reference: "individually-archived", isArchived: true },
+      { id: randomUUID(), ...offline, reference: "archive-with-parent" },
+    ]);
+    expect((await legacyRequest(`/bookings/${bookingId}/archive`, "admin", {}, "PUT")).status).toBe(200);
+    expect((await legacyRequest(`/bookings/${bookingId}/restore`, "admin", {}, "PUT")).status).toBe(200);
+    const payments = await module.db.query.paymentsTable.findMany();
+    expect(payments.find((payment) => payment.reference === "individually-archived")?.isArchived).toBe(true);
+    expect(payments.find((payment) => payment.reference === "archive-with-parent")?.isArchived).toBe(false);
+    expect(Number((await module.db.query.bookingsTable.findFirst())?.amountPaid)).toBe(50000);
+  });
+
   it("asks for a file reupload when a scan supplied inline document data", async () => {
     const packageId = await packageWithCapacity(1);
     const response = await legacyRequest("/bookings", "user", {
@@ -2010,6 +2073,27 @@ describe("package checkout consistency", () => {
     expect(response.status).toBe(400);
     expect((await response.json()).error).toContain("Upload the passport copy again");
   });
+});
+
+it("requires an active account and a staff grant for protected booking operations", async () => {
+  const staffId = randomUUID();
+  await module.db.insert(module.profilesTable).values({
+    id: staffId, clerkUserId: staffId, email: "staff@example.test", fullName: "Staff fixture", role: "staff",
+  });
+  try {
+    const bank = () => legacyRequest("/admin/bank-accounts", staffId, undefined, "GET");
+    expect((await bank()).status).toBe(403);
+    await module.db.insert(module.staffPermissionsTable).values({ id: randomUUID(), userId: staffId, permission: "bank_accounts" });
+    expect((await bank()).status).toBe(200);
+    await module.db.update(module.profilesTable).set({ accountStatus: "suspended" })
+      .where(eq(module.profilesTable.id, staffId));
+    expect((await bank()).status).toBe(403);
+    const bookingId = await packageFixture([]);
+    expect((await legacyRequest(`/bookings/${bookingId}`, staffId, undefined, "GET")).status).toBe(404);
+  } finally {
+    await module.db.delete(module.staffPermissionsTable).where(eq(module.staffPermissionsTable.userId, staffId));
+    await module.db.delete(module.profilesTable).where(eq(module.profilesTable.id, staffId));
+  }
 });
 
 it("requires private upload ownership and prevents shared caching", async () => {
@@ -2324,15 +2408,15 @@ describe("shared Paystack payment isolation", () => {
       .insert(module.agentWalletsTable)
       .values({ id: randomUUID(), agentId, balance: "100000" });
     await module.db.update(module.bookingsTable).set({ agentId });
-    const responses = await Promise.all(
-      [first, second].map((bookingId) =>
-        legacyRequest("/payments/admin-record", "user", {
-          bookingId,
-          amount: 75000,
-          method: "wallet",
-        }),
-      ),
-    );
+    const attempts = [first, second].map((bookingId) => ({
+      bookingId, amount: 75000, method: "wallet", checkoutId: randomUUID(),
+    }));
+    const submit = (attempt: typeof attempts[number]) =>
+      legacyRequest("/payments/admin-record", "user", attempt);
+    const responses = await Promise.all(attempts.map(submit));
+    const winner = responses.findIndex((response) => response.status === 201);
+    expect(winner).toBeGreaterThanOrEqual(0);
+    expect((await submit(attempts[winner])).status).toBe(201);
     expect(responses.filter((r) => r.status === 201)).toHaveLength(1);
     // The loser can hit the balance check before or during the guarded debit.
     const rejected = responses.find((r) => r.status !== 201)!;
@@ -3536,6 +3620,27 @@ describe("OTA authorization and payments", () => {
     expect(saved?.previousPaymentReferences).toContain(booking.reference);
     expect(saved?.paymentReference).not.toBe(booking.reference);
   });
+  it("initializes a repeated offer once and verifies payment with its original merchant key", async () => {
+    const first = await create();
+    const repeat = await create();
+    expect(repeat.id).toBe(first.id);
+    const path = `/bookings/${first.id}`;
+    expect((await request(path + "/pay", "user", {})).status).toBe(200);
+    await module.db.insert(module.siteSettingsTable).values({
+      key: "paystack_secret_key", value: "sk_test_replacement_merchant",
+    });
+    const originalFetch = globalThis.fetch;
+    const verificationKeys: (string | null)[] = [];
+    vi.stubGlobal("fetch", (input: string | URL, options?: RequestInit) => {
+      if (String(input).includes("api.paystack.co/transaction/verify/")) {
+        verificationKeys.push(new Headers(options?.headers).get("Authorization"));
+      }
+      return originalFetch(input, options);
+    });
+    expect((await request(path + "/complete", "user", {})).status).toBe(200);
+    expect(verificationKeys).toEqual(["Bearer sk_test_fake"]);
+    expect(supplierCalls).toBe(1);
+  });
   it("records a second verified Paystack reference for reconciliation without purchasing twice", async () => {
     await create();
     const original = booking.reference;
@@ -3548,7 +3653,14 @@ describe("OTA authorization and payments", () => {
     const confirmed = await fulfill(replacement);
     expect(confirmed.status).toBe("confirmed");
     gatewayPatch = { id: 102 };
-    await Promise.all([fulfill(original), fulfill(original)]);
+    const checks = await Promise.all([
+      request(`/admin/bookings/${booking.id}/check-payment`, "super", { reference: original }),
+      fulfill(original),
+    ]);
+    expect((checks[0] as Response).status).toBe(200);
+    const { refreshBooking } = await import("../src/services/ota/booking");
+    const refreshed = await refreshBooking((await module.db.query.otaBookingsTable.findFirst())!);
+    expect(refreshed.paymentIssue).toContain("reconciliation");
     expect(supplierCalls).toBe(1);
     const events = await module.db.query.otaEventsTable.findMany({
       where: eq(module.otaEventsTable.action, "additional_payment_verified"),
@@ -3943,6 +4055,7 @@ it("paginates owner history without leaking other accounts and reports owner tot
   await module.db.insert(module.otaBookingsTable).values(
     Array.from({ length: 51 }, (_, i) => ({
       ...row,
+      checkoutKey: null,
       id: randomUUID(),
       reference: `OTA-history-${i}`,
       clerkUserId: i === 50 ? "other" : "user",
@@ -4108,6 +4221,7 @@ it("backs off failed supplier refreshes so they do not starve other bookings", a
   await module.db.insert(module.otaBookingsTable).values(
     Array.from({ length: 10 }, (_, i) => ({
       ...row,
+      checkoutKey: null,
       id: `000-failed-${i}`,
       reference: `OTA-failed-${i}`,
       providerBookingId: `ord_unavailable${i}`,

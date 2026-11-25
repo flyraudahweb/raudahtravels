@@ -566,6 +566,13 @@ export default function FlightResults({
                       const first = slice.segments?.[0],
                         last = slice.segments?.at(-1),
                         stops = flightStops({ slices: [slice] });
+                      const carriers = new Set<string>((slice.segments ?? [])
+                        .map((segment: any) => segment.marketing_carrier?.iata_code || segment.marketing_carrier?.name)
+                        .filter(Boolean));
+                      const carrier = first?.marketing_carrier;
+                      const carrierName = carriers.size > 1 ? "Multiple airlines" : carrier?.name || carrier?.iata_code || "Airline";
+                      const logo = carriers.size === 1 && carrier?.iata_code && carrier.iata_code === offer.owner?.iata_code
+                        ? offer.owner?.logo_symbol_url : undefined;
                       return (
                         <div
                           key={slice.id || index}
@@ -573,9 +580,9 @@ export default function FlightResults({
                         >
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              {offer.owner?.logo_symbol_url ? (
+                              {logo ? (
                                 <img
-                                  src={offer.owner.logo_symbol_url}
+                                  src={logo}
                                   alt=""
                                   className="h-7 w-7 object-contain"
                                   loading="lazy"
@@ -583,9 +590,8 @@ export default function FlightResults({
                               ) : (
                                 <Plane size={23} className="text-[#2D3199]" />
                               )}
-                              <span className="hidden truncate text-xs font-semibold text-slate-700 sm:block">
-                                {offer.owner?.name ||
-                                  first?.marketing_carrier?.name}
+                              <span className="truncate text-xs font-semibold text-slate-700" title={carrierName}>
+                                {carrierName}
                               </span>
                             </div>
                             <p className="mt-1 text-[9px] text-slate-400">

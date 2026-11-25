@@ -43,6 +43,11 @@ export const bookingMessages: Record<
       "The airline updated your itinerary. Review your latest travel times and contact the travel team if you need help.",
     urgent: true,
   },
+  itinerary_review_required: {
+    title: "Flight schedule needs confirmation",
+    message: "The airline reported a change. Contact the travel team to confirm the current flight schedule.",
+    urgent: true,
+  },
   supplier_cancellation_detected: {
     title: "Reservation cancelled by supplier",
     message:

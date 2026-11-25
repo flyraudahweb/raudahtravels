@@ -4,7 +4,7 @@ import {
   paymentsTable, commissionsTable, agentsTable, agentPackageDiscountsTable,
   siteSettingsTable,
 } from "@workspace/db";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 const nullify = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v);
@@ -73,6 +73,16 @@ export async function createBooking(input: CreateBookingInput): Promise<{ bookin
 
   await registrationTransaction(async () => {
     const tx = db;
+    if (input.parentBookingId) {
+      const [parent] = await tx.select({ id: bookingsTable.id }).from(bookingsTable)
+        .where(and(eq(bookingsTable.id, input.parentBookingId), eq(bookingsTable.packageId, input.packageId),
+          agentIdValue ? eq(bookingsTable.agentId, agentIdValue) : isNull(bookingsTable.agentId),
+          input.registeredByStaffId ? eq(bookingsTable.registeredByStaffId, input.registeredByStaffId)
+            : input.userId ? eq(bookingsTable.userId, input.userId) : sql`false`,
+          isNull(bookingsTable.parentBookingId), eq(bookingsTable.isArchived, false), sql`${bookingsTable.status} <> 'cancelled'`))
+        .for("update");
+      if (!parent) throw new RegistrationError("Select an active main booking for the same package and registrant", 400);
+    }
     // Row-level lock on the package to prevent overbooking race condition
     const lockResult = await tx.execute(sql`SELECT * FROM packages WHERE id = ${input.packageId} FOR UPDATE`);
     const pkgRow = (lockResult as any).rows?.[0] ?? (Array.isArray(lockResult) ? lockResult[0] : null);

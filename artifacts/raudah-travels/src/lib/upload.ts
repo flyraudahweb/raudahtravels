@@ -60,3 +60,11 @@ export async function uploadFile(
   const data = await response.json();
   return data.url as string;
 }
+
+export function uploadScannedImage(value: unknown, folder: "passports" | "photos") {
+  if (typeof value !== "string" || !value.startsWith("data:")) return Promise.resolve(value);
+  const match = /^data:(image\/(?:jpeg|png|webp));base64,([a-z0-9+/=]+)$/i.exec(value);
+  if (!match) return Promise.reject(new Error("Scan the document again or upload a JPG, PNG, or WebP image."));
+  const bytes = Uint8Array.from(atob(match[2]), (character) => character.charCodeAt(0));
+  return uploadFile(new File([bytes], "scan", { type: match[1] }), folder);
+}

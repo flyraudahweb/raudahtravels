@@ -1,3 +1,4 @@
+import { activeBookingProfile, hasStaffGrant } from "../lib/bookingAccess";
 import { Router } from "express";
 import { db } from "@workspace/db";
 import {
@@ -13,7 +14,7 @@ import {
 import { createNotification } from "../utils/notify.js";
 import { getAuth } from "@clerk/express";
 import { eq, and, sql, desc, inArray, isNotNull, isNull } from "drizzle-orm";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { sendPaymentReceipt } from "../utils/email";
 import { logger } from "../lib/logger";
 import {
@@ -67,14 +68,7 @@ router.use((req, res, next) => {
   next();
 });
 
-async function getProfileByClerkId(clerkUserId: string) {
-  return db.query.profilesTable.findFirst({
-    where: and(
-      eq(profilesTable.clerkUserId, clerkUserId),
-      eq(profilesTable.accountStatus, "active"),
-    ),
-  });
-}
+const getProfileByClerkId = activeBookingProfile;
 
 function toPaymentResponse(p: typeof paymentsTable.$inferSelect) {
   return {
@@ -137,7 +131,7 @@ router.get("/payments/stats", async (req, res) => {
   if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
   const profile = await getProfileByClerkId(clerkUserId);
   if (!profile) return res.status(404).json({ error: "Profile not found" });
-  const isAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
+  const isAdmin = (await hasStaffGrant(profile, "payments"));
   if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
 
   const [
@@ -229,7 +223,7 @@ router.get("/payments", async (req, res) => {
     limit = "50",
     offset = "0",
   } = req.query as Record<string, string>;
-  const isAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
+  const isAdmin = (await hasStaffGrant(profile, "payments"));
 
   const conditions: any[] = [];
   if (!isAdmin) conditions.push(eq(paymentsTable.userId, profile.id));
@@ -347,9 +341,7 @@ router.post("/payments", async (req, res) => {
     where: eq(bookingsTable.id, bookingId),
   });
   if (!booking) return res.status(404).json({ error: "Booking not found" });
-  const isCallerAdmin = ["admin", "super_admin", "staff"].includes(
-    profile.role,
-  );
+  const isCallerAdmin = (await hasStaffGrant(profile, "payments"));
   if (!isCallerAdmin && booking.userId !== profile.id)
     return res.status(403).json({ error: "Forbidden" });
 
@@ -388,7 +380,7 @@ router.get("/payments/outstanding", async (req, res) => {
   if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
   const profile = await getProfileByClerkId(clerkUserId);
   if (!profile) return res.status(404).json({ error: "Profile not found" });
-  const isAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
+  const isAdmin = (await hasStaffGrant(profile, "payments"));
   if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
 
   const {
@@ -487,7 +479,7 @@ router.get("/payments/:id", async (req, res) => {
   });
   if (!payment) return res.status(404).json({ error: "Payment not found" });
 
-  const isAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
+  const isAdmin = (await hasStaffGrant(profile, "payments"));
   if (!isAdmin && payment.userId !== profile.id)
     return res.status(403).json({ error: "Forbidden" });
   return res.json(toPaymentResponse(payment));
@@ -499,7 +491,7 @@ router.put("/payments/:id/verify", async (req, res) => {
   const actorProfile = await getProfileByClerkId(clerkUserId);
   if (!actorProfile)
     return res.status(404).json({ error: "Profile not found" });
-  const isAdmin = ["admin", "super_admin", "staff"].includes(actorProfile.role);
+  const isAdmin = (await hasStaffGrant(actorProfile, "payments"));
   if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
 
   const { status, notes } = req.body;
@@ -667,7 +659,7 @@ router.put("/payments/:id/reinstate", async (req, res) => {
   const actorProfile = await getProfileByClerkId(clerkUserId);
   if (!actorProfile)
     return res.status(404).json({ error: "Profile not found" });
-  if (!["admin", "super_admin", "staff"].includes(actorProfile.role)) {
+  if (!(await hasStaffGrant(actorProfile, "payments"))) {
     return res.status(403).json({ error: "Admin access required" });
   }
 
@@ -769,7 +761,7 @@ router.post("/payments/paystack/initialize", async (req, res) => {
         .where(eq(bookingsTable.id, bookingId))
         .for("update");
       if (!booking) throw new OnlinePaymentError("Booking not found", 404);
-      const isStaff = ["admin", "super_admin", "staff"].includes(profile.role);
+      const isStaff = (await hasStaffGrant(profile, "payments"));
       if (!isStaff && booking.userId !== profile.id) {
         const agent = await tx.query.agentsTable.findFirst({
           where: and(
@@ -1205,7 +1197,7 @@ router.post("/payments/paystack/verify", async (req, res) => {
     if (!payment)
       return res.status(404).json({ error: "Online payment record not found" });
     if (
-      !["admin", "super_admin", "staff"].includes(profile.role) &&
+      !(await hasStaffGrant(profile, "payments")) &&
       payment.userId !== profile.id
     )
       return res.status(403).json({ error: "Forbidden" });
@@ -1279,7 +1271,7 @@ router.post("/payments/admin-record", async (req, res) => {
   const actorProfile = await getProfileByClerkId(clerkUserId);
   if (!actorProfile)
     return res.status(404).json({ error: "Profile not found" });
-  const isAdmin = ["admin", "super_admin", "staff"].includes(actorProfile.role);
+  const isAdmin = (await hasStaffGrant(actorProfile, "payments"));
 
   // Also allow agents — they'll be verified against their booking below
   let actorAgent: typeof agentsTable.$inferSelect | null = null;
@@ -1303,6 +1295,7 @@ router.post("/payments/admin-record", async (req, res) => {
     proofUrl,
     notes,
     markVerified,
+    checkoutId,
   } = req.body;
   if (!bookingId || !amount || !method)
     return res
@@ -1355,35 +1348,18 @@ router.post("/payments/admin-record", async (req, res) => {
     });
   }
 
-  const outstandingBalance =
-    Number(booking.totalPrice) - Number(booking.amountPaid);
-  if (outstandingBalance <= 0) {
-    return res
-      .status(400)
-      .json({ error: "This booking is already fully paid" });
-  }
-  if (parsedAmount > outstandingBalance + 0.01) {
-    return res.status(400).json({
-      error: `Amount ₦${parsedAmount.toLocaleString()} exceeds the outstanding balance of ₦${outstandingBalance.toLocaleString()}`,
-    });
-  }
-
-  // Determine verification: admin can choose, agent wallet auto-verifies, other agent methods don't
   const isWalletPayment = method === "wallet" && !!actorAgent;
   const shouldVerify = isAdmin ? !!markVerified : isWalletPayment;
-
-  // Wallet balance check (agent wallet payments only)
-  if (isWalletPayment) {
-    const wallet = await db.query.agentWalletsTable.findFirst({
-      where: eq(agentWalletsTable.agentId, actorAgent!.id),
-    });
-    const walletBalance = Number(wallet?.balance || 0);
-    if (walletBalance < parsedAmount) {
-      return res.status(400).json({
-        error: `Insufficient wallet balance. Available: ₦${walletBalance.toLocaleString()}, Required: ₦${parsedAmount.toLocaleString()}`,
-      });
-    }
-  }
+  if (isWalletPayment && (typeof checkoutId !== "string" ||
+    !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(checkoutId)))
+    return res.status(400).json({ error: "A payment checkout is required for wallet payments" });
+  if (!isWalletPayment && typeof reference === "string" && /^WALLET-/i.test(reference.trim()))
+    return res.status(400).json({ error: "That reference is reserved for wallet payments" });
+  const walletReference = isWalletPayment
+    ? "WALLET-" + createHash("sha256").update(JSON.stringify([actorAgent!.id, bookingId, checkoutId.toLowerCase()])).digest("hex")
+    : undefined;
+  const outstandingBalance = Number(booking.totalPrice) - Number(booking.amountPaid);
+  let replayed = false;
 
   let payment: typeof paymentsTable.$inferSelect | undefined;
   let updatedBooking: typeof bookingsTable.$inferSelect | undefined;
@@ -1396,6 +1372,20 @@ router.post("/payments/admin-record", async (req, res) => {
         .from(bookingsTable)
         .where(eq(bookingsTable.id, bookingId))
         .for("update");
+      if (walletReference && lockedBooking && lockedBooking.agentId === actorAgent?.id) {
+        const saved = await tx.query.paymentsTable.findFirst({
+          where: and(eq(paymentsTable.bookingId, bookingId), eq(paymentsTable.reference, walletReference),
+            eq(paymentsTable.method, "wallet")),
+        });
+        if (saved) {
+          if (Number(saved.amount) !== parsedAmount)
+            throw new OnlinePaymentError("This wallet checkout was already used for a different amount.", 409);
+          payment = saved;
+          updatedBooking = lockedBooking;
+          replayed = true;
+          return;
+        }
+      }
       if (
         !lockedBooking ||
         !canPayPackage(lockedBooking) ||
@@ -1437,7 +1427,7 @@ router.post("/payments/admin-record", async (req, res) => {
           agentId: actorAgent.id,
           amount: String(-parsedAmount),
           type: "booking_payment",
-          reference: `TOPUP-${randomUUID().slice(0, 8).toUpperCase()}`,
+          reference: walletReference!,
           description: `Top-up payment for ${booking.fullName || "Client"} — Ref: ${booking.reference}`,
         });
       }
@@ -1452,7 +1442,7 @@ router.post("/payments/admin-record", async (req, res) => {
           method,
           status: shouldVerify ? "verified" : "pending",
           reference:
-            reference || `TOPUP-${randomUUID().slice(0, 8).toUpperCase()}`,
+            walletReference || reference || `TOPUP-${randomUUID().slice(0, 8).toUpperCase()}`,
           proofUrl: proofUrl || null,
           notes:
             notes ||
@@ -1492,7 +1482,7 @@ router.post("/payments/admin-record", async (req, res) => {
   }
 
   // Notifications
-  if (payment && booking.userId) {
+  if (!replayed && payment && booking.userId) {
     const amt = `₦${parsedAmount.toLocaleString()}`;
     const isNowConfirmed =
       updatedBooking &&
@@ -1500,7 +1490,7 @@ router.post("/payments/admin-record", async (req, res) => {
     const balance = updatedBooking
       ? Number(updatedBooking.totalPrice) - Number(updatedBooking.amountPaid)
       : outstandingBalance - parsedAmount;
-    if (markVerified) {
+    if (shouldVerify) {
       setImmediate(() =>
         createNotification(
           booking.userId!,
@@ -1522,7 +1512,7 @@ router.post("/payments/admin-record", async (req, res) => {
   }
 
   // Send receipt if verified & confirmed
-  if (updatedBooking && payment) {
+  if (!replayed && updatedBooking && payment) {
     setImmediate(() =>
       sendBookingReceipt(
         updatedBooking!.id,
@@ -1616,7 +1606,7 @@ router.get("/payments/booking/:bookingId", async (req, res) => {
   if (!booking) return res.status(404).json({ error: "Booking not found" });
 
   // Allow admin/staff, booking owner, or booking's agent
-  const isAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
+  const isAdmin = (await hasStaffGrant(profile, "payments"));
   const isOwner = booking.userId === profile.id;
   let isAgent = false;
   if (booking.agentId) {
@@ -1664,7 +1654,7 @@ router.put("/payments/:id/archive", async (req, res) => {
   const actorProfile = await getProfileByClerkId(clerkUserId);
   if (!actorProfile)
     return res.status(404).json({ error: "Profile not found" });
-  const isAdmin = ["admin", "super_admin", "staff"].includes(actorProfile.role);
+  const isAdmin = (await hasStaffGrant(actorProfile, "payments"));
   if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
 
   const { archiveReason } = req.body;
@@ -1685,7 +1675,7 @@ router.put("/payments/:id/archive", async (req, res) => {
     }
     const [payment] = await tx
       .update(paymentsTable)
-      .set({ isArchived: true, archiveReason: archiveReason || null })
+      .set({ isArchived: true, archivedWithBooking: false, archiveReason: archiveReason || null })
       .where(eq(paymentsTable.id, req.params.id))
       .returning();
 
@@ -1718,7 +1708,7 @@ router.put("/payments/:id/restore", async (req, res) => {
   const actorProfile = await getProfileByClerkId(clerkUserId);
   if (!actorProfile)
     return res.status(404).json({ error: "Profile not found" });
-  const isAdmin = ["admin", "super_admin", "staff"].includes(actorProfile.role);
+  const isAdmin = (await hasStaffGrant(actorProfile, "payments"));
   if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
 
   let updatedPayment: typeof paymentsTable.$inferSelect | undefined;
@@ -1737,7 +1727,7 @@ router.put("/payments/:id/restore", async (req, res) => {
     }
     const [payment] = await tx
       .update(paymentsTable)
-      .set({ isArchived: false, archiveReason: null })
+      .set({ isArchived: false, archivedWithBooking: false, archiveReason: null })
       .where(eq(paymentsTable.id, req.params.id))
       .returning();
 

@@ -1,3 +1,4 @@
+import { activeBookingProfile, hasStaffGrant } from "../lib/bookingAccess";
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { bookingsTable, packagesTable, packageDatesTable, paymentsTable, profilesTable, visaApplicationsTable, userActivityTable, siteSettingsTable } from "@workspace/db";
@@ -6,8 +7,9 @@ import { getAuth } from "@clerk/express";
 import { eq, and, sql, desc, or, inArray } from "drizzle-orm";
 import { createHash, randomUUID } from "crypto";
 import { z } from "zod";
-import { confirmPaidGroup, confirmTravellerRecords } from "../services/payments/packageConfirmation";
+import { confirmPaidGroup, confirmTravellerRecords, packageDependants } from "../services/payments/packageConfirmation";
 import { retireExpiredPackageCheckouts } from "../services/payments/packagePaystack";
+import { canAttachTravelDocument, ownsPrivateDocument } from "../lib/privateDocuments";
 
 const router = Router();
 
@@ -59,9 +61,7 @@ function moneyKobo(value: unknown, fallback = 0) {
   return Number.isFinite(amount) && amount >= 0 ? Math.round(amount * 100) : fallback;
 }
 
-async function getProfileByClerkId(clerkUserId: string) {
-  return db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, clerkUserId) });
-}
+const getProfileByClerkId = activeBookingProfile;
 
 function toBookingResponse(b: typeof bookingsTable.$inferSelect, pkg?: any, user?: any, packageDate?: any) {
   return {
@@ -138,7 +138,7 @@ router.get("/bookings", async (req, res) => {
   const { status, packageId, archived, limit = "20", offset = "0" } = req.query as Record<string, string>;
   const conditions: any[] = [];
 
-  const isAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
+  const isAdmin = (await hasStaffGrant(profile, "bookings"));
   if (!isAdmin) conditions.push(eq(bookingsTable.userId, profile.id));
   if (status) conditions.push(eq(bookingsTable.status, status as any));
   if (packageId) conditions.push(eq(bookingsTable.packageId, packageId));
@@ -221,6 +221,12 @@ router.post("/bookings", async (req, res) => {
     return res.status(400).json({ error: "Review the package and traveller details." });
   }
   const { packageId, packageDateId, pilgrimCount, pilgrimDetails, notes, children, checkoutId, expectedTotal, ...person } = parsed.data;
+  const files = await Promise.all([person, ...children].flatMap((traveller) => [
+    ownsPrivateDocument(traveller.passportCopyUrl, "passports", profile.id),
+    ownsPrivateDocument(traveller.profilePhotoUrl, "photos", profile.id),
+  ]));
+  if (files.some((valid) => !valid))
+    return res.status(400).json({ error: "Upload traveller documents using your own private file upload." });
   const checkoutKey = checkoutId
     ? createHash("sha256").update(JSON.stringify([profile.id, packageId, checkoutId])).digest("hex")
     : undefined;
@@ -285,6 +291,7 @@ router.post("/bookings", async (req, res) => {
       const common = { userId: profile.id, packageId, packageDateId, status: "pending" as const, amountPaid: "0" };
       const [booking] = await tx.insert(bookingsTable).values({
         ...person, ...common, id: randomUUID(), reference: reference(), checkoutKey,
+        capacityHoldExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         pilgrimCount, pilgrimDetails, notes, totalPrice: (total / 100).toFixed(2),
         roomSurcharge: (surcharge / 100).toFixed(2), pilgrimType: "adult",
         customData: { childrenCount: children.length, childrenExtra: childrenTotal / 100, checkoutFingerprint },
@@ -320,7 +327,7 @@ router.get("/bookings/:id", async (req, res) => {
   });
   if (!booking) return res.status(404).json({ error: "Booking not found" });
 
-  const isAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
+  const isAdmin = (await hasStaffGrant(profile, "bookings"));
   if (!isAdmin && booking.userId !== profile.id) return res.status(403).json({ error: "Forbidden" });
 
   const [pkg, user, packageDate] = await Promise.all([
@@ -337,7 +344,7 @@ router.put("/bookings/:id", async (req, res) => {
   if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
   const actorProfile = await getProfileByClerkId(clerkUserId);
   if (actorProfile?.accountStatus !== "active") return res.status(403).json({ error: "Account access is unavailable" });
-  const isAdmin = ["admin", "super_admin", "staff"].includes(actorProfile.role);
+  const isAdmin = (await hasStaffGrant(actorProfile, "bookings"));
   if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
 
   const { status, notes, amountPaid, visaDeliveryMessage, ticketDocumentUrl, ...rest } = req.body;
@@ -354,7 +361,11 @@ router.put("/bookings/:id", async (req, res) => {
   // amountPaid is now derived from SUM(verified payments) — direct override removed
   // to maintain data integrity. Use the payment recording flow instead.
   if (visaDeliveryMessage !== undefined) updateData.visaDeliveryMessage = visaDeliveryMessage;
-  if (ticketDocumentUrl !== undefined) updateData.ticketDocumentUrl = ticketDocumentUrl;
+  if (ticketDocumentUrl !== undefined) {
+    if (!await canAttachTravelDocument(ticketDocumentUrl, "tickets", actorProfile.id))
+      return res.status(400).json({ error: "Upload the ticket using the document uploader." });
+    updateData.ticketDocumentUrl = ticketDocumentUrl || null;
+  }
 
   const booking = await db.transaction(async (tx) => {
     const [current] = await tx.select().from(bookingsTable)
@@ -364,7 +375,7 @@ router.put("/bookings/:id", async (req, res) => {
       throw new PackageBookingError("Manage the group status from the main booking");
     const linked = status && (status !== current.status || status === "confirmed" || status === "completed")
       ? await tx.select().from(bookingsTable)
-        .where(and(eq(bookingsTable.parentBookingId, current.id), eq(bookingsTable.packageId, current.packageId),
+        .where(and(packageDependants(current),
           eq(bookingsTable.isArchived, false))).for("update")
       : [];
     if (status === "confirmed" || status === "completed") {
@@ -401,8 +412,7 @@ router.put("/bookings/:id", async (req, res) => {
     if (status === "confirmed") {
       const children = await tx.select().from(bookingsTable)
         .where(and(
-          eq(bookingsTable.parentBookingId, saved.id),
-          eq(bookingsTable.packageId, saved.packageId),
+          packageDependants(saved),
           eq(bookingsTable.status, "confirmed"),
           eq(bookingsTable.isArchived, false),
         )).for("update");
@@ -469,12 +479,12 @@ router.delete("/bookings/:id", async (req, res) => {
       const [booking] = await tx.select().from(bookingsTable)
         .where(eq(bookingsTable.id, req.params.id)).for("update");
       if (!booking) throw new PackageBookingError("Booking not found", 404);
-      if (!["admin", "super_admin", "staff"].includes(profile.role) && booking.userId !== profile.id)
+      if (!(await hasStaffGrant(profile, "bookings")) && booking.userId !== profile.id)
         throw new PackageBookingError("Forbidden", 403);
       if (booking.status === "cancelled") return;
       if (booking.parentBookingId) throw new PackageBookingError("Manage the travellers from the main booking");
       const group = [booking, ...await tx.select().from(bookingsTable)
-        .where(and(eq(bookingsTable.parentBookingId, booking.id), eq(bookingsTable.packageId, booking.packageId))).for("update")];
+        .where(packageDependants(booking)).for("update")];
       const pending = group.filter((traveller) => traveller.status !== "cancelled");
       if (pending.some((traveller) => traveller.status !== "pending" || Number(traveller.amountPaid) > 0))
         throw new PackageBookingError("Only unpaid pending bookings can be cancelled here");
@@ -506,7 +516,7 @@ router.put("/bookings/:id/archive", async (req, res) => {
   if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
   const actorProfile = await getProfileByClerkId(clerkUserId);
   if (!actorProfile) return res.status(404).json({ error: "Profile not found" });
-  const isAdmin = ["admin", "super_admin", "staff"].includes(actorProfile.role);
+  const isAdmin = (await hasStaffGrant(actorProfile, "bookings"));
   if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
 
   const { archiveReason } = req.body;
@@ -517,8 +527,8 @@ router.put("/bookings/:id/archive", async (req, res) => {
       .where(eq(bookingsTable.id, req.params.id)).returning();
     if (!current) return;
     await tx.update(paymentsTable)
-      .set({ isArchived: true, archiveReason: archiveReason || "Archived with booking" })
-      .where(eq(paymentsTable.bookingId, current.id));
+      .set({ isArchived: true, archivedWithBooking: true, archiveReason: archiveReason || "Archived with booking" })
+      .where(and(eq(paymentsTable.bookingId, current.id), eq(paymentsTable.isArchived, false)));
     return current;
   });
 
@@ -532,7 +542,7 @@ router.put("/bookings/:id/restore", async (req, res) => {
   if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
   const actorProfile = await getProfileByClerkId(clerkUserId);
   if (!actorProfile) return res.status(404).json({ error: "Profile not found" });
-  const isAdmin = ["admin", "super_admin", "staff"].includes(actorProfile.role);
+  const isAdmin = (await hasStaffGrant(actorProfile, "bookings"));
   if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
 
   const booking = await db.transaction(async (tx) => {
@@ -542,8 +552,8 @@ router.put("/bookings/:id/restore", async (req, res) => {
       .where(eq(bookingsTable.id, req.params.id)).returning();
     if (!current) return;
     await tx.update(paymentsTable)
-      .set({ isArchived: false, archiveReason: null })
-      .where(eq(paymentsTable.bookingId, current.id));
+      .set({ isArchived: false, archivedWithBooking: false, archiveReason: null })
+      .where(and(eq(paymentsTable.bookingId, current.id), eq(paymentsTable.archivedWithBooking, true)));
     const paid = sql`COALESCE((SELECT SUM(amount) FROM payments WHERE booking_id = ${current.id} AND status = 'verified' AND is_archived = false), 0)`;
     const [updated] = await tx.update(bookingsTable).set({
       amountPaid: paid,

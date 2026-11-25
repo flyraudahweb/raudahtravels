@@ -49,9 +49,12 @@ export function canPayPackage(booking: {
   isArchived: boolean;
   parentBookingId: string | null;
   totalPrice: string;
+  amountPaid?: string;
+  capacityHoldExpiresAt?: Date | null;
 }) {
   return (!booking.parentBookingId || Number(booking.totalPrice) > 0) && !booking.isArchived &&
-    (booking.status === "pending" || booking.status === "confirmed");
+    (booking.status === "confirmed" || (booking.status === "pending" &&
+      (!booking.capacityHoldExpiresAt || booking.capacityHoldExpiresAt.getTime() > Date.now() || Number(booking.amountPaid) > 0)));
 }
 
 export function packageBalanceKobo(booking: { totalPrice: string; amountPaid: string }) {

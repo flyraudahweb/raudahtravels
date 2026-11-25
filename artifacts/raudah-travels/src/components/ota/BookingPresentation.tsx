@@ -116,7 +116,7 @@ export function tripTitle(b: any) {
 export function tripDates(b: any) {
   if (b.kind === "hotel")
     return `${b.offer?.check_in_date || ""} – ${b.offer?.check_out_date || ""}`;
-  const slices = (b.providerResult || b.offer)?.slices || [];
+  const slices = b.providerResult?.slices?.length ? b.providerResult.slices : b.offer?.slices ?? [];
   return slices
     .map((s: any) => s.segments?.[0]?.departing_at?.slice(0, 10))
     .filter(Boolean)

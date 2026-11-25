@@ -1,3 +1,4 @@
+import { activeBookingProfile, hasStaffGrant } from "../lib/bookingAccess";
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { bookingsTable, documentsTable, profilesTable } from "@workspace/db";
@@ -9,9 +10,7 @@ import { ehajjDocumentPath, openEhajjDocument } from "../services/ehajjDocuments
 
 const router = Router();
 
-async function getProfileByClerkId(clerkUserId: string) {
-  return db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, clerkUserId) });
-}
+const getProfileByClerkId = activeBookingProfile;
 
 router.get("/documents", async (req, res) => {
   const { userId: clerkUserId } = getAuth(req);
@@ -86,7 +85,7 @@ router.get("/documents/:id", async (req, res) => {
   const doc = await db.query.documentsTable.findFirst({ where: eq(documentsTable.id, req.params.id) });
   if (!doc) return res.status(404).json({ error: "Document not found" });
 
-  const isAdmin = ["admin", "super_admin", "staff"].includes(profile.role);
+  const isAdmin = (await hasStaffGrant(profile, "passports"));
   if (!isAdmin && doc.userId !== profile.id) {
     return res.status(403).json({ error: "Forbidden" });
   }

@@ -50,6 +50,8 @@ export const otaBookingsTable = pgTable(
     }),
     providerRequestId: text("provider_request_id"),
     issue: text("issue"),
+    paymentIssue: text("payment_issue"),
+    checkoutEditClaim: text("checkout_edit_claim"),
     serviceRequest: text("service_request"),
     refund: jsonb("refund"),
     notificationSentAt: timestamp("notification_sent_at", {
@@ -91,6 +93,18 @@ export const otaBookingsTable = pgTable(
     check("ota_positive_amount", sql`${t.amountKobo} > 0`),
   ],
 );
+
+export const otaPrebookClaimsTable = pgTable("ota_prebook_claims", {
+  key: text("key").primaryKey(),
+  attemptId: text("attempt_id").notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const otaPaymentCredentialsTable = pgTable("ota_payment_credentials", {
+  reference: text("reference").primaryKey(),
+  bookingId: text("booking_id").notNull().references(() => otaBookingsTable.id, { onDelete: "cascade" }),
+  encryptedKey: text("encrypted_key").notNull(),
+});
 
 export const otaEventsTable = pgTable("ota_events", {
   id: text("id").primaryKey(),

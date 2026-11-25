@@ -121,12 +121,18 @@ if (process.env.NODE_ENV === "production") {
     "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' data: blob: https: http:",
     "media-src 'self' https: blob:",
-    "frame-src 'self' https://www.youtube.com https://youtube.com https://player.vimeo.com https://challenges.cloudflare.com https://*.clerk.accounts.dev https://clerk.flyraudah.com.ng",
+    "object-src blob:",
+    "frame-src 'self' blob: https://www.youtube.com https://youtube.com https://player.vimeo.com https://challenges.cloudflare.com https://*.clerk.accounts.dev https://clerk.flyraudah.com.ng",
     "connect-src 'self' data: blob: https: wss:",
     "worker-src 'self' blob:",
   ].join("; ");
 
-  app.use(express.static(frontendDir));
+  app.use(express.static(frontendDir, {
+    setHeaders(res, filename) {
+      if (path.extname(filename) === ".html")
+        res.setHeader("Content-Security-Policy", frontendCSP);
+    },
+  }));
 
   // SPA fallback — serve index.html with correct CSP headers
   app.get(/(.*)/, (_req, res) => {

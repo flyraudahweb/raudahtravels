@@ -298,7 +298,7 @@ export async function prepareDomesticCheckout(
       },
     ],
   };
-  return { offer, pricing, quote: { ...quote, fare: refreshed } };
+  return { offer, pricing, sourceOfferId: quote.fare.supplierId, quote: { ...quote, fare: refreshed } };
 }
 
 const suppliers: FlightSupplier[] = [

@@ -1,3 +1,4 @@
+import { uploadScannedImage } from "@/lib/upload";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { uploadFile } from "@/lib/upload";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -93,12 +94,16 @@ async function fetchPackages(): Promise<{ packages: PackageOption[] }> {
 }
 
 async function bookPilgrim(data: any): Promise<{ booking: any; reference: string }> {
+  const [passportCopyUrl, profilePhotoUrl] = await Promise.all([
+    uploadScannedImage(data.passportCopyUrl, "passports"),
+    uploadScannedImage(data.profilePhotoUrl, "photos"),
+  ]);
   const r = await fetch("/api/admin/book-pilgrim", {
     method: "POST", credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
+    body: JSON.stringify({ ...data, passportCopyUrl, profilePhotoUrl }),
   });
-  if (!r.ok) throw new Error("Failed to create booking");
+  if (!r.ok) throw new Error((await r.json().catch(() => null))?.error || "Failed to create booking");
   return r.json();
 }
 

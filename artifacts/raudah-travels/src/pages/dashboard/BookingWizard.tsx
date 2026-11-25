@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { uploadFile } from "@/lib/upload";
+import { uploadFile, uploadScannedImage } from "@/lib/upload";
 import { useRoute, useLocation } from "wouter";
 import { useGetPackage, getGetPackageQueryKey, useCreateBooking } from "@workspace/api-client-react";
 import { useUser } from "@clerk/react";
@@ -196,6 +196,7 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
   const createdBookingIdRef = useRef<string | null>(null);
   const checkoutIdRef = useRef<string | null>(null);
   const submitting = useRef(false);
+  const scannedUploads = useRef(new Map<string, Promise<unknown>>());
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
 
   // Step 1: Passport
@@ -364,11 +365,23 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
     setStep(s => s + 1);
   };
 
+  async function travellerDocuments(passport: string, photo: string) {
+    async function upload(value: string, folder: "passports" | "photos") {
+      if (!value.startsWith("data:")) return value || undefined;
+      const key = folder + ":" + value;
+      const pending = scannedUploads.current.get(key) ?? uploadScannedImage(value, folder);
+      scannedUploads.current.set(key, pending);
+      try { return await pending; }
+      catch (error) { scannedUploads.current.delete(key); throw error; }
+    }
+    const [passportCopyUrl, profilePhotoUrl] = await Promise.all([upload(passport, "passports"), upload(photo, "photos")]);
+    return { passportCopyUrl, profilePhotoUrl };
+  }
+
   const handleSubmit = async () => {
     if (!paystackEnabled || isFetching || !isOnline || processing || submitting.current) return;
     submitting.current = true;
     setProcessing(true);
-    const pilgrimDetails = JSON.stringify({ ...passportForm, ...personalForm, ...contactForm, departureCity, roomType, fullName });
     try {
       let bookingId = createdBookingIdRef.current;
       if (!bookingId) {
@@ -386,19 +399,26 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
             }));
           } catch { /* The server can still deduplicate retries on this screen. */ }
         }
+        const files = await travellerDocuments(passportForm.passportCopyUrl, personalForm.profilePhotoUrl);
+        const children = await Promise.all(childEntries.map(async ({ id, type, ...child }) => ({
+          ...child, ...await travellerDocuments(child.passportCopyUrl, child.profilePhotoUrl),
+          phone: contactForm.phone ? phoneCode + contactForm.phone : undefined,
+          email: contactForm.email, country: contactForm.country, city: contactForm.city,
+          roomPreference: roomType,
+        })));
         const booking = await createBooking.mutateAsync({
           data: {
             packageId: pkg!.id,
             packageDateId: packageDateId || undefined,
             pilgrimCount: pilgrimCount,
-            pilgrimDetails,
+            pilgrimDetails: JSON.stringify({ ...passportForm, ...personalForm, ...files, ...contactForm, departureCity, roomType, fullName }),
             notes: contactForm.specialRequests,
             fullName,
             // Passport fields (from passportForm)
             passportNumber: passportForm.passportNumber || undefined,
             passportIssueDate: passportForm.passportIssueDate || undefined,
             passportExpiry: passportForm.passportExpiry || undefined,
-            passportCopyUrl: passportForm.passportCopyUrl || undefined,
+            ...files,
             visaNumber: passportForm.visaNumber || undefined,
             // Personal fields (from personalForm)
             civility: personalForm.civility || undefined,
@@ -412,7 +432,6 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
             maritalStatus: personalForm.maritalStatus || undefined,
             levelOfStudy: personalForm.levelOfStudy || undefined,
             observation: personalForm.observation || undefined,
-            profilePhotoUrl: personalForm.profilePhotoUrl || undefined,
             partner: personalForm.partner || undefined,
             underCover: personalForm.underCover || undefined,
             // Contact fields (from contactForm)
@@ -425,11 +444,7 @@ function PackageBookingForm({ packageId }: { packageId: string }) {
             departureCity: departureCity || undefined,
             checkoutId: checkoutIdRef.current,
             expectedTotal: fullAmount,
-            children: childEntries.map(({ id, type, ...child }) => ({
-              ...child, phone: contactForm.phone ? phoneCode + contactForm.phone : undefined,
-              email: contactForm.email, country: contactForm.country, city: contactForm.city,
-              roomPreference: roomType,
-            })),
+            children,
           } as Parameters<typeof createBooking.mutateAsync>[0]["data"],
         });
         bookingId = booking.id;

@@ -137,7 +137,7 @@ export default function AdminOta() {
   const rows = records.data?.bookings || [],
     needsReview = rows.filter(
       (b: any) =>
-        b.issue ||
+        b.paymentIssue || b.issue ||
         b.providerNotice ||
         b.serviceRequest ||
         b.status === "requires_review" ||
@@ -572,7 +572,7 @@ export default function AdminOta() {
                       filter === b.kind ||
                       filter === b.status ||
                       (filter === "attention" &&
-                        (b.issue ||
+                        (b.paymentIssue || b.issue ||
                           b.providerNotice ||
                           b.serviceRequest ||
                           ["processing", "requires_review"].includes(
@@ -639,6 +639,7 @@ export default function AdminOta() {
                 Paid: {selected.paidAt || "Not verified"} · Status:{" "}
                 {selected.status}
               </p>
+              {selected.paymentIssue && <ErrorMessage message={selected.paymentIssue} />}
               {selected.issue && (
                 <ErrorMessage message={providerDisplay(selected.issue)} />
               )}
@@ -678,6 +679,30 @@ export default function AdminOta() {
                 >
                   Verify customer payment
                 </button>
+              )}
+              {!!selected.previousPaymentReferences?.length && (
+                <form
+                  key={selected.id}
+                  className="flex flex-wrap items-end gap-3 rounded-xl border p-4"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const reference = String(new FormData(event.currentTarget).get("reference") ?? "");
+                    action(
+                      () => ota(`/admin/bookings/${selected.id}/check-payment`, { reference }),
+                      "Previous payment checked against Paystack.",
+                    );
+                  }}
+                >
+                  <label className="min-w-0 space-y-1 text-sm">
+                    <span className="block font-semibold">Previous Paystack reference</span>
+                    <select name="reference" className="max-w-full rounded-lg border px-3 py-2" required>
+                      {selected.previousPaymentReferences.map((reference: string) => (
+                        <option key={reference} value={reference}>{reference}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <button className={travelButton} disabled={busy}>Verify previous payment</button>
+                </form>
               )}
               {selected.serviceRequest && (
                 <form

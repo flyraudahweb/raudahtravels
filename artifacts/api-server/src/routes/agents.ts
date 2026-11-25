@@ -1,3 +1,4 @@
+import { activeBookingProfile, hasStaffGrant } from "../lib/bookingAccess";
 import { Router } from "express";
 import { db } from "@workspace/db";
 import {
@@ -7,16 +8,15 @@ import {
   paymentsTable, userActivityTable, siteSettingsTable,
 } from "@workspace/db";
 import { getAuth } from "@clerk/express";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { eq, and, sql, desc, isNull } from "drizzle-orm";
 import { createHash, randomUUID } from "crypto";
 import { z } from "zod";
+import { ownsPrivateDocument } from "../lib/privateDocuments";
 
 
 const router = Router();
 
-async function getProfileByClerkId(clerkUserId: string) {
-  return db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, clerkUserId) });
-}
+const getProfileByClerkId = activeBookingProfile;
 
 function toAgentResponse(a: typeof agentsTable.$inferSelect) {
   return {
@@ -200,7 +200,7 @@ router.get("/agents", async (req, res) => {
   if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
   const callerProfile = await getProfileByClerkId(clerkUserId);
   if (!callerProfile) return res.status(404).json({ error: "Profile not found" });
-  const isAdmin = ["admin", "super_admin", "staff"].includes(callerProfile.role);
+  const isAdmin = (await hasStaffGrant(callerProfile, "agents"));
   if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
 
   const { status, limit = "500", offset = "0" } = req.query as Record<string, string>;
@@ -272,7 +272,7 @@ router.put("/agents/:id/approve", async (req, res) => {
   if (!clerkUserId) return res.status(401).json({ error: "Unauthorized" });
   const callerProfile = await getProfileByClerkId(clerkUserId);
   if (!callerProfile) return res.status(404).json({ error: "Profile not found" });
-  const isAdmin = ["admin", "super_admin", "staff"].includes(callerProfile.role);
+  const isAdmin = (await hasStaffGrant(callerProfile, "agents"));
   if (!isAdmin) return res.status(403).json({ error: "Admin access required" });
 
   const { status, commissionRate } = req.body;
@@ -455,15 +455,17 @@ router.post("/agent/register-client", async (req, res) => {
     paymentMethod, amountPaid, paymentReference, paymentProofUrl,
     checkoutId,
     // New: room surcharge, pilgrim type, batch support
-    roomSurcharge: clientRoomSurcharge, pilgrimType, parentBookingId, batchId,
+    pilgrimType, parentBookingId, batchId,
   } = req.body;
 
   if (!packageId) return res.status(400).json({ error: "packageId is required" });
   if (!firstName && !lastName) return res.status(400).json({ error: "At least a first or last name is required" });
   if (checkoutId !== undefined && !z.string().uuid().safeParse(checkoutId).success)
     return res.status(400).json({ error: "Invalid registration checkout" });
-  const checkoutKey = checkoutId && ["paystack", "online"].includes(paymentMethod)
-    ? createHash("sha256").update(JSON.stringify(["agent", agent.id, checkoutId])).digest("hex")
+  if (paymentMethod === "wallet" && !checkoutId)
+    return res.status(400).json({ error: "A registration checkout is required for wallet payments" });
+  const checkoutKey = checkoutId
+    ? createHash("sha256").update(JSON.stringify(["agent", agent.id, checkoutId.toLowerCase()])).digest("hex")
     : undefined;
   const fingerprint = checkoutKey
     ? createHash("sha256").update(JSON.stringify(Object.entries(req.body).sort(([a], [b]) => a.localeCompare(b)))).digest("hex")
@@ -476,10 +478,16 @@ router.post("/agent/register-client", async (req, res) => {
       return res.status(409).json({ error: "This registration was saved already. Resume the payment from Agent Bookings." });
     const pkg = await db.query.packagesTable.findFirst({ where: eq(packagesTable.id, saved.packageId) });
     return res.status(201).json({
+      ...(paymentMethod === "wallet" ? { walletDebited: true } : {}),
       id: saved.id, reference: saved.reference, status: saved.status, fullName: saved.fullName, packageName: pkg?.name,
     });
   };
   if (previous) return replay(previous);
+  if (!(await Promise.all([
+    ownsPrivateDocument(passportCopyUrl, "passports", profile.id),
+    ownsPrivateDocument(profilePhotoUrl, "photos", profile.id),
+  ])).every(Boolean)) return res.status(400).json({ error: "Upload traveller documents using your own private file upload." });
+
 
   // Validate proof size: R2 URLs are short paths, but legacy base64 could be huge
   if (paymentProofUrl && typeof paymentProofUrl === "string" && paymentProofUrl.startsWith("data:") && paymentProofUrl.length > 300_000) {
@@ -500,23 +508,52 @@ router.post("/agent/register-client", async (req, res) => {
 
   // SECURITY: Validate amountPaid early (actual clamping happens inside transaction after discount is resolved)
   const rawPaid = amountPaid != null ? Number(amountPaid) : 0;
-  if (isNaN(rawPaid) || rawPaid < 0) {
+  if (!Number.isFinite(rawPaid) || rawPaid < 0) {
     return res.status(400).json({ error: "amountPaid must be a non-negative number" });
   }
 
   const nullify = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v) as string | undefined;
+  const room = String(roomPreference || "double").trim().toLowerCase();
+  const roomKey = room === "quadruple" ? "quad" : room;
+  if (!["single", "double", "triple", "quad", "quint"].includes(roomKey))
+    return res.status(400).json({ error: "Select a valid room type" });
   const bookingReference = `RDH-${randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase()}`;
+
+  type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+  async function validateParent(tx: Transaction) {
+    if (!parentBookingId) return;
+    const [parent] = await tx.select({ id: bookingsTable.id }).from(bookingsTable)
+      .where(and(eq(bookingsTable.id, parentBookingId), eq(bookingsTable.agentId, agent!.id),
+        eq(bookingsTable.packageId, packageId), isNull(bookingsTable.parentBookingId),
+        eq(bookingsTable.isArchived, false), sql`${bookingsTable.status} <> 'cancelled'`))
+      .for("update");
+    if (!parent) throw new Error("Select an active main booking for this agent and package");
+  }
+  async function configuredSurcharge(tx: Transaction) {
+    const row = await tx.query.siteSettingsTable.findFirst({
+      where: eq(siteSettingsTable.key, "room_surcharges"),
+    });
+    let value = row?.value;
+    if (typeof value === "string") {
+      try { value = JSON.parse(value); } catch { value = undefined; }
+    }
+    const raw = value && typeof value === "object" && !Array.isArray(value)
+      ? Number((value as Record<string, unknown>)[roomKey] ?? 0) : 0;
+    return Number.isFinite(raw) && raw > 0 ? Math.round(raw * 100) / 100 : 0;
+  }
 
   // ── Wallet Payment Flow (atomic, race-condition-proof) ─────────────────
   if (paymentMethod === "wallet") {
     let walletPaid = 0;
+    let walletReplay = false;
 
     let booking: any;
     let finalWalletBalance = 0;
 
     try {
       await db.transaction(async (tx) => {
-        // Row-level lock: prevents concurrent wallet debits from racing
+        await validateParent(tx);
+        // Serialize debits and retries for this wallet.
         const lockResult = await tx.execute(
           sql`SELECT * FROM agent_wallets WHERE agent_id = ${agent.id} FOR UPDATE`
         );
@@ -524,20 +561,19 @@ router.post("/agent/register-client", async (req, res) => {
         if (!walletRow) throw new Error("Wallet not found. Please contact admin to set up your wallet.");
         const currentBalance = Number((walletRow as any).balance);
 
-        // BUG FIX #4: Row-level lock on package to prevent overbooking race condition
-        const pkgLock = await tx.execute(
-          sql`SELECT capacity, current_bookings FROM packages WHERE id = ${packageId} FOR UPDATE`
-        );
-        const pkgRow = (pkgLock as any).rows?.[0] ?? (Array.isArray(pkgLock) ? pkgLock[0] : null);
-        if (pkgRow?.capacity && (pkgRow.current_bookings || 0) >= pkgRow.capacity) {
-          throw new Error("Package is fully booked — no more capacity available");
-        }
+        const saved = await tx.query.bookingsTable.findFirst({
+          where: and(eq(bookingsTable.checkoutKey, checkoutKey!), eq(bookingsTable.agentId, agent.id)),
+        });
+        if (saved) { booking = saved; walletReplay = true; return; }
 
-        // SECURITY: Calculate price inside transaction for atomicity with discount
-        let price = Number(pkg.price);
-        // Apply room surcharge
-        const surcharge = Math.max(0, Number(clientRoomSurcharge) || 0);
-        price += surcharge;
+        const [pkg] = await tx.select().from(packagesTable)
+          .where(eq(packagesTable.id, packageId)).for("update");
+        if (!pkg || !pkg.isActive || pkg.status !== "active")
+          throw new Error("Package is not currently available");
+        if (pkg.capacity && pkg.currentBookings >= pkg.capacity)
+          throw new Error("Package is fully booked — no more capacity available");
+        const surcharge = await configuredSurcharge(tx);
+        let price = Number(pkg.price) + surcharge;
 
         // Apply infant/child pricing if applicable
         // Enhancement 5: Check package-level overrides first, then fall back to global settings
@@ -610,6 +646,7 @@ router.post("/agent/register-client", async (req, res) => {
         // Create booking
         [booking] = await tx.insert(bookingsTable).values({
           id: randomUUID(), reference: bookingReference, userId: walkInUser.id,
+          checkoutKey, customData: { checkoutFingerprint: fingerprint },
           packageId, packageDateId: nullify(packageDateId), agentId: agent.id, status: "confirmed",
           totalPrice: String(price), amountPaid: String(walletPaid), pilgrimCount: 1,
           fullName: resolvedFullName || undefined,
@@ -713,6 +750,7 @@ router.post("/agent/register-client", async (req, res) => {
       return res.status(400).json({ error: err.message || "Wallet payment failed" });
     }
 
+    if (walletReplay) return replay(booking);
     return res.status(201).json({
       id: booking.id, reference: booking.reference, status: booking.status,
       fullName: booking.fullName, packageName: pkg.name,
@@ -725,6 +763,7 @@ router.post("/agent/register-client", async (req, res) => {
 
   try {
     await db.transaction(async (tx) => {
+      await validateParent(tx);
       const [pkg] = await tx.select().from(packagesTable)
         .where(eq(packagesTable.id, packageId)).for("update");
       if (checkoutKey) {
@@ -742,7 +781,7 @@ router.post("/agent/register-client", async (req, res) => {
       // SECURITY: Calculate price inside transaction for atomicity with discount
       let price = Number(pkg.price);
       // Apply room surcharge
-      const surcharge = Math.max(0, Number(clientRoomSurcharge) || 0);
+      const surcharge = await configuredSurcharge(tx);
       price += surcharge;
 
       // Apply infant/child pricing if applicable

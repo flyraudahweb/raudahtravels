@@ -1,5 +1,5 @@
 import { registrationTransaction, registrationDb } from "../services/registration/database";
-﻿import { Router, type Request, type Response, type NextFunction } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import { getAuth } from "@clerk/express";
 import { db } from "@workspace/db";
 import { sendEmail, sendAgentApprovalEmail, sendStaffWelcomeEmail } from "../utils/email.js";
@@ -27,22 +27,21 @@ import { randomUUID } from "crypto";
 import multer from "multer";
 import path from "path";
 import { mkdirSync } from "fs";
+import { writeFile } from "node:fs/promises";
+import { pipeline } from "node:stream/promises";
+import type { Readable } from "node:stream";
+import { getFromR2 } from "../lib/r2";
+import { canAttachTravelDocument, ownsPrivateDocument, documentType, privateDocumentKey, safeDocumentContentType, storedDocumentData } from "../lib/privateDocuments";
 import { landingHeroSchema } from "../services/landingHero";
 import { packagePaystackMode, packageSalesModeAllowed, retireExpiredPackageCheckouts } from "../services/payments/packagePaystack";
-import { confirmPaidGroup } from "../services/payments/packageConfirmation";
+import { confirmPaidGroup, packageDependants } from "../services/payments/packageConfirmation";
+import { hasStaffGrant } from "../lib/bookingAccess";
 
 ["uploads/visa", "uploads/tickets"].forEach(d => { try { mkdirSync(d, { recursive: true }); } catch {} });
 
-const _uploadStorage = multer.diskStorage({
-  destination: (_req, file, cb) => cb(null, file.fieldname === "ticket" ? "uploads/tickets" : "uploads/visa"),
-  filename: (_req, file, cb) => cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${path.extname(file.originalname)}`),
-});
 const _upload = multer({
-  storage: _uploadStorage,
-  limits: { fileSize: 15 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    cb(null, ["application/pdf", "image/jpeg", "image/jpg", "image/png", "image/webp"].includes(file.mimetype));
-  },
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024, files: 2 },
 });
 
 const router = Router();
@@ -70,6 +69,25 @@ function requireAccountAdmin(req: Request, res: Response, next: NextFunction) {
 }
 
 router.use(requireAdmin as any);
+
+function requireStaffGrant(...permissions: string[]) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const profile = (req as any).adminProfile;
+    if (!profile || !await hasStaffGrant(profile, ...permissions))
+      return res.status(403).json({ error: "Staff permission required" });
+    return next();
+  };
+}
+router.use("/admin/pilgrims", requireStaffGrant("pilgrims", "id_tags", "agents"));
+router.use("/admin/bookings", requireStaffGrant("bookings", "pilgrims"));
+router.use("/admin/book-pilgrim", requireStaffGrant("register_pilgrim"));
+router.use("/admin/bank-accounts", requireStaffGrant("bank_accounts"));
+router.use("/admin/passports", requireStaffGrant("passports"));
+router.use("/admin/passports-stats", requireStaffGrant("passports"));
+router.use("/admin/visa", requireStaffGrant("visa_management"));
+router.use("/admin/visa-stats", requireStaffGrant("visa_management"));
+router.use("/admin/visa-providers", requireStaffGrant("visa_management"));
+router.use("/admin/upload", requireStaffGrant("visa_management", "bookings"));
 
 // ── Users Management ──────────────────────────────────────────────────────────
 
@@ -119,14 +137,14 @@ router.get("/admin/users", async (req, res) => {
   });
 });
 
-router.put("/admin/users/:id/status", async (req, res) => {
+router.put("/admin/users/:id/status", requireAccountAdmin, async (req, res) => {
   const { accountStatus } = req.body as { accountStatus: string };
   const validStatuses = ["active", "suspended", "blocked"];
   if (!validStatuses.includes(accountStatus)) {
     return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
   }
 
-  const user = await db.query.profilesTable.findFirst({ where: eq(profilesTable.id, req.params.id) });
+  const user = await db.query.profilesTable.findFirst({ where: eq(profilesTable.id, String(req.params.id)) });
   if (!user) return res.status(404).json({ error: "User not found" });
 
   // Prevent suspending super_admins
@@ -136,7 +154,7 @@ router.put("/admin/users/:id/status", async (req, res) => {
 
   const [updated] = await db.update(profilesTable)
     .set({ accountStatus, updatedAt: new Date() })
-    .where(eq(profilesTable.id, req.params.id))
+    .where(eq(profilesTable.id, String(req.params.id)))
     .returning();
 
   // Activity log
@@ -555,6 +573,11 @@ router.put("/admin/bookings/:id", async (req, res) => {
       }
     }
 
+    if (!(await Promise.all([
+      updates.passportCopyUrl === booking.passportCopyUrl || ownsPrivateDocument(updates.passportCopyUrl, "passports", caller.id),
+      updates.profilePhotoUrl === booking.profilePhotoUrl || ownsPrivateDocument(updates.profilePhotoUrl, "photos", caller.id),
+    ])).every(Boolean)) return res.status(400).json({ error: "Upload the changed traveller document in this account." });
+
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ error: "No valid fields to update" });
     }
@@ -621,7 +644,7 @@ router.post("/admin/bookings/:id/upgrade-package", async (req, res) => {
         throw new PackageUpgradeError("This booking cannot be moved to another package.");
 
       const children = await tx.select().from(bookingsTable)
-        .where(eq(bookingsTable.parentBookingId, booking.id)).orderBy(bookingsTable.id).for("update");
+        .where(packageDependants(booking)).orderBy(bookingsTable.id).for("update");
       const group = [booking, ...children];
       const changingPackage = booking.packageId !== newPackageId;
       const moving = group.some((traveller) => traveller.packageId !== newPackageId);
@@ -723,7 +746,7 @@ router.post("/admin/bookings/:id/upgrade-package", async (req, res) => {
         await tx.update(bookingsTable).set(travel).where(inArray(bookingsTable.id, children.map(({ id }) => id)));
       if (balanceDue) {
         await tx.update(bookingsTable).set({ status: "pending" })
-          .where(and(eq(bookingsTable.parentBookingId, booking.id), eq(bookingsTable.status, "confirmed")));
+          .where(and(packageDependants({ ...booking, packageId: newPackageId }), eq(bookingsTable.status, "confirmed")));
       }
       const [saved] = await tx.update(bookingsTable).set({
         ...travel,
@@ -891,70 +914,41 @@ router.get("/admin/passports", async (req, res) => {
 router.get("/admin/passports/:bookingId/file", async (req, res) => {
   const booking = await db.query.bookingsTable.findFirst({
     where: eq(bookingsTable.id, req.params.bookingId),
-    columns: { passportCopyUrl: true, reference: true, passportNumber: true, fullName: true },
+    columns: { passportCopyUrl: true, reference: true },
   });
-  if (!booking)                 return res.status(404).json({ error: "Booking not found" });
-  if (!booking.passportCopyUrl) return res.status(404).json({ error: "No passport document uploaded" });
+  if (!booking?.passportCopyUrl)
+    return res.status(404).json({ error: "No passport document uploaded" });
 
-  const url = booking.passportCopyUrl;
-  const mode = (req.query.mode as string) || "download";
+  const stored = booking.passportCopyUrl;
+  const key = privateDocumentKey(stored, "passports");
+  const legacy = key ? undefined : storedDocumentData(stored);
+  if (!key && !legacy)
+    return res.status(409).json({ error: "Upload this passport again to private document storage." });
 
-  // Preview mode — always return the raw URL as JSON so the frontend can
-  // render it directly in an <img> or <object> tag without blob URLs.
-  if (mode === "preview") {
-    return res.json({
-      passportCopyUrl: url,
-      reference: booking.reference,
-      passportNumber: booking.passportNumber,
-      fullName: booking.fullName,
-    });
-  }
-
-  // --- Download mode (default) ---
-
-  // If the stored URL is an external HTTP(S) link (not a data URI), proxy it
-  // to avoid CORS issues and dead-link errors on the frontend
-  if (url.startsWith("http://") || url.startsWith("https://")) {
-    try {
-      const upstream = await fetch(url);
-      if (!upstream.ok) return res.status(502).json({ error: "Passport file no longer available at stored URL" });
-      const contentType = upstream.headers.get("content-type") || "application/octet-stream";
-      const buffer = Buffer.from(await upstream.arrayBuffer());
-      const ext = contentType.includes("pdf") ? "pdf" : "jpg";
-      const filename = `passport-${booking.reference || booking.passportNumber || "doc"}.${ext}`;
-      res.setHeader("Content-Type", contentType);
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-      return res.send(buffer);
-    } catch {
-      return res.status(502).json({ error: "Failed to fetch passport file from external storage" });
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
+  const filename = "passport-" + (booking.reference || "document").replace(/[^a-zA-Z0-9_-]/g, "");
+  try {
+    if (legacy) {
+      res.attachment(filename + "." + legacy.extension).type(legacy.contentType);
+      return res.send(legacy.bytes);
     }
-  }
-
-  // Data URL — convert to binary and send as a proper file download
-  if (url.startsWith("data:")) {
-    try {
-      const [header, base64Data] = url.split(",");
-      const mimeMatch = header.match(/data:(.*?);/);
-      const contentType = mimeMatch ? mimeMatch[1] : "application/octet-stream";
-      const buffer = Buffer.from(base64Data, "base64");
-      const ext = contentType.includes("pdf") ? "pdf" : contentType.includes("png") ? "png" : "jpg";
-      const filename = `passport-${booking.reference || booking.passportNumber || "doc"}.${ext}`;
-      res.setHeader("Content-Type", contentType);
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-      res.setHeader("Content-Length", String(buffer.length));
-      return res.send(buffer);
-    } catch {
-      return res.status(500).json({ error: "Failed to process stored passport file" });
+    const object = await getFromR2(key!);
+    const type = safeDocumentContentType(object.contentType);
+    if (!object.body || !type || !object.contentLength || object.contentLength > 15 * 1024 * 1024) {
+      (object.body as Readable | undefined)?.destroy();
+      return res.status(404).json({ error: "Passport document is unavailable" });
     }
+    res.attachment(filename + path.extname(key!)).type(type);
+    res.setHeader("Content-Length", object.contentLength);
+    await pipeline(object.body as Readable, res);
+    return;
+  } catch {
+    if (!res.headersSent && !res.destroyed)
+      return res.status(503).json({ error: "Passport document is temporarily unavailable" });
+    return;
   }
-
-  // Fallback — return as JSON for unknown URL formats
-  return res.json({
-    passportCopyUrl: booking.passportCopyUrl,
-    reference: booking.reference,
-    passportNumber: booking.passportNumber,
-    fullName: booking.fullName,
-  });
 });
 
 router.get("/admin/pilgrims/:id", async (req, res) => {
@@ -2202,14 +2196,22 @@ router.put("/admin/amendments/:id", async (req, res) => {
 
 // ── File upload ───────────────────────────────────────────────────────────────
 
-router.post("/admin/upload", _upload.fields([{ name: "visa", maxCount: 1 }, { name: "ticket", maxCount: 1 }]), (req, res) => {
+router.post("/admin/upload", _upload.fields([{ name: "visa", maxCount: 1 }, { name: "ticket", maxCount: 1 }]), async (req, res) => {
   const files = req.files as Record<string, Express.Multer.File[]>;
-  const vf = files?.visa?.[0];
-  const tf = files?.ticket?.[0];
-  return res.json({
-    visaUrl:   vf ? `/api/uploads/visa/${vf.filename}`     : undefined,
-    ticketUrl: tf ? `/api/uploads/tickets/${tf.filename}` : undefined,
+  const uploads = (["visa", "ticket"] as const).flatMap((field) => {
+    const file = files?.[field]?.[0];
+    return file ? [{ field, file, type: documentType(file.buffer) }] : [];
   });
+  if (!uploads.length || uploads.some(({ type }) => !type))
+    return res.status(400).json({ error: "Upload a valid PDF or image." });
+  const urls: Record<string, string> = {};
+  for (const { field, file, type } of uploads) {
+    const folder = field === "ticket" ? "tickets" : "visa";
+    const filename = randomUUID() + "." + type!.extension;
+    await writeFile(path.join("uploads", folder, filename), file.buffer, { flag: "wx" });
+    urls[field + "Url"] = `/api/uploads/${folder}/${filename}`;
+  }
+  return res.json(urls);
 });
 
 // ── Visa Applications ─────────────────────────────────────────────────────────
@@ -2291,6 +2293,16 @@ router.post("/admin/visa/bulk-approve", async (req, res) => {
 
 router.put("/admin/visa/:id", async (req, res) => {
   const { status, visaNumber, visaExpiry, rejectionReason, notes, processedBy, visaDocumentUrl, ticketDocumentUrl } = req.body;
+  const previous = await db.query.visaApplicationsTable.findFirst({
+    where: eq(visaApplicationsTable.id, req.params.id),
+    columns: { visaDocumentUrl: true, ticketDocumentUrl: true },
+  });
+  if (!previous) return res.status(404).json({ error: "Not found" });
+  const actor = (req as any).adminProfile;
+  if (!(await Promise.all([
+    visaDocumentUrl === previous.visaDocumentUrl || canAttachTravelDocument(visaDocumentUrl, "visa", actor.id),
+    ticketDocumentUrl === previous.ticketDocumentUrl || canAttachTravelDocument(ticketDocumentUrl, "tickets", actor.id),
+  ])).every(Boolean)) return res.status(400).json({ error: "Upload visa and ticket files using the document uploader." });
   // Helper: turn empty strings into null for nullable DB columns
   const nullable = (v: string | undefined) => (v === "" || v == null) ? null : v;
   const u: any = { updatedAt: new Date() };
@@ -2473,15 +2485,13 @@ router.post("/admin/book-pilgrim", async (req, res) => {
     return res.status(400).json({ error: "Payment proof file is too large. Please upload via the file uploader." });
   }
 
-  // Resolve the staff member who is performing this registration
-  let staffProfileId: string | undefined;
-  try {
-    const { userId: clerkUserId } = getAuth(req);
-    if (clerkUserId) {
-      const staffProfile = await db.query.profilesTable.findFirst({ where: eq(profilesTable.clerkUserId, clerkUserId) });
-      if (staffProfile) staffProfileId = staffProfile.id;
-    }
-  } catch (_) { /* non-blocking */ }
+  const actor = (req as any).adminProfile as typeof profilesTable.$inferSelect;
+  if (markVerified === true && !await hasStaffGrant(actor, "payments"))
+    return res.status(403).json({ error: "Payment verification permission required" });
+  if (!(await Promise.all([
+    ownsPrivateDocument(passportCopyUrl, "passports", actor.id),
+    ownsPrivateDocument(profilePhotoUrl, "photos", actor.id),
+  ])).every(Boolean)) return res.status(400).json({ error: "Upload traveller documents using your own private file upload." });
 
   let booking: any;
   let reference: string;
@@ -2504,7 +2514,7 @@ router.post("/admin/book-pilgrim", async (req, res) => {
       roomSurcharge: clientRoomSurcharge,
       pilgrimType, parentBookingId, batchId,
       customCommission,
-      registeredByStaffId: staffProfileId,
+      registeredByStaffId: actor.id,
     });
     booking = result.booking;
     reference = result.reference;

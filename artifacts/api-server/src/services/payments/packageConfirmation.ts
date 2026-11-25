@@ -1,10 +1,22 @@
 import { bookingsTable, db, paymentsTable, visaApplicationsTable } from "@workspace/db";
-import { and, eq, ilike, inArray, sql } from "drizzle-orm";
+import { and, eq, ilike, or, inArray, isNull, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 
 type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 type Booking = typeof bookingsTable.$inferSelect;
 type Traveller = Pick<Booking, "id" | "fullName" | "passportNumber">;
+
+export function packageDependants(booking: Pick<Booking, "id" | "packageId" | "agentId" | "userId" | "registeredByStaffId">) {
+  return and(
+    eq(bookingsTable.parentBookingId, booking.id),
+    eq(bookingsTable.packageId, booking.packageId),
+    booking.agentId ? eq(bookingsTable.agentId, booking.agentId) : isNull(bookingsTable.agentId),
+    booking.agentId ? undefined : or(
+      booking.userId ? eq(bookingsTable.userId, booking.userId) : isNull(bookingsTable.userId),
+      booking.registeredByStaffId ? eq(bookingsTable.registeredByStaffId, booking.registeredByStaffId) : undefined,
+    ),
+  );
+}
 
 export async function confirmTravellerRecords(tx: Transaction, travellers: Traveller[]) {
   const ids = travellers.map(({ id }) => id);
@@ -29,8 +41,7 @@ export async function confirmPaidGroup(tx: Transaction, booking: Booking) {
       Number(booking.amountPaid) < Number(booking.totalPrice)) return;
 
   const dependants = and(
-    eq(bookingsTable.parentBookingId, booking.id),
-    eq(bookingsTable.packageId, booking.packageId),
+    packageDependants(booking),
     eq(bookingsTable.isArchived, false),
   );
   await tx.update(bookingsTable).set({ status: "confirmed", updatedAt: new Date() })

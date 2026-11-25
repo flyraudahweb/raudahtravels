@@ -33,6 +33,7 @@ export const bookingsTable = pgTable("bookings", {
   id: text("id").primaryKey().default("gen_random_uuid()"),
   reference: text("reference").unique(),
   checkoutKey: text("checkout_key").unique(),
+  capacityHoldExpiresAt: timestamp("capacity_hold_expires_at", { withTimezone: true }),
   userId: text("user_id")
     .references(() => profilesTable.id),
   packageId: text("package_id")

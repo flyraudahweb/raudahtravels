@@ -321,7 +321,7 @@ function journeyDurations(journey: any) {
 
 type FlightSegment = z.infer<typeof segmentSchema>;
 
-function groupMultiCitySegments(segments: FlightSegment[], legs: FlightLeg[]) {
+function groupMultiCitySegments(segments: FlightSegment[], legs: FlightLeg[], compareDates = true) {
   // Leg indices constrain the partition when supplied. The route, dates and
   // airport continuity also have to match, including for unindexed segments.
   const partitions: FlightSegment[][][] = [];
@@ -336,7 +336,7 @@ function groupMultiCitySegments(segments: FlightSegment[], legs: FlightLeg[]) {
     if (
       !first ||
       !matchesFlightAirport(leg.origin, first.originCode) ||
-      first.departureTime.slice(0, 10) !== leg.departureDate
+      (compareDates && first.departureTime.slice(0, 10) !== leg.departureDate)
     )
       return;
     for (let end = offset; end < segments.length; end++) {
@@ -388,6 +388,27 @@ function segmentElapsed(group: FlightSegment[]) {
   return Number.isFinite(seconds) && seconds > 0 ? `PT${seconds}S` : undefined;
 }
 
+function presentSegments(group: FlightSegment[]) {
+  return group.map((s) => ({
+    origin: { iata_code: s.originCode, name: s.originName },
+    destination: { iata_code: s.destinationCode, name: s.destinationName },
+    departing_at: s.departureTime,
+    arriving_at: s.arrivalTime,
+    duration: s.duration?.iso8601,
+    marketing_carrier: {
+      name: s.carrier.marketingName,
+      iata_code: s.carrier.marketingCode,
+    },
+    operating_carrier: {
+      name: s.carrier.operatingName,
+      iata_code: s.carrier.operatingCode,
+    },
+    marketing_carrier_flight_number: s.flight.marketingNumber,
+    operating_carrier_flight_number: s.flight.operatingNumber,
+    technical_stop_count: s.stopCount ?? 0,
+  }));
+}
+
 function normalizeJourney(
   config: OtaConfig,
   journey: any,
@@ -430,24 +451,7 @@ function normalizeJourney(
   const durations = { ...selection.legDurations, ...journeyDurations(journey) };
   const orderedDurations = selection.legs && multiCityLegDurations(journey, groups.length);
   const slices = groups.map((group, index) => {
-    const segments = group.map((s) => ({
-      origin: { iata_code: s.originCode, name: s.originName },
-      destination: { iata_code: s.destinationCode, name: s.destinationName },
-      departing_at: s.departureTime,
-      arriving_at: s.arrivalTime,
-      duration: s.duration?.iso8601,
-      marketing_carrier: {
-        name: s.carrier.marketingName,
-        iata_code: s.carrier.marketingCode,
-      },
-      operating_carrier: {
-        name: s.carrier.operatingName,
-        iata_code: s.carrier.operatingCode,
-      },
-      marketing_carrier_flight_number: s.flight.marketingNumber,
-      operating_carrier_flight_number: s.flight.operatingNumber,
-      technical_stop_count: s.stopCount ?? 0,
-    }));
+    const segments = presentSegments(group);
     return {
       origin: segments[0].origin,
       destination: segments.at(-1)!.destination,
@@ -471,6 +475,7 @@ function normalizeJourney(
     expires_at: new Date(selection.expiresAt).toISOString(),
     owner: {
       name: first.marketingName || first.marketingCode || "Airline",
+      iata_code: first.marketingCode,
       logo_symbol_url: first.marketingLogo?.startsWith("https://")
         ? first.marketingLogo
         : undefined,
@@ -704,6 +709,39 @@ export async function verifyNuiteeFlightPrebook(
     );
 }
 
+function bookedSlices(offer: unknown, journey: any) {
+  const saved = z.object({ slices: z.array(z.object({
+    origin: z.object({ iata_code: code }),
+    destination: z.object({ iata_code: code }),
+  })).min(1).max(MAX_MULTI_CITY_LEGS) }).safeParse(offer);
+  const itinerary = z.array(segmentSchema).min(1).max(20).safeParse(journey?.segments);
+  if (!saved.success || !itinerary.success) return;
+  const count = saved.data.slices.length;
+  const segments = itinerary.data;
+  const indexed = Array.from({ length: count }, (_, index) =>
+    segments.filter((segment) => segment.legIndex === index));
+  const contiguous = (leg: FlightSegment[]) =>
+    leg.every((segment, index) => index === 0 || leg[index - 1].destinationCode === segment.originCode);
+  const sameIndexedOrder = indexed.flat().every((segment, index) => segment === segments[index]);
+  const groups = indexed.every((leg) => leg.length && contiguous(leg)) &&
+      indexed.flat().length === segments.length && sameIndexedOrder
+    ? indexed
+    : groupMultiCitySegments(segments, saved.data.slices.map((leg) => ({
+        origin: leg.origin.iata_code, destination: leg.destination.iata_code, departureDate: "",
+      })), false) ?? (count === 1 && contiguous(segments) ? [segments] : undefined);
+  if (!groups) return;
+  const durations = multiCityLegDurations(journey, count);
+  return groups.map((group, index) => {
+    const displayed = presentSegments(group);
+    return {
+      origin: displayed[0].origin,
+      destination: displayed.at(-1)!.destination,
+      segments: displayed,
+      duration: durations.get(index) ?? segmentElapsed(group),
+    };
+  });
+}
+
 function flightBooking(row: SavedFlight, data: any) {
   const { nuiteeFlightJourneyKey } = row.offer as {
     nuiteeFlightJourneyKey: string;
@@ -713,7 +751,7 @@ function flightBooking(row: SavedFlight, data: any) {
     typeof data.bookingId !== "string" ||
     !/^[a-zA-Z0-9_-]{1,128}$/.test(data.bookingId) ||
     (row.providerBookingId && data.bookingId !== row.providerBookingId) ||
-    data.journey?.journeyKey !== nuiteeFlightJourneyKey
+    (!row.providerBookingId && data.journey?.journeyKey !== nuiteeFlightJourneyKey)
   )
     throw new OtaError(
       "The supplier reservation could not be matched to this booking.",
@@ -751,7 +789,12 @@ function flightBooking(row: SavedFlight, data: any) {
             typeof value === "string" && /^[A-Z0-9-]{3,25}$/i.test(value),
         )
     : [];
+  const slices = bookedSlices(row.offer, data.journey);
+  const itineraryReview = !cancelled && !slices && typeof data.journey?.journeyKey === "string" &&
+    data.journey.journeyKey !== nuiteeFlightJourneyKey;
   return {
+    ...(slices ? { slices } : {}),
+    ...(itineraryReview ? { itineraryReview: true } : {}),
     id: data.bookingId as string,
     status,
     booking_reference:
@@ -814,8 +857,7 @@ export async function lookupNuiteeFlight(config: OtaConfig, row: SavedFlight) {
     row.mode as Mode,
     `/flights/bookings/${encodeURIComponent(bookingId)}`,
   );
-  return flightBooking(
-    { ...row, providerBookingId: bookingId },
-    result.booking,
-  );
+  if (result.booking?.bookingId !== bookingId)
+    throw new OtaError("The supplier reservation could not be matched to this booking.", 502);
+  return flightBooking(row, result.booking);
 }

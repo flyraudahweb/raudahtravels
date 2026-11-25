@@ -1,11 +1,14 @@
+import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
 import {
   db,
   otaBookingsTable as bookings,
   otaEventsTable,
+  otaPaymentCredentialsTable,
   siteSettingsTable,
 } from "@workspace/db";
 import { and, eq, or, sql } from "drizzle-orm";
+import { decryptSetting, encryptSetting } from "../registration/config";
 import { claimPaystackSettlement } from "../payments/paystackSettlement";
 import { getOtaConfig, duffelTokenForMode } from "./config";
 import { bookNuiteeHotel, lookupNuiteeBooking } from "./nuitee";
@@ -70,13 +73,37 @@ export async function paystackKey(mode?: string, supplier = "duffel") {
     );
   return value;
 }
+type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+export async function bindOtaPaystackKey(tx: Transaction, bookingId: string, reference: string, key: string) {
+  await tx.insert(otaPaymentCredentialsTable).values({
+    bookingId, reference, encryptedKey: encryptSetting(key, `ota_paystack:${bookingId}:${reference}`),
+  }).onConflictDoNothing();
+}
+
+export async function otaPaymentKey(
+  row: Pick<OtaBooking, "id" | "mode" | "supplier">,
+  reference: string,
+  executor: typeof db | Transaction = db,
+) {
+  const bound = await executor.query.otaPaymentCredentialsTable.findFirst({
+    where: eq(otaPaymentCredentialsTable.reference, reference),
+  });
+  if (!bound) return paystackKey(row.mode, row.supplier);
+  if (bound.bookingId !== row.id) throw new OtaError("Payment credential binding mismatch.", 409);
+  const key = decryptSetting(bound.encryptedKey, `ota_paystack:${row.id}:${reference}`);
+  if (!key.startsWith(`sk_${row.mode}_`))
+    throw new OtaError("Payment credential mode mismatch.", 409);
+  return key;
+}
 export async function paystackRequest(
   path: string,
   mode: string,
   data?: unknown,
   supplier = "duffel",
+  boundKey?: string,
 ) {
-  const secret = await paystackKey(mode, supplier);
+  const secret = boundKey ?? await paystackKey(mode, supplier);
   const response = await fetch(`https://api.paystack.co${path}`, {
     method: data ? "POST" : "GET",
     redirect: "error",
@@ -96,12 +123,13 @@ export async function paystackRequest(
   return result.data;
 }
 
-export async function otaPaystackTimeoutSeconds(mode: string, supplier: string) {
+export async function otaPaystackTimeoutSeconds(mode: string, supplier: string, boundKey?: string) {
   const data = await paystackRequest(
     "/integration/payment_session_timeout",
     mode,
     undefined,
     supplier,
+    boundKey,
   );
   const timeout = Number(data?.payment_session_timeout);
   if (!Number.isSafeInteger(timeout) || timeout <= 0)
@@ -135,6 +163,8 @@ export function customerBooking(row: OtaBooking) {
     paymentReference,
     previousPaymentReferences,
     paidPaymentReference,
+    checkoutEditClaim,
+    paymentIssue,
     ...safe
   } = row;
   const editableOfferId =
@@ -143,6 +173,7 @@ export function customerBooking(row: OtaBooking) {
     !row.paidAt &&
     !row.authorizationUrl &&
     !paymentInitializationAt &&
+    !checkoutEditClaim &&
     row.expiresAt.getTime() > Date.now() + 60000
       ? (row.offer as { checkoutSelectionId?: string }).checkoutSelectionId
       : undefined;
@@ -190,6 +221,7 @@ export async function fulfill(reference: string, expectedBookingId?: string) {
     row.mode,
     undefined,
     row.supplier,
+    await otaPaymentKey(row, reference),
   );
   validatePayment(payment, { ...row, reference });
   const paidAt = new Date(payment.paid_at ?? payment.paidAt ?? Date.now());
@@ -211,10 +243,13 @@ export async function fulfill(reference: string, expectedBookingId?: string) {
           id: `${bookingId}:additional-payment:${reference}`, bookingId, actor: "system",
           action: "additional_payment_verified", details: { reference, amountKobo: current.amountKobo },
         }).onConflictDoNothing().returning({ id: otaEventsTable.id });
-        if (event) await tx.update(bookings).set({
-          issue: sql`COALESCE(${bookings.issue}, 'Additional Paystack payment needs reconciliation')`,
-          revision: sql`${bookings.revision} + 1`,
-        }).where(eq(bookings.id, bookingId));
+        if (event) {
+          const [flagged] = await tx.update(bookings).set({
+            paymentIssue: "Additional Paystack payment needs reconciliation",
+            revision: sql`${bookings.revision} + 1`,
+          }).where(eq(bookings.id, bookingId)).returning();
+          return { booking: flagged, purchase: false };
+        }
       }
       return { booking: current, purchase: false };
     }
@@ -612,10 +647,26 @@ async function saveNuiteeBooking(
   )
     return row;
   const stateChanged = row.status !== result.status;
-  const notice =
-    result.status === "cancelled"
-      ? "The reservation was cancelled. Contact support to review the cancellation terms and refund."
-      : null;
+  const prior = row.providerResult as { slices?: unknown; itineraryReview?: boolean } | null;
+  const latest = "slices" in result ? result.slices : undefined;
+  const awaitingItinerary = "itineraryReview" in result && result.itineraryReview === true;
+  const newItineraryReview = awaitingItinerary && !prior?.itineraryReview;
+  const signature = (value: unknown) => Array.isArray(value) ? value.map((slice) =>
+    slice.segments?.map((segment: any) => [
+      segment.origin?.iata_code, segment.destination?.iata_code, segment.departing_at, segment.arriving_at,
+      segment.marketing_carrier?.iata_code, segment.marketing_carrier_flight_number,
+      segment.operating_carrier?.iata_code, segment.operating_carrier_flight_number,
+    ])) : null;
+  const itineraryChanged = row.kind === "flight" && result.status === "confirmed" && !!latest &&
+    !isDeepStrictEqual(signature(latest), signature(prior?.slices ?? (row.offer as { slices?: unknown }).slices));
+  const notice = result.status === "cancelled"
+    ? "The reservation was cancelled. Contact support to review the cancellation terms and refund."
+    : awaitingItinerary
+      ? "The airline reported an itinerary update. Contact support to confirm your current schedule."
+      : itineraryChanged
+        ? "The airline updated your itinerary. Review the latest travel dates and times before you depart."
+        : row.kind === "flight" && result.status === "confirmed" && (!latest || !prior?.itineraryReview)
+          ? row.providerNotice : null;
   const updated = await db.transaction(async (tx) => {
     const [saved] = await tx
       .update(bookings)
@@ -623,13 +674,13 @@ async function saveNuiteeBooking(
         revision: sql`${bookings.revision}+1`,
         status: result.status,
         providerBookingId: result.id,
-        providerResult: result,
+        providerResult: !latest && prior?.slices ? { ...result, slices: prior.slices } : result,
         issue:
           result.status === "requires_review"
             ? "The flight reservation requires supplier review."
             : null,
         providerNotice: notice,
-        ...(stateChanged
+        ...(stateChanged || itineraryChanged || newItineraryReview
           ? { notificationSentAt: null, notificationAttemptAt: null }
           : {}),
         syncedAt: new Date(),
@@ -660,6 +711,11 @@ async function saveNuiteeBooking(
                 : "review_required",
         details: { providerId: result.id },
       });
+    if (saved && (itineraryChanged || newItineraryReview)) await tx.insert(otaEventsTable).values({
+      id: randomUUID(), bookingId: row.id, actor: "system",
+      action: itineraryChanged ? "itinerary_changed" : "itinerary_review_required",
+      details: { providerId: result.id },
+    });
     return saved;
   });
   return (

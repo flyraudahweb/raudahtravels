@@ -9,6 +9,8 @@ import { pipeline } from "node:stream/promises";
 import type { Readable } from "node:stream";
 import { uploadToR2, getFromR2, isR2Configured } from "../lib/r2";
 import { logger } from "../lib/logger";
+import { hasStaffGrant } from "../lib/bookingAccess";
+import { documentType, safeDocumentContentType } from "../lib/privateDocuments";
 
 const router = Router();
 
@@ -91,10 +93,6 @@ async function canReadLinkedFile(
   return result.rows.length > 0;
 }
 
-function staffCanRead(profile: { role: string }) {
-  return ["admin", "super_admin", "staff"].includes(profile.role);
-}
-
 /**
  * POST /api/files/upload
  * Upload a file to R2. Requires authentication.
@@ -170,10 +168,11 @@ router.post(
       }
 
       // Generate unique key: folder/uuid-timestamp.ext
-      const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
-      const key = `${folder}/${randomUUID()}-${Date.now()}${ext}`;
+      const type = documentType(file.buffer);
+      if (!type) return res.status(400).json({ error: "Upload a valid PDF or image." });
+      const key = `${folder}/${randomUUID()}-${Date.now()}.${type.extension}`;
 
-      await uploadToR2(key, file.buffer, file.mimetype, { owner: profile.id });
+      await uploadToR2(key, file.buffer, type.contentType, { owner: profile.id });
 
       // Return the API-served URL (proxied through our backend)
       const url = `/api/files/${key}`;
@@ -234,14 +233,17 @@ router.get("/files/:folder/:filename", async (req, res) => {
 
     if (
       ownerId !== profile.id &&
-      !staffCanRead(profile) &&
+      !await hasStaffGrant(profile, folder === "receipts" ? "payments" : folder === "documents" ? "visa_management" : "passports") &&
       !(await canReadLinkedFile(profile.id, `/api/files/${key}`, ownerId))
     ) {
       (body as Readable).destroy();
       return res.status(404).json({ error: "File not found" });
     }
     res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
+    const safeType = safeDocumentContentType(contentType);
+    if (!safeType) res.attachment("document");
+    res.setHeader("Content-Type", safeType || "application/octet-stream");
     if (contentLength) res.setHeader("Content-Length", contentLength);
     await pipeline(body as Readable, res);
     return;
@@ -263,7 +265,7 @@ router.get("/uploads/:folder/:filename", async (req, res) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   if (
     !["visa", "tickets"].includes(folder) ||
-    !/^[\w.-]+$/.test(filename) ||
+    !/^[\w.-]+\.(?:pdf|jpe?g|png|webp)$/i.test(filename) ||
     filename === "." ||
     filename === ".."
   )
@@ -274,13 +276,15 @@ router.get("/uploads/:folder/:filename", async (req, res) => {
   const profile = await fileProfile(userId);
   if (
     !profile ||
-    (!staffCanRead(profile) &&
+    (!await hasStaffGrant(profile, "visa_management", ...(folder === "tickets" ? ["bookings"] : [])) &&
       !(await canReadLinkedFile(
         profile.id,
         `/api/uploads/${folder}/${filename}`,
       )))
   )
     return res.status(404).json({ error: "File not found" });
+  res.setHeader("Content-Security-Policy", "sandbox; default-src 'none'");
+  res.attachment(filename).type("application/octet-stream");
   return res.sendFile(filename, {
     root: path.resolve("uploads", folder),
     cacheControl: false,

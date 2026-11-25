@@ -13,8 +13,9 @@ const router: IRouter = Router();
 
 router.get("/readyz", async (_req, res) => {
   try {
-    await db.execute(sql`SELECT checkout_expires_at, checkout_mode, checkout_key_fingerprint FROM payments LIMIT 0`);
+    await db.execute(sql`SELECT checkout_expires_at, checkout_mode, checkout_key_fingerprint, archived_with_booking FROM payments LIMIT 0`);
     await db.execute(sql`SELECT provider_id FROM paystack_settlements LIMIT 0`);
+    await db.execute(sql`SELECT capacity_hold_expires_at FROM bookings LIMIT 0`);
     const ota = await getOtaConfig();
     const stored = await db.execute(
       sql`SELECT to_regclass('public.ota_bookings') AS bookings`,
@@ -29,8 +30,10 @@ router.get("/readyz", async (_req, res) => {
       ota.webhookLiveSecret
     ) {
       await db.execute(
-        sql`SELECT notification_sent_at, refund, provider_notice, revision, sync_attempt_at, payment_session_expires_at FROM ota_bookings LIMIT 0`,
+        sql`SELECT notification_sent_at, refund, provider_notice, revision, sync_attempt_at, payment_session_expires_at, payment_issue, checkout_edit_claim FROM ota_bookings LIMIT 0`,
       );
+      await db.execute(sql`SELECT key FROM ota_prebook_claims LIMIT 0`);
+      await db.execute(sql`SELECT reference FROM ota_payment_credentials LIMIT 0`);
       await db.execute(sql`SELECT reference FROM ota_payment_jobs LIMIT 0`);
       await db.execute(sql`SELECT dedupe_key FROM ota_duffel_events LIMIT 0`);
     }

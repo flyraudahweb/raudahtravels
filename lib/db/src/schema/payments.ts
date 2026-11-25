@@ -57,6 +57,7 @@ export const paymentsTable = pgTable("payments", {
   notes: text("notes"),
   isArchived: boolean("is_archived").default(false).notNull(),
   archiveReason: text("archive_reason"),
+  archivedWithBooking: boolean("archived_with_booking").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   check("payments_checkout_mode", sql`${table.checkoutMode} IS NULL OR ${table.checkoutMode} IN ('test', 'live')`),

@@ -162,6 +162,8 @@ export default function AgentBookings() {
   const [recordPayRef, setRecordPayRef] = useState("");
   const [recordPayNotes, setRecordPayNotes] = useState("");
   const [recordPayProof, setRecordPayProof] = useState("");
+  const walletCheckouts = useRef(new Map<string, string>());
+  const recordingPayment = useRef(false);
   const [recordPayLoading, setRecordPayLoading] = useState(false);
 
   // Payment History state
@@ -188,7 +190,7 @@ export default function AgentBookings() {
   };
 
   const handleSubmitPayment = async () => {
-    if (!recordPayBooking) return;
+    if (!recordPayBooking || recordingPayment.current) return;
     const amount = parseFloat(recordPayAmount);
     if (!amount || amount <= 0) {
       toast({ title: "Invalid amount", description: "Please enter a valid payment amount.", variant: "destructive" });
@@ -199,11 +201,16 @@ export default function AgentBookings() {
       toast({ title: "Receipt required", description: "Please upload a payment receipt for bank transfer.", variant: "destructive" });
       return;
     }
-    // Check wallet balance
-    if (recordPayMethod === "wallet" && walletBalance < amount) {
-      toast({ title: "Insufficient balance", description: `Wallet balance ₦${walletBalance.toLocaleString()} is less than ₦${amount.toLocaleString()}.`, variant: "destructive" });
-      return;
+    const walletAttempt = `raudah:wallet-topup:${recordPayBooking.id}:${amount}`;
+    if (recordPayMethod === "wallet" && !walletCheckouts.current.has(walletAttempt)) {
+      let checkoutId: string | null = null;
+      try { checkoutId = sessionStorage.getItem(walletAttempt); } catch { /* Use the in-memory key. */ }
+      checkoutId ||= crypto.randomUUID();
+      walletCheckouts.current.set(walletAttempt, checkoutId);
+      try { sessionStorage.setItem(walletAttempt, checkoutId); } catch { /* Use the in-memory key. */ }
     }
+
+    recordingPayment.current = true;
     setRecordPayLoading(true);
     try {
       const res = await fetch("/api/payments/admin-record", {
@@ -214,6 +221,7 @@ export default function AgentBookings() {
           bookingId: recordPayBooking.id,
           amount,
           method: recordPayMethod,
+          checkoutId: recordPayMethod === "wallet" ? walletCheckouts.current.get(walletAttempt) : undefined,
           reference: recordPayRef || undefined,
           proofUrl: recordPayProof || undefined,
           notes: recordPayNotes || undefined,
@@ -225,6 +233,10 @@ export default function AgentBookings() {
         throw new Error(err.message || err.error || "Failed to record payment");
       }
       const isWallet = recordPayMethod === "wallet";
+      if (isWallet) {
+        walletCheckouts.current.delete(walletAttempt);
+        try { sessionStorage.removeItem(walletAttempt); } catch { /* Storage is optional. */ }
+      }
       toast({
         title: isWallet ? "Payment processed" : "Payment submitted",
         description: isWallet
@@ -237,6 +249,7 @@ export default function AgentBookings() {
     } catch (err: any) {
       toast({ title: "Error", description: err.message || "Something went wrong", variant: "destructive" });
     } finally {
+      recordingPayment.current = false;
       setRecordPayLoading(false);
     }
   };
@@ -534,7 +547,7 @@ export default function AgentBookings() {
                 <Button
                   className={`flex-1 rounded-xl font-black gap-2 ${recordPayMethod === "wallet" ? "bg-emerald-600 hover:bg-emerald-700 text-white" : "bg-[#2D3199] hover:bg-[#1C1F66] text-white"}`}
                   onClick={handleSubmitPayment}
-                  disabled={recordPayLoading || (recordPayMethod === "wallet" && walletBalance < parseFloat(recordPayAmount || "0"))}
+                  disabled={recordPayLoading}
                 >
                   {recordPayLoading ? "Processing..." : recordPayMethod === "wallet" ? "Pay from Wallet" : "Submit Payment"}
                 </Button>

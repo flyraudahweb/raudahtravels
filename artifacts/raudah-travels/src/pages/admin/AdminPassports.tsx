@@ -234,6 +234,9 @@ export default function AdminPassports() {
   const [bulkDownloading, setBulkDownloading] = useState(false);
   const [downloadingId, setDownloadingId]     = useState<string | null>(null);
   const [previewingDoc, setPreviewingDoc]     = useState<{ url: string; isPdf: boolean } | null>(null);
+  useEffect(() => () => {
+    if (previewingDoc) URL.revokeObjectURL(previewingDoc.url);
+  }, [previewingDoc]);
 
   const debouncedSearch = useDebounce(search, 400);
 
@@ -293,68 +296,32 @@ export default function AdminPassports() {
   );
 
   const downloadFile = useCallback(async (id: string, reference: string, silent = false) => {
-    // Fetch the raw data URL via preview mode (avoids Content-Disposition: attachment
-    // which causes Chrome to create broken blob URLs with fetch)
-    const r = await fetch(`/api/admin/passports/${id}/file?mode=preview`, { credentials: "include" });
+    const r = await fetch(`/api/admin/passports/${encodeURIComponent(id)}/file`, { credentials: "include" });
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));
-      if (!silent) toast({ title: "Download failed", description: (body as any).error || "Could not fetch document", variant: "destructive" });
+      if (!silent) toast({ title: "Download failed", description: body.error || "Could not fetch document", variant: "destructive" });
       return null;
     }
-
-    const { passportCopyUrl } = await r.json();
-    if (!passportCopyUrl) {
-      if (!silent) toast({ title: "Download failed", description: "No passport document found", variant: "destructive" });
-      return null;
-    }
-
-    // If it's a data URL, convert to blob for download (Chrome can't download raw data URLs)
-    if (passportCopyUrl.startsWith("data:")) {
-      try {
-        const parts = passportCopyUrl.split(",");
-        const mime = (parts[0].match(/:(.*?);/) || [])[1] || "application/octet-stream";
-        const bstr = atob(parts[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) u8arr[n] = bstr.charCodeAt(n);
-        const blob = new Blob([u8arr], { type: mime });
-        const ext = mime.includes("pdf") ? "pdf" : mime.includes("png") ? "png" : "jpg";
-
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `passport-${reference}.${ext}`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        // Give Chrome enough time to initiate the download before revoking
-        setTimeout(() => URL.revokeObjectURL(url), 30000);
-      } catch {
-        if (!silent) toast({ title: "Download failed", description: "Could not process passport file", variant: "destructive" });
-      }
-      return passportCopyUrl;
-    }
-
-    // If it's an http(s) URL, open in a new tab (browser will handle the download)
-    window.open(passportCopyUrl, "_blank");
-    return passportCopyUrl;
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const extension = blob.type === "application/pdf" ? "pdf" : blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `passport-${reference}.${extension}`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    return true;
   }, [toast]);
 
   const previewFile = useCallback(async (id: string, silent = false) => {
-    // Use preview mode to get the raw data URL — renders directly in <img>/<object>
-    const r = await fetch(`/api/admin/passports/${id}/file?mode=preview`, { credentials: "include" });
+    const r = await fetch(`/api/admin/passports/${encodeURIComponent(id)}/file`, { credentials: "include" });
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));
-      if (!silent) toast({ title: "Preview failed", description: (body as any).error || "Could not load document", variant: "destructive" });
+      if (!silent) toast({ title: "Preview failed", description: body.error || "Could not load document", variant: "destructive" });
       return;
     }
-    const { passportCopyUrl } = await r.json();
-    if (!passportCopyUrl) {
-      if (!silent) toast({ title: "Preview failed", description: "No passport document found", variant: "destructive" });
-      return;
-    }
-    const isPdf = passportCopyUrl.startsWith("data:application/pdf") || passportCopyUrl.endsWith(".pdf");
-    setPreviewingDoc({ url: passportCopyUrl, isPdf });
+    const blob = await r.blob();
+    setPreviewingDoc({ url: URL.createObjectURL(blob), isPdf: blob.type === "application/pdf" });
   }, [toast]);
 
   const handleSingleDownload = useCallback(async (id: string, reference: string) => {
