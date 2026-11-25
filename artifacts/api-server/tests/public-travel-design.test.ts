@@ -322,9 +322,8 @@ it("preserves catalogue filtering and resets the controlled price slider", async
 });
 it("uses the simpler homepage copy and preserves desktop imagery controls", async () => {
   await render(h(Home));
-  expect(container.querySelector('a[href="/app"]')?.textContent).toContain(
-    "Open Raudah App",
-  );
+  expect(container.querySelector('a[href="/app"]')).toBeNull();
+  expect(container.textContent).toContain("Raudah App coming soon");
   expect(
     container.querySelectorAll('[data-testid="home-hero-images"] img'),
   ).toHaveLength(5);

@@ -127,7 +127,7 @@ export default function Home() {
         <div>
           <section
             aria-labelledby="home-hero-heading"
-            className="relative isolate bg-[#1C1F66] bg-gradient-to-br from-[#1C1F66] via-[#2D3199] to-[#1C1F66] px-4 pb-24 pt-28 text-white md:px-8 md:pb-36 md:pt-40"
+            className="relative isolate bg-[#1C1F66] bg-gradient-to-br from-[#1C1F66] via-[#2D3199] to-[#1C1F66] pb-24 pt-28 text-white md:pb-36 md:pt-40"
           >
             {showDesktopImagery && (slideshowEnabled || aircraftEnabled) && (
               <div
@@ -168,10 +168,10 @@ export default function Home() {
                 <div className="absolute inset-0 bg-[#1C1F66]/65" />
               </div>
             )}
-            <div className="mx-auto max-w-6xl md:text-center">
+            <div className="mx-auto w-full max-w-7xl px-4 text-left md:px-8">
               <h1
                 id="home-hero-heading"
-                className="max-w-[27ch] text-balance text-3xl font-bold leading-tight tracking-tight text-white md:mx-auto md:text-5xl"
+                className="max-w-[27ch] text-balance text-3xl font-bold leading-tight tracking-tight text-white md:text-5xl"
               >
                 Travel simply. Pray peacefully. Explore with confidence.
               </h1>

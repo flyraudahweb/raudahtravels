@@ -45,8 +45,6 @@ function StorageNoticeDialog({ sessionId, notice }: { sessionId: string; notice:
     }
     return 0;
   });
-  const previousFocus = useRef<HTMLElement | null>(null);
-
   useEffect(() => {
     if (!remindAt) return;
     const timer = window.setTimeout(
@@ -66,22 +64,48 @@ function StorageNoticeDialog({ sessionId, notice }: { sessionId: string; notice:
     }
   }
 
+  return remindAt === 0 ? <StorageNoticePopup notice={notice} onDismiss={dismiss} /> : null;
+}
+
+function StorageNoticePopup({ notice, onDismiss }: { notice: StorageNotice; onDismiss: () => void }) {
+  const [dismissAt] = useState(() => Date.now() + REMINDER_DELAY_MS);
+  const [secondsLeft, setSecondsLeft] = useState(REMINDER_SECONDS);
+  const previousFocus = useRef<HTMLElement | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((dismissAt - Date.now()) / 1000));
+      setSecondsLeft(remaining);
+      if (remaining === 0) window.clearInterval(timer);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [dismissAt]);
+
   return (
     <AlertDialog
-      open={remindAt === 0}
+      open
       onOpenChange={(open) => {
-        if (!open) dismiss();
+        if (!open && Date.now() >= dismissAt) onDismiss();
       }}
     >
       <AlertDialogContent
+        ref={contentRef}
+        tabIndex={-1}
         className="max-h-[calc(100dvh_-_2rem)] w-[calc(100%_-_2rem)] max-w-2xl gap-6 overflow-y-auto rounded-2xl border-amber-300 bg-white p-7 shadow-2xl sm:gap-8 sm:p-10"
-        onOpenAutoFocus={() => {
+        onEscapeKeyDown={(event) => {
+          if (Date.now() < dismissAt) event.preventDefault();
+        }}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
           previousFocus.current = document.activeElement instanceof HTMLElement
             ? document.activeElement
             : null;
+          contentRef.current?.focus({ preventScroll: true });
         }}
-        onCloseAutoFocus={() => {
+        onCloseAutoFocus={(event) => {
           if (previousFocus.current?.isConnected) {
+            event.preventDefault();
             previousFocus.current.focus({ preventScroll: true });
           }
         }}
@@ -95,8 +119,11 @@ function StorageNoticeDialog({ sessionId, notice }: { sessionId: string; notice:
             {notice.message}
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel className="mt-0 min-h-12 px-5">
+        <AlertDialogFooter className="items-center gap-3">
+          {secondsLeft > 0 && (
+            <p className="text-sm text-slate-600">You can continue in {secondsLeft}s.</p>
+          )}
+          <AlertDialogCancel disabled={secondsLeft > 0} className="mt-0 min-h-12 px-5">
             Remind me in {REMINDER_SECONDS} seconds
           </AlertDialogCancel>
         </AlertDialogFooter>

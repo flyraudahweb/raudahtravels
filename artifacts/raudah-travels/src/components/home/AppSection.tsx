@@ -31,13 +31,9 @@ export default function AppSection() {
               Search flights, explore hotels and discover Hajj &amp; Umrah
               packages in one simple place.
             </p>
-            <Link
-              href="/app"
-              className="mt-7 inline-flex min-h-12 items-center gap-3 rounded-lg bg-white px-5 py-3 font-semibold text-[#2D3199] hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-4 focus-visible:ring-offset-[#1C1F66]"
-            >
-              Open Raudah App
-              <ArrowRight size={18} aria-hidden="true" />
-            </Link>
+            <p className="mt-7 inline-flex rounded-lg bg-white/15 px-4 py-2 text-sm font-semibold text-white">
+              Raudah App coming soon
+            </p>
           </div>
           <div
             aria-hidden="true"

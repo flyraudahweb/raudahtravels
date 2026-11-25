@@ -10,7 +10,7 @@ vi.mock("@clerk/react", () => ({
   useAuth: () => ({ isLoaded: true, isSignedIn: Boolean(auth.sessionId), sessionId: auth.sessionId }),
 }));
 
-it("opens on sign-in and reminds only the approved session after dismissal", async () => {
+it("holds the notice for 30 seconds on each appearance for approved sessions", async () => {
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const client = new QueryClient();
@@ -28,22 +28,35 @@ it("opens on sign-in and reminds only the approved session after dismissal", asy
   const dismiss = () => act(async () => {
     popup()?.querySelector("button")?.click();
   });
+  const advance = (ms: number) => act(async () => { vi.advanceTimersByTime(ms); });
 
   try {
     await render();
     expect(popup()?.textContent).toContain(notice.title);
     expect(popup()?.querySelector("button")?.textContent).toBe("Remind me in 30 seconds");
+    expect(popup()?.textContent).toContain("You can continue in 30s.");
+    expect(popup()?.querySelector("button")?.disabled).toBe(true);
+    expect(container.getAttribute("aria-hidden")).toBe("true");
+    await dismiss();
+    await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    expect(popup()).not.toBeNull();
+    await advance(29_999);
+    expect(popup()?.textContent).toContain("You can continue in 1s.");
+    expect(popup()?.querySelector("button")?.disabled).toBe(true);
+    await advance(1);
+    expect(popup()?.querySelector("button")?.disabled).toBe(false);
     await dismiss();
     expect(popup()).toBeNull();
 
     await render(false);
     await render();
-    await act(async () => { vi.advanceTimersByTime(29_999); });
+    await advance(29_999);
     expect(popup()).toBeNull();
-    await act(async () => { vi.advanceTimersByTime(1); });
+    await advance(1);
     expect(popup()?.textContent).toContain(notice.title);
 
     await dismiss();
+    expect(popup()?.querySelector("button")?.disabled).toBe(true);
     auth.sessionId = null;
     await render();
     expect(popup()).toBeNull();
