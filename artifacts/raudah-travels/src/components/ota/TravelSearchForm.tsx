@@ -124,7 +124,7 @@ export default function TravelSearchForm({
     <div
       role={landingLayout ? "region" : undefined}
       aria-label={landingLayout ? "Travel booking search" : undefined}
-      className={`relative bg-white text-slate-900 ${landingLayout ? "rounded-3xl border border-slate-200 p-4 shadow-[0_18px_55px_-24px_rgba(28,31,102,0.35)] sm:p-6 md:p-7 [&_[data-booking-field]]:min-h-[94px] [&_[data-booking-field]]:border-slate-200 [&_[data-booking-field]]:bg-white [&_[data-booking-field]]:px-4 [&_[data-booking-label]]:mb-1 [&_[data-booking-label]]:text-sm [&_[data-booking-label]]:font-semibold [&_[data-booking-label]]:text-slate-700 [&_[data-booking-value]]:text-lg [&_[data-booking-hint]]:text-xs [&_[data-booking-hint]]:text-slate-600" : `rounded-2xl border border-slate-200 ${appLayout ? "p-4 sm:p-6" : compact ? "p-4 shadow-sm md:p-5" : "p-4 shadow-[0_20px_70px_-25px_rgba(25,30,100,0.35)] md:p-6"}`}`}
+      className={`relative bg-white text-slate-900 ${landingLayout ? "rounded-3xl border border-slate-200 p-4 shadow-[0_18px_55px_-24px_rgba(28,31,102,0.35)] sm:p-6 md:p-7 max-lg:[&_[data-booking-field]]:min-h-[94px] [&_[data-booking-field]]:border-slate-200 [&_[data-booking-field]]:bg-white [&_[data-booking-field]]:px-4 [&_[data-booking-label]]:mb-1 [&_[data-booking-label]]:text-sm [&_[data-booking-label]]:font-semibold [&_[data-booking-label]]:text-slate-700 [&_[data-booking-value]]:text-lg [&_[data-booking-hint]]:text-xs [&_[data-booking-hint]]:text-slate-600" : `rounded-2xl border border-slate-200 ${appLayout ? "p-4 sm:p-6" : compact ? "p-4 shadow-sm md:p-5" : "p-4 shadow-[0_20px_70px_-25px_rgba(25,30,100,0.35)] md:p-6"}`}`}
     >
       <div
         className={
