@@ -8,7 +8,6 @@ import {
   Search,
   ArrowRightLeft,
   ChevronDown,
-  ShieldCheck,
   Package,
   Plus,
   X,
@@ -31,6 +30,9 @@ type EditableLeg = ReturnType<typeof readMultiCityLegs>[number] & {
 };
 const multiCityColumns =
   "grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-[minmax(0,1fr)_2.75rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]";
+const desktopBookingControls =
+  "lg:[&_:is([data-booking-field],[data-booking-submit])]:min-h-[68px] lg:[&_[data-booking-field]]:gap-2 lg:[&_[data-booking-field]]:px-3 lg:[&_[data-booking-field]]:py-1.5 lg:[&_[data-booking-field]]:leading-4 " +
+  "lg:[&_[data-booking-label]]:mb-0.5 lg:[&_[data-booking-label]]:text-xs/4 lg:[&_[data-booking-value]]:text-[15px]/5 lg:[&_[data-booking-hint]]:text-[11px]/4";
 
 export default function TravelSearchForm({
   initialKind = "flight",
@@ -198,6 +200,7 @@ export default function TravelSearchForm({
         </Link>
       </div>
       <form
+        className={desktopBookingControls}
         onSubmit={(event) => {
           event.preventDefault();
           setError("");
@@ -481,8 +484,9 @@ export default function TravelSearchForm({
           </div>
           <button
             type="submit"
+            data-booking-submit=""
             disabled={multiCity && !multiCityEnabled}
-            className={`${travelButton} min-h-[62px] bg-[#FF3B00] text-[15px] shadow-[0_6px_18px_-8px_rgba(255,59,0,0.5)] hover:bg-[#dc3300] ${multiCity ? "col-span-2 lg:col-span-1 lg:col-start-5" : appLayout ? "sm:col-span-2" : compact ? "xl:min-h-[76px]" : ""}`}
+            className={`${travelButton} min-h-[62px] bg-[#FF3B00] text-[15px] shadow-[0_6px_18px_-8px_rgba(255,59,0,0.5)] hover:bg-[#dc3300] ${multiCity ? "col-span-2 lg:col-span-1 lg:col-start-5" : appLayout ? "sm:col-span-2" : ""}`}
           >
             <Search size={21} />
             <span>Search {hotel ? "hotels" : "flights"}</span>
@@ -495,17 +499,6 @@ export default function TravelSearchForm({
           >
             {error}
           </p>
-        )}
-        {!compact && (
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-4 text-[11px] text-slate-500">
-            <p className="flex items-center gap-1.5">
-              <ShieldCheck size={14} className="text-[#2D3199]" />
-              Compare available options. Review the final price before payment.
-            </p>
-            <span className="font-medium text-[#2D3199]">
-              Your journey, thoughtfully arranged.
-            </span>
-          </div>
         )}
       </form>
     </div>
