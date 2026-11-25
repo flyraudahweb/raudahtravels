@@ -3029,6 +3029,32 @@ describe("OTA authorization and payments", () => {
       lastError: null,
     });
   });
+  it("flags an interrupted final payment retry once after its lease expires", async () => {
+    await create();
+    const { enqueuePayment, processOtaPayments } = await import("../src/services/ota/paymentQueue");
+    const jobs = module.otaPaymentJobsTable;
+    await enqueuePayment(booking.reference, booking.id);
+    const activeLease = new Date(Date.now() + 60_000);
+    await module.db.update(jobs).set({ attempts: 10, lockedUntil: activeLease });
+    await processOtaPayments();
+    expect(await module.db.query.otaPaymentJobsTable.findFirst()).toMatchObject({
+      lockedUntil: activeLease, lastError: null,
+    });
+    await module.db.update(jobs).set({ lockedUntil: new Date(Date.now() - 1000) });
+    await Promise.all([processOtaPayments(), processOtaPayments()]);
+    await processOtaPayments();
+    expect(await module.db.query.otaPaymentJobsTable.findFirst()).toMatchObject({
+      attempts: 10, lockedUntil: null, completedAt: null, lastError: "Final payment verification was interrupted",
+    });
+    expect(await module.db.query.otaBookingsTable.findFirst()).toMatchObject({
+      status: "payment_pending", paidAt: null, issue: "Payment callback requires manual verification",
+    });
+    expect(await module.db.query.otaEventsTable.findMany({
+      where: eq(module.otaEventsTable.action, "payment_verification_needs_review"),
+    })).toHaveLength(1);
+    expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/transaction/verify/"), expect.anything());
+    expect(supplierCalls).toBe(0);
+  });
   it("restricts launch diagnostics to super admins and reports optional key storage", async () => {
     expect((await request("/admin/check", "admin", {})).status).toBe(403);
     const response = await request("/admin/check", "super", {});
