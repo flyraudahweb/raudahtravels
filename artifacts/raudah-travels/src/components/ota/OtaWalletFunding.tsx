@@ -10,7 +10,60 @@ type FundingDetails = {
 };
 
 const OPENING_BALANCE_USD = 0;
-const BALANCE_CURRENCIES = ["USD", "NGN"] as const;
+const WALLET_CURRENCIES = ["USD", "NGN"] as const;
+type WalletCurrency = (typeof WALLET_CURRENCIES)[number];
+const depositAmountFormat = new Intl.NumberFormat("en-NG", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+function DepositConverter({ ngnPerUsd, rateLabel }: { ngnPerUsd: number; rateLabel: string }) {
+  const [entry, setEntry] = useState<{ currency: WalletCurrency; text: string }>({ currency: "USD", text: "" });
+  const input = entry.text.trim();
+  const hasAmount = /^(?:(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{0,2})?|\.\d{1,2})$/.test(input);
+  const amount = hasAmount ? Number(input.replaceAll(",", "")) : NaN;
+  const converted = entry.currency === "USD" ? amount * ngnPerUsd : amount / ngnPerUsd;
+  const valid = Number.isFinite(converted);
+  const invalid = input !== "" && !valid && input !== ".";
+
+  return (
+    <section aria-labelledby="deposit-converter-title" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <h3 id="deposit-converter-title" className="flex items-center gap-2.5 font-semibold text-slate-950">
+          <ArrowRightLeft size={18} className="text-[#2D3199]" aria-hidden="true" />
+          Deposit converter
+        </h3>
+        <p className="text-sm text-slate-600 tabular-nums">{rateLabel}</p>
+      </div>
+      <p id="deposit-converter-hint" className="mt-2 text-sm text-slate-600">Enter an amount in either currency.</p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 sm:gap-4">
+        {WALLET_CURRENCIES.map((currency) => {
+          const editing = currency === entry.currency;
+          return (
+            <label key={currency} className="min-w-0 space-y-1.5">
+              <span className="block text-sm font-medium text-slate-700">{currency === "USD" ? "US dollars (USD)" : "Nigerian naira (NGN)"}</span>
+              <span className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-100">
+                <span className="text-slate-500" aria-hidden="true">{currency === "USD" ? "$" : "₦"}</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  aria-invalid={editing && invalid}
+                  aria-describedby={editing && invalid ? "deposit-converter-error" : "deposit-converter-hint"}
+                  value={editing ? entry.text : valid ? depositAmountFormat.format(converted) : ""}
+                  placeholder="0.00"
+                  onChange={(event) => setEntry({ currency, text: event.currentTarget.value })}
+                  className="min-h-11 min-w-0 flex-1 bg-transparent font-medium text-slate-950 outline-none tabular-nums placeholder:text-slate-400"
+                />
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      {invalid && <p id="deposit-converter-error" role="status" className="mt-2 text-sm text-rose-700">Enter a positive amount or zero, with up to two decimal places.</p>}
+    </section>
+  );
+}
 
 function CopyFundingDetail({ label, value, light = false }: { label: string; value: string; light?: boolean }) {
   const [copied, setCopied] = useState(false);
@@ -50,7 +103,7 @@ function CopyFundingDetail({ label, value, light = false }: { label: string; val
 }
 
 export default function OtaWalletFunding({ adminId }: { adminId: string }) {
-  const [balanceCurrency, setBalanceCurrency] = useState<(typeof BALANCE_CURRENCIES)[number]>("USD");
+  const [balanceCurrency, setBalanceCurrency] = useState<WalletCurrency>("USD");
   const funding = useQuery({
     queryKey: ["ota", "admin-wallet-funding", adminId],
     queryFn: ({ signal }) => ota<FundingDetails>("/admin/wallet-funding", undefined, undefined, signal),
@@ -62,7 +115,7 @@ export default function OtaWalletFunding({ adminId }: { adminId: string }) {
   if (funding.isError) return <p role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800">{funding.error.message}</p>;
 
   const { bankTransfer, crypto } = funding.data;
-  const ngn = new Intl.NumberFormat("en-NG").format(bankTransfer.ngnPerUsd);
+  const rateLabel = `1 USD = ₦${new Intl.NumberFormat("en-NG").format(bankTransfer.ngnPerUsd)}`;
   const balance = new Intl.NumberFormat("en-NG", {
     style: "currency",
     currency: balanceCurrency,
@@ -86,7 +139,7 @@ export default function OtaWalletFunding({ adminId }: { adminId: string }) {
             <h3 className="font-semibold text-white">Booking wallet balance</h3>
           </div>
           <div role="group" aria-label="Balance currency" className="inline-flex gap-1 rounded-xl border border-white/25 bg-slate-950/35 p-1">
-            {BALANCE_CURRENCIES.map((currency) => (
+            {WALLET_CURRENCIES.map((currency) => (
               <button
                 key={currency}
                 type="button"
@@ -104,9 +157,10 @@ export default function OtaWalletFunding({ adminId }: { adminId: string }) {
         </p>
         <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-white/20 pt-4 text-sm text-indigo-100">
           <span>Opening balance</span>
-          <span className="inline-flex items-center gap-2 tabular-nums"><ArrowRightLeft size={15} aria-hidden="true" />1 USD = ₦{ngn}</span>
+          <span className="inline-flex items-center gap-2 tabular-nums"><ArrowRightLeft size={15} aria-hidden="true" />{rateLabel}</span>
         </div>
       </article>
+      <DepositConverter ngnPerUsd={bankTransfer.ngnPerUsd} rateLabel={rateLabel} />
       <div className="grid gap-5 lg:grid-cols-2">
         <article className="flex min-w-0 flex-col gap-6 rounded-2xl bg-gradient-to-br from-[#191c58] via-[#272b78] to-[#3439a1] p-5 text-white shadow-sm sm:p-7">
           <div className="flex items-start justify-between gap-3">
@@ -123,7 +177,7 @@ export default function OtaWalletFunding({ adminId }: { adminId: string }) {
           <div className="mt-auto flex gap-3 border-t border-white/20 pt-4">
             <ArrowRightLeft className="mt-0.5 shrink-0 text-indigo-100" size={18} aria-hidden="true" />
             <div>
-              <p className="font-semibold text-white">1 USD = ₦{ngn}</p>
+              <p className="font-semibold text-white">{rateLabel}</p>
               <p className="mt-1 text-sm leading-relaxed text-indigo-100">Nomba automatically converts bank transfers to US dollars for the booking wallet. The rate shown is the funding reference rate.</p>
             </div>
           </div>
