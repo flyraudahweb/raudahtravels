@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRightLeft, Banknote, Check, Copy, Landmark, WalletCards } from "lucide-react";
+import { ArrowRightLeft, Banknote, Check, Copy, Landmark, Wallet, WalletCards } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { ota } from "@/lib/ota";
 
@@ -8,6 +8,9 @@ type FundingDetails = {
   bankTransfer: { bankName: string; accountName: string; accountNumber: string; ngnPerUsd: number };
   crypto: { asset: string; network: string; address: string };
 };
+
+const OPENING_BALANCE_USD = 0;
+const BALANCE_CURRENCIES = ["USD", "NGN"] as const;
 
 function CopyFundingDetail({ label, value, light = false }: { label: string; value: string; light?: boolean }) {
   const [copied, setCopied] = useState(false);
@@ -47,6 +50,7 @@ function CopyFundingDetail({ label, value, light = false }: { label: string; val
 }
 
 export default function OtaWalletFunding({ adminId }: { adminId: string }) {
+  const [balanceCurrency, setBalanceCurrency] = useState<(typeof BALANCE_CURRENCIES)[number]>("USD");
   const funding = useQuery({
     queryKey: ["ota", "admin-wallet-funding", adminId],
     queryFn: ({ signal }) => ota<FundingDetails>("/admin/wallet-funding", undefined, undefined, signal),
@@ -58,7 +62,13 @@ export default function OtaWalletFunding({ adminId }: { adminId: string }) {
   if (funding.isError) return <p role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-800">{funding.error.message}</p>;
 
   const { bankTransfer, crypto } = funding.data;
-  const ngn = new Intl.NumberFormat("en-NG", { maximumFractionDigits: 0 }).format(bankTransfer.ngnPerUsd);
+  const ngn = new Intl.NumberFormat("en-NG").format(bankTransfer.ngnPerUsd);
+  const balance = new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: balanceCurrency,
+    currencyDisplay: "narrowSymbol",
+  }).format(balanceCurrency === "USD" ? OPENING_BALANCE_USD : OPENING_BALANCE_USD * bankTransfer.ngnPerUsd);
+
   return (
     <section aria-labelledby="wallet-funding-title" className="space-y-5">
       <div className="flex items-center gap-3">
@@ -68,6 +78,35 @@ export default function OtaWalletFunding({ adminId }: { adminId: string }) {
           <p className="text-sm text-slate-600">Send a naira bank transfer or deposit USDT on Solana.</p>
         </div>
       </div>
+      <article className="relative isolate overflow-hidden rounded-2xl bg-gradient-to-br from-slate-950 via-[#1e2358] to-[#363a94] p-5 text-white shadow-md sm:p-7">
+        <div aria-hidden="true" className="pointer-events-none absolute -right-14 -top-32 -z-10 size-80 rounded-full border border-white/15 bg-white/5 ring-[32px] ring-white/5" />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-white/15"><Wallet size={20} aria-hidden="true" /></span>
+            <h3 className="font-semibold text-white">Booking wallet balance</h3>
+          </div>
+          <div role="group" aria-label="Balance currency" className="inline-flex gap-1 rounded-xl border border-white/25 bg-slate-950/35 p-1">
+            {BALANCE_CURRENCIES.map((currency) => (
+              <button
+                key={currency}
+                type="button"
+                aria-pressed={balanceCurrency === currency}
+                onClick={() => setBalanceCurrency(currency)}
+                className="min-h-10 min-w-14 rounded-lg px-3 text-sm font-semibold text-indigo-100 transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white aria-pressed:bg-white aria-pressed:text-[#232667]"
+              >
+                {currency}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p aria-live="polite" className="mt-6 break-words text-4xl font-semibold tracking-tight text-white tabular-nums sm:text-5xl">
+          {balance} <span className="text-base font-medium tracking-normal text-indigo-100">{balanceCurrency}</span>
+        </p>
+        <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-white/20 pt-4 text-sm text-indigo-100">
+          <span>Opening balance</span>
+          <span className="inline-flex items-center gap-2 tabular-nums"><ArrowRightLeft size={15} aria-hidden="true" />1 USD = ₦{ngn}</span>
+        </div>
+      </article>
       <div className="grid gap-5 lg:grid-cols-2">
         <article className="flex min-w-0 flex-col gap-6 rounded-2xl bg-gradient-to-br from-[#191c58] via-[#272b78] to-[#3439a1] p-5 text-white shadow-sm sm:p-7">
           <div className="flex items-start justify-between gap-3">

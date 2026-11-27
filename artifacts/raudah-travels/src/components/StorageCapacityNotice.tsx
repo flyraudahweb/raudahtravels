@@ -14,6 +14,7 @@ import {
 
 const REMINDER_SECONDS = 30;
 const REMINDER_DELAY_MS = REMINDER_SECONDS * 1000;
+const DISMISS_WAIT_SECONDS = 5;
 type StorageNotice = { title: string; message: string };
 
 export function StorageCapacityNotice() {
@@ -68,8 +69,8 @@ function StorageNoticeDialog({ sessionId, notice }: { sessionId: string; notice:
 }
 
 function StorageNoticePopup({ notice, onDismiss }: { notice: StorageNotice; onDismiss: () => void }) {
-  const [dismissAt] = useState(() => Date.now() + REMINDER_DELAY_MS);
-  const [secondsLeft, setSecondsLeft] = useState(REMINDER_SECONDS);
+  const [dismissAt] = useState(() => Date.now() + DISMISS_WAIT_SECONDS * 1000);
+  const [secondsLeft, setSecondsLeft] = useState(DISMISS_WAIT_SECONDS);
   const previousFocus = useRef<HTMLElement | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 

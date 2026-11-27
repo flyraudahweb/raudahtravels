@@ -10,7 +10,7 @@ vi.mock("@clerk/react", () => ({
   useAuth: () => ({ isLoaded: true, isSignedIn: Boolean(auth.sessionId), sessionId: auth.sessionId }),
 }));
 
-it("holds the notice for 30 seconds on each appearance for approved sessions", async () => {
+it("unlocks dismissal after 5 seconds and shows the notice again 30 seconds after dismissal", async () => {
   vi.useFakeTimers();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const client = new QueryClient();
@@ -34,13 +34,13 @@ it("holds the notice for 30 seconds on each appearance for approved sessions", a
     await render();
     expect(popup()?.textContent).toContain(notice.title);
     expect(popup()?.querySelector("button")?.textContent).toBe("Remind me in 30 seconds");
-    expect(popup()?.textContent).toContain("You can continue in 30s.");
+    expect(popup()?.textContent).toContain("You can continue in 5s.");
     expect(popup()?.querySelector("button")?.disabled).toBe(true);
     expect(container.getAttribute("aria-hidden")).toBe("true");
     await dismiss();
     await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
     expect(popup()).not.toBeNull();
-    await advance(29_999);
+    await advance(4_999);
     expect(popup()?.textContent).toContain("You can continue in 1s.");
     expect(popup()?.querySelector("button")?.disabled).toBe(true);
     await advance(1);
@@ -54,6 +54,7 @@ it("holds the notice for 30 seconds on each appearance for approved sessions", a
     expect(popup()).toBeNull();
     await advance(1);
     expect(popup()?.textContent).toContain(notice.title);
+    expect(popup()?.textContent).toContain("You can continue in 5s.");
 
     await dismiss();
     expect(popup()?.querySelector("button")?.disabled).toBe(true);
