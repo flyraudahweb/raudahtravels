@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRightLeft, Banknote, Check, Copy, Landmark, Wallet, WalletCards } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
@@ -18,11 +18,14 @@ const depositAmountFormat = new Intl.NumberFormat("en-NG", {
 });
 
 function DepositConverter({ ngnPerUsd, rateLabel }: { ngnPerUsd: number; rateLabel: string }) {
-  const [entry, setEntry] = useState<{ currency: WalletCurrency; text: string }>({ currency: "USD", text: "" });
+  const [fromCurrency, setFromCurrency] = useState<WalletCurrency>("USD");
+  const [entry, setEntry] = useState({ field: 0, text: "" });
+  const toCurrency = fromCurrency === "USD" ? "NGN" : "USD";
+  const currencies = [fromCurrency, toCurrency];
   const input = entry.text.trim();
   const hasAmount = /^(?:(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d{0,2})?|\.\d{1,2})$/.test(input);
   const amount = hasAmount ? Number(input.replaceAll(",", "")) : NaN;
-  const converted = entry.currency === "USD" ? amount * ngnPerUsd : amount / ngnPerUsd;
+  const converted = currencies[entry.field] === "USD" ? amount * ngnPerUsd : amount / ngnPerUsd;
   const valid = Number.isFinite(converted);
   const invalid = input !== "" && !valid && input !== ".";
 
@@ -36,27 +39,40 @@ function DepositConverter({ ngnPerUsd, rateLabel }: { ngnPerUsd: number; rateLab
         <p className="text-sm text-slate-600 tabular-nums">{rateLabel}</p>
       </div>
       <p id="deposit-converter-hint" className="mt-2 text-sm text-slate-600">Enter an amount in either currency.</p>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 sm:gap-4">
-        {WALLET_CURRENCIES.map((currency) => {
-          const editing = currency === entry.currency;
+      <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-end">
+        {currencies.map((currency, index) => {
+          const editing = index === entry.field;
           return (
-            <label key={currency} className="min-w-0 space-y-1.5">
-              <span className="block text-sm font-medium text-slate-700">{currency === "USD" ? "US dollars (USD)" : "Nigerian naira (NGN)"}</span>
-              <span className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-100">
-                <span className="text-slate-500" aria-hidden="true">{currency === "USD" ? "$" : "₦"}</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  autoComplete="off"
-                  aria-invalid={editing && invalid}
-                  aria-describedby={editing && invalid ? "deposit-converter-error" : "deposit-converter-hint"}
-                  value={editing ? entry.text : valid ? depositAmountFormat.format(converted) : ""}
-                  placeholder="0.00"
-                  onChange={(event) => setEntry({ currency, text: event.currentTarget.value })}
-                  className="min-h-11 min-w-0 flex-1 bg-transparent font-medium text-slate-950 outline-none tabular-nums placeholder:text-slate-400"
-                />
-              </span>
-            </label>
+            <Fragment key={index === 0 ? "from" : "to"}>
+              <label className="min-w-0 space-y-1.5">
+                <span className="block text-sm font-medium text-slate-700">{currency === "USD" ? "US dollars (USD)" : "Nigerian naira (NGN)"}</span>
+                <span className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-100">
+                  <span className="text-slate-500" aria-hidden="true">{currency === "USD" ? "$" : "₦"}</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    aria-invalid={editing && invalid}
+                    aria-describedby={editing && invalid ? "deposit-converter-error" : "deposit-converter-hint"}
+                    value={editing ? entry.text : valid ? depositAmountFormat.format(converted) : ""}
+                    placeholder="0.00"
+                    onChange={(event) => setEntry({ field: index, text: event.currentTarget.value })}
+                    className="min-h-11 min-w-0 flex-1 bg-transparent font-medium text-slate-950 outline-none tabular-nums placeholder:text-slate-400"
+                  />
+                </span>
+              </label>
+              {index === 0 && (
+                <button
+                  type="button"
+                  aria-label="Swap currencies"
+                  onClick={() => setFromCurrency(toCurrency)}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 justify-self-center rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-sm font-semibold text-indigo-800 transition-colors hover:bg-indigo-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 sm:min-h-[46px]"
+                >
+                  <ArrowRightLeft size={16} className="rotate-90 sm:rotate-0" aria-hidden="true" />
+                  Swap
+                </button>
+              )}
+            </Fragment>
           );
         })}
       </div>
