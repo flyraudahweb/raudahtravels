@@ -3190,6 +3190,28 @@ describe("OTA authorization and payments", () => {
     expect(fetch).not.toHaveBeenCalledWith(expect.stringContaining("/transaction/verify/"), expect.anything());
     expect(supplierCalls).toBe(0);
   });
+  it("restricts wallet funding details to super admins and prevents caching", async () => {
+    const path = "/admin/wallet-funding";
+    expect((await request(path)).status).toBe(401);
+    expect((await request(path, "admin")).status).toBe(403);
+    expect((await request(path, "user")).status).toBe(403);
+
+    expect((await request(path, "super")).status).toBe(503);
+    const { encryptWalletFunding, OTA_WALLET_FUNDING_KEY } = await import("../src/services/ota/walletFunding");
+    const sample = {
+      bankTransfer: { bankName: "Example Bank", accountName: "Test Operator", accountNumber: "1000000001", ngnPerUsd: 1500 },
+      crypto: { asset: "USDT", network: "Solana", address: "11111111111111111111111111111111" },
+    };
+    await module.db.insert(module.siteSettingsTable).values({ id: randomUUID(), key: OTA_WALLET_FUNDING_KEY, value: encryptWalletFunding(sample) });
+    const response = await request(path, "super");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.json()).toEqual(sample);
+    const generalSettings = await legacyRequest("/admin/settings", "super", undefined, "GET");
+    expect(generalSettings.status).toBe(200);
+    expect((await generalSettings.json()).settings).not.toHaveProperty(OTA_WALLET_FUNDING_KEY);
+    expect((await legacyRequest(`/admin/settings/${OTA_WALLET_FUNDING_KEY}`, "admin", { value: sample }, "PUT")).status).toBe(403);
+  });
   it("restricts launch diagnostics to super admins and reports optional key storage", async () => {
     expect((await request("/admin/check", "admin", {})).status).toBe(403);
     const response = await request("/admin/check", "super", {});

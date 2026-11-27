@@ -15,6 +15,7 @@ import { z } from "zod";
 import {
   db,
   profilesTable,
+  siteSettingsTable,
   otaBookingsTable as bookings,
   otaEventsTable,
   otaPrebookClaimsTable,
@@ -25,6 +26,7 @@ import {
 import { and, eq, desc, sql, like, isNull, or } from "drizzle-orm";
 import { customerTimeline } from "../services/ota/bookingUpdates";
 import { followupQueue, followupReasons, trackCheckoutBlocker } from "../services/ota/followups";
+import { OTA_WALLET_FUNDING_KEY, readWalletFunding } from "../services/ota/walletFunding";
 import { logger } from "../lib/logger";
 import { hasStaffGrant } from "../lib/bookingAccess";
 import { deskCancellationQuote, deskQuery, reservations, verifyDeskPayment, verifyDeskRefund, verifyDeskSettlement } from "../services/ota/reservationDesk";
@@ -1867,6 +1869,21 @@ router.get(
       (SELECT count(*)::int FROM ota_payment_jobs WHERE completed_at IS NULL AND attempts >= 10) AS payment_issues,
       (SELECT max(created_at) FROM ota_duffel_events) AS last_supplier_event`);
     res.json({ totals: totals.rows[0], queues: queues.rows[0] });
+  }),
+);
+router.get(
+  "/ota/admin/wallet-funding",
+  endpoint(async (req, res) => {
+    await identity(req, true);
+    const setting = await db.query.siteSettingsTable.findFirst({
+      where: eq(siteSettingsTable.key, OTA_WALLET_FUNDING_KEY),
+    });
+    if (!setting) throw new OtaError("Wallet funding details have not been configured.", 503);
+    try {
+      res.json(readWalletFunding(setting.value));
+    } catch {
+      throw new OtaError("Saved wallet funding details could not be read.", 503);
+    }
   }),
 );
 router.get(

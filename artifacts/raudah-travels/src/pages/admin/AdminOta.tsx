@@ -20,6 +20,7 @@ import TravelUpdates from "@/components/ota/TravelUpdates";
 import OtaOperationsSummary from "@/components/ota/OtaOperationsSummary";
 import OtaEarnings from "@/components/ota/OtaEarnings";
 import OtaFareChanges from "@/components/ota/OtaFareChanges";
+import OtaWalletFunding from "@/components/ota/OtaWalletFunding";
 import { BookingStatus, tripTitle } from "@/components/ota/BookingPresentation";
 import { Link, useSearch } from "wouter";
 
@@ -113,6 +114,7 @@ export default function AdminOta() {
     if (params.get("tab") === "settings") setTab("settings");
     else if (params.get("tab") === "earnings") setTab("earnings");
     else if (params.get("tab") === "fare-changes") setTab("fare-changes");
+    else if (params.get("tab") === "wallet") setTab("wallet");
     else if (params.get("booking")) setTab("bookings");
   }, [search]);
   async function action(fn: () => Promise<any>, message: string) {
@@ -170,6 +172,7 @@ export default function AdminOta() {
       <div className="flex flex-wrap gap-4">
         <Link href="/admin/ota-reservations" className="text-sm font-semibold text-indigo-800 underline">Open Reservations Desk</Link>
         <Link href="/admin/ota-follow-ups" className="text-sm font-semibold text-indigo-800 underline">Open checkout follow-up</Link>
+        <button type="button" onClick={() => setTab("wallet")} className="text-sm font-semibold text-indigo-800 underline">Fund booking wallet</button>
       </div>
       <div className="flex flex-wrap gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-3">
         {[
@@ -187,14 +190,14 @@ export default function AdminOta() {
         ))}
       </div>
       <div className="flex flex-wrap gap-2 border-b pb-3">
-        {["bookings", "earnings", "fare-changes", "settings"].map((t) => (
+        {["bookings", "earnings", "fare-changes", "wallet", "settings"].map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             aria-pressed={tab === t}
             className={`rounded-xl px-5 py-2.5 text-sm font-bold capitalize ${tab === t ? "bg-indigo-900 text-white" : "bg-white text-slate-600"}`}
           >
-            {t === "fare-changes" ? "Fare changes" : t}
+            {t === "fare-changes" ? "Fare changes" : t === "wallet" ? "Wallet funding" : t}
           </button>
         ))}
         <Link
@@ -226,6 +229,8 @@ export default function AdminOta() {
         <OtaEarnings />
       ) : tab === "fare-changes" ? (
         <OtaFareChanges />
+      ) : tab === "wallet" ? (
+        <OtaWalletFunding key={profile.id} adminId={profile.id} />
       ) : tab === "settings" ? (
         !settings ? (
           <Loading />

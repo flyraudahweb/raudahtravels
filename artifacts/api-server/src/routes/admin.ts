@@ -6,6 +6,7 @@ import { sendEmail, sendAgentApprovalEmail, sendStaffWelcomeEmail } from "../uti
 import { createNotification } from "../utils/notify.js";
 import { createBooking, RegistrationError } from "../services/registration/RegistrationService";
 import { CONFIG_KEY, getRegistrationConfig, registrationConfigSchema, secretFields, encryptSetting, redactConfig } from "../services/registration/config";
+import { OTA_WALLET_FUNDING_KEY } from "../services/ota/walletFunding";
 import { assertRegistrationReady } from "../services/registration/readiness";
 import { checkRegistrationConnections } from "../services/registration/ConnectionChecks";
 import { allowChannelMessage } from "../services/channels/channelRateLimit";
@@ -1693,7 +1694,7 @@ router.get("/admin/settings", async (_req, res) => {
   res.set("Cache-Control", "no-store");
   const settings = await db.query.siteSettingsTable.findMany();
   const map: Record<string, any> = {};
-  settings.forEach(s => { if (s.key !== "ota_config") map[s.key] = s.value; });
+  settings.forEach(s => { if (s.key !== "ota_config" && s.key !== OTA_WALLET_FUNDING_KEY) map[s.key] = s.value; });
   delete map[CONFIG_KEY];
   for (const key of ["whatsapp_verify_token", "telegram_webhook_secret"]) {
     if (map[key]) { map[`${key}_set`] = true; delete map[key]; }
@@ -1822,6 +1823,7 @@ router.get("/admin/email/debug", async (req, res) => {
 router.put("/admin/settings/:key", requireAccountAdmin, async (req, res) => {
   const key = String(req.params.key);
   if (key === "ota_config") return res.status(403).json({ error: "Use the super-admin OTA console to manage travel settings" });
+  if (key === OTA_WALLET_FUNDING_KEY) return res.status(403).json({ error: "Wallet funding destinations are managed separately" });
   if (key === CONFIG_KEY || /^(whatsapp_|telegram_)/.test(key)) return res.status(400).json({ error: "Use Registration Agent settings to manage channel credentials securely" });
   if (!req.body || typeof req.body !== "object" || Array.isArray(req.body) || !Object.hasOwn(req.body, "value")) return res.status(400).json({ error: "A setting value is required" });
   const { value } = req.body;
